@@ -84,21 +84,30 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         should this raise an exception?  Or return a default zenith answer
         with some calib programname?  Or?
     """
-    if dateobs-math.floor(dateobs) >= 0.5:
+    
+    """ Below is an algorithm for calculating the local apparent sidereal time. 
+    astropy should be able to this (I think), but I keep getting an error when I try 
+    to use those functions (and I'm pretty sure I'm importing all the necessary 
+    components of astropy). A bunch of lines have been commented out which were 
+    used for testing purposes. """
+    
+    #Find the Julian date of the previous midnight
+    if (dateobs-math.floor(dateobs) >= 0.5):
         JD_0 = math.floor(dateobs)+0.5
-    elif dateobs-math.floor(dateobs) < 0.5:
+    elif (dateobs-math.floor(dateobs) < 0.5):
         JD_0 = math.floor(dateobs)-0.5
         
-    D_0 = JD_0-2451545.0
-    D = dateobs-2451545.0
-    T = D_0/36525
-    H = 24*(dateobs-math.floor(dateobs))
-    H_min = H*60
+    D_0 = JD_0-2451545.0 #Difference between last Julian midnight and J2000
+    D = dateobs-2451545.0 #Difference between observation data and J2000
+    T = D_0/36525 #Fraction of Julian century that's past since J2000
     
+    #Calculate the sideral time in Greenwich for the last Julian midnight
     GMST_0 = 100.4606184+36000.77005361*T+0.00038793*T**2-2.6E-08*T**3
     
+    #Add correction for the number of hours that have past since midnight
     GMST = GMST_0+0.25068447733746215*(dateobs-JD_0)*24*60
     
+    #Calculate the equation of equinoxes
     L = 280.47+0.98565*D
     Omega = 125.04-0.052954*D
     delPsi = -0.000319*math.sin(Omega*math.pi/180)-0.00024*math.sin(2*L*math.pi/180)
@@ -106,19 +115,22 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     
     eqeq = delPsi*math.cos(E*math.pi/180)
     
+    #Correct with the equation of equinoxes to get the current apparent sidereal time
     GAST = GMST+eqeq
     
+    #Add the longitude of the observatory to get the local sidereal time
     LAST = GAST-111.5984796
         
+    #Shift the local sidereal time into the range of 0 to 360 degrees
     if LAST >= 360:
         n = math.floor(LAST/360)
         LAST = LAST-360*n
         
-    hour = math.floor(LAST/15)
-    minute = math.floor((LAST/15-hour)*60)
-    second = ((LAST/15-hour)*60-minute)*60
+    #hour = math.floor(LAST/15)
+    #minute = math.floor((LAST/15-hour)*60)
+    #second = ((LAST/15-hour)*60-minute)*60
     
-    print( str(hour) + "h " + str(minute) + "m " + str(second) +"s")
+    #print( str(hour) + "h " + str(minute) + "m " + str(second) +"s")
 
     #print("dateobs = " + str(dateobs))
     #print("JD_0 = " + str(JD_0))
@@ -129,10 +141,12 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #print("GMST = " + str(GMST))
     #print("LAST = " + str(LAST))
     
+    #Use PyAstronomy to calculate the position of the Sun.
     pos_sun = pyasl.sunpos(dateobs,full_output=True)
     
     #print("RA_sun = " + str(float(pos_sun[1])) + " Dec_sun = " + str(float(pos_sun[2])))
     
+    #Check to see if the Sun is up.
     RA_sun = float(pos_sun[1])
     Dec_sun = float(pos_sun[2])
     HA_sun = LAST - RA_sun
@@ -144,9 +158,11 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     ALT_sun = (math.asin(math.sin(Dec_sun*math.pi/180)*math.sin(31.9614929*math.pi/180)+math.cos(Dec_sun*math.pi/180)*math.cos(31.9614929*math.pi/180)*math.cos(HA_sun*math.pi/180)))*(180/math.pi)
     #print("ALT_sun = " + str(ALT_sun))
     
+    #Print warning if the Sun is up. We may decide this should do more than just warn
     if (ALT_sun >= 0):
         print("WARNING: The sun is currently up!")
         
+    #Find the position of the Moon using PyAstronomy
     pos_moon = pyasl.moonpos(dateobs)
     
     RA_moon = float(pos_moon[0])
@@ -154,15 +170,17 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     
     print("RA_moon = " + str(RA_moon) + " Dec_moon = " + str(Dec_moon))
     
+    #Find the phase of the moon using PyAstronomy
     moonPhase = pyasl.moonphase(dateobs)
     phase = float(moonPhase)
     
     print(phase)
     
+    #Opens a file containing information about all of the DESI tiles. Not sure if
+    #this is the best way to get that information?
     tiles_file = open("desi-tiles-full.par.txt","r")
-    #uptiles_file = open("PossibleTiles.txt","w")
-    #downtiles_file = open("ImpossibleTiles.txt","w")
     
+    #Declare some variables to store data from the file
     Tiles = []
     idnum = []
     ra = []
@@ -178,6 +196,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     impossibletiles = 0
     mindec = 100.0
     nextfield = 0
+    #Read the data from the file and find the next field
     for line in tiles_file:
         Tiles.append(line)
         c = Tiles[j].split(" ")
@@ -217,36 +236,27 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     
     #print("The next field that should be observed is: " + str(nextfield) + "\n")
     #print(str(idnum[nextfield-1]) + " " + str(ra[nextfield-1]) + " " + str(dec[nextfield-1]) + " " + str(passnum[nextfield-1]) + " " + str(in_desi[nextfield-1]) + " " + str(ebv_med[nextfield-1]) + " " + str(airmass[nextfield-1]) + " " + str(exposefac[nextfield-1]))
+    
+    
     #raise NotImplementedError
+    
+    #Create dictionary with information that is needed to point the telescope
     next_field = {'tileid':idnum[nextfield-1], 'programname':'DESI', 'telera':ra[nextfield-1], 'teledec':dec[nextfield-1], 'exptime':1800, 'maxtime':2000, 'fibers':{}, 'gfa':{}}
     
-    #c = SkyCoord(ra=ra[nextfield-1]*u.deg,dec=dec[nextfield-1]*u.deg,equinox="J2000")
-    
-    #print c
-    
-    #c = c.transform_to(FK5(equinox="J2015.5"))
-    
-    #print c
-    
-    #TeleLoc = EarthLocation.from_geodetic(lat=31.9614929*u.deg,lon=-111.5984796*u.deg)
-    
-    #print TeleLoc
-    
-    #print c.transform_to(AltAz(dateobs, TeleLoc))
-    
-    #c = c.transform_to(FK5(equinox="J2000"))
-    
-    #print c
-    
+    #Return the dictionary
     return next_field
 
-dateobs = float(raw_input('Enter the date of observation: '))
-skylevel = 0
-transparency = 0
-previoustiles = []
-programname = 'DESI'
-start_time = time.time()
-next_field = get_next_field(dateobs, skylevel, transparency, previoustiles, programname)
+""" The lines below allow the function to be tested by itself with the user
+inputting a Julian date of observation. They also calculate the execution time for
+purposes of optimizing."""
 
-print("Total execution time: %s seconds" % (time.time()-start_time))
-print next_field
+#dateobs = float(raw_input('Enter the date of observation: '))
+#skylevel = 0
+#transparency = 0
+#previoustiles = []
+#programname = 'DESI'
+#start_time = time.time()
+#next_field = get_next_field(dateobs, skylevel, transparency, previoustiles, programname)
+
+#print("Total execution time: %s seconds" % (time.time()-start_time))
+#print next_field
