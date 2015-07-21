@@ -3,6 +3,8 @@
 import math
 import time
 from PyAstronomy import pyasl
+from astropy import coordinates
+from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
 from astropy.coordinates import Angle, Latitude, Longitude
@@ -93,6 +95,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         used for testing purposes. 
     """
     
+    tobs = Time(dateobs, format='jd', scale='utc')
+    
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
         jd_0 = math.floor(dateobs)+0.5
@@ -144,13 +148,23 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #print("LAST = " + str(LAST))
     
     #Use PyAstronomy to calculate the position of the Sun.
-    pos_sun = pyasl.sunpos(dateobs,full_output=True)
+    #pos_sun = pyasl.sunpos(dateobs,full_output=True)
+    pos_sun = coordinates.get_sun(tobs)
+    
+    print pos_sun
+    
+    print pos_sun.ra.value
+    print pos_sun.dec.value
     
     #print("ra_sun = " + str(float(pos_sun[1])) + " dec_sun = " + str(float(pos_sun[2])))
     
     #Check to see if the Sun is up.
-    ra_sun = float(pos_sun[1])
-    dec_sun = float(pos_sun[2])
+    ra_sun = pos_sun.ra.value
+    dec_sun = pos_sun.dec.value
+    
+    print ra_sun
+    print dec_sun
+    
     ha_sun = last - ra_sun
     if (ha_sun < 0):
         ha_sun = ha_sun+360
@@ -199,8 +213,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     ebv_med = []
     airmass = []
     exposefac = []
-    i=0
-    j=0
+    i = 0
+    j = 0
     possibletiles = 0
     impossibletiles = 0
     mindec = 100.0
