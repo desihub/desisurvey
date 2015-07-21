@@ -8,6 +8,8 @@ from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
 from astropy.coordinates import Angle, Latitude, Longitude
+from astropy.utils.data import download_file
+from astropy.utils import iers
 import astropy.units as u
 
 def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
@@ -96,6 +98,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     """
     
     tobs = Time(dateobs, format='jd', scale='utc')
+    kitt_peak = EarthLocation(lat=31.9634*u.deg, lon=-111.6003*u.deg, height=2120*u.m)
+    iers.IERS.iers_table = iers.IERS_A.open(download_file(iers.IERS_A_URL, cache=True))
     
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
@@ -147,43 +151,42 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #print("GMST = " + str(GMST))
     #print("LAST = " + str(LAST))
     
-    #Use PyAstronomy to calculate the position of the Sun.
-    #pos_sun = pyasl.sunpos(dateobs,full_output=True)
+    #Use astropy to calculate the position of the Sun.
     pos_sun = coordinates.get_sun(tobs)
-    
-    print pos_sun
-    
-    print pos_sun.ra.value
-    print pos_sun.dec.value
-    
-    #print("ra_sun = " + str(float(pos_sun[1])) + " dec_sun = " + str(float(pos_sun[2])))
     
     #Check to see if the Sun is up.
     ra_sun = pos_sun.ra.value
     dec_sun = pos_sun.dec.value
     
-    print ra_sun
-    print dec_sun
-    
     ha_sun = last - ra_sun
     if (ha_sun < 0):
-        ha_sun = ha_sun+360
+        ha_sun = ha_sun + 360
     if (ha_sun > 360):
-        ha_sun = ha_sun-360
+        ha_sun = ha_sun - 360
     #print("ha_sun = " + str(ha_sun))
     
     #Calculate the altitude of the Sun to determine if it is up
-    alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
-                         *math.sin(31.9614929*math.pi/180)
-                         +math.cos(dec_sun*math.pi/180)
-                         *math.cos(31.9614929*math.pi/180)
-                         *math.cos(ha_sun*math.pi/180)))*(180/math.pi)
+    #alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
+                         #*math.sin(31.9614929*math.pi/180)
+                         #+math.cos(dec_sun*math.pi/180)
+                         #*math.cos(31.9614929*math.pi/180)
+                         #*math.cos(ha_sun*math.pi/180)))*(180/math.pi)
     
     #print("alt_sun = " + str(alt_sun))
     
+    sun_altaz = pos_sun.transform_to(AltAz(obstime=tobs,location=kitt_peak))
+    
+    #print sun_altaz
+    
+    alt_sun = sun_altaz.alt.value
+    
+    print alt_sun
+    
     #Print warning if the Sun is up. We may decide this should do more than just warn
     if (alt_sun >= 0):
-        print("WARNING: The sun is currently up!")
+        print("WARNING: The Sun is currently up!")
+    if (alt_sun >=-30 and alt_sun < 0):
+        print("WARNING: The Sun will soon be rising and dark sky conditions will be lost.")
         
     #Find the position of the Moon using PyAstronomy
     pos_moon = pyasl.moonpos(dateobs)
