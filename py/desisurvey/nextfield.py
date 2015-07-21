@@ -2,6 +2,7 @@
 
 import math
 import time
+import warnings
 from PyAstronomy import pyasl
 from astropy import coordinates
 from astropy.time import Time
@@ -96,10 +97,12 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         components of astropy). A bunch of lines have been commented out which were 
         used for testing purposes. 
     """
-    
+        
     tobs = Time(dateobs, format='jd', scale='utc')
     kitt_peak = EarthLocation(lat=31.9634*u.deg, lon=-111.6003*u.deg, height=2120*u.m)
-    iers.IERS.iers_table = iers.IERS_A.open(download_file(iers.IERS_A_URL, cache=True))
+    kitt_peak_long = Longitude(-111.5984796*u.deg)
+    #iers.IERS.iers_table = iers.IERS_A.open('finals2000A.all.txt')
+    #iers.IERS.iers_table = iers.IERS_A.open(download_file(iers.IERS_A_URL, cache=True))
     
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
@@ -128,6 +131,11 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #Correct with the equation of equinoxes to get the current apparent sidereal time
     gast = gmst+eqeq
     
+    #gast_2 = tobs.sidereal_time('apparent', 'greenwich')
+    
+    #print gast
+    #print gast_2
+    
     #Add the longitude of the observatory to get the local sidereal time
     last = gast-111.5984796
         
@@ -136,11 +144,15 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         n = math.floor(last/360)
         last = last-360*n
         
-    #hour = math.floor(LAST/15)
-    #minute = math.floor((LAST/15-hour)*60)
-    #second = ((LAST/15-hour)*60-minute)*60
+    #hour = math.floor(last/15)
+    #minute = math.floor((last/15-hour)*60)
+    #second = ((last/15-hour)*60-minute)*60
     
-    #print( str(hour) + "h " + str(minute) + "m " + str(second) +"s")
+    #print( str(int(hour)) + "h" + str(int(minute)) + "m" + str(second) +"s")
+    
+    #last_2 = gast_2+kitt_peak_long
+    
+    #last = last_2.deg
 
     #print("dateobs = " + str(dateobs))
     #print("JD_0 = " + str(JD_0))
@@ -166,27 +178,25 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #print("ha_sun = " + str(ha_sun))
     
     #Calculate the altitude of the Sun to determine if it is up
-    #alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
-                         #*math.sin(31.9614929*math.pi/180)
-                         #+math.cos(dec_sun*math.pi/180)
-                         #*math.cos(31.9614929*math.pi/180)
-                         #*math.cos(ha_sun*math.pi/180)))*(180/math.pi)
+    alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
+                         *math.sin(31.9614929*math.pi/180)
+                         +math.cos(dec_sun*math.pi/180)
+                         *math.cos(31.9614929*math.pi/180)
+                         *math.cos(ha_sun*math.pi/180)))*(180/math.pi)+0.634000964
     
     #print("alt_sun = " + str(alt_sun))
     
-    sun_altaz = pos_sun.transform_to(AltAz(obstime=tobs,location=kitt_peak))
+    #sun_altaz = pos_sun.transform_to(AltAz(obstime=tobs,location=kitt_peak))
     
     #print sun_altaz
     
-    alt_sun = sun_altaz.alt.value
+    #alt_sun = sun_altaz.alt.value
     
     print alt_sun
     
     #Print warning if the Sun is up. We may decide this should do more than just warn
-    if (alt_sun >= 0):
-        print("WARNING: The Sun is currently up!")
-    if (alt_sun >=-30 and alt_sun < 0):
-        print("WARNING: The Sun will soon be rising and dark sky conditions will be lost.")
+    if (alt_sun >=-30):
+        print("WARNING: Observation time is within two hours of sunrise.")
         
     #Find the position of the Moon using PyAstronomy
     pos_moon = pyasl.moonpos(dateobs)
@@ -218,8 +228,6 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     exposefac = []
     i = 0
     j = 0
-    possibletiles = 0
-    impossibletiles = 0
     mindec = 100.0
     nextfield = 0
     #Read the data from the file and find the next field
@@ -235,20 +243,21 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
             ebv_med.append(float(c[6]))
             airmass.append(float(c[7]))
             exposefac.append(float(c[8]))
-            ha = last-ra[i]
-            if ha < 0:
-                ha = ha + 360
-            if ha > 360:
-                ha = ha - 360
-            alt = (math.asin(math.sin(dec[i]*math.pi/180)
-                             *math.sin(31.9614929*math.pi/180)
-                             +math.cos(dec[i]*math.pi/180)
-                             *math.cos(31.9614929*math.pi/180)
-                             *math.cos(ha*math.pi/180)))*(180/math.pi)
-            if (alt >= 0):
-                if (dec[i] < mindec and ra[i] >= last-1 and ra[i] <= last+1):
-                    mindec = dec[i]
-                    nextfield = idnum[i]
+            if (ra[i] >= last-15 and ra[i] <= last+15):
+                ha = last-ra[i]
+                if ha < 0:
+                    ha = ha + 360
+                if ha > 360:
+                    ha = ha - 360
+                alt = (math.asin(math.sin(dec[i]*math.pi/180)
+                                 *math.sin(31.9614929*math.pi/180)
+                                 +math.cos(dec[i]*math.pi/180)
+                                 *math.cos(31.9614929*math.pi/180)
+                                 *math.cos(ha*math.pi/180)))*(180/math.pi)
+                if (alt >= 0):
+                    if (dec[i] < mindec):
+                        mindec = dec[i]
+                        nextfield = idnum[i]
             i = i + 1
         j = j + 1
     
