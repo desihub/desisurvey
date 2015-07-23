@@ -2,15 +2,15 @@
 
 import math
 import time
-import warnings
+import numpy as np
 from PyAstronomy import pyasl
 from astropy import coordinates
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
 from astropy.coordinates import Angle, Latitude, Longitude
-from astropy.utils.data import download_file
-from astropy.utils import iers
+#from astropy.utils.data import download_file
+#from astropy.utils import iers
 import astropy.units as u
 
 def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
@@ -99,8 +99,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     """
         
     tobs = Time(dateobs, format='jd', scale='utc')
-    kitt_peak = EarthLocation(lat=31.9634*u.deg, lon=-111.6003*u.deg, height=2120*u.m)
-    kitt_peak_long = Longitude(-111.5984796*u.deg)
+    #kitt_peak = EarthLocation(lat=31.9634*u.deg, lon=-111.6003*u.deg, height=2120*u.m)
+    #kitt_peak_long = Longitude(-111.5984796*u.deg)
     #iers.IERS.iers_table = iers.IERS_A.open('finals2000A.all.txt')
     #iers.IERS.iers_table = iers.IERS_A.open(download_file(iers.IERS_A_URL, cache=True))
     
@@ -182,7 +182,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
                          *math.sin(31.9614929*math.pi/180)
                          +math.cos(dec_sun*math.pi/180)
                          *math.cos(31.9614929*math.pi/180)
-                         *math.cos(ha_sun*math.pi/180)))*(180/math.pi)+0.634000964
+                         *math.cos(ha_sun*math.pi/180)))*(180/math.pi)
     
     #print("alt_sun = " + str(alt_sun))
     
@@ -196,7 +196,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     
     #Print warning if the Sun is up. We may decide this should do more than just warn
     if (alt_sun >=-30):
-        print("WARNING: Observation time is within two hours of sunrise.")
+        print("WARNING: The Sun is up or within two hours of rising.")
         
     #Find the position of the Moon using PyAstronomy
     pos_moon = pyasl.moonpos(dateobs)
@@ -212,61 +212,35 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     
     print(phase)
     
-    #Opens a file containing information about all of the DESI tiles. Not sure if
-    #this is the best way to get that information?
-    tiles_file = open("desi-tiles-full.par.txt","r")
+    #Loads the tiles
+    tiles_array = desimdoel.io.load_tiles()
+    #tiles_array = desimodel_io_load_tiles()
     
-    #Declare some variables to store data from the file
-    tiles = []
-    idnum = []
-    ra = []
-    dec = []
-    passnum = []
-    in_desi = []
-    ebv_med = []
-    airmass = []
-    exposefac = []
-    i = 0
-    j = 0
     mindec = 100.0
     nextfield = 0
     #Read the data from the file and find the next field
-    for line in tiles_file:
-        tiles.append(line)
-        c = tiles[j].split(" ")
-        if (c[0] == "STRUCT1"):
-            idnum.append(int(c[1]))
-            ra.append(float(c[2]))
-            dec.append(float(c[3]))
-            passnum.append(int(c[4]))
-            in_desi.append(int(c[5]))
-            ebv_med.append(float(c[6]))
-            airmass.append(float(c[7]))
-            exposefac.append(float(c[8]))
-            if (ra[i] >= last-15 and ra[i] <= last+15):
-                ha = last-ra[i]
-                if ha < 0:
-                    ha = ha + 360
-                if ha > 360:
-                    ha = ha - 360
-                alt = (math.asin(math.sin(dec[i]*math.pi/180)
-                                 *math.sin(31.9614929*math.pi/180)
-                                 +math.cos(dec[i]*math.pi/180)
-                                 *math.cos(31.9614929*math.pi/180)
-                                 *math.cos(ha*math.pi/180)))*(180/math.pi)
-                if (alt >= 0):
-                    if (dec[i] < mindec):
-                        mindec = dec[i]
-                        nextfield = idnum[i]
-            i = i + 1
-        j = j + 1
-    
-    tiles_file.close()    
+    for i in range(0,len(tiles_array)):
+        if (tiles_array[i,1] >= last-15 and tiles_array[i,1] <= last+15):
+            ha = last-tiles_array[i,1]
+            if ha < 0:
+                ha = ha + 360
+            if ha > 360:
+                ha = ha - 360
+            alt = (math.asin(math.sin(tiles_array[i,2]*math.pi/180)
+                             *math.sin(31.9614929*math.pi/180)
+                             +math.cos(tiles_array[i,2]*math.pi/180)
+                             *math.cos(31.9614929*math.pi/180)
+                             *math.cos(ha*math.pi/180)))*(180/math.pi)
+            if (alt >= 0 and tiles_array[i,2] < mindec):
+                mindec = tiles_array[i,2]
+                nextfield = tiles_array[i,0]
     
     #raise NotImplementedError
     
-    #Create dictionary with information that is needed to point the telescope
-    next_field = {'tileid':idnum[nextfield-1], 'programname':'DESI', 'telera':ra[nextfield-1], 'teledec':dec[nextfield-1], 'exptime':1800, 'maxtime':2000, 'fibers':{}, 'gfa':{}}
+    #Create dictionary with information that is needed to point the telescope.
+    #Currently the exptime and maxtime are just place holder values and fibers and gfa
+    #dictionaries are just empty.
+    next_field = {'tileid':int(tiles_array[nextfield-1,0]), 'programname':'DESI', 'telera':float(tiles_array[nextfield-1,1]), 'teledec':float(tiles_array[nextfield-1,2]), 'exptime':1800, 'maxtime':2000, 'fibers':{}, 'gfa':{}}
     
     #Return the dictionary
     return next_field
@@ -275,13 +249,38 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
 inputting a Julian date of observation. They also calculate the execution time for
 purposes of optimizing."""
 
-dateobs = float(raw_input('Enter the date of observation: '))
-skylevel = 0
-transparency = 0
-previoustiles = []
-programname = 'DESI'
-start_time = time.time()
-next_field = get_next_field(dateobs, skylevel, transparency, previoustiles, programname)
+#def desimodel_io_load_tiles():
+    #tiles_file = open("desi-tiles-full.par.txt","r")
+    
+    #tiles = []
+    #tilesarray = []
+    #i = 0
+    #j = 0
+    
+    #for line in tiles_file:
+        #tiles.append(line)
+        #c = tiles[j].split(" ")
+        #if (c[0] == "STRUCT1"):
+            #b = [ int(c[1]), float(c[2]), float(c[3]), int(c[4]), int(c[5]), float(c[6]),
+                   #float(c[7]), float(c[8]) ]
+            #print b
+            #i = i + 1
+            #tilesarray.append(b)
+        #j = j + 1
+            
+    #a = np.copy(tilesarray)
+    #tiles_file.close()
+    #return a
+            
+            
 
-print("Total execution time: %s seconds" % (time.time()-start_time))
-print next_field
+#dateobs = float(raw_input('Enter the date of observation: '))
+#skylevel = 0
+#transparency = 0
+#previoustiles = []
+#programname = 'DESI'
+#start_time = time.time()
+#next_field = get_next_field(dateobs, skylevel, transparency, previoustiles, programname)
+
+#print("Total execution time: %s seconds" % (time.time()-start_time))
+#print next_field
