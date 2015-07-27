@@ -3,6 +3,7 @@
 import math
 import time
 import numpy as np
+import desimodel.io
 from PyAstronomy import pyasl
 from astropy import coordinates
 from astropy.time import Time
@@ -192,7 +193,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     
     #alt_sun = sun_altaz.alt.value
     
-    print alt_sun
+    #print alt_sun
     
     #Print warning if the Sun is up. We may decide this should do more than just warn
     if (alt_sun >=-30):
@@ -204,43 +205,43 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     ra_moon = float(pos_moon[0])
     dec_moon = float(pos_moon[1])
     
-    print("ra_moon = " + str(ra_moon) + " dec_moon = " + str(dec_moon))
+    #print("ra_moon = " + str(ra_moon) + " dec_moon = " + str(dec_moon))
     
     #Find the phase of the moon using PyAstronomy
     moon_phase = pyasl.moonphase(dateobs)
     phase = float(moon_phase)
     
-    print(phase)
+    #print(phase)
     
     #Loads the tiles
-    tiles_array = desimdoel.io.load_tiles()
-    #tiles_array = desimodel_io_load_tiles()
+    tiles_array = desimodel.io.load_tiles()
     
     mindec = 100.0
     nextfield = 0
     #Read the data from the file and find the next field
     for i in range(0,len(tiles_array)):
-        if (tiles_array[i,1] >= last-15 and tiles_array[i,1] <= last+15):
-            ha = last-tiles_array[i,1]
+        if (tiles_array[i]['RA'] >= last-15 and tiles_array[i]['RA'] <= last+15):
+            ha = last-tiles_array[i]['RA']
             if ha < 0:
                 ha = ha + 360
             if ha > 360:
                 ha = ha - 360
-            alt = (math.asin(math.sin(tiles_array[i,2]*math.pi/180)
+            alt = (math.asin(math.sin(tiles_array[i]['DEC']*math.pi/180)
                              *math.sin(31.9614929*math.pi/180)
-                             +math.cos(tiles_array[i,2]*math.pi/180)
+                             +math.cos(tiles_array[i]['DEC']*math.pi/180)
                              *math.cos(31.9614929*math.pi/180)
                              *math.cos(ha*math.pi/180)))*(180/math.pi)
-            if (alt >= 0 and tiles_array[i,2] < mindec):
-                mindec = tiles_array[i,2]
-                nextfield = tiles_array[i,0]
+            if (alt >= 0 and tiles_array[i]['DEC'] < mindec):
+                mindec = tiles_array[i]['DEC']
+                #nextfield = tiles_array[i]['TILEID']
+                nextfield = i
     
     #raise NotImplementedError
     
     #Create dictionary with information that is needed to point the telescope.
     #Currently the exptime and maxtime are just place holder values and fibers and gfa
     #dictionaries are just empty.
-    next_field = {'tileid':int(tiles_array[nextfield-1,0]), 'programname':'DESI', 'telera':float(tiles_array[nextfield-1,1]), 'teledec':float(tiles_array[nextfield-1,2]), 'exptime':1800, 'maxtime':2000, 'fibers':{}, 'gfa':{}}
+    next_field = {'tileid':int(tiles_array[nextfield]['TILEID']), 'programname':'DESI', 'telera':float(tiles_array[nextfield]['RA']), 'teledec':float(tiles_array[nextfield]['DEC']), 'exptime':1800, 'maxtime':2000, 'fibers':{}, 'gfa':{}}
     
     #Return the dictionary
     return next_field
@@ -248,30 +249,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
 """ The lines below allow the function to be tested by itself with the user
 inputting a Julian date of observation. They also calculate the execution time for
 purposes of optimizing."""
-
-#def desimodel_io_load_tiles():
-    #tiles_file = open("desi-tiles-full.par.txt","r")
-    
-    #tiles = []
-    #tilesarray = []
-    #i = 0
-    #j = 0
-    
-    #for line in tiles_file:
-        #tiles.append(line)
-        #c = tiles[j].split(" ")
-        #if (c[0] == "STRUCT1"):
-            #b = [ int(c[1]), float(c[2]), float(c[3]), int(c[4]), int(c[5]), float(c[6]),
-                   #float(c[7]), float(c[8]) ]
-            #print b
-            #i = i + 1
-            #tilesarray.append(b)
-        #j = j + 1
-            
-    #a = np.copy(tilesarray)
-    #tiles_file.close()
-    #return a
-            
+        
             
 
 #dateobs = float(raw_input('Enter the date of observation: '))
