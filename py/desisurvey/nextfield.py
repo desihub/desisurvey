@@ -98,7 +98,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         components of astropy). A bunch of lines have been commented out which were 
         used for testing purposes. 
     """
-        
+                
     tobs = Time(dateobs, format='jd', scale='utc')
     #kitt_peak = EarthLocation(lat=31.9634*u.deg, lon=-111.6003*u.deg, height=2120*u.m)
     #kitt_peak_long = Longitude(-111.5984796*u.deg)
@@ -215,36 +215,77 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     
     #Loads the tiles
     tiles_array = desimodel.io.load_tiles()
-    
+        
     mindec = 100.0
     nextfield = 0
+    
+    
     #Read the data from the file and find the next field
-    for i in range(0,len(tiles_array)):
-        if (tiles_array[i]['RA'] >= last-15 and tiles_array[i]['RA'] <= last+15):
-            ha = last-tiles_array[i]['RA']
-            if ha < 0:
-                ha = ha + 360
-            if ha > 360:
-                ha = ha - 360
-            alt = (math.asin(math.sin(tiles_array[i]['DEC']*math.pi/180)
-                             *math.sin(31.9614929*math.pi/180)
-                             +math.cos(tiles_array[i]['DEC']*math.pi/180)
-                             *math.cos(31.9614929*math.pi/180)
-                             *math.cos(ha*math.pi/180)))*(180/math.pi)
-            if (alt >= 0 and tiles_array[i]['DEC'] < mindec):
-                mindec = tiles_array[i]['DEC']
-                #nextfield = tiles_array[i]['TILEID']
-                nextfield = i
-    
-    #raise NotImplementedError
-    
+    # for i in range(0,len(tiles_array)):
+    #     if (tiles_array[i]['RA'] >= last-15 and tiles_array[i]['RA'] <= last+15):
+    #         ha = last-tiles_array[i]['RA']
+    #         if ha < 0:
+    #             ha = ha + 360
+    #         if ha > 360:
+    #             ha = ha - 360
+    #         alt = (math.asin(math.sin(tiles_array[i]['DEC']*math.pi/180)
+    #                          *math.sin(31.9614929*math.pi/180)
+    #                          +math.cos(tiles_array[i]['DEC']*math.pi/180)
+    #                          *math.cos(31.9614929*math.pi/180)
+    #                          *math.cos(ha*math.pi/180)))*(180/math.pi)
+    #         if (alt >= 0 and tiles_array[i]['DEC'] < mindec):
+    #             mindec = tiles_array[i]['DEC']
+    #             #nextfield = tiles_array[i]['TILEID']
+    #             nextfield = i
+
+    #- Trim tiles_array to those within 15 degrees of the meridian
+    igood = np.where( (last-15 <= tiles_array['RA']) & (tiles_array['RA'] <= last+15) )[0]
+    tiles_array = tiles_array[igood]
+
+    #- will need to explicitly handle the case of running out of tiles later
+    assert len(tiles_array) > 0
+        
+    #- shorthand
+    ra = tiles_array['RA']
+    dec = tiles_array['DEC']
+
+    #- calculate the hour angle for those tiles
+    ha = (last - ra + 360) % 360
+    assert np.min(ha) >= 0
+    assert np.max(ha) <= 360.0
+
+    alt = (np.arcsin(np.sin(dec*math.pi/180)
+                     *np.sin(31.9614929*math.pi/180)
+                     +np.cos(dec*math.pi/180)
+                     *np.cos(31.9614929*math.pi/180)
+                     *np.cos(ha*math.pi/180)))*(180/math.pi)
+
+    #- Find the lowest dec tile; this could also be done faster with
+    #- array calculations instead of a loop
+    ibest = -1
+    for i in range(len(alt)):
+        if alt[i] >= 0 and dec[i] < mindec:
+            mindec = dec[i]
+            ibest = i
+            
+    assert ibest >= 0
+                
     #Create dictionary with information that is needed to point the telescope.
     #Currently the exptime and maxtime are just place holder values and fibers and gfa
     #dictionaries are just empty.
-    next_field = {'tileid':int(tiles_array[nextfield]['TILEID']), 'programname':'DESI', 'telera':float(tiles_array[nextfield]['RA']), 'teledec':float(tiles_array[nextfield]['DEC']), 'exptime':1800, 'maxtime':2000, 'fibers':{}, 'gfa':{}}
+    results = {
+        'tileid':int(tiles_array[ibest]['TILEID']),
+        'programname':'DESI',
+        'telera':float(tiles_array[ibest]['RA']),
+        'teledec':float(tiles_array[ibest]['DEC']),
+        'exptime':1800.0,
+        'maxtime':2000.0,
+        'fibers':{},
+        'gfa':{},
+        }
     
     #Return the dictionary
-    return next_field
+    return results
 
 """ The lines below allow the function to be tested by itself with the user
 inputting a Julian date of observation. They also calculate the execution time for
@@ -254,11 +295,12 @@ purposes of optimizing."""
 
 #dateobs = float(raw_input('Enter the date of observation: '))
 #skylevel = 0
+#seeing = 0.0
 #transparency = 0
 #previoustiles = []
 #programname = 'DESI'
 #start_time = time.time()
-#next_field = get_next_field(dateobs, skylevel, transparency, previoustiles, programname)
+#next_field = get_next_field(dateobs, skylevel, seeing, transparency, previoustiles, programname)
 
 #print("Total execution time: %s seconds" % (time.time()-start_time))
 #print next_field

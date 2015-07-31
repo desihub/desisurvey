@@ -1,93 +1,75 @@
 #!/usr/bin/env python
-# License information goes here
-#
-# Imports
-#
+from __future__ import absolute_import, print_function
 import glob
 import os
-import sys
-from setuptools import setup, find_packages
-setup_keywords = dict()
-#
-# THESE SETTINGS NEED TO BE CHANGED FOR EVERY PRODUCT.
-#
-setup_keywords['name'] = 'desisurvey'
-setup_keywords['description'] = 'DESI survey package'
-setup_keywords['author'] = 'Stephen Bailey et al'
-setup_keywords['author_email'] = 'StephenBailey@lbl.gov'
-setup_keywords['license'] = 'BSD'
-setup_keywords['url'] = 'https://github.com/desihub/desisurvey'
-#
-# END OF SETTINGS THAT NEED TO BE CHANGED.
-#
-#
-# Import this module to get __doc__ and version().
-#
-sys.path.insert(int(sys.path[0] == ''),'./py')
-try:
-    from importlib import import_module
-    product = import_module(setup_keywords['name'])
-    setup_keywords['long_description'] = product.__doc__
-    setup_keywords['version'] = product.version()
-except ImportError:
-    #
-    # Try to get the long description from the README.rst file.
-    #
-    if os.path.exists('README.rst'):
-        with open('README.rst') as readme:
-            setup_keywords['long_description'] = readme.read()
-    else:
-        setup_keywords['long_description'] = ''
-    setup_keywords['version'] = '0.0.1.dev'
-#
-# Obtain svn information.
-#
-def get_svn_devstr():
-    """Get the svn revision number.
+import re
+from subprocess import Popen, PIPE
+from setuptools import setup, Command, find_packages
 
-    Parameters
-    ----------
-    None
 
-    Returns
-    -------
-    get_svn_devstr : str
-        The latest svn revision number.
-    """
-    from subprocess import Popen, PIPE
-    proc = Popen(['svnversion','-n'],stdout=PIPE,stderr=PIPE)
-    out, err = proc.communicate()
-    rev = out
-    if ':' in out:
-        rev = out.split(':')[1]
-    rev = rev.replace('M','').replace('S','').replace('P','')
-    return rev
-#
-# Indicates if this version is a release version.
-#
-RELEASE = 'dev' not in setup_keywords['version']
-if not RELEASE:
-    setup_keywords['version'] += get_svn_devstr()
-#
-# Set general settings.  Change these as needed.
-#
-#
-# Set other keywords for the setup function.  These are automated, & should
-# be left alone unless you are an expert.
-#
-# Treat everything in bin/ except *.rst as a script to be installed.
-#
-if os.path.isdir('bin'):
-    setup_keywords['scripts'] = [fname for fname in glob.glob(os.path.join('bin', '*'))
-        if not os.path.basename(fname).endswith('.rst')]
-setup_keywords['provides'] = [setup_keywords['name']]
-setup_keywords['requires'] = ['Python (>2.6.0)']
-#setup_keywords['install_requires'] = ['Python (>2.6.0)']
-setup_keywords['zip_safe'] = False
-setup_keywords['use_2to3'] = True
-setup_keywords['packages'] = find_packages('py')
-setup_keywords['package_dir'] = {'':'py'}
-#
-# Run setup command.
-#
-setup(**setup_keywords)
+def update_version_py():
+    if not os.path.isdir(".git"):
+        print("This is not a git repository.")
+        return
+    try:
+        p = Popen(["git", "describe", "--tags", "--dirty", "--always"], stdout=PIPE)
+    except EnvironmentError:
+        print("unable to run git, leaving py/desisurvey/_version.py alone")
+        return
+    out = p.communicate()[0]
+    ver = out.rstrip()
+    if p.returncode != 0:
+        print("unable to run git, leaving py/desisurvey/_version.py alone")
+        return
+    with open("py/desisurvey/_version.py", "w") as f:
+        f.write( '__version__ = \'{}\''.format( ver ) )
+    print("Set py/desisurvey/_version.py to {}".format( ver ))
+
+
+def get_version():
+    if not os.path.isfile("py/desisurvey/_version.py"):
+        print('Creating initial version file')
+        update_version_py()
+    ver = 'unknown'
+    with open("py/desisurvey/_version.py", "r") as f:
+        for line in f.readlines():
+            mo = re.match("__version__ = '(.*)'", line)
+            if mo:
+                ver = mo.group(1)
+    return ver
+
+
+class Version(Command):
+    description = "update _version.py from git repo"
+    user_options = []
+    boolean_options = []
+    def initialize_options(self):
+        pass
+    def finalize_options(self):
+        pass
+    def run(self):
+        update_version_py()
+        ver = get_version()
+        print("Version is now {}".format( ver ))
+
+
+current_version = get_version()
+
+setup (
+    name='desisurvey',
+    provides='desisurvey',
+    version=current_version,
+    description='DESI survey planning tools',
+    author='DESI Collaboration',
+    author_email='desi-data@desi.lbl.gov',
+    url='https://github.com/desihub/desisurvey',
+    package_dir={'':'py'},
+    packages=find_packages('py'),
+    scripts=[ fname for fname in glob.glob(os.path.join('bin', '*.py')) ],
+    license='BSD',
+    requires=['Python (>2.7.0)', ],
+    use_2to3=True,
+    zip_safe=False,
+    cmdclass={'version': Version},
+    test_suite='desisurvey.test.test_suite'
+)
