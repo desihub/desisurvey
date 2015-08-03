@@ -43,7 +43,7 @@ class TestNextField(unittest.TestCase):
             next_field = get_next_field(self.dateobs + dt/24.0, self.skylevel, \
                 self.transparency, self.previoustiles, self.programname)
                 
-    @unittest.expectedFailure
+    #@unittest.expectedFailure
     def test_previoustiles(self):
         """
         Test that previoustiles are in fact excluded
@@ -51,9 +51,21 @@ class TestNextField(unittest.TestCase):
         previoustiles = []
         for test in range(10):
             next_field = get_next_field(self.dateobs, self.skylevel, \
-                self.transparency, previoustiles, self.programname)
+                self.seeing, self.transparency, previoustiles, self.programname)
             self.assertNotIn(next_field['tileid'], previoustiles)
             previoustiles.append(next_field['tileid'])
+            
+    def test_rightanswer(self):
+        """
+        Test that the tileid returned is correct for the specified date. The values in
+        the rightanswer array were found by hand to be the 'correct' answer (i.e the tile
+        with the minimum declination, within +/- 15 degrees of the meridian.
+        """
+        rightanswer = [23492, 28072, 14976, 2435, 3784, 120, 316, 2110, 23492, 28072]
+        for test in range(10):
+            next_field = get_next_field(2458728.708 + 137.0*test, self.skylevel, self.seeing, \
+                self.transparency, self.previoustiles, self.programname)
+            self.assertEqual(next_field['tileid'], rightanswer[test])
                             
 if __name__ == '__main__':
     unittest.main()

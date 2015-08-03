@@ -241,6 +241,11 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #- Trim tiles_array to those within 15 degrees of the meridian
     igood = np.where( (last-15 <= tiles_array['RA']) & (tiles_array['RA'] <= last+15) )[0]
     tiles_array = tiles_array[igood]
+    
+    #- Remove previously observed tiles
+    notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
+    #inotobs = np.where(obs == False)
+    tiles_array = tiles_array[notobs]
 
     #- will need to explicitly handle the case of running out of tiles later
     assert len(tiles_array) > 0
@@ -297,7 +302,7 @@ purposes of optimizing."""
 #skylevel = 0
 #seeing = 0.0
 #transparency = 0
-#previoustiles = []
+#previoustiles = [23492, 943, 6705]
 #programname = 'DESI'
 #start_time = time.time()
 #next_field = get_next_field(dateobs, skylevel, seeing, transparency, previoustiles, programname)
