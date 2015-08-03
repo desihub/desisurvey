@@ -25,7 +25,7 @@ class TestNextField(unittest.TestCase):
         self.assertLess(next_field['telera'], 360.0)
         self.assertGreaterEqual(next_field['telera'], 0.0)
         self.assertLess(next_field['teledec'], 90.0)
-        self.assertGreater(next_field['telera'], -90.0)        
+        self.assertGreater(next_field['teledec'], -90.0)
         self.assertGreater(next_field['tileid'], 0)
         self.assertIsInstance(next_field['tileid'], int)
         self.assertLessEqual(next_field['exptime'], next_field['maxtime'])
