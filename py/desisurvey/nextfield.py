@@ -243,9 +243,9 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     tiles_array = tiles_array[igood]
     
     #- Remove previously observed tiles
-    obs = np.in1d( tiles_array['TILEID'], previoustiles )
-    inotobs = np.where(obs == False)
-    tiles_array = tiles_array[inotobs]
+    notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
+    #inotobs = np.where(obs == False)
+    tiles_array = tiles_array[notobs]
 
     #- will need to explicitly handle the case of running out of tiles later
     assert len(tiles_array) > 0
