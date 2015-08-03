@@ -54,6 +54,14 @@ class TestNextField(unittest.TestCase):
                 self.transparency, previoustiles, self.programname)
             self.assertNotIn(next_field['tileid'], previoustiles)
             previoustiles.append(next_field['tileid'])
+            
+    def test_rightanswer(self):
+        """
+        Test that the tileid returned is correct for the specified date
+        """
+        next_field = get_next_field(self.dateobs, self.skylevel, self.seeing, \
+            self.transparency, self.previoustiles, self.programname)
+        self.assertEqual(next_field['tileid'], 23492)
                             
 if __name__ == '__main__':
     unittest.main()
