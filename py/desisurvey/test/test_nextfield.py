@@ -43,7 +43,7 @@ class TestNextField(unittest.TestCase):
             next_field = get_next_field(self.dateobs + dt/24.0, self.skylevel, \
                 self.transparency, self.previoustiles, self.programname)
                 
-    @unittest.expectedFailure
+    #@unittest.expectedFailure
     def test_previoustiles(self):
         """
         Test that previoustiles are in fact excluded
@@ -51,7 +51,7 @@ class TestNextField(unittest.TestCase):
         previoustiles = []
         for test in range(10):
             next_field = get_next_field(self.dateobs, self.skylevel, \
-                self.transparency, previoustiles, self.programname)
+                self.seeing, self.transparency, previoustiles, self.programname)
             self.assertNotIn(next_field['tileid'], previoustiles)
             previoustiles.append(next_field['tileid'])
             

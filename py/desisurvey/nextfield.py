@@ -302,7 +302,7 @@ purposes of optimizing."""
 #skylevel = 0
 #seeing = 0.0
 #transparency = 0
-#previoustiles = []
+#previoustiles = [23492, 943, 6705]
 #programname = 'DESI'
 #start_time = time.time()
 #next_field = get_next_field(dateobs, skylevel, seeing, transparency, previoustiles, programname)
