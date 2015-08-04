@@ -4,7 +4,7 @@ import math
 import time
 import numpy as np
 import desimodel.io
-import pyephem
+import ephem
 from astropy import coordinates
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
