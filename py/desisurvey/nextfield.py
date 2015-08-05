@@ -4,7 +4,7 @@ import math
 import time
 import numpy as np
 import desimodel.io
-from PyAstronomy import pyasl
+import ephem
 from astropy import coordinates
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
@@ -199,19 +199,16 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     if (alt_sun >=-30):
         print("WARNING: The Sun is up or within two hours of rising.")
         
-    #Find the position of the Moon using PyAstronomy
-    pos_moon = pyasl.moonpos(dateobs)
-    
-    ra_moon = float(pos_moon[0])
-    dec_moon = float(pos_moon[1])
-    
-    #print("ra_moon = " + str(ra_moon) + " dec_moon = " + str(dec_moon))
-    
-    #Find the phase of the moon using PyAstronomy
-    moon_phase = pyasl.moonphase(dateobs)
-    phase = float(moon_phase)
-    
-    #print(phase)
+    #- Find the position of the Moon using pyephem. After the compute statement below,
+    #- many attributes of the Moon can be accessed including
+    #-      1. Right Ascension/Declination (epoch of date) - moon.g_ra, moon.g_dec
+    #-         Right Ascension/Declination (epoch specified) - moon.a_ra, moon.a_dec
+    #-      2. Phase - moon.phase (percent illimunation)
+    #- In order to calculate the Moon's attribute for dateobs, it is necessary to 
+    #- convert to the Dublin Julian date which can be done by subtracting 2415020 from
+    #- the Julian date.
+    moon = ephem.Moon() #- Setup the Moon object
+    moon.compute(dateobs-2415020.0, epoch=dateobs-2415020.0) #- Compute for dateobs
     
     #Loads the tiles
     tiles_array = desimodel.io.load_tiles()
