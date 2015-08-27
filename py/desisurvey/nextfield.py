@@ -99,7 +99,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         used for testing purposes. 
     """
                 
-    tobs = Time(dateobs, format='jd', scale='utc')
+    tobs = Time(dateobs, format='jd', scale='ut1')
     #kitt_peak = EarthLocation(lat=31.9634*u.deg, lon=-111.6003*u.deg, height=2120*u.m)
     #kitt_peak_long = Longitude(-111.5984796*u.deg)
     #iers.IERS.iers_table = iers.IERS_A.open('finals2000A.all.txt')
@@ -246,10 +246,21 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
 
     #- will need to explicitly handle the case of running out of tiles later
     assert len(tiles_array) > 0
+    
+    #- Determine the current epoch from the input date and store as string
+    epoch = "J" + str(round(tobs.decimalyear, 3))
         
     #- shorthand
     ra = tiles_array['RA']
     dec = tiles_array['DEC']
+    
+    #- Setup astropy SkyCoord objects
+    tiles = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+    
+    #- Transform the RA and Dec to JNow right the transformed data back to the shorthand
+    tiles = tiles.transform_to(FK5(equinox=epoch))
+    ra = tiles.ra.value
+    dec = tiles.dec.value
 
     #- calculate the hour angle for those tiles
     ha = (last - ra + 360) % 360
