@@ -216,28 +216,19 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     mindec = 100.0
     nextfield = 0
     
+    #- Setup astropy SkyCoord objects
+    tiles = SkyCoord(ra=tiles_array['RA']*u.deg, dec=tiles_array['DEC']*u.deg, frame='icrs')
     
-    #Read the data from the file and find the next field
-    # for i in range(0,len(tiles_array)):
-    #     if (tiles_array[i]['RA'] >= last-15 and tiles_array[i]['RA'] <= last+15):
-    #         ha = last-tiles_array[i]['RA']
-    #         if ha < 0:
-    #             ha = ha + 360
-    #         if ha > 360:
-    #             ha = ha - 360
-    #         alt = (math.asin(math.sin(tiles_array[i]['DEC']*math.pi/180)
-    #                          *math.sin(31.9614929*math.pi/180)
-    #                          +math.cos(tiles_array[i]['DEC']*math.pi/180)
-    #                          *math.cos(31.9614929*math.pi/180)
-    #                          *math.cos(ha*math.pi/180)))*(180/math.pi)
-    #         if (alt >= 0 and tiles_array[i]['DEC'] < mindec):
-    #             mindec = tiles_array[i]['DEC']
-    #             #nextfield = tiles_array[i]['TILEID']
-    #             nextfield = i
+    #- Determine the current epoch from the input date and store as string
+    epoch = "J" + str(round(tobs.decimalyear, 3))
+    
+    #- Transform the RA and Dec to JNow right the transformed data back to the shorthand
+    tiles = tiles.transform_to(FK5(equinox=epoch))
 
     #- Trim tiles_array to those within 15 degrees of the meridian
-    igood = np.where( (last-15 <= tiles_array['RA']) & (tiles_array['RA'] <= last+15) )[0]
+    igood = np.where( (last-15 <= tiles.ra.value) & (tiles.ra.value <= last+15) )[0]
     tiles_array = tiles_array[igood]
+    tiles = tiles[igood]
     
     #- Remove previously observed tiles
     notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
@@ -246,19 +237,11 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
 
     #- will need to explicitly handle the case of running out of tiles later
     assert len(tiles_array) > 0
-    
-    #- Determine the current epoch from the input date and store as string
-    epoch = "J" + str(round(tobs.decimalyear, 3))
         
     #- shorthand
-    ra = tiles_array['RA']
-    dec = tiles_array['DEC']
+    #ra = tiles_array['RA']
+    #dec = tiles_array['DEC']
     
-    #- Setup astropy SkyCoord objects
-    tiles = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
-    
-    #- Transform the RA and Dec to JNow right the transformed data back to the shorthand
-    tiles = tiles.transform_to(FK5(equinox=epoch))
     ra = tiles.ra.value
     dec = tiles.dec.value
 
