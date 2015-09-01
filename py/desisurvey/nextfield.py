@@ -251,14 +251,14 @@ purposes of optimizing."""
         
             
 
-#dateobs = float(raw_input('Enter the date of observation: '))
-#skylevel = 0
-#seeing = 0.0
-#transparency = 0
-#previoustiles = [23492, 943, 6705]
-#programname = 'DESI'
-#start_time = time.time()
-#next_field = get_next_field(dateobs, skylevel, seeing, transparency, previoustiles, programname)
+dateobs = float(raw_input('Enter the date of observation: '))
+skylevel = 0
+seeing = 0.0
+transparency = 0
+previoustiles = [23492, 943, 6705]
+programname = 'DESI'
+start_time = time.time()
+next_field = get_next_field(dateobs, skylevel, seeing, transparency, previoustiles, programname)
 
-#print("Total execution time: %s seconds" % (time.time()-start_time))
-#print next_field
+print("Total execution time: %s seconds" % (time.time()-start_time))
+print next_field
