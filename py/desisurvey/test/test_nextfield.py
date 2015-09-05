@@ -61,7 +61,7 @@ class TestNextField(unittest.TestCase):
         the rightanswer array were found by hand to be the 'correct' answer (i.e the tile
         with the minimum declination, within +/- 15 degrees of the meridian.
         """
-        rightanswer = [23492, 28072, 14976, 2435, 3784, 120, 316, 2110, 23492, 28072]
+        rightanswer = [23492, 28072, 26499, 2435, 26832, 11522, 23364, 25159, 23492, 28072]
         for test in range(10):
             next_field = get_next_field(2458728.708 + 137.0*test, self.skylevel, self.seeing, \
                 self.transparency, self.previoustiles, self.programname)

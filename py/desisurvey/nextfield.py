@@ -99,11 +99,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         used for testing purposes. 
     """
                 
-    tobs = Time(dateobs, format='jd', scale='utc')
-    #kitt_peak = EarthLocation(lat=31.9634*u.deg, lon=-111.6003*u.deg, height=2120*u.m)
-    #kitt_peak_long = Longitude(-111.5984796*u.deg)
-    #iers.IERS.iers_table = iers.IERS_A.open('finals2000A.all.txt')
-    #iers.IERS.iers_table = iers.IERS_A.open(download_file(iers.IERS_A_URL, cache=True))
+    tobs = Time(dateobs, format='jd', scale='ut1')
     
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
@@ -132,11 +128,6 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #Correct with the equation of equinoxes to get the current apparent sidereal time
     gast = gmst+eqeq
     
-    #gast_2 = tobs.sidereal_time('apparent', 'greenwich')
-    
-    #print gast
-    #print gast_2
-    
     #Add the longitude of the observatory to get the local sidereal time
     last = gast-111.5984796
         
@@ -144,25 +135,6 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     if last >= 360:
         n = math.floor(last/360)
         last = last-360*n
-        
-    #hour = math.floor(last/15)
-    #minute = math.floor((last/15-hour)*60)
-    #second = ((last/15-hour)*60-minute)*60
-    
-    #print( str(int(hour)) + "h" + str(int(minute)) + "m" + str(second) +"s")
-    
-    #last_2 = gast_2+kitt_peak_long
-    
-    #last = last_2.deg
-
-    #print("dateobs = " + str(dateobs))
-    #print("JD_0 = " + str(JD_0))
-    #print("D_0 = " + str(D_0))
-    #print("D = " + str(D))
-    #print("T = " + str(T))
-    #print("H = " + str(H))
-    #print("GMST = " + str(GMST))
-    #print("LAST = " + str(LAST))
     
     #Use astropy to calculate the position of the Sun.
     pos_sun = coordinates.get_sun(tobs)
@@ -176,7 +148,6 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         ha_sun = ha_sun + 360
     if (ha_sun > 360):
         ha_sun = ha_sun - 360
-    #print("ha_sun = " + str(ha_sun))
     
     #Calculate the altitude of the Sun to determine if it is up
     alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
@@ -184,16 +155,6 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
                          +math.cos(dec_sun*math.pi/180)
                          *math.cos(31.9614929*math.pi/180)
                          *math.cos(ha_sun*math.pi/180)))*(180/math.pi)
-    
-    #print("alt_sun = " + str(alt_sun))
-    
-    #sun_altaz = pos_sun.transform_to(AltAz(obstime=tobs,location=kitt_peak))
-    
-    #print sun_altaz
-    
-    #alt_sun = sun_altaz.alt.value
-    
-    #print alt_sun
     
     #Print warning if the Sun is up. We may decide this should do more than just warn
     if (alt_sun >=-30):
@@ -216,28 +177,23 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     mindec = 100.0
     nextfield = 0
     
+    #- Perform coarse trim of tiles with mismatched coordinates
+    igood = np.where( (last-25 <= tiles_array['RA']) & (tiles_array['RA'] <= last+25) )[0]
+    tiles_array = tiles_array[igood]
     
-    #Read the data from the file and find the next field
-    # for i in range(0,len(tiles_array)):
-    #     if (tiles_array[i]['RA'] >= last-15 and tiles_array[i]['RA'] <= last+15):
-    #         ha = last-tiles_array[i]['RA']
-    #         if ha < 0:
-    #             ha = ha + 360
-    #         if ha > 360:
-    #             ha = ha - 360
-    #         alt = (math.asin(math.sin(tiles_array[i]['DEC']*math.pi/180)
-    #                          *math.sin(31.9614929*math.pi/180)
-    #                          +math.cos(tiles_array[i]['DEC']*math.pi/180)
-    #                          *math.cos(31.9614929*math.pi/180)
-    #                          *math.cos(ha*math.pi/180)))*(180/math.pi)
-    #         if (alt >= 0 and tiles_array[i]['DEC'] < mindec):
-    #             mindec = tiles_array[i]['DEC']
-    #             #nextfield = tiles_array[i]['TILEID']
-    #             nextfield = i
+    #- Setup astropy SkyCoord objects
+    tiles = SkyCoord(ra=tiles_array['RA']*u.deg, dec=tiles_array['DEC']*u.deg, frame='icrs')
+    
+    #- Determine the current epoch from the input date and store as string
+    epoch = "J" + str(round(tobs.decimalyear, 3))
+    
+    #- Transform the RA and Dec to JNow right the transformed data back to the shorthand
+    tiles = tiles.transform_to(FK5(equinox=epoch))
 
     #- Trim tiles_array to those within 15 degrees of the meridian
-    igood = np.where( (last-15 <= tiles_array['RA']) & (tiles_array['RA'] <= last+15) )[0]
+    igood = np.where( (last-15 <= tiles.ra.value) & (tiles.ra.value <= last+15) )[0]
     tiles_array = tiles_array[igood]
+    tiles = tiles[igood]
     
     #- Remove previously observed tiles
     notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
@@ -247,9 +203,9 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #- will need to explicitly handle the case of running out of tiles later
     assert len(tiles_array) > 0
         
-    #- shorthand
-    ra = tiles_array['RA']
-    dec = tiles_array['DEC']
+    #- shorthand    
+    ra = tiles.ra.value
+    dec = tiles.dec.value
 
     #- calculate the hour angle for those tiles
     ha = (last - ra + 360) % 360
