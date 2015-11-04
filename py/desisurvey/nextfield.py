@@ -3,18 +3,15 @@
 import math
 import time
 import numpy as np
-import desimodel.io
-import ephem
 from astropy import coordinates
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
 from astropy.coordinates import Angle, Latitude, Longitude
-#from astropy.utils.data import download_file
-#from astropy.utils import iers
+from astropy.table import Table
 import astropy.units as u
 
-def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
+def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     programname=None):
     """
     Returns structure with information about next field to observe.
@@ -25,7 +22,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         skylevel: current sky level [counts/s/cm^2/arcsec^2]
         seeing: current astmospheric seeing PSF FWHM [arcsec]
         transparency: current atmospheric transparency
-        previoustiles: list of tile IDs previously observed.
+        obsplan: filename containing the nights observing plan
         programname (string, optional): if given, the output result will be for
             that program.  Otherwise, next_field_selector() chooses the
             program based upon the current conditions.
@@ -172,7 +169,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     moon.compute(dateobs-2415020.0, epoch=dateobs-2415020.0) #- Compute for dateobs
     
     #Loads the tiles
-    tiles_array = desimodel.io.load_tiles()
+    tiles_array = Table.read(obsplan, hdu=1)
         
     mindec = 100.0
     nextfield = 0
