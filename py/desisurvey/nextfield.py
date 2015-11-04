@@ -214,6 +214,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
         'gfa':{},
         }
     
+    print last
     #Return the dictionary
     return results
 
@@ -223,14 +224,14 @@ purposes of optimizing."""
         
             
 
-dateobs = float(raw_input('Enter the date of observation: '))
-skylevel = 0
-seeing = 0.0
-transparency = 0
-obsplan = 'toyplan.fits'
-programname = 'DESI'
-start_time = time.time()
-next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
+#dateobs = float(raw_input('Enter the date of observation: '))
+#skylevel = 0
+#seeing = 1.1
+#transparency = 0
+#obsplan = 'toyplan.fits'
+#programname = 'DESI'
+#start_time = time.time()
+#next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
 
-print("Total execution time: %s seconds" % (time.time()-start_time))
-print next_field
+#print("Total execution time: %s seconds" % (time.time()-start_time))
+#print next_field
