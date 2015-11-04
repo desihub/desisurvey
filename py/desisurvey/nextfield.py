@@ -3,7 +3,6 @@
 import math
 import time
 import numpy as np
-from astropy import coordinates
 from astropy.time import Time
 from astropy.coordinates import SkyCoord
 from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
@@ -132,30 +131,6 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     if last >= 360:
         n = math.floor(last/360)
         last = last-360*n
-    
-    #Use astropy to calculate the position of the Sun.
-    pos_sun = coordinates.get_sun(tobs)
-    
-    #Check to see if the Sun is up.
-    ra_sun = pos_sun.ra.value
-    dec_sun = pos_sun.dec.value
-    
-    ha_sun = last - ra_sun
-    if (ha_sun < 0):
-        ha_sun = ha_sun + 360
-    if (ha_sun > 360):
-        ha_sun = ha_sun - 360
-    
-    #Calculate the altitude of the Sun to determine if it is up
-    alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
-                         *math.sin(31.9614929*math.pi/180)
-                         +math.cos(dec_sun*math.pi/180)
-                         *math.cos(31.9614929*math.pi/180)
-                         *math.cos(ha_sun*math.pi/180)))*(180/math.pi)
-    
-    #Print warning if the Sun is up. We may decide this should do more than just warn
-    if (alt_sun >=-30):
-        print("WARNING: The Sun is up or within two hours of rising.")
         
     #- Find the position of the Moon using pyephem. After the compute statement below,
     #- many attributes of the Moon can be accessed including
@@ -165,8 +140,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     #- In order to calculate the Moon's attribute for dateobs, it is necessary to 
     #- convert to the Dublin Julian date which can be done by subtracting 2415020 from
     #- the Julian date.
-    moon = ephem.Moon() #- Setup the Moon object
-    moon.compute(dateobs-2415020.0, epoch=dateobs-2415020.0) #- Compute for dateobs
+    #moon = ephem.Moon() #- Setup the Moon object
+    #moon.compute(dateobs-2415020.0, epoch=dateobs-2415020.0) #- Compute for dateobs
     
     #Loads the tiles
     tiles_array = Table.read(obsplan, hdu=1)
