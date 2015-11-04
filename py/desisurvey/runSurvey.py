@@ -68,9 +68,7 @@ class rs(object):
     def runDay (self) :
         # obs plan is to be created by afternoon work
         self.obsplan      = "../../examples/toyplan.fits"
-        fd = open(self.weatherfile,"w")
-        fd.write("# mjd lst in_sky in_see in_trans ")
-        fd.write("real_sky real_see real_trans\n")
+        weather_fd        = self.weatherfileCreate (file) 
 
         afterSunset = False
         startTime = self.mjd
@@ -97,23 +95,20 @@ class rs(object):
                 dec = next["teledec"] 
                 exptime = next["exptime"]
                 maxtime = next["maxtime"]
-                self.setTimeAndPosition(self.mjd, ra, dec)
                 print "fake exposure at ra,dec, exptime",
                 print ra,dec,exptime, "at hour ",(time-startTime)*24.
 
+                self.setTimeAndPosition(self.mjd, ra, dec)
                 real_transparency, real_seeing, real_skylevel = \
                         self.guiderModel()
-                lst = self.lst*360./2/np.pi
-                if lst >= 360: lst = lst-360.
-                fd.write("{:.2f} {:.2f}  {:.1f} {:.2f} {:.2f} ".format(
-                    self.mjd, lst, skylevel, seeing,transparency))
-                fd.write("{:.1f} {:.2f} {:.2f} \n".format(
-                    real_skylevel, real_seeing, real_transparency))
+                self.weatherfileUpdate( weather_fd,  
+                        skylevel, seeing, transparency,
+                        real_skylevel, real_seeing, real_transparency) 
             else :
-                exptime = 60.
+                exptime = 0.
                 self.setTimeAndPosition(self.mjd, self.lst, self.lat)
             readyToExpose = self.mjd + exptime/(3600.*24.)
-        fd.close()
+        weather_fd.close()
         print "done"
 
     def get_next_field(self, mjd, sky, seeing, transparancy, file) :
@@ -303,4 +298,18 @@ class rs(object):
     def ahaversine(self, x) :
         ahav = 2*np.arcsin(np.sqrt(x))
         return ahav
+
+    def weatherfileCreate (self, file) :
+        fd = open(self.weatherfile,"w")
+        fd.write("# mjd lst in_sky in_see in_trans ")
+        fd.write("real_sky real_see real_trans\n")
+        return fd
+    def weatherfileUpdate(self, fd, skylevel, seeing, transparency,
+            real_skylevel, real_seeing, real_transparency) :
+        lst = self.lst*360./2/np.pi
+        if lst >= 360: lst = lst-360.
+        fd.write("{:.2f} {:.2f}  {:.1f} {:.2f} {:.2f} ".format(
+            self.mjd, lst, skylevel, seeing,transparency))
+        fd.write("{:.1f} {:.2f} {:.2f} \n".format(
+            real_skylevel, real_seeing, real_transparency))
 
