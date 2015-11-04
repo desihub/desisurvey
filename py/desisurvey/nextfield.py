@@ -17,7 +17,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     
     Args:
         dateobs (float): start time of observation in UTC (TAI).
-            Could be past, present, or future.
+            Could be past, present, or future. MJD format
         skylevel: current sky level [counts/s/cm^2/arcsec^2]
         seeing: current astmospheric seeing PSF FWHM [arcsec]
         transparency: current atmospheric transparency
@@ -98,6 +98,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     """
                 
     #tobs = Time(dateobs, format='jd', scale='ut1')
+    
+    dateobs = dateobs+2400000.5
     
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
@@ -234,7 +236,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
             'gfa':{},
             }
     
-    print last
+    #print last
     #Return the dictionary
     return results
 
@@ -244,14 +246,15 @@ purposes of optimizing."""
         
             
 
-#dateobs = float(raw_input('Enter the date of observation: '))
-#skylevel = 0
-#seeing = 1.1
-#transparency = 0
-#obsplan = 'toyplan.fits'
-#programname = 'DESI'
-#start_time = time.time()
-#next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
+dateobs = float(raw_input('Enter the date of observation: '))
+skylevel = 0
+seeing = 1.1
+transparency = 0
+obsplan = 'toyplan.fits'
+programname = 'DESI'
+verbose = True
+start_time = time.time()
+next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
 
-#print("Total execution time: %s seconds" % (time.time()-start_time))
-#print next_field
+print("Total execution time: %s seconds" % (time.time()-start_time))
+print next_field
