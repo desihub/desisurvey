@@ -3,12 +3,12 @@
 import math
 import time
 import numpy as np
-from astropy.time import Time
-from astropy.coordinates import SkyCoord
-from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
-from astropy.coordinates import Angle, Latitude, Longitude
+#from astropy.time import Time
+#from astropy.coordinates import SkyCoord
+#from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
+#from astropy.coordinates import Angle, Latitude, Longitude
 from astropy.table import Table
-import astropy.units as u
+#import astropy.units as u
 
 def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     programname=None):
@@ -95,7 +95,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
         used for testing purposes. 
     """
                 
-    tobs = Time(dateobs, format='jd', scale='ut1')
+    #tobs = Time(dateobs, format='jd', scale='ut1')
     
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
@@ -145,58 +145,58 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     
     #Loads the tiles
     tiles_array = Table.read(obsplan, hdu=1)
-        
-    mindec = 100.0
+
     nextfield = 0
     
     #- Perform coarse trim of tiles with mismatched coordinates
-    igood = np.where( (last-25 <= tiles_array['RA']) & (tiles_array['RA'] <= last+25) )[0]
+    igood = np.where( (last-5 <= tiles_array['BEG_OBS']) & (tiles_array['BEG_OBS'] <= last+5) )[0]
     tiles_array = tiles_array[igood]
     
     #- Setup astropy SkyCoord objects
-    tiles = SkyCoord(ra=tiles_array['RA']*u.deg, dec=tiles_array['DEC']*u.deg, frame='icrs')
+    #tiles = SkyCoord(ra=tiles_array['RA']*u.deg, dec=tiles_array['DEC']*u.deg, frame='icrs')
     
     #- Determine the current epoch from the input date and store as string
-    epoch = "J" + str(round(tobs.decimalyear, 3))
+    #epoch = "J" + str(round(tobs.decimalyear, 3))
     
-    #- Transform the RA and Dec to JNow right the transformed data back to the shorthand
-    tiles = tiles.transform_to(FK5(equinox=epoch))
+    #- Transform the RA and Dec to JNow write the transformed data back to the shorthand
+    #tiles = tiles.transform_to(FK5(equinox=epoch))
 
     #- Trim tiles_array to those within 15 degrees of the meridian
-    igood = np.where( (last-15 <= tiles.ra.value) & (tiles.ra.value <= last+15) )[0]
-    tiles_array = tiles_array[igood]
-    tiles = tiles[igood]
+    #igood = np.where( (last-15 <= tiles.ra.value) & (tiles.ra.value <= last+15) )[0]
+    #tiles_array = tiles_array[igood]
+    #tiles = tiles[igood]
     
     #- Remove previously observed tiles
-    notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
+    #notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
     #inotobs = np.where(obs == False)
-    tiles_array = tiles_array[notobs]
+    #tiles_array = tiles_array[notobs]
 
     #- will need to explicitly handle the case of running out of tiles later
     assert len(tiles_array) > 0
         
     #- shorthand    
-    ra = tiles.ra.value
-    dec = tiles.dec.value
+    #ra = tiles.ra.value
+    #dec = tiles.dec.value
 
     #- calculate the hour angle for those tiles
-    ha = (last - ra + 360) % 360
-    assert np.min(ha) >= 0
-    assert np.max(ha) <= 360.0
+    #ha = (last - ra + 360) % 360
+    #assert np.min(ha) >= 0
+    #assert np.max(ha) <= 360.0
 
-    alt = (np.arcsin(np.sin(dec*math.pi/180)
-                     *np.sin(31.9614929*math.pi/180)
-                     +np.cos(dec*math.pi/180)
-                     *np.cos(31.9614929*math.pi/180)
-                     *np.cos(ha*math.pi/180)))*(180/math.pi)
+    #alt = (np.arcsin(np.sin(dec*math.pi/180)
+    #                 *np.sin(31.9614929*math.pi/180)
+    #                 +np.cos(dec*math.pi/180)
+    #                 *np.cos(31.9614929*math.pi/180)
+    #                 *np.cos(ha*math.pi/180)))*(180/math.pi)
 
     #- Find the lowest dec tile; this could also be done faster with
     #- array calculations instead of a loop
     ibest = -1
-    for i in range(len(alt)):
-        if alt[i] >= 0 and dec[i] < mindec:
-            mindec = dec[i]
+    priority = 100000
+    for i in range(len(tiles_array)):
+        if tiles_array[i]['PRIORITY'] < priority:
             ibest = i
+            priority = tiles_array[i]['PRIORITY']
             
     assert ibest >= 0
                 
@@ -208,8 +208,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
         'programname':'DESI',
         'telera':float(tiles_array[ibest]['RA']),
         'teledec':float(tiles_array[ibest]['DEC']),
-        'exptime':1800.0,
-        'maxtime':2000.0,
+        'exptime':tiles_array[ibest]['OBSTIME'],
+        'maxtime':(tiles_array[ibest]['END_OBS']-last)*3600/15,
         'fibers':{},
         'gfa':{},
         }
@@ -223,14 +223,14 @@ purposes of optimizing."""
         
             
 
-#dateobs = float(raw_input('Enter the date of observation: '))
-#skylevel = 0
-#seeing = 0.0
-#transparency = 0
-#previoustiles = [23492, 943, 6705]
-#programname = 'DESI'
-#start_time = time.time()
-#next_field = get_next_field(dateobs, skylevel, seeing, transparency, previoustiles, programname)
+dateobs = float(raw_input('Enter the date of observation: '))
+skylevel = 0
+seeing = 0.0
+transparency = 0
+obsplan = 'toyplan.fits'
+programname = 'DESI'
+start_time = time.time()
+next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
 
-#print("Total execution time: %s seconds" % (time.time()-start_time))
-#print next_field
+print("Total execution time: %s seconds" % (time.time()-start_time))
+print next_field
