@@ -32,6 +32,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
         programname: DESI (or other) program name, e.g. "Dark Time Survey",
             "Bright Galaxy Survey", etc.
             --> DOS should just add this to the raw data header
+        foundtile: boolean that indicates whether field selector was 
+            successful. True = success, False = failure
         telera, teledec: telescope central pointing RA, dec [J2000 degrees]
         exptime: expected exposure time [seconds]
         maxtime: maximum allowable exposure time [seconds]
@@ -172,7 +174,11 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     #tiles_array = tiles_array[notobs]
 
     #- will need to explicitly handle the case of running out of tiles later
-    assert len(tiles_array) > 0
+    #assert len(tiles_array) > 0
+    if len(tiles_array) > 0:
+        found = True
+    elif len(tiles_array) <= 0:
+        found = False
         
     #- shorthand    
     #ra = tiles.ra.value
@@ -191,28 +197,42 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
 
     #- Find the lowest dec tile; this could also be done faster with
     #- array calculations instead of a loop
-    ibest = -1
+    ibest = 0
     priority = 100000
     for i in range(len(tiles_array)):
         if tiles_array[i]['PRIORITY'] < priority:
             ibest = i
             priority = tiles_array[i]['PRIORITY']
             
-    assert ibest >= 0
+    #assert ibest >= 0
                 
     #Create dictionary with information that is needed to point the telescope.
     #Currently the exptime and maxtime are just place holder values and fibers and gfa
     #dictionaries are just empty.
-    results = {
-        'tileid':int(tiles_array[ibest]['TILEID']),
-        'programname':'DESI',
-        'telera':float(tiles_array[ibest]['RA']),
-        'teledec':float(tiles_array[ibest]['DEC']),
-        'exptime':tiles_array[ibest]['OBSTIME'],
-        'maxtime':(tiles_array[ibest]['END_OBS']-last)*3600/15,
-        'fibers':{},
-        'gfa':{},
-        }
+    if found == True:
+        results = {
+            'tileid':int(tiles_array[ibest]['TILEID']),
+            'programname':'DESI',
+            'foundtile':found,
+            'telera':float(tiles_array[ibest]['RA']),
+            'teledec':float(tiles_array[ibest]['DEC']),
+            'exptime':tiles_array[ibest]['OBSTIME'],
+            'maxtime':(tiles_array[ibest]['END_OBS']-last)*3600/15,
+            'fibers':{},
+            'gfa':{},
+            }
+    elif found == False:
+        results = {
+            'tileid':int(0),
+            'programname':'DESI',
+            'foundtile':found,
+            'telera':float(0),
+            'teledec':float(0),
+            'exptime':0,
+            'maxtime':0,
+            'fibers':{},
+            'gfa':{},
+            }
     
     print last
     #Return the dictionary
@@ -224,14 +244,14 @@ purposes of optimizing."""
         
             
 
-#dateobs = float(raw_input('Enter the date of observation: '))
-#skylevel = 0
-#seeing = 1.1
-#transparency = 0
-#obsplan = 'toyplan.fits'
-#programname = 'DESI'
-#start_time = time.time()
-#next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
+dateobs = float(raw_input('Enter the date of observation: '))
+skylevel = 0
+seeing = 1.1
+transparency = 0
+obsplan = 'toyplan.fits'
+programname = 'DESI'
+start_time = time.time()
+next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
 
-#print("Total execution time: %s seconds" % (time.time()-start_time))
-#print next_field
+print("Total execution time: %s seconds" % (time.time()-start_time))
+print next_field
