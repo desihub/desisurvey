@@ -48,6 +48,17 @@ class rs(object):
         # weather file 
         self.weatherfile  = weatherfile
 
+        # observatory parameters
+        lon_kpno  =  -111.600
+        lat_kpno =     31.963
+        ele_kpno  =  2120.
+        lon_ctio  =   -70.8125
+        lat_ctio  =   -30.16527778
+        ele_ctio  =  2215.
+        self.lon = lon_kpno
+        self.lat = lat_kpno
+        self.ele = ele_kpno
+
 
     def runDay (self) :
         # obs plan is to be created by afternoon work
@@ -66,7 +77,8 @@ class rs(object):
             default_ra   = self.mjd_to_lst(time)
             default_dec  = 0.0
             sky_model    = desMoonSkyModel.GeneralMoonSkyModel(
-                    time, default_ra, default_dec, filter)
+                    time, default_ra, default_dec, filter,
+                    self.lon, self.lat, self.ele)
             sunIsUp      = self.sunUp (sky_model) 
             if sunIsUp: continue
 
@@ -129,7 +141,8 @@ class rs(object):
         verbose = False
         mjd       = self.mjd
         ra,dec    = self.ra, self.dec
-        sky_model = desMoonSkyModel.GeneralMoonSkyModel(mjd, ra, dec, filter)
+        sky_model = desMoonSkyModel.GeneralMoonSkyModel(mjd, ra, dec, filter,
+                    self.lon, self.lat, self.ele)
         lon       = sky_model.longitude
         lat       = sky_model.latitude
         lst       = self.mjd_to_lst(mjd)

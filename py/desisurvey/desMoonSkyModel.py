@@ -14,7 +14,9 @@ from pyslalib.slalib import sla_dsep as dsep
 #       thus slowing it down, no doubt.
 #
 # Usage:
-#   inputs mjd, ra, dec, filter
+#   inputs mjd, ra, dec, filter, tel_lon, tel_lat, tel_ele
+#       mjd in days, ra,dec, tel_lon, tel_lat in degrees, tel_ele in meters
+#       filter is a DES filter name, e.g. "r"
 #
 #   print "Moon zenith distance: %f" % moonZd(latitude, longitude, mjd)
 #   print "Sun zenith distance: %f" % sunZd(latitude, longitude, mjd)
@@ -23,7 +25,8 @@ from pyslalib.slalib import sla_dsep as dsep
 #   print "Pointing angle with moon: %f" % ((180.0/pi)*acos(
 #       moon_cosrho(mjd, ra, dec, latitude, longitude)))
 #
-#    sky_model = GeneralMoonSkyModel(mjd, ra, dec, filter)
+#    sky_model = GeneralMoonSkyModel(mjd, ra, dec, filter, 
+#       tel_lon, tel_lat, tel_ele)
 #    lst = gmst(mjd) + sky_model.longitude * pi/180.0
 #    ha = lst - ra*pi/180.0
 #    z = zd(ha, dec*pi/180.0, sky_model.latitude*pi/180.0)*180.0/pi
@@ -379,7 +382,7 @@ def skymag(m_inf, m_zen, h, g, mie_c, rayl_m, ra, decl, mjd, k, latitude, longit
     return m
 
 class GeneralMoonSkyModel(object):
-    def __init__(self, mjd, ra, decl, filter_name) :
+    def __init__(self, mjd, ra, decl, filter_name, tel_lon, tel_lat, tel_ele) :
 
         self.mjd = mjd
         self.ra = ra
@@ -395,12 +398,6 @@ class GeneralMoonSkyModel(object):
         rayl_m  = "-4.78 -4.05  -2.87 30.00 30.00"
         g       = "0.50   0.51  0.57  0.59  0.997523"
         mie_c   = "40.82  49.38 64.08 75.67 9914.435922"
-        lon_kpno  =  -111.600
-        lat_kpno =     31.963
-        ele_kpno  =  2120.
-        lon_ctio  =   -70.8125
-        lat_ctio  =   -30.16527778
-        ele_ctio  =  2215.
 
         i = filters.split().index(filter_name)
         self.k = float(k.split()[i])
@@ -412,9 +409,9 @@ class GeneralMoonSkyModel(object):
         self.mie_c = float(mie_c.split()[i])
         self.offset = 0.0
 
-        self.longitude = lon_kpno
-        self.latitude  = lat_kpno
-        self.elevation = ele_kpno
+        self.longitude = tel_lon
+        self.latitude  = tel_lat
+        self.elevation = tel_ele
 
     @property
     def skymag(self):
