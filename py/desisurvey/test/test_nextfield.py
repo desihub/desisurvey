@@ -73,7 +73,7 @@ class TestNextField(unittest.TestCase):
         the rightanswer array were found by hand to be the 'correct' answer (i.e the tile
         with the minimum declination, within +/- 15 degrees of the meridian.
         """
-        rightanswer = [1558, 126, 149, 6, 890, 745, 356, 1129, 1558, 126]
+        rightanswer = [1558, 4337, 2736, 4, 825, 764, 543, 1136, 2197, 4325]
         for test in range(10):
             relpath = 'plan' +str(int(math.floor(58728.208 + 137.0*test))) + '.fits'
             planfile = os.path.abspath(relpath)
