@@ -8,10 +8,11 @@ import numpy as np
 #from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
 #from astropy.coordinates import Angle, Latitude, Longitude
 from astropy.table import Table
+from desimoon import getprogramname
 #import astropy.units as u
 
-def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
-    programname=None):
+def get_next_field(dateobs, skylevel, seeing, transparency, obsplan, 
+                   previoustiles, programname=None):
     """
     Returns structure with information about next field to observe.
     
@@ -22,6 +23,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
         seeing: current astmospheric seeing PSF FWHM [arcsec]
         transparency: current atmospheric transparency
         obsplan: filename containing the nights observing plan
+        previoustiles: list of tiles that have been observed that night
         programname (string, optional): if given, the output result will be for
             that program.  Otherwise, next_field_selector() chooses the
             program based upon the current conditions.
@@ -100,6 +102,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     #tobs = Time(dateobs, format='jd', scale='ut1')
     
     dateobs = dateobs+2400000.5
+    programname = getprogramname(dateobs)
     
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
@@ -153,7 +156,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     nextfield = 0
     
     #- Perform coarse trim of tiles with mismatched coordinates
-    igood = np.where( (last-5 <= tiles_array['BEG_OBS']) & (tiles_array['BEG_OBS'] <= last+5) )[0]
+    igood = np.where( (last-5 <= tiles_array['BEGINOBS']) & (tiles_array['BEGINOBS'] <= last+5) )[0]
     tiles_array = tiles_array[igood]
     
     #- Setup astropy SkyCoord objects
@@ -171,9 +174,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
     #tiles = tiles[igood]
     
     #- Remove previously observed tiles
-    #notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
-    #inotobs = np.where(obs == False)
-    #tiles_array = tiles_array[notobs]
+    notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
+    tiles_array = tiles_array[notobs]
 
     #- will need to explicitly handle the case of running out of tiles later
     #assert len(tiles_array) > 0
@@ -219,7 +221,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, obsplan,
             'telera':float(tiles_array[ibest]['RA']),
             'teledec':float(tiles_array[ibest]['DEC']),
             'exptime':tiles_array[ibest]['OBSTIME'],
-            'maxtime':(tiles_array[ibest]['END_OBS']-last)*3600/15,
+            'maxtime':(tiles_array[ibest]['ENDOBS']-last)*3600/15,
             'fibers':{},
             'gfa':{},
             }
@@ -250,11 +252,12 @@ purposes of optimizing."""
 #skylevel = 0
 #seeing = 1.1
 #transparency = 0
-#obsplan = 'toyplan.fits'
+#obsplan = 'plan58728.fits'
 #programname = 'DESI'
+#previoustiles = [262, 267, 264]
 #verbose = True
 #start_time = time.time()
-#next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, programname)
+#next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, previoustiles, programname)
 
 #print("Total execution time: %s seconds" % (time.time()-start_time))
 #print next_field
