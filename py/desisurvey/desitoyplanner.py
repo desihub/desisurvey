@@ -51,8 +51,8 @@ def get_plan(dateobs):
     #- that setup on your system. Uncomment the associate import statement above
     #- and then the following line while removing the current load method
     
-    # t = desimodel.io.load_tiles()
-    t = Table.read('desi-tiles.fits',hdu=1)
+    t = desimodel.io.load_tiles()
+    #t = Table.read('desi-tiles.fits',hdu=1)
     
     #- Trim the tiles that are very low in declination
     dectrim = np.where(t['DEC'] > -30)[0]
@@ -127,6 +127,7 @@ def get_plan(dateobs):
     #- Write the output file
     tbhdu.writeto(filename)
     
-    
-dateobs = float(raw_input('Enter the date of observation (MJD): '))
-get_plan(dateobs)
+
+#- Uncomment these two lines to run as stand alone
+#dateobs = float(raw_input('Enter the date of observation (MJD): '))
+#get_plan(dateobs)
