@@ -34,12 +34,12 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         tileid: tile ID [integer]
             --> DOS should just add this to the raw data header
         programname: DESI (or other) program name, e.g. "Dark Time Survey",
-            "Bright Galaxy Survey", etc.
+            "Bright Galaxy Survey", etc. (or shorter names dark, bright, ...?)
             --> DOS should just add this to the raw data header
         telera, teledec: telescope central pointing RA, dec [J2000 degrees]
         exptime: expected exposure time [seconds]
         maxtime: maximum allowable exposure time [seconds]
-        fibers: dictionary with the following keys, each of which contains
+        positioners: dictionary with the following keys, each of which contains
             a list of 5000 values for each of the positioners
             - ra: RA for each fiber [J2000 degrees]
             - dec: dec for each fiber [J2000 degrees]
@@ -55,8 +55,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
                     with acquisition; sky locations are large enough to be
                     used for estimating sky backgrounds.
             - okguide : True if good for guiding
-            - mag : magnitude [SDSS r-band AB magnitude]
-                --> or a flux instead?
+            - flux : nanomaggy flux in DECam r-band
 
         Additional keys may be present and should be ignored
         
