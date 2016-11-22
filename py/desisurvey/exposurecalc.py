@@ -2,7 +2,7 @@ import numpy as np
 from astropy.time import Time
 import astropy.units as u
 import specsim.simulator
-from desisurvey.weather import weatherModule
+from surveysim.weather import weatherModule
 from desisurvey.utils import radec2altaz
 
 def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, moonAlt):

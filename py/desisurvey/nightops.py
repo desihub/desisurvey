@@ -10,6 +10,7 @@ from astropy.table import Table, vstack
 from desisurvey.nightcal import getCal
 from desisurvey.exposurecalc import expTimeEstimator, airMassCalculator
 from desisurvey.utils import mjd2lst
+from desisurvey.nextobservation import nextFieldSelector
 from surveysim.observefield import observeField
 
 class obsCount:
