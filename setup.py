@@ -67,8 +67,8 @@ setup (
     packages=find_packages('py'),
     scripts=[ fname for fname in glob.glob(os.path.join('bin', '*.py')) ],
     license='BSD',
-    requires=['Python (>2.7.0)', ],
-    use_2to3=True,
+    requires=['Python (>3.5.2)', ],
+    use_2to3=False,
     zip_safe=False,
     cmdclass={'version': Version},
     test_suite='desisurvey.test.test_suite'

@@ -84,10 +84,10 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
     if conditions['OpenDome'] == False:
         print("\nBad weather forced the dome to remain shut for the night.")
     else:
-        print ("\nConditions at the beginning of the night: ")
-        print ("\tSeeing: ", conditions['Seeing'], "arcseconds")
-        print ("\tTransparency: ", conditions['Transparency'])
-        print ("\tCloud cover: ", 100.0*conditions['Clouds'], "%")
+        print("\nConditions at the beginning of the night: ")
+        print("\tSeeing: ", conditions['Seeing'], "arcseconds")
+        print("\tTransparency: ", conditions['Transparency'])
+        print("\tCloud cover: ", 100.0*conditions['Clouds'], "%")
 
         slew = False
         ra_prev = 1.0e99
