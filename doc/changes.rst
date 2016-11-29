@@ -2,10 +2,10 @@
 desisurvey change log
 =====================
 
-2016-11-19 (un-tagged)
-----------------------
+2016-11-29 (0.3.0)
+------------------
 
-Moved things over from surveysim.  Modified documentation.
+First release after refactoring.
 
 2016-11-19 (0.2.0)
 ------------------
