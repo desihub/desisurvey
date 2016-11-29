@@ -7,7 +7,7 @@ from desitarget.targetmask import obsconditions as obsbits
 
 MAX_AIRMASS = 10.0 #3.0 This new bound effectively does nothing.
 MIN_MOON_SEP = 90.0
-MIN_MOON_SEP_BGS = 5.0
+MIN_MOON_SEP_BGS = 30.0
 
 def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra, previous_dec, use_jpl=False):
     """
@@ -71,6 +71,28 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
                          ( (obsconds[i] & obsbits.mask('BRIGHT')) != 0 and moondist > MIN_MOON_SEP_BGS) ))):
                         found = True
                         break
+
+    if found == False: # Repeat loop to see if a grey tile can be observed in dark time
+        for i in range(len(tileID)):
+            dra = np.abs(ra[i]-previous_ra)
+            if dra > 180.0:
+                dra = 360.0 - dra
+            ddec = np.abs(dec[i]-previous_dec)
+            overhead = setup_time(slew, dra, ddec)
+            t1 = tmin[i] + overhead/240.0
+            t2 = tmax[i] - explen[i]
+
+            if ( ((t1 <= t2) and (lst > t1 and lst < t2)) or ( (t2 < t1) and ((lst > t1 and t1 <=360.0) or (lst >= 0.0 and lst < t2))) ):
+                if (avoidObject(dt, ra[i], dec[i]) and airMassCalculator(ra[i], dec[i], lst) < MAX_AIRMASS):
+                    moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
+                    if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved['TILEID']) or len(tilesObserved) == 0 ):
+                        if (( (moonalt < 0.0 and (obsconds[i] & obsbits.mask('DARK')) != 0) or
+                              (moonalt < 0.0 and (obsconds[i] & obsbits.mask('GRAY')) != 0) ) or
+                            (moonalt >=0.0 and
+                                 (( (moonfrac < 0.2 or (moonalt*moonfrac < 12.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
+                                  ( (obsconds[i] & obsbits.mask('BRIGHT')) != 0 and moondist > MIN_MOON_SEP_BGS) ))):
+                            found = True
+                            break
 
     if found == True:
         tileID = tiledata['TILEID'][i]
