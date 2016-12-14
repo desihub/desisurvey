@@ -54,8 +54,8 @@ def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, 
     #g_increase[i]=(10^(Ag/2.5))^2
 
     Ag = 3.303*ebmv # Use g-band
-    f_ebmv = np.power(10.0,Ag/2.5)
-    f_am = np.power(amass,1.25)
+    f_ebmv = np.power( 10.0, (2.0*Ag/2.5) )
+    f_am = np.power(amass, 1.25)
 
     f_moon = moonExposureTimeFactor(moonFrac, moonDist, moonAlt)
     #print (f_am, f_seeing, f_transparency, f_ebmv, f_moon)
