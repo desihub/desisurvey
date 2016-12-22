@@ -5,9 +5,9 @@ from desisurvey.exposurecalc import airMassCalculator
 from desisurvey.utils import mjd2lst
 from desitarget.targetmask import obsconditions as obsbits
 
-MAX_AIRMASS = 10.0 #3.0 This new bound effectively does nothing.
-MIN_MOON_SEP = 90.0
-MIN_MOON_SEP_BGS = 30.0
+MAX_AIRMASS = 2.0
+MIN_MOON_SEP = 50.0
+MIN_MOON_SEP_BGS = 50.0
 
 def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra, previous_dec, use_jpl=False):
     """
