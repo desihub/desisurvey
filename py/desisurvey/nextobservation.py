@@ -67,7 +67,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
                 if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved['TILEID']) or len(tilesObserved) == 0 ):
                     if (( (moonalt < 0.0 and (obsconds[i] & obsbits.mask('DARK')) != 0) ) or
                          (moonalt >=0.0 and
-                         (( (moonfrac < 0.6 or (moonalt*moonfrac < 30.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
+                         (( (moonfrac < 0.6 and (moonalt*moonfrac < 30.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
                          ( (obsconds[i] & obsbits.mask('BRIGHT')) != 0 and moondist > MIN_MOON_SEP_BGS) ))):
                         found = True
                         break
