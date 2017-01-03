@@ -5,9 +5,9 @@ from desisurvey.exposurecalc import airMassCalculator
 from desisurvey.utils import mjd2lst
 from desitarget.targetmask import obsconditions as obsbits
 
-MAX_AIRMASS = 10.0 #3.0 This new bound effectively does nothing.
-MIN_MOON_SEP = 90.0
-MIN_MOON_SEP_BGS = 30.0
+MAX_AIRMASS = 2.0
+MIN_MOON_SEP = 50.0
+MIN_MOON_SEP_BGS = 50.0
 
 def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra, previous_dec, use_jpl=False):
     """
@@ -67,7 +67,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
                 if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved['TILEID']) or len(tilesObserved) == 0 ):
                     if (( (moonalt < 0.0 and (obsconds[i] & obsbits.mask('DARK')) != 0) ) or
                          (moonalt >=0.0 and
-                         (( (moonfrac < 0.2 or (moonalt*moonfrac < 12.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
+                         (( (moonfrac < 0.6 and (moonalt*moonfrac < 30.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
                          ( (obsconds[i] & obsbits.mask('BRIGHT')) != 0 and moondist > MIN_MOON_SEP_BGS) ))):
                         found = True
                         break
@@ -89,7 +89,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
                         if (( (moonalt < 0.0 and (obsconds[i] & obsbits.mask('DARK')) != 0) or
                               (moonalt < 0.0 and (obsconds[i] & obsbits.mask('GRAY')) != 0) ) or
                             (moonalt >=0.0 and
-                                 (( (moonfrac < 0.2 or (moonalt*moonfrac < 12.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
+                                 (( (moonfrac < 0.6 and (moonalt*moonfrac < 30.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
                                   ( (obsconds[i] & obsbits.mask('BRIGHT')) != 0 and moondist > MIN_MOON_SEP_BGS) ))):
                             found = True
                             break
