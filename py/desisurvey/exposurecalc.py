@@ -43,6 +43,9 @@ def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, 
     b = -1.55
     c = 1.15
     f_seeing =  (a+b*seeing+c*seeing*seeing) / (a-0.25*b*b/c)
+    # Rescale value
+    f11 = (a + b*1.1 + c*1.21)/(a-0.25*b*b/c)
+    f_seeing /= f11
     if weatherNow['Transparency'] > 0.0:
         f_transparency = 1.0 / weatherNow['Transparency']
     else:

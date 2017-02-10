@@ -15,12 +15,17 @@ def getCal(day):
     Returns:
         dictionnary containing the following keys:
         'MJDsunset', 'MJDsunrise', 'MJDetwi', 'MJDmtwi', 'MJDe13twi',
-        'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName'
+        'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName',
+        'MJD_bright_start', 'MJD_bright_end'
 
     Note:
         dirName is not used in practise, but will in principle for
         actual ops.
     """
+
+    # Grey and bright time definitions:
+    # if Moon illumination fraction < 0.6 AND illumination fraction x elevation < 30deg,
+    # then it's grey, otherwise bright.
 
     mayall = ephem.Observer()
     mayall.lat, mayall.lon = np.radians(kpno.mayall.lat_deg), np.radians(kpno.mayall.west_lon_deg)
@@ -49,6 +54,28 @@ def getCal(day):
     m0.compute(day)
     MoonFrac = float( m0.moon_phase )
 
+    if (MoonFrac > 0.6):
+        MJD_bright_start = MJDmoonrise
+        MJD_bright_end = MJDmoonset
+    else:
+        MJD_grey_start
+        t = MJDmoonrise
+        m0.compute(t)
+        moonalt = m0.alt
+        while (moonalt < 30.0/MoonFrac and t < MJDmoonset):
+            t += 1.0 / 1440.0
+        if t < MJDmoonset:
+            MJD_bright_start = t
+            while (moonalt >= 30.0/MoonFrac and t < MJDmoonset):
+                t += 1.0/1440.0
+            if t < MJDmoonset:
+                MJD_bright_end = t
+            else:
+                MJD_bright_end = MJDmoonset
+        else:
+            MJD_bright_start = None
+            MJD_bright_end = None
+
     # Get the night's directory name right away.
     if day.month >= 10:
         monthStr = str(day.month)
@@ -68,6 +95,8 @@ def getCal(day):
                  'MJDmoonrise': MJDmoonrise,
                  'MJDmoonset': MJDmoonset,
                  'MoonFrac' : MoonFrac,
-                 'dirName': dirName}
+                 'dirName': dirName,
+                 'MJD_bright_start' : MJD_bright_start,
+                 'MJD_bright_end' : MJD_bright_end}
     return day_stats
 
