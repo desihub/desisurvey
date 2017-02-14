@@ -83,9 +83,11 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
     conditions = w.getValues(mjd)
     f = open("nightstats.dat", "a+")
     if conditions['OpenDome']:
-        f.write("1 ", conditions['Seeing'], conditions['Transparency'], conditions['Clouds'])
+        wcondsstr = "1 " + str(conditions['Seeing']) + " " + str(conditions['Transparency']) + " " + str(conditions['Clouds']) + "\n"
+        f.write(wcondsstr)
     else:
-        f.write("0 ", conditions['Seeing'], conditions['Transparency'], conditions['Clouds'])
+        wcondsstr = "0 " + str(conditions['Seeing']) + " " + str(conditions['Transparency']) + " " + str(conditions['Clouds']) + "\n"
+        f.write(wcondsstr)
     f.close()
     if conditions['OpenDome'] == False:
         print("\nBad weather forced the dome to remain shut for the night.")

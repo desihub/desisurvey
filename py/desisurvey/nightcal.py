@@ -58,18 +58,24 @@ def getCal(day):
         MJD_bright_start = MJDmoonrise
         MJD_bright_end = MJDmoonset
     else:
-        MJD_grey_start
-        t = MJDmoonrise
-        m0.compute(t)
+        t = MJDmoonrise - day0.mjd
+        mayall.date = ephem.Date(t)
+        m0.compute(mayall)
         moonalt = m0.alt
-        while (moonalt < 30.0/MoonFrac and t < MJDmoonset):
+        while (moonalt < 30.0/MoonFrac and t < MJDmoonset - day0.mjd):
             t += 1.0 / 1440.0
-        if t < MJDmoonset:
-            MJD_bright_start = t
-            while (moonalt >= 30.0/MoonFrac and t < MJDmoonset):
+            mayall.date = ephem.Date(t)
+            m0.compute(mayall)
+            moonalt = m0.alt
+        if t < MJDmoonset - day0.mjd:
+            MJD_bright_start = t + day0.mjd
+            while (moonalt >= 30.0/MoonFrac and t < MJDmoonset - day0.mjd):
                 t += 1.0/1440.0
-            if t < MJDmoonset:
-                MJD_bright_end = t
+                mayall.date = ephem.Date(t)
+                m0.compute(mayall)
+                moonalt = m0.alt
+            if t < MJDmoonset - day0.mjd:
+                MJD_bright_end = t + day0.mjd
             else:
                 MJD_bright_end = MJDmoonset
         else:

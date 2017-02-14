@@ -41,7 +41,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
     tileID = tiledata['TILEID']
     tmin = tiledata['LSTMIN']
     tmax = tiledata['LSTMAX']
-    #explen = tiledata['MAXEXPLEN']/240.0
+    explen = tiledata['EXPLEN']/240.0 # Need to call exposure time estimator instead
     ra = tiledata['RA']
     dec = tiledata['DEC']
     program = tiledata['PROGRAM']
@@ -58,7 +58,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
         overhead = setup_time(slew, dra, ddec)
         t1 = tmin[i] + overhead/240.0
         t2 = tmax[i] - explen[i]
-
         if ( ((t1 <= t2) and (lst > t1 and lst < t2)) or ( (t2 < t1) and ((lst > t1 and t1 <=360.0) or (lst >= 0.0 and lst < t2))) ):
             moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
             if (obsconds[i] & obsbits.mask('BRIGHT')) == 0:
@@ -75,7 +74,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
         RA = ra[i]
         DEC = dec[i]
         Ebmv = tiledata['EBV_MED'][i]
-        maxLen = tiledata['MAXEXPLEN'][i]
+        maxLen = 2.0*tiledata['EXPLEN'][i]
         DESsn2 = 100.0 # Some made-up number -> has to be the same as the reference in exposurecalc.py
         status = tiledata['STATUS'][i]
         exposure = -1.0 # Updated after observation
