@@ -120,7 +120,10 @@ def angsep(ra1, dec1, ra2, dec2):
     cosDelta = np.sin(DEC1)*np.sin(DEC2) + np.cos(DEC1)*np.cos(DEC2)*np.cos(deltaRA)
     return np.degrees(np.arccos(cosDelta))
 
-def equ2gal_J2000(ra, dec):
+def equ2gal_J2000(ra_deg, dec_deg):
+
+    ra = np.radians(ra_deg)
+    dec = np.radians(dec_deg)
 
     x = np.array([0.0, 0.0, 0.0])
     x[0] = np.cos(ra) * np.cos(dec)
@@ -135,4 +138,8 @@ def equ2gal_J2000(ra, dec):
     b = np.arcsin(y[2])
     l = np.arctan2(y[1], y[0])
 
-    return l, b
+    l_deg = np.degrees(l)
+    b_deg = np.degrees(b)
+
+    return l_deg, b_deg
+

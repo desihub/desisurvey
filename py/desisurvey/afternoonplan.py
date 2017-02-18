@@ -50,28 +50,85 @@ class surveyPlan:
         no_extra = np.where(tb_temp.field('PROGRAM') != 'EXTRA')
         tiledata = tb_temp[no_extra]
         hdulist0.close()
-            
+
+        # Dummy initilisations
+        priority = 0
+        status = 0
+        ha = 0.0
+        lstmin = 0.0
+        lstmax = 0.0
+        explen = 0.0
+        
         # Loop over elements in table
-        self.tiles = []
+        self.numtiles = len(tiledata)
+        self.tiles = np.recarray((self.numtiles,),
+                                 names = ('TILEID', 'RA', 'DEC', 'PASS', 'EBV_MED', 'PROGRAM', 'OBSCONDITIONS', 'GAL_CAP', 'SUBLIST', 'PRIORITY', 'STATUS', 'HA', 'LSTMIN', 'LSTMAX', 'EXPLEN'),
+                                 formats = ['i4', 'f8', 'f8', 'i4', 'f4', 'a6', 'i2', 'i4', 'i4', 'i4', 'i4', 'f8', 'f8', 'f8', 'f8'])
         for i in range(len(tiledata)):
-            b, l = equ2gal_J2000(tiledata[i].field('RA'), tiledata[i].field('DEC'))
-            tile = {'tileID' : tiledata[i].field('TILEID'),
-                    'RA' : tiledata[i].field('RA'),
-                    'DEC' : tiledata[i].field('DEC'),
-                    'PASS' : tiledata[i].field('PASS'),
-                    'Ebmv' : tiledata[i].field('EBV_MED'),
-                    'program' : tiledata[i].field('PROGRAM'),
-                    'obsconds' : tiledata[i].field('OBSCONDITIONS'),
-                    'cap' : b / np.abs(b),
-                    'priority' : 0,
-                    'status' : 0,
-                    'HA' : 0.0,
-                    'lst_min' : 0.0,
-                    'lst_max' : 0.0,
-                    'med_exptime': 0.0 }
-            self.tiles.append(tile)
-        self.numtiles = len(self.tiles)
+            #l, b = equ2gal_J2000(tiledata[i].field('RA'), tiledata[i].field('DEC'))
+            #cap = b / np.abs(b)
+            if tiledata[i].field('RA') > 75.0 and tiledata[i].field('RA') < 300.0:
+                cap = 1.0
+            else:
+                cap = -1.0
+            if tiledata[i].field('PASS') == 0:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
+                    sublist = 0
+                else:
+                    sublist = 8
+            elif tiledata[i].field('PASS') == 1:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
+                    sublist = 1
+                else:
+                    sublist = 9
+            elif tiledata[i].field('PASS') == 2:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
+                    sublist = 2
+                else:
+                    sublist = 10
+            elif tiledata[i].field('PASS') == 3:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
+                    sublist = 3
+                else:
+                    sublist = 11
+            elif tiledata[i].field('PASS') == 4:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
+                    sublist = 4
+                else:
+                    sublist = 12
+            elif tiledata[i].field('PASS') == 5:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
+                    sublist = 5
+                else:
+                    sublist = 13
+            elif tiledata[i].field('PASS') == 6:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
+                    sublist = 6
+                else:
+                    sublist = 14
+            elif tiledata[i].field('PASS') == 7:
+                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
+                    sublist = 7
+                else:
+                    sublist = 15
+            self.tiles[i] = (tiledata[i].field('TILEID'),
+                              tiledata[i].field('RA'),
+                              tiledata[i].field('DEC'),
+                              tiledata[i].field('PASS'),
+                              tiledata[i].field('EBV_MED'),
+                              tiledata[i].field('PROGRAM'),
+                              tiledata[i].field('OBSCONDITIONS'),
+                              cap,
+                              sublist,
+                              priority,
+                              status,
+                              ha,
+                              lstmin,
+                              lstmax,
+                              explen)
+            
         self.assignHA()
+        self.tiles.sort(axis=0, order=('SUBLIST', 'DEC'))
 
         self.LSTres = 2.5 # bin width in degrees, starting with 10 minutes for now
         self.nLST = int(np.floor(360.0/self.LSTres))
@@ -95,11 +152,11 @@ class surveyPlan:
         for tile in self.tiles:
             #print ("Assingning HA value for tile ", tile['tileID'])
             while j < len(tiledata0):
-                if tile['tileID'] == tiledata0[j][0]:
+                if tile['TILEID'] == tiledata0[j][0]:
                     tile['HA'] = tiledata0[j][8]
-                    tile['lst_min'] = tiledata0[j][16]
-                    tile['lst_max'] = tiledata0[j][17]
-                    tile['med_exptime'] = tiledata0[j][14]
+                    tile['LSTMIN'] = tiledata0[j][16]
+                    tile['LSTMAX'] = tiledata0[j][17]
+                    tile['EXPLEN'] = tiledata0[j][14]
                     break
                 else:
                     j += 1
@@ -148,109 +205,16 @@ class surveyPlan:
         """
 
         # Update status
-        uptiles = []
+        finalTileList = []
         nto = len(tiles_observed)
-        for tile in self.tiles:
+        for j in range(self.numtiles):
             for i in range(nto):
-                if tile['tileID'] == tiles_observed['TILEID'][i]:
-                    tile['status'] = tiles_observed['STATUS'][i]
+                if self.tiles[j]['TILEID'] == tiles_observed['TILEID'][i]:
+                    self.tiles[j]['STATUS'] = tiles_observed['STATUS'][i]
                     break
-            if tile['status']==0:
-                uptiles.append(tile)
+            if self.tiles[j]['STATUS']==0:
+                finalTileList.append(self.tiles[j])
 
-        # Dark layers: 0, 1, 2, 3; ELG layer: 4; BGS layers: 5, 6, 7.
-        layer0 = []
-        layer0_special = []
-        layer1 = []
-        layer1_special = []
-        layer2 = []
-        layer2_special = []
-        layer3 = []
-        layer3_special = []
-        layer4 = []
-        layer4_special = []
-        layer5 = []
-        layer5_special = []
-        layer6 = []
-        layer6_special = []
-        layer7 = []
-        layer7_special = []
-        for tile in uptiles:
-            # DARK layer 0
-            if tile['PASS']==0:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], True):
-                    layer0_special.append(tile)
-                else:
-                    layer0.append(tile)
-            # DARK layer 1
-            elif tile['PASS']==1:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], False):
-                    layer1_special.append(tile)
-                else:
-                    layer1.append(tile)
-            # DARK layer 2
-            elif tile['PASS']==2:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], False):
-                    layer2_special.append(tile)
-                else:
-                    layer2.append(tile)
-            # DARK layer 3
-            elif tile['PASS']==3:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], False):
-                    layer3_special.append(tile)
-                else:
-                    layer3.append(tile)
-            # ELG layer 4
-            elif tile['PASS']==4:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], True):
-                    layer4_special.append(tile)
-                else:
-                    layer4.append(tile)
-            # BGS layer 5
-            elif tile['PASS']==5:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], True):
-                    layer5_special.append(tile)
-                else:
-                    layer5.append(tile)
-            # BGS layer 6
-            elif tile['PASS']==6:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], False):
-                    layer6_special.append(tile)
-                else:
-                    layer6.append(tile)
-            # BGS layer 7
-            elif tile['PASS']==7:
-                if self.inFirstYearFullDepthField(tile['DEC'], tile['cap'], False):
-                    layer7_special.append(tile)
-                else:
-                    layer7.append(tile)
-
-        # Order each sublist by DEC and merge to form new ordered tile list
-        layer0_special = sorted(layer0_special, key=itemgetter('DEC'), reverse=False)
-        layer0 = sorted(layer0, key=itemgetter('DEC'), reverse=False)
-        layer1_special = sorted(layer1_special, key=itemgetter('DEC'), reverse=False)
-        layer1 = sorted(layer1, key=itemgetter('DEC'), reverse=False)
-        layer2_special = sorted(layer2_special, key=itemgetter('DEC'), reverse=False)
-        layer2 = sorted(layer2, key=itemgetter('DEC'), reverse=False)
-        layer3_special = sorted(layer3_special, key=itemgetter('DEC'), reverse=False)
-        layer3 = sorted(layer3, key=itemgetter('DEC'), reverse=False)
-        layer4_special = sorted(layer4_special, key=itemgetter('DEC'), reverse=False)
-        layer4 = sorted(layer4, key=itemgetter('DEC'), reverse=False)
-        layer5_special = sorted(layer5_special, key=itemgetter('DEC'), reverse=False)
-        layer5 = sorted(layer5, key=itemgetter('DEC'), reverse=False)
-        layer6_special = sorted(layer6_special, key=itemgetter('DEC'), reverse=False)
-        layer6 = sorted(layer6, key=itemgetter('DEC'), reverse=False)
-        layer7_special = sorted(layer7_special, key=itemgetter('DEC'), reverse=False)
-        layer7 = sorted(layer7, key=itemgetter('DEC'), reverse=False)
-        
-        finalTileList = layer0_special + layer1_special + layer2_special + layer3_special
-        finalTileList += layer4_special + layer5_special + layer6_special + layer7_special
-        finalTileList += layer0 + layer1 + layer2 + layer3 + layer4 + layer5 + layer6 + layer7
-        """
-        print( len(layer0_special), len(layer1_special), len(layer2_special), len(layer3_special),
-               len(layer4_special), len(layer5_special), len(layer6_special), len(layer7_special),
-               len(layer0), len(layer1), len(layer2), len(layer3), len(layer4), len(layer5), len(layer6), len(layer7) )
-        """
         # Assign tiles to LST bins
         planList0 = []
         lst15evening = mjd2lst(day_stats['MJDetwi'])
@@ -286,14 +250,14 @@ class surveyPlan:
                     tileLST = tile['RA'] + tile['HA']
                     if tileLST<180.0:
                         tileLST+=360.0
-                    if ( tile['status']<2 and
+                    if ( tile['STATUS']<2 and
                          tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                          tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                         (tile['obsconds'] & obsbits.mask('DARK')) != 0 ):
-                        tile['priority'] = nfields + 3
-                        tile['lst_min'] = self.LSTbins[i] - 0.5*self.LSTres
-                        tile['lst_max'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(self.dict2tuple(tile))
+                         (tile['OBSCONDITIONS'] & obsbits.mask('DARK')) != 0 ):
+                        tile['PRIORITY'] = nfields + 3
+                        tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
+                        tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
+                        planList0.append(tile)
                         nfields += 1
                     if nfields == 5:
                         break
@@ -304,14 +268,14 @@ class surveyPlan:
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST<180.0:
                             tileLST+=360.0
-                        if ( tile['status']<2 and
+                        if ( tile['STATUS']<2 and
                             tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                             tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['obsconds'] & obsbits.mask('GRAY')) != 0 ):
-                            tile['priority'] = nfields + 3
-                            tile['lst_min'] = self.LSTbins[i] - 0.5*self.LSTres
-                            tile['lst_max'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(self.dict2tuple(tile))
+                            (tile['OBSCONDITIONS'] & obsbits.mask('GRAY')) != 0 ):
+                            tile['PRIORITY'] = nfields + 3
+                            tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
+                            tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
+                            planList0.append(tile)
                             nfields += 1
                         if nfields == 5:
                             break
@@ -322,14 +286,14 @@ class surveyPlan:
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST<180.0:
                             tileLST+=360.0
-                        if ( tile['status']<2 and
+                        if ( tile['STATUS']<2 and
                             tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                             tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['obsconds'] & obsbits.mask('BRIGHT')) != 0 ):
-                            tile['priority'] = nfields + 3
-                            tile['lst_min'] = self.LSTbins[i] - 0.5*self.LSTres
-                            tile['lst_max'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(self.dict2tuple(tile))
+                            (tile['OBSCONDITIONS'] & obsbits.mask('BRIGHT')) != 0 ):
+                            tile['PRIORITY'] = nfields + 3
+                            tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
+                            tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
+                            planList0.append(tile)
                             nfields += 1
                         if nfields == 5:
                             break
@@ -344,14 +308,14 @@ class surveyPlan:
                     tileLST = tile['RA'] + tile['HA']
                     if tileLST<180.0:
                         tileLST+=360.0
-                    if ( tile['status']<2 and
+                    if ( tile['STATUS']<2 and
                          tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                          tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                         (tile['obsconds'] & obsbits.mask('GRAY')) != 0 ):
-                        tile['priority'] = nfields + 3
-                        tile['lst_min'] = self.LSTbins[i] - 0.5*self.LSTres
-                        tile['lst_max'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(self.dict2tuple(tile))
+                         (tile['OBSCONDITIONS'] & obsbits.mask('GRAY')) != 0 ):
+                        tile['PRIORITY'] = nfields + 3
+                        tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
+                        tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
+                        planList0.append(tile)
                         nfields += 1
                     if nfields == 5:
                         break
@@ -362,14 +326,14 @@ class surveyPlan:
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST<180.0:
                             tileLST+=360.0
-                        if ( tile['status']<2 and
+                        if ( tile['STATUS']<2 and
                             tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                             tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['obsconds'] & obsbits.mask('BRIGHT')) != 0 ):
-                            tile['priority'] = nfields + 3
-                            tile['lst_min'] = self.LSTbins[i] - 0.5*self.LSTres
-                            tile['lst_max'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(self.dict2tuple(tile))
+                            (tile['OBSCONDITIONS'] & obsbits.mask('BRIGHT')) != 0 ):
+                            tile['PRIORITY'] = nfields + 3
+                            tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
+                            tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
+                            planList0.append(tile)
                             nfields += 1
                         if nfields == 5:
                             break
@@ -386,24 +350,24 @@ class surveyPlan:
                     tileLST = tile['RA'] + tile['HA']
                     if tileLST<180.0:
                         tileLST+=360.0
-                    if ( tile['status']<2 and
+                    if ( tile['STATUS']<2 and
                          tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                          tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                         (tile['obsconds'] & obsbits.mask('BRIGHT')) != 0 ):
-                        tile['priority'] = nfields + 3
-                        tile['lst_min'] = self.LSTbins[i] - 0.5*self.LSTres
-                        tile['lst_max'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(self.dict2tuple(tile))
+                         (tile['OBSCONDITIONS'] & obsbits.mask('BRIGHT')) != 0 ):
+                        tile['PRIORITY'] = nfields + 3
+                        tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
+                        tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
+                        planList0.append(tile)
                         nfields += 1
                     if nfields == 5:
                         break
                     else:
                         continue
 
-        cols = np.rec.array(planList0,
-                            names = ('TILEID', 'RA', 'DEC', 'PASS', 'EBV_MED', 'PROGRAM', 'OBSCONDITIONS', 'GAL_CAP', 'PRIORITY', 'STATUS', 'HA', 'LSTMIN', 'LSTMAX', 'EXPLEN'),
-                            formats = ['i4', 'f8', 'f8', 'i4', 'f4', 'a6', 'i2', 'i4', 'i4', 'i4', 'f8', 'f8', 'f8', 'f8'])
-
+        cols = np.recarray((len(planList0),),
+                           names = ('TILEID', 'RA', 'DEC', 'PASS', 'EBV_MED', 'PROGRAM', 'OBSCONDITIONS', 'GAL_CAP', 'SUBLIST', 'PRIORITY', 'STATUS', 'HA', 'LSTMIN', 'LSTMAX', 'EXPLEN'),
+                           formats = ['i4', 'f8', 'f8', 'i4', 'f4', 'a6', 'i2', 'i4', 'i4', 'i4', 'i4', 'f8', 'f8', 'f8', 'f8'])
+        cols[:] = planList0[:]
         tbhdu = pyfits.BinTableHDU.from_columns(cols)
 
         prihdr = pyfits.Header()
@@ -416,12 +380,6 @@ class surveyPlan:
         tilesTODO = len(planList0)
 
         return filename
-
-    def dict2tuple(self, tile):
-        """Utility function to convert a dictionary's
-        values into a tuple with always the same order"""
-        tup0 = (tile['tileID'],tile['RA'],tile['DEC'],tile['PASS'],tile['Ebmv'],tile['program'],tile['obsconds'],tile['cap'],tile['priority'],tile['status'],tile['HA'],tile['lst_min'],tile['lst_max'],tile['med_exptime'])
-        return tup0
 
 ###############################################################
 """
