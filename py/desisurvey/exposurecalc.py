@@ -43,6 +43,9 @@ def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, 
     b = -1.55
     c = 1.15
     f_seeing =  (a+b*seeing+c*seeing*seeing) / (a-0.25*b*b/c)
+    # Rescale value
+    f11 = (a + b*1.1 + c*1.21)/(a-0.25*b*b/c)
+    f_seeing /= f11
     if weatherNow['Transparency'] > 0.0:
         f_transparency = 1.0 / weatherNow['Transparency']
     else:
@@ -146,12 +149,13 @@ def airMassCalculator(ra, dec, lst): # Valid for small to moderate angles.
 
     Alt, Az = radec2altaz(ra, dec, lst)
     cosZ = np.cos(np.radians(90.0-Alt))
-    if Alt >= 0.0:
-        amass = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
-        if amass <= 0.0:
-            print ('ERROR: negative airmass (', amass, '); LST, RA, DEC = ', lst, ra, dec)
-            print ('Alt, Az = ', Alt, Az)
+    if isinstance(Alt, np.ndarray):
+        amass = np.full(len(Alt), 1.0e99, dtype='f8') 
+        amass[np.where(Alt>0.0)] = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
     else:
-        amass = 1.0e99
+        if Alt > 0.0:
+            amass = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
+        else:
+            amass = 1.0e99
 
     return amass

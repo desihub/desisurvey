@@ -1,5 +1,5 @@
 from astropy.time import Time
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import ephem
 import desisurvey.kpno as kpno
@@ -15,12 +15,17 @@ def getCal(day):
     Returns:
         dictionnary containing the following keys:
         'MJDsunset', 'MJDsunrise', 'MJDetwi', 'MJDmtwi', 'MJDe13twi',
-        'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName'
+        'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName',
+        'MJD_bright_start', 'MJD_bright_end'
 
     Note:
         dirName is not used in practise, but will in principle for
         actual ops.
     """
+
+    # Grey and bright time definitions:
+    # if Moon illumination fraction < 0.6 AND illumination fraction x elevation < 30deg,
+    # then it's grey, otherwise bright.
 
     mayall = ephem.Observer()
     mayall.lat, mayall.lon = np.radians(kpno.mayall.lat_deg), np.radians(kpno.mayall.west_lon_deg)
@@ -49,6 +54,39 @@ def getCal(day):
     m0.compute(day)
     MoonFrac = float( m0.moon_phase )
 
+    MJD_bright_start = MJDsunrise
+    MJD_bright_end = MJDsunset
+    if (MoonFrac > 0.6):
+        if MJDmoonrise < MJDe13twi:
+            MJD_bright_start = MJDe13twi
+        else:
+            MJD_bright_start = MJDmoonrise
+        if (MJDmoonset > MJDm13twi):
+            MJD_end_time = MJDm13twi
+        else:
+            MJD_bright_end = MJDmoonset
+    else:
+        t = MJDmoonrise - day0.mjd
+        mayall.date = ephem.Date(t)
+        m0.compute(mayall)
+        moonalt = m0.alt
+        while (moonalt < 30.0/MoonFrac and t < MJDmoonset - day0.mjd):
+            t += 1.0 / 1440.0
+            mayall.date = ephem.Date(t)
+            m0.compute(mayall)
+            moonalt = m0.alt
+        if t < MJDmoonset - day0.mjd:
+            MJD_bright_start = t + day0.mjd
+            while (moonalt >= 30.0/MoonFrac and t < MJDmoonset - day0.mjd):
+                t += 1.0/1440.0
+                mayall.date = ephem.Date(t)
+                m0.compute(mayall)
+                moonalt = m0.alt
+            if t < MJDmoonset - day0.mjd:
+                MJD_bright_end = t + day0.mjd
+            else:
+                MJD_bright_end = MJDmoonset
+
     # Get the night's directory name right away.
     if day.month >= 10:
         monthStr = str(day.month)
@@ -68,6 +106,27 @@ def getCal(day):
                  'MJDmoonrise': MJDmoonrise,
                  'MJDmoonset': MJDmoonset,
                  'MoonFrac' : MoonFrac,
-                 'dirName': dirName}
+                 'dirName': dirName,
+                 'MJD_bright_start' : MJD_bright_start,
+                 'MJD_bright_end' : MJD_bright_end}
     return day_stats
+
+def getCalAll(startdate, enddate):
+    """Computes the nightly calendar for the date
+       range given.
+
+    Args:
+        startdate: datetime object for the beginning
+        enddate: same, but for the end.
+    Returns:
+        list of day_stats dictionnary (see doc for getCal)
+    """
+    cal = []
+    day = startdate
+    oneday = timedelta(days=1)
+    while (day <= enddate):
+        day_stats = getCal(day)
+        cal.append(day_stats)
+        day += oneday
+    return cal
 

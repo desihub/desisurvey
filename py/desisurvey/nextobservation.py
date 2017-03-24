@@ -1,7 +1,6 @@
 import numpy as np
 import astropy.io.fits as pyfits
 from astropy.time import Time
-from desisurvey.exposurecalc import airMassCalculator
 from desisurvey.utils import mjd2lst
 from desitarget.targetmask import obsconditions as obsbits
 
@@ -43,7 +42,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
     tileID = tiledata['TILEID']
     tmin = tiledata['LSTMIN']
     tmax = tiledata['LSTMAX']
-    explen = tiledata['MAXEXPLEN']/240.0
+    explen = tiledata['EXPLEN']/240.0 # Need to call exposure time estimator instead
     ra = tiledata['RA']
     dec = tiledata['DEC']
     program = tiledata['PROGRAM']
@@ -60,46 +59,23 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
         overhead = setup_time(slew, dra, ddec)
         t1 = tmin[i] + overhead/240.0
         t2 = tmax[i] - explen[i]
-
         if ( ((t1 <= t2) and (lst > t1 and lst < t2)) or ( (t2 < t1) and ((lst > t1 and t1 <=360.0) or (lst >= 0.0 and lst < t2))) ):
-            if (avoidObject(dt, ra[i], dec[i]) and airMassCalculator(ra[i], dec[i], lst) < MAX_AIRMASS):
-                moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
+            moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
+            if (obsconds[i] & obsbits.mask('BRIGHT')) == 0:
+                min_moon_sep = MIN_MOON_SEP
+            else:
+                min_moon_sep = MIN_MOON_SEP_BGS
+            if (avoidObject(dt, ra[i], dec[i]) and moondist > min_moon_sep):
                 if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved['TILEID']) or len(tilesObserved) == 0 ):
-                    if (( (moonalt < 0.0 and (obsconds[i] & obsbits.mask('DARK')) != 0) ) or
-                         (moonalt >=0.0 and
-                         (( (moonfrac < 0.6 and (moonalt*moonfrac < 30.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
-                         ( (obsconds[i] & obsbits.mask('BRIGHT')) != 0 and moondist > MIN_MOON_SEP_BGS) ))):
-                        found = True
-                        break
-
-    if found == False: # Repeat loop to see if a grey tile can be observed in dark time
-        for i in range(len(tileID)):
-            dra = np.abs(ra[i]-previous_ra)
-            if dra > 180.0:
-                dra = 360.0 - dra
-            ddec = np.abs(dec[i]-previous_dec)
-            overhead = setup_time(slew, dra, ddec)
-            t1 = tmin[i] + overhead/240.0
-            t2 = tmax[i] - explen[i]
-
-            if ( ((t1 <= t2) and (lst > t1 and lst < t2)) or ( (t2 < t1) and ((lst > t1 and t1 <=360.0) or (lst >= 0.0 and lst < t2))) ):
-                if (avoidObject(dt, ra[i], dec[i]) and airMassCalculator(ra[i], dec[i], lst) < MAX_AIRMASS):
-                    moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
-                    if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved['TILEID']) or len(tilesObserved) == 0 ):
-                        if (( (moonalt < 0.0 and (obsconds[i] & obsbits.mask('DARK')) != 0) or
-                              (moonalt < 0.0 and (obsconds[i] & obsbits.mask('GRAY')) != 0) ) or
-                            (moonalt >=0.0 and
-                                 (( (moonfrac < 0.6 and (moonalt*moonfrac < 30.0)) and moondist > MIN_MOON_SEP and (obsconds[i] & obsbits.mask('GRAY')) != 0 ) or
-                                  ( (obsconds[i] & obsbits.mask('BRIGHT')) != 0 and moondist > MIN_MOON_SEP_BGS) ))):
-                            found = True
-                            break
+                    found = True
+                    break
 
     if found == True:
         tileID = tiledata['TILEID'][i]
         RA = ra[i]
         DEC = dec[i]
         Ebmv = tiledata['EBV_MED'][i]
-        maxLen = tiledata['MAXEXPLEN'][i]
+        maxLen = 2.0*tiledata['EXPLEN'][i]
         DESsn2 = 100.0 # Some made-up number -> has to be the same as the reference in exposurecalc.py
         status = tiledata['STATUS'][i]
         exposure = -1.0 # Updated after observation
