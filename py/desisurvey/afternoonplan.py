@@ -453,37 +453,22 @@ class surveyPlan:
             lst13evening = mjd2lst(night['MJDe13twi'])
             lst13morning = mjd2lst(night['MJDm13twi'])
             LSTmoonrise = mjd2lst(night['MJDmoonrise'])
-            #if LSTmoonrise < 180.0:
-            #    LSTmoonrise += 360.0
             LSTmoonset = mjd2lst(night['MJDmoonset'])
-            #if LSTmoonset < 180.0:
-            #    LSTmoonset += 360.0
-            if night['MJD_bright_start'] > 0.0:
-                LSTbrightstart = mjd2lst(night['MJD_bright_start'])
-                #if LSTbrightstart < 180.0:
-                #    LSTbrightstart += 360.0
-            else:
-                LSTbrightstart = 1.0e99
-            if night['MJD_bright_end'] > 0.0:
-                LSTbrightend = mjd2lst(night['MJD_bright_end'])
-                #if LSTbrightend < 180.0:
-                #    LSTbrightend += 360.0
-            else:
-                LSTbrightend = -1.0e99
+            LSTbrightstart = mjd2lst(night['MJD_bright_start'])
+            LSTbrightend = mjd2lst(night['MJD_bright_end'])
             for i in range(self.nLST):
                 if BGS:
-                    if ( (lst13evening < self.LSTbins[i] and self.LSTbins[i] <= lst15evening) or
-                         (lst15morning <= self.LSTbins[i] and self.LSTbins[i] < lst13morning) or
-                         ( (lst15evening < self.LSTbins[i] and self.LSTbins[i] < lst15morning) and
-                         (LSTbrightstart < self.LSTbins[i] and self.LSTbins[i] < LSTbrightend) ) ):
-                        scheduled_times += 1.0
-                else:
-                    if ( (lst15evening < self.LSTbins[i] and self.LSTbins[i] < lst15morning) and
-                         (LSTmoonrise > self.LSTbins[i] or self.LSTbins[i] > LSTmoonset) ):
+                    if ( (inLSTwindow(self.LSTbins[i], lst13evening, lst13morning) and
+                          not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
+                         inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0
-                    if ( (lst15evening < self.LSTbins[i] and self.LSTbins[i] < lst15morning) and
-                         (LSTmoonrise < self.LSTbins[i] and self.LSTbins[i] < LSTmoonset) and
-                         (LSTbrightstart > self.LSTbins[i] or self.LSTbins[i] > LSTbrightend) ):
+                else:
+                    if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
+                         not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
+                        scheduled_times[i] += 1.0
+                    if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
+                         inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
+                         not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0
         scheduled_times *= weather*self.LSTres/15.0 # in hours
         remaining_times = np.copy(scheduled_times)
