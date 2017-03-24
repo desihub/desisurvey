@@ -81,22 +81,33 @@ def radec2altaz(ra, dec, lst):
         az: float, azimuth (degrees)
     """
     h = np.radians(lst - ra)
-    if h < 0.0:
-        h += 2.0*np.pi
+    if isinstance(h, np.ndarray):
+        h[np.where(h<0.0)] += 2.0*np.pi
+    else:
+        if h < 0.0:
+            h += 2.0*np.pi
     d = np.radians(dec)
     phi = np.radians(mayall.lat_deg)
     
     sinAz = np.sin(h) / (np.cos(h)*np.sin(phi) - np.tan(d)*np.cos(phi))
     sinAlt = np.sin(phi)*np.sin(d) + np.cos(phi)*np.cos(d)*np.cos(h)
 
-    if sinAlt > 1.0:
-        sinAlt = 1.0
-    if sinAlt < -1.0:
-        sinAlt = -1.0
-    if sinAz > 1.0:
-        sinAz = 1.0
-    if sinAz < -1.0:
-        sinAz = -1.0
+    if isinstance(sinAlt, np.ndarray):
+        sinAlt[np.where(sinAlt>1.0)] = 1.0
+        sinAlt[np.where(sinAlt<-1.0)] = -1.0
+    else:
+        if sinAlt > 1.0:
+            sinAlt = 1.0
+        if sinAlt < -1.0:
+            sinAlt = -1.0
+    if isinstance(sinAz, np.ndarray):
+        sinAz[np.where(sinAz>1.0)] = 1.0
+        sinAz[np.where(sinAz<-1.0)] = -1.0
+    else:
+        if sinAz > 1.0:
+            sinAz = 1.0
+        if sinAz < -1.0:
+            sinAz = -1.0
 
     return np.degrees(np.arcsin(sinAlt)), np.degrees(np.arcsin(sinAz))
 
@@ -125,7 +136,7 @@ def equ2gal_J2000(ra_deg, dec_deg):
     ra = np.radians(ra_deg)
     dec = np.radians(dec_deg)
 
-    x = np.array([0.0, 0.0, 0.0])
+    x = np.empty(3, dtype='f8')
     x[0] = np.cos(ra) * np.cos(dec)
     x[1] = np.cos(ra) * np.sin(dec)
     x[2] = np.sin(ra)
@@ -143,3 +154,28 @@ def equ2gal_J2000(ra_deg, dec_deg):
 
     return l_deg, b_deg
 
+def sort2arr(a, b):
+    """Sorts array a according to the values of array b
+    """
+
+    if len(a) != len(b):
+        print("error: a and b are not of the same length.")
+        exit()
+
+    c = np.vstack((a,b)).T
+    d = c[np.argsort(c[:, 1])]
+    
+    return d[:,0]
+
+def inLSTwindow(lst, begin, end):
+    """Determines if LST is within the given window.
+       Assumes that all values are between 0 and 360.
+    """
+    answer = False
+    if begin < end:
+        if lst > begin and lst < end:
+            answer = True
+    else:
+        if lst > begin or lst < end:
+            answer = True
+    return answer

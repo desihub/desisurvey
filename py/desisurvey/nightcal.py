@@ -1,5 +1,5 @@
 from astropy.time import Time
-from datetime import datetime
+from datetime import datetime, timedelta
 import numpy as np
 import ephem
 import desisurvey.kpno as kpno
@@ -54,9 +54,17 @@ def getCal(day):
     m0.compute(day)
     MoonFrac = float( m0.moon_phase )
 
+    MJD_bright_start = MJDsunrise
+    MJD_bright_end = MJDsunset
     if (MoonFrac > 0.6):
-        MJD_bright_start = MJDmoonrise
-        MJD_bright_end = MJDmoonset
+        if MJDmoonrise < MJDe13twi:
+            MJD_bright_start = MJDe13twi
+        else:
+            MJD_bright_start = MJDmoonrise
+        if (MJDmoonset > MJDm13twi):
+            MJD_end_time = MJDm13twi
+        else:
+            MJD_bright_end = MJDmoonset
     else:
         t = MJDmoonrise - day0.mjd
         mayall.date = ephem.Date(t)
@@ -78,9 +86,6 @@ def getCal(day):
                 MJD_bright_end = t + day0.mjd
             else:
                 MJD_bright_end = MJDmoonset
-        else:
-            MJD_bright_start = None
-            MJD_bright_end = None
 
     # Get the night's directory name right away.
     if day.month >= 10:
@@ -105,4 +110,23 @@ def getCal(day):
                  'MJD_bright_start' : MJD_bright_start,
                  'MJD_bright_end' : MJD_bright_end}
     return day_stats
+
+def getCalAll(startdate, enddate):
+    """Computes the nightly calendar for the date
+       range given.
+
+    Args:
+        startdate: datetime object for the beginning
+        enddate: same, but for the end.
+    Returns:
+        list of day_stats dictionnary (see doc for getCal)
+    """
+    cal = []
+    day = startdate
+    oneday = timedelta(days=1)
+    while (day <= enddate):
+        day_stats = getCal(day)
+        cal.append(day_stats)
+        day += oneday
+    return cal
 
