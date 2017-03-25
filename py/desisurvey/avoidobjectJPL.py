@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 from astropy.coordinates import solar_system_ephemeris, EarthLocation, get_body
 from astropy.time import Time
 from numpy import pi as PI

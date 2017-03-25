@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import numpy as np
 import astropy.io.fits as pyfits
 from astropy.time import Time
@@ -17,7 +18,7 @@ class surveyPlan:
     """
     Main class for survey planning
     """
-    
+
     def __init__(self, MJDstart, MJDend, surveycal, tilesubset=None):
         """Initialises survey by reading in the file desi_tiles.fits
         and populates the class members.
@@ -68,7 +69,7 @@ class surveyPlan:
         lstmin = 0.0
         lstmax = 0.0
         explen = 0.0
-        
+
         # Loop over elements in table
         self.numtiles = len(tiledata)
         self.tiles = np.recarray((self.numtiles,),
@@ -145,7 +146,7 @@ class surveyPlan:
 
         self.assignHA(MJDstart, MJDend)
         self.tiles.sort(axis=0, order=('SUBLIST', 'DEC'))
-                
+
     def assignHA(self, MJDstart, MJDend, compute=False):
         """Assigns optimal hour angles for the DESI tiles;
         can be re-run at any point during the survey to
@@ -220,7 +221,7 @@ class surveyPlan:
         else:
             decmin = 15.0
             decmax = 25.0
-        
+
         answer = False
         if (dec >= decmin and dec <= decmax and bgal > 0.0):
             answer = True
@@ -288,7 +289,7 @@ class surveyPlan:
                         break
                     else:
                         continue
-                if nfields < 5: # If fewer than 5 dark tiles fall within this window, pad with grey tiles 
+                if nfields < 5: # If fewer than 5 dark tiles fall within this window, pad with grey tiles
                     for tile in finalTileList:
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST < 0.0:
@@ -308,7 +309,7 @@ class surveyPlan:
                             break
                         else:
                             continue
-                if nfields < 5: # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles 
+                if nfields < 5: # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles
                     for tile in finalTileList:
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST < 0.0:
@@ -352,7 +353,7 @@ class surveyPlan:
                         break
                     else:
                         continue
-                if nfields < 5: # If fewer than 5 grey tiles fall within this window, pad with bright tiles 
+                if nfields < 5: # If fewer than 5 grey tiles fall within this window, pad with bright tiles
                     for tile in finalTileList:
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST < 0.0:
@@ -420,7 +421,7 @@ class surveyPlan:
 ####################################################################
     def plan_ha(self, survey_begin, survey_end, BGS=False):
         """Main driver of hour angle computations
-        
+
             Args:
                 survey_begin: MJD of (re-)start of survey
                 survey_end: MJD of the expected end
@@ -434,7 +435,7 @@ class surveyPlan:
         else:
             exptime = 1000.0 / 3600.0
         # First define general survey characteristics
-        r_threshold = 1.54 # this is an initial guess for required SN2/pixel over r-band 
+        r_threshold = 1.54 # this is an initial guess for required SN2/pixel over r-band
         b_threshold = 0.7 # same for g-band, scaled relative to r-band throughout analysis, the ratio of r-b cannot change
         times = np.copy(self.LSTbins)*24.0/360.0 # LST bins in hours
         scheduled_times = np.zeros(self.nLST) # available hours at each LST bin over the full survey, after accounting for weather loss
@@ -472,11 +473,11 @@ class surveyPlan:
                         scheduled_times[i] += 1.0
         scheduled_times *= weather*self.LSTres/15.0 # in hours
         remaining_times = np.copy(scheduled_times)
-        
+
         surveystruct = {'exptime' : exptime/3600.0,  # nominal exposure time
                         'overhead1' : 2.0/60.0,      # amount of time for cals and field acquisition
                         'overhead2' : 1.0/60.0,      # amount of time for readout
-                        'survey_begin' : survey_begin,  
+                        'survey_begin' : survey_begin,
                         'survey_end' : survey_end,
                         'res' : self.LSTres*24.0/360.0,
                         'avg_rsn' : 0.75,            # SN2/pixel in r-band during nominal exposure time under average conditions, needs to be empirically determined
@@ -654,7 +655,7 @@ class surveyPlan:
         surveystruct['ngcfraction_times'][index1] = 0.5*surveystruct['scheduled_times'][index1]/ngctime
         surveystruct['sgcfraction_times'][index2] = 0.5*surveystruct['scheduled_times'][index2]/sgctime
         surveystruct['ngcfraction_times'][index2] = 0.5*surveystruct['scheduled_times'][index2]/ngctime
-        
+
         obs['obstime'][:] = 0.0
         sgcplates = np.ravel(np.where( (obs['ra'] < surveystruct['ngc_begin']) |
                                        (obs['ra'] > surveystruct['ngc_end']) ))
@@ -851,6 +852,3 @@ class surveyPlan:
                 surveystruct['observed_times'][0:it-1] += res
             surveystruct['remaining_times'][t] -= (obs['endobs'][index]-t*res)
             surveystruct['observed_times'][t] += (obs['endobs'][index]-t*res)
-
-
-

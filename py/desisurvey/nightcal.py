@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 from astropy.time import Time
 from datetime import datetime, timedelta
 import numpy as np
@@ -43,7 +44,7 @@ def getCal(day):
     # 15 deg twilight, start of dark time if the moon is down.
     mayall.horizon = '-15'
     MJDetwi = float( mayall.next_setting(ephem.Sun(), use_center=True) + day0.mjd )
-    MJDmtwi = float( mayall.next_rising(ephem.Sun(), use_center=True) + day0.mjd )   
+    MJDmtwi = float( mayall.next_rising(ephem.Sun(), use_center=True) + day0.mjd )
     # Moon.
     mayall.horizon = '-0:34'
     MJDmoonrise = float( mayall.next_rising(ephem.Moon()) + day0.mjd )
@@ -129,4 +130,3 @@ def getCalAll(startdate, enddate):
         cal.append(day_stats)
         day += oneday
     return cal
-

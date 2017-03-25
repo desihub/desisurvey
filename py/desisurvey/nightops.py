@@ -1,4 +1,5 @@
 #! /usr/bin/python
+from __future__ import print_function, division
 
 import numpy as np
 from datetime import datetime, timedelta
@@ -202,4 +203,3 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
             copyfile(filename, 'obslist_all.fits')
 
     return tilesObserved
-

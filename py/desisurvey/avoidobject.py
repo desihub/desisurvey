@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import ephem
 from datetime import datetime
 import numpy as np
@@ -29,7 +30,7 @@ def avoidObject(datetime, ra0, dec0):
 
     ra = np.radians(ra0)
     dec = np.radians(dec0)
-    
+
     dt = ephem.Date(datetime.datetime)
     gatech = ephem.Observer()
     gatech.lon, gatech.lat = np.radians(mayall.west_lon_deg), np.radians(mayall.lat_deg)
@@ -80,7 +81,7 @@ def moonLoc (datetime, ra0, dec0):
     Returns:
         float, distance from the Moon (degrees)
         float, Moon altitude (degrees)
-        float, Moon azimuth (degrees) 
+        float, Moon azimuth (degrees)
     """
 
     dt = ephem.Date(datetime.datetime)
@@ -94,5 +95,5 @@ def moonLoc (datetime, ra0, dec0):
     ra = np.radians(ra0)
     dec = np.radians(dec0)
     moondist = ephem.separation(moon, (ra, dec))
-    
+
     return np.degrees(moondist), np.degrees((moon.alt)), np.degrees((moon.az))

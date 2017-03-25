@@ -1,4 +1,5 @@
 #- Provided by Data Systems to be called by DOS
+from __future__ import print_function, division
 
 import math
 import time
@@ -18,7 +19,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     programname=None):
     """
     Returns structure with information about next field to observe.
-    
+
     Args:
         dateobs (float): start time of observation in UTC (TAI).
             Could be past, present, or future.
@@ -58,9 +59,9 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
             - flux : nanomaggy flux in DECam r-band
 
         Additional keys may be present and should be ignored
-        
+
     e.g. result['fibers']['ra'] gives the 5000 RA locations for the fibers
-    
+
     Notes:
       * get_next_field() will calculate the LST and moon phase/location
         based upon the input datetime.
@@ -83,109 +84,109 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         and a list of overrides for tiles that were observed by deemed bad
         and need to be redone (details TBD).
         DOS shouldn't care about those details.
-        
+
     TBD:
       * Error handling: if the request is impossible (e.g. the sun is up),
         should this raise an exception?  Or return a default zenith answer
         with some calib programname?  Or?
     """
-    
-    """ 
-        Below is an algorithm for calculating the local apparent sidereal time. 
-        astropy should be able to this (I think), but I keep getting an error when I try 
-        to use those functions (and I'm pretty sure I'm importing all the necessary 
-        components of astropy). A bunch of lines have been commented out which were 
-        used for testing purposes. 
+
     """
-                
+        Below is an algorithm for calculating the local apparent sidereal time.
+        astropy should be able to this (I think), but I keep getting an error when I try
+        to use those functions (and I'm pretty sure I'm importing all the necessary
+        components of astropy). A bunch of lines have been commented out which were
+        used for testing purposes.
+    """
+
     tobs = Time(dateobs, format='jd', scale='ut1')
-    
+
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
         jd_0 = math.floor(dateobs)+0.5
     elif (dateobs-math.floor(dateobs) < 0.5):
         jd_0 = math.floor(dateobs)-0.5
-        
+
     d_0 = jd_0-2451545.0 #Difference between last Julian midnight and J2000
     d = dateobs-2451545.0 #Difference between observation date and J2000
     t = d_0/36525 #Fraction of Julian century that's past since J2000
-    
+
     #Calculate the sideral time in Greenwich for the last Julian midnight
     gmst_0 = 100.4606184+36000.77005361*t+0.00038793*t**2-2.6E-08*t**3
-    
+
     #Add correction for the number of hours that have past since midnight
     gmst = gmst_0+0.25068447733746215*(dateobs-jd_0)*24*60
-    
+
     #Calculate the equation of equinoxes
     l = 280.47+0.98565*d
     omega = 125.04-0.052954*d
     del_psi = -0.000319*math.sin(omega*math.pi/180)-0.00024*math.sin(2*l*math.pi/180)
     e = 23.4393-0.0000004*d
-    
+
     eqeq = del_psi*math.cos(e*math.pi/180)
-    
+
     #Correct with the equation of equinoxes to get the current apparent sidereal time
     gast = gmst+eqeq
-    
+
     #Add the longitude of the observatory to get the local sidereal time
     last = gast-111.5984796
-        
+
     #Shift the local sidereal time into the range of 0 to 360 degrees
     if last >= 360:
         n = math.floor(last/360)
         last = last-360*n
-    
+
     #Use astropy to calculate the position of the Sun.
     pos_sun = coordinates.get_sun(tobs)
-    
+
     #Check to see if the Sun is up.
     ra_sun = pos_sun.ra.value
     dec_sun = pos_sun.dec.value
-    
+
     ha_sun = last - ra_sun
     if (ha_sun < 0):
         ha_sun = ha_sun + 360
     if (ha_sun > 360):
         ha_sun = ha_sun - 360
-    
+
     #Calculate the altitude of the Sun to determine if it is up
     alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
                          *math.sin(31.9614929*math.pi/180)
                          +math.cos(dec_sun*math.pi/180)
                          *math.cos(31.9614929*math.pi/180)
                          *math.cos(ha_sun*math.pi/180)))*(180/math.pi)
-    
+
     #Print warning if the Sun is up. We may decide this should do more than just warn
     if (alt_sun >=-30):
         print("WARNING: The Sun is up or within two hours of rising.")
-        
+
     #- Find the position of the Moon using pyephem. After the compute statement below,
     #- many attributes of the Moon can be accessed including
     #-      1. Right Ascension/Declination (epoch of date) - moon.g_ra, moon.g_dec
     #-         Right Ascension/Declination (epoch specified) - moon.a_ra, moon.a_dec
     #-      2. Phase - moon.phase (percent illimunation)
-    #- In order to calculate the Moon's attribute for dateobs, it is necessary to 
+    #- In order to calculate the Moon's attribute for dateobs, it is necessary to
     #- convert to the Dublin Julian date which can be done by subtracting 2415020 from
     #- the Julian date.
     moon = ephem.Moon() #- Setup the Moon object
     moon.compute(dateobs-2415020.0, epoch=dateobs-2415020.0) #- Compute for dateobs
-    
+
     #Loads the tiles
     tiles_array = desimodel.io.load_tiles()
-        
+
     mindec = 100.0
     nextfield = 0
-    
+
     #- Perform coarse trim of tiles with mismatched coordinates
     igood = np.where( (last-25 <= tiles_array['RA']) & (tiles_array['RA'] <= last+25) )[0]
     tiles_array = tiles_array[igood]
-    
+
     #- Setup astropy SkyCoord objects
     tiles = SkyCoord(ra=tiles_array['RA']*u.deg, dec=tiles_array['DEC']*u.deg, frame='icrs')
-    
+
     #- Determine the current epoch from the input date and store as string
     epoch = "J" + str(round(tobs.decimalyear, 3))
-    
+
     #- Transform the RA and Dec to JNow right the transformed data back to the shorthand
     tiles = tiles.transform_to(FK5(equinox=epoch))
 
@@ -193,7 +194,7 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     igood = np.where( (last-15 <= tiles.ra.value) & (tiles.ra.value <= last+15) )[0]
     tiles_array = tiles_array[igood]
     tiles = tiles[igood]
-    
+
     #- Remove previously observed tiles
     notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
     #inotobs = np.where(obs == False)
@@ -201,8 +202,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
 
     #- will need to explicitly handle the case of running out of tiles later
     assert len(tiles_array) > 0
-        
-    #- shorthand    
+
+    #- shorthand
     ra = tiles.ra.value
     dec = tiles.dec.value
 
@@ -224,9 +225,9 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         if alt[i] >= 0 and dec[i] < mindec:
             mindec = dec[i]
             ibest = i
-            
+
     assert ibest >= 0
-                
+
     #Create dictionary with information that is needed to point the telescope.
     #Currently the exptime and maxtime are just place holder values and fibers and gfa
     #dictionaries are just empty.
@@ -240,15 +241,15 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         'fibers':{},
         'gfa':{},
         }
-    
+
     #Return the dictionary
     return results
 
 """ The lines below allow the function to be tested by itself with the user
 inputting a Julian date of observation. They also calculate the execution time for
 purposes of optimizing."""
-        
-            
+
+
 
 #dateobs = float(raw_input('Enter the date of observation: '))
 #skylevel = 0
