@@ -10,6 +10,8 @@ from desisurvey.utils import radec2altaz, mjd2lst, equ2gal_J2000, sort2arr, inLS
 from desitarget.targetmask import obsconditions as obsbits
 from desisurvey.exposurecalc import airMassCalculator
 import copy
+import os
+import os.path
 
 import warnings
 warnings.simplefilter('error', RuntimeWarning)
@@ -46,8 +48,11 @@ class surveyPlan:
         #   'EXPOSEFAC'; format = 'E'
         #   'PROGRAM'; format = '6A'
         #   'OBSCONDITIONS'; format = 'J'
-        #hdulist0 = pyfits.open(resource_filename('desimodel', 'data/footprint/desi-tiles.fits'))
-        hdulist0 = pyfits.open('/Users/mlandriau/DESI/desihub/desimodel/py/desimodel/data/footprint/desi-tiles.fits')
+        try:
+            tiles_path = os.path.join(os.environ['DESIMODEL'], 'data', 'footprint', 'desi-tiles.fits')
+        except KeyError:
+            raise RuntimeError('DESIMODEL environment variable is not defined.')
+        hdulist0 = pyfits.open(tiles_path)
         tiledata0 = hdulist0[1].data
         # This works because original table has index = tileID.
         if tilesubset is not None:
