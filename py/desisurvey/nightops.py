@@ -8,7 +8,6 @@ from shutil import copyfile
 from astropy.time import Time
 import astropy.io.fits as pyfits
 from astropy.table import Table, vstack
-from desisurvey.nightcal import getCal
 from desisurvey.exposurecalc import expTimeEstimator, airMassCalculator
 from desisurvey.utils import mjd2lst
 from desisurvey.nextobservation import nextFieldSelector

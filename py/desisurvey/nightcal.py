@@ -1,116 +1,12 @@
 from __future__ import print_function, division
 from astropy.time import Time
+import astropy.table
 from datetime import datetime, timedelta
 import numpy as np
 import ephem
 import desisurvey.kpno as kpno
+import warnings
 
-def getCal(day):
-    """
-    Computes Sun and Moon set and rise times, 13 and 15 degree-twilight times
-    and Moon illumination fraction.
-
-    Args:
-        day: datetime objects, assumed to be at midday local time.
-
-    Returns:
-        dictionnary containing the following keys:
-        'MJDsunset', 'MJDsunrise', 'MJDetwi', 'MJDmtwi', 'MJDe13twi',
-        'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName',
-        'MJD_bright_start', 'MJD_bright_end'
-
-    Note:
-        dirName is not used in practise, but will in principle for
-        actual ops.
-    """
-
-    # Grey and bright time definitions:
-    # if Moon illumination fraction < 0.6 AND illumination fraction x elevation < 30deg,
-    # then it's grey, otherwise bright.
-
-    mayall = ephem.Observer()
-    mayall.lat, mayall.lon = np.radians(kpno.mayall.lat_deg), np.radians(kpno.mayall.west_lon_deg)
-    mayall.date = day
-    mayall.pressure = 0.0      # Disabling pyephem's refraction calculations, just use
-    mayall.horizon = '-0:34'   # the value that the USNO uses.
-    day0 = Time(datetime(1900,1,1,12,0,0)) # This throws a warning because of the early year, but it is harmless.
-    # Sun
-    MJDsunset = float( mayall.next_setting(ephem.Sun()) + day0.mjd )
-    MJDsunrise = float( mayall.next_rising(ephem.Sun()) + day0.mjd )
-    # 13 deg twilight, adequate (?) for BGS sample.
-    mayall.horizon = '-13'
-    MJDe13twi = float( mayall.next_setting(ephem.Sun(), use_center=True) + day0.mjd )
-    MJDm13twi = float( mayall.next_rising(ephem.Sun(), use_center=True) + day0.mjd )
-    # 15 deg twilight, start of dark time if the moon is down.
-    mayall.horizon = '-15'
-    MJDetwi = float( mayall.next_setting(ephem.Sun(), use_center=True) + day0.mjd )
-    MJDmtwi = float( mayall.next_rising(ephem.Sun(), use_center=True) + day0.mjd )
-    # Moon.
-    mayall.horizon = '-0:34'
-    MJDmoonrise = float( mayall.next_rising(ephem.Moon()) + day0.mjd )
-    MJDmoonset = float( mayall.next_setting(ephem.Moon()) + day0.mjd )
-    if (MJDmoonrise > MJDsunrise):
-       MJDmoonrise = float( mayall.previous_rising(ephem.Moon()) + day0.mjd )
-    m0 = ephem.Moon()
-    m0.compute(day)
-    MoonFrac = float( m0.moon_phase )
-
-    MJD_bright_start = MJDsunrise
-    MJD_bright_end = MJDsunset
-    if (MoonFrac > 0.6):
-        if MJDmoonrise < MJDe13twi:
-            MJD_bright_start = MJDe13twi
-        else:
-            MJD_bright_start = MJDmoonrise
-        if (MJDmoonset > MJDm13twi):
-            MJD_end_time = MJDm13twi
-        else:
-            MJD_bright_end = MJDmoonset
-    else:
-        t = MJDmoonrise - day0.mjd
-        mayall.date = ephem.Date(t)
-        m0.compute(mayall)
-        moonalt = m0.alt
-        while (moonalt < 30.0/MoonFrac and t < MJDmoonset - day0.mjd):
-            t += 1.0 / 1440.0
-            mayall.date = ephem.Date(t)
-            m0.compute(mayall)
-            moonalt = m0.alt
-        if t < MJDmoonset - day0.mjd:
-            MJD_bright_start = t + day0.mjd
-            while (moonalt >= 30.0/MoonFrac and t < MJDmoonset - day0.mjd):
-                t += 1.0/1440.0
-                mayall.date = ephem.Date(t)
-                m0.compute(mayall)
-                moonalt = m0.alt
-            if t < MJDmoonset - day0.mjd:
-                MJD_bright_end = t + day0.mjd
-            else:
-                MJD_bright_end = MJDmoonset
-
-    # Get the night's directory name right away.
-    if day.month >= 10:
-        monthStr = str(day.month)
-    else:
-        monthStr = '0' + str(day.month)
-    if day.day >= 10:
-        dayStr = str(day.day)
-    else:
-        dayStr = '0' + str(day.day)
-    dirName = str(day.year) + monthStr + dayStr
-    day_stats = {'MJDsunset': MJDsunset,
-                 'MJDsunrise': MJDsunrise,
-                 'MJDetwi': MJDetwi,
-                 'MJDmtwi': MJDmtwi,
-                 'MJDe13twi': MJDe13twi,
-                 'MJDm13twi': MJDm13twi,
-                 'MJDmoonrise': MJDmoonrise,
-                 'MJDmoonset': MJDmoonset,
-                 'MoonFrac' : MoonFrac,
-                 'dirName': dirName,
-                 'MJD_bright_start' : MJD_bright_start,
-                 'MJD_bright_end' : MJD_bright_end}
-    return day_stats
 
 def getCalAll(startdate, enddate):
     """Computes the nightly calendar for the date
@@ -120,13 +16,92 @@ def getCalAll(startdate, enddate):
         startdate: datetime object for the beginning
         enddate: same, but for the end.
     Returns:
-        list of day_stats dictionnary (see doc for getCal)
+        Astropy table of sun and moon ephemerides.
     """
-    cal = []
-    day = startdate
-    oneday = timedelta(days=1)
-    while (day <= enddate):
-        day_stats = getCal(day)
-        cal.append(day_stats)
-        day += oneday
-    return cal
+    # Allocate space for the data we will calculate.
+    num_days = (enddate - startdate).days + 1
+    data = np.empty(num_days, dtype=[
+        ('MJDsunset', float), ('MJDsunrise', float), ('MJDetwi', float),
+        ('MJDmtwi', float), ('MJDe13twi', float), ('MJDm13twi', float),
+        ('MJDmoonrise', float), ('MJDmoonset', float), ('MoonFrac', float),
+        ('dirName', 'S8'), ('MJD_bright_start', float),
+        ('MJD_bright_end', float)])
+
+    # Initialize the observer.
+    mayall = ephem.Observer()
+    mayall.lat, mayall.lon = np.radians(kpno.mayall.lat_deg), np.radians(kpno.mayall.west_lon_deg)
+    # Disable atmospheric refraction corrections.
+    mayall.pressure = 0.0
+    # This throws a warning because of the early year, but it is harmless.
+    with warnings.catch_warnings():
+        warnings.filterwarnings('ignore', category=astropy.utils.exceptions.AstropyUserWarning)
+        mjd0 = Time(datetime(1900,1,1,12,0,0)).mjd
+
+    # Loop over days.
+    for day_offset in range(num_days):
+        day = startdate + timedelta(days=day_offset)
+        mayall.date = day
+        row = data[day_offset]
+        # Sun
+        row['MJDsunset'] = mayall.next_setting(ephem.Sun()) + mjd0
+        row['MJDsunrise'] = mayall.next_rising(ephem.Sun()) + mjd0
+        # 13 deg twilight, adequate (?) for BGS sample.
+        mayall.horizon = '-13'
+        row['MJDe13twi'] = mayall.next_setting(ephem.Sun(), use_center=True) + mjd0
+        row['MJDm13twi'] = mayall.next_rising(ephem.Sun(), use_center=True) + mjd0
+        # 15 deg twilight, start of dark time if the moon is down.
+        mayall.horizon = '-15'
+        row['MJDetwi'] = mayall.next_setting(ephem.Sun(), use_center=True) + mjd0
+        row['MJDmtwi'] = mayall.next_rising(ephem.Sun(), use_center=True) + mjd0
+        # Moon.
+        mayall.horizon = '-0:34' # the value that the USNO uses.
+        row['MJDmoonrise'] = mayall.next_rising(ephem.Moon()) + mjd0
+        row['MJDmoonset'] = mayall.next_setting(ephem.Moon()) + mjd0
+        if row['MJDmoonrise'] > row['MJDsunrise']:
+           row['MJDmoonrise'] = mayall.previous_rising(ephem.Moon()) + mjd0
+        m0 = ephem.Moon()
+        m0.compute(day)
+        # Fraction of surface that is illuminated.
+        row['MoonFrac'] = m0.moon_phase
+        # Determine the start and end of bright time for this night.
+        MJD_bright_start = row['MJDsunrise']
+        MJD_bright_end = row['MJDsunset']
+        if (row['MoonFrac'] > 0.6):
+            if row['MJDmoonrise'] < row['MJDe13twi']:
+                MJD_bright_start = row['MJDe13twi']
+            else:
+                MJD_bright_start = row['MJDmoonrise']
+            if (row['MJDmoonset'] > row['MJDm13twi']):
+                MJD_end_time = row['MJDm13twi']
+            else:
+                MJD_bright_end = row['MJDmoonset']
+        else:
+            # Calculate moon altitude every minute to find start / end times.
+            t = row['MJDmoonrise'] - mjd0
+            mayall.date = ephem.Date(t)
+            m0.compute(mayall)
+            moonalt = m0.alt
+            while (moonalt < 30.0/row['MoonFrac'] and t < row['MJDmoonset'] - mjd0):
+                # Increment by one minute.
+                t += 1.0 / 1440.0
+                mayall.date = ephem.Date(t)
+                m0.compute(mayall)
+                moonalt = m0.alt
+            if t < row['MJDmoonset'] - mjd0:
+                MJD_bright_start = t + mjd0
+                while (moonalt >= 30.0/row['MoonFrac'] and t < row['MJDmoonset'] - mjd0):
+                    # Increment by one minute.
+                    t += 1.0/1440.0
+                    mayall.date = ephem.Date(t)
+                    m0.compute(mayall)
+                    moonalt = m0.alt
+                if t < row['MJDmoonset'] - mjd0:
+                    MJD_bright_end = t + mjd0
+                else:
+                    MJD_bright_end = row['MJDmoonset']
+        row['MJD_bright_start'] = MJD_bright_start
+        row['MJD_bright_end'] = MJD_bright_end
+        # Build the night's directory name.
+        row['dirName'] = '{y:04d}{m:02d}{d:02d}'.format(y=day.year, m=day.month, d=day.day)
+
+    return astropy.table.Table(data, meta=dict(name='Survey Ephemerides'))
