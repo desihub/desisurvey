@@ -17,8 +17,8 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
     """Computes the nightly sun and moon ephemerides for the date range given.
 
     Args:
-        startdate: datetime object for the beginning
-        enddate: same, but for the end.
+        startdate: astropy Time for survey start
+        enddate: astropy Time for survey end
         num_moon_steps: number of steps for calculating moon altitude
             during the night, when it is up.
         verbose: print information to stdout.
@@ -27,8 +27,8 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         Astropy table of sun and moon ephemerides.
     """
     # Build filename for saving the ephemerides.
-    mjd_start = int(math.floor(Time(startdate).mjd))
-    mjd_stop = int(math.ceil(Time(enddate).mjd))
+    mjd_start = int(math.floor(startdate.mjd))
+    mjd_stop = int(math.ceil(enddate.mjd))
     filename = 'ephem_{0}_{1}.fits'.format(mjd_start, mjd_stop)
     if use_cache and os.path.exists(filename):
         if verbose:
@@ -36,7 +36,7 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         return astropy.table.Table.read(filename)
 
     # Allocate space for the data we will calculate.
-    num_days = (enddate - startdate).days + 1
+    num_days = (enddate.datetime - startdate.datetime).days + 1
     data = np.empty(num_days, dtype=[
         ('MJDsunset', float), ('MJDsunrise', float), ('MJDetwi', float),
         ('MJDmtwi', float), ('MJDe13twi', float), ('MJDm13twi', float),
@@ -58,7 +58,7 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
 
     # Loop over days.
     for day_offset in range(num_days):
-        day = startdate + timedelta(days=day_offset)
+        day = startdate.datetime + timedelta(days=day_offset)
         mayall.date = day
         row = data[day_offset]
         # Calculate sun rise/set with different horizons.
