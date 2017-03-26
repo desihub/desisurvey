@@ -1,6 +1,7 @@
 from __future__ import print_function, division
 import numpy as np
 import astropy.io.fits as pyfits
+import astropy.table
 from astropy.time import Time
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -14,7 +15,7 @@ import os
 import os.path
 
 import warnings
-warnings.simplefilter('error', RuntimeWarning)
+#warnings.simplefilter('error', RuntimeWarning)
 
 class surveyPlan:
     """
@@ -49,99 +50,54 @@ class surveyPlan:
         #   'PROGRAM'; format = '6A'
         #   'OBSCONDITIONS'; format = 'J'
         try:
-            tiles_path = os.path.join(os.environ['DESIMODEL'], 'data', 'footprint', 'desi-tiles.fits')
+            tiles_path = os.path.join(
+                os.environ['DESIMODEL'], 'data', 'footprint', 'desi-tiles.fits')
         except KeyError:
             raise RuntimeError('DESIMODEL environment variable is not defined.')
-        hdulist0 = pyfits.open(tiles_path)
-        tiledata0 = hdulist0[1].data
-        # This works because original table has index = tileID.
+        tiles = astropy.table.Table.read(tiles_path, hdu=1)
+
+        # Only use tables with IN_DESI set.
+        keep = tiles['IN_DESI'] > 0
+
+        # Ignore EXTRA tiles.
+        keep[tiles['PROGRAM'] == 'EXTRA'] = False
+
+        # Restrict to a subset of tiles if requested.
         if tilesubset is not None:
-            tiledata1 = tiledata0[tilesubset]
-        else:
-            tiledata1 = tiledata0
-        # Only keep DESI tiles
-        in_desi = np.where(tiledata1.field('IN_DESI')==1)
-        tb_temp = tiledata1[in_desi]
-        # Ignore EXTRA tiles (passes 8 and 9)
-        no_extra = np.where(tb_temp.field('PROGRAM') != 'EXTRA')
-        tiledata = tb_temp[no_extra]
-        hdulist0.close()
+            keep[~tilesubset] = False
 
-        # Dummy initilisations
-        priority = 0
-        status = 0
-        ha = 0.0
-        lstmin = 0.0
-        lstmax = 0.0
-        explen = 0.0
+        # Trim un-used rows.
+        tiles.remove_rows(np.where(~keep)[0])
+        numtiles = len(tiles)
 
-        # Loop over elements in table
-        self.numtiles = len(tiledata)
-        self.tiles = np.recarray((self.numtiles,),
-                                 names = ('TILEID', 'RA', 'DEC', 'PASS', 'EBV_MED', 'PROGRAM', 'OBSCONDITIONS', 'GAL_CAP', 'SUBLIST', 'PRIORITY', 'STATUS', 'HA', 'LSTMIN', 'LSTMAX', 'EXPLEN'),
-                                 formats = ['i4', 'f8', 'f8', 'i4', 'f4', 'a6', 'i2', 'i4', 'i4', 'i4', 'i4', 'f8', 'f8', 'f8', 'f8'])
-        for i in range(len(tiledata)):
-            #l, b = equ2gal_J2000(tiledata[i].field('RA'), tiledata[i].field('DEC'))
-            #cap = b / np.abs(b)
-            if tiledata[i].field('RA') > 75.0 and tiledata[i].field('RA') < 300.0:
-                cap = 1.0
-            else:
-                cap = -1.0
-            if tiledata[i].field('PASS') == 0:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
-                    sublist = 0
-                else:
-                    sublist = 8
-            elif tiledata[i].field('PASS') == 1:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 1
-                else:
-                    sublist = 9
-            elif tiledata[i].field('PASS') == 2:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 2
-                else:
-                    sublist = 10
-            elif tiledata[i].field('PASS') == 3:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 3
-                else:
-                    sublist = 11
-            elif tiledata[i].field('PASS') == 4:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
-                    sublist = 4
-                else:
-                    sublist = 12
-            elif tiledata[i].field('PASS') == 5:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
-                    sublist = 5
-                else:
-                    sublist = 13
-            elif tiledata[i].field('PASS') == 6:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 6
-                else:
-                    sublist = 14
-            elif tiledata[i].field('PASS') == 7:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 7
-                else:
-                    sublist = 15
-            self.tiles[i] = (tiledata[i].field('TILEID'),
-                              tiledata[i].field('RA'),
-                              tiledata[i].field('DEC'),
-                              tiledata[i].field('PASS'),
-                              tiledata[i].field('EBV_MED'),
-                              tiledata[i].field('PROGRAM'),
-                              tiledata[i].field('OBSCONDITIONS'),
-                              cap,
-                              sublist,
-                              priority,
-                              status,
-                              ha,
-                              lstmin,
-                              lstmax,
-                              explen)
+        # Drop un-needed columns.
+        tiles.remove_columns(['IN_DESI', 'AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC'])
+
+        # Add new columns.
+        for name, dtype in (('GAL_CAP', np.int8), ('SUBLIST', np.int8),
+                            ('PRIORITY', np.int32), ('STATUS', np.int32),
+                            ('HA', np.float64), ('LSTMIN', np.float64),
+                            ('LSTMAX', np.float64), ('EXPLEN', np.float64)):
+            tiles[name] = np.zeros(numtiles, dtype=dtype)
+
+        # Determine which galactic cap each tile is in: -1=south, +1=north.
+        tiles['GAL_CAP'] = -1
+        tiles['GAL_CAP'][(tiles['RA'] > 75) & (tiles['RA'] < 300)] = +1
+
+        # Assign a sublist to each tile equal to pass for tiles in the
+        # first-year full depth field, or else equal to pass+8.  The full
+        # depth field covers 15 deg <= dec <= 25 deg in the NGC,
+        # padded by 3 deg for the first pass in each program.
+        dec = tiles['DEC']
+        passnum = tiles['PASS']
+        first_pass = (passnum == 0) | (passnum == 4) | (passnum == 5)
+        dec_min = np.full(numtiles, 15.)
+        dec_max = np.full(numtiles, 25.)
+        dec_min[first_pass] -= 3.
+        dec_max[first_pass] += 3.
+        tiles['SUBLIST'] = passnum
+        tiles['SUBLIST'][
+            (tiles['GAL_CAP'] < 0) | (dec < dec_min) | (dec > dec_max)] += 8
 
         self.LSTres = 2.5 # bin width in degrees, starting with 10 minutes for now
         self.nLST = int(np.floor(360.0/self.LSTres))
@@ -149,8 +105,12 @@ class surveyPlan:
         for i in range(self.nLST):
             self.LSTbins[i] = (float(i) + 0.5) * self.LSTres
 
+        self.tiles = tiles
+        self.numtiles = numtiles
         self.assignHA(MJDstart, MJDend)
-        self.tiles.sort(axis=0, order=('SUBLIST', 'DEC'))
+
+        self.tiles.sort(('SUBLIST', 'DEC'))
+
 
     def assignHA(self, MJDstart, MJDend, compute=False):
         """Assigns optimal hour angles for the DESI tiles;
