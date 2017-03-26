@@ -9,20 +9,32 @@ import ephem
 import desisurvey.kpno as kpno
 import warnings
 import math
+import os.path
 
 
-def getCalAll(startdate, enddate, num_moon_steps=32):
-    """Computes the nightly calendar for the date
-       range given.
+def getCalAll(startdate, enddate, num_moon_steps=32,
+              verbose=True, use_cache=True):
+    """Computes the nightly sun and moon ephemerides for the date range given.
 
     Args:
         startdate: datetime object for the beginning
         enddate: same, but for the end.
         num_moon_steps: number of steps for calculating moon altitude
             during the night, when it is up.
+        verbose: print information to stdout.
+        use_cache: use a previously cached table if available.
     Returns:
         Astropy table of sun and moon ephemerides.
     """
+    # Build filename for saving the ephemerides.
+    mjd_start = int(math.floor(Time(startdate).mjd))
+    mjd_stop = int(math.ceil(Time(enddate).mjd))
+    filename = 'ephem_{0}_{1}.fits'.format(mjd_start, mjd_stop)
+    if use_cache and os.path.exists(filename):
+        if verbose:
+            print('Loading cached ephemerides from {0}'.format(filename))
+        return astropy.table.Table.read(filename)
+
     # Allocate space for the data we will calculate.
     num_days = (enddate - startdate).days + 1
     data = np.empty(num_days, dtype=[
@@ -91,4 +103,8 @@ def getCalAll(startdate, enddate, num_moon_steps=32):
         row['dirName'] = ('{y:04d}{m:02d}{d:02d}'
                           .format(y=day.year, m=day.month, d=day.day))
 
-    return astropy.table.Table(data, meta=dict(name='Survey Ephemerides'))
+    t = astropy.table.Table(data, meta=dict(name='Survey Ephemerides'))
+    if verbose:
+        print('Saving ephemerides to {0}'.format(filename))
+    t.write(filename, overwrite=True)
+    return t
