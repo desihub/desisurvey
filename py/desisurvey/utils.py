@@ -173,7 +173,9 @@ def inLSTwindow(lst, begin, end):
        Assumes that all values are between 0 and 360.
     """
     answer = False
-    if begin < end:
+    if begin == end:
+        return False
+    elif begin < end:
         if lst > begin and lst < end:
             answer = True
     else:
