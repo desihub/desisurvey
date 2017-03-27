@@ -11,8 +11,8 @@ from desisurvey.utils import radec2altaz, mjd2lst, equ2gal_J2000, sort2arr, inLS
 from desitarget.targetmask import obsconditions as obsbits
 from desisurvey.exposurecalc import airMassCalculator
 import copy
-import os
 import os.path
+import os
 
 import warnings
 #warnings.simplefilter('error', RuntimeWarning)
