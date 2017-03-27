@@ -200,7 +200,9 @@ class surveyPlan:
         assert np.min(finalTileLST) > -360.
         finalTileLST = np.fmod(finalTileLST + 360., 360.)
 
-        #finalTileLSTbin = np.digitize(finalTileLST, bins)
+        # Assign each tile to an LST bin.
+        finalTileLSTbin = np.digitize(finalTileLST, self.LSTedges) - 1
+        assert np.all(finalTileLSTbin >= 0)
 
         # Assign the program for each LST bin tonight.
         def inLSTWindow(start, stop):
@@ -221,8 +223,7 @@ class surveyPlan:
         # Loop over LST bins
         for i in range(self.nLST):
             # DARK time
-            if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
-                 not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
+            if dark[i]:
                 nfields = 0
                 for tile_index, tile in enumerate(finalTileList):
                     tileLST = finalTileLST[tile_index]
@@ -272,9 +273,7 @@ class surveyPlan:
                         else:
                             continue
             # GREY time
-            if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
-                 inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
-                 not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
+            if gray[i]:
                 nfields = 0
                 for tile_index, tile in enumerate(finalTileList):
                     tileLST = finalTileLST[tile_index]
@@ -308,9 +307,7 @@ class surveyPlan:
                         else:
                             continue
             # BRIGHT time
-            if ( (inLSTwindow(self.LSTbins[i], lst13evening, lst13morning) and
-                  not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
-                  inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
+            if (night13[i] and not night15[i]) or bright[i]:
                 nfields = 0
                 for tile_index, tile in enumerate(finalTileList):
                     tileLST = finalTileLST[tile_index]
