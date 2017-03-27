@@ -55,18 +55,10 @@ class surveyPlan:
         tiles = astropy.table.Table(
             desimodel.io.load_tiles(onlydesi=True, extra=False))
 
-        # Only use tables with IN_DESI set.
-        keep = tiles['IN_DESI'] > 0
-
-        # Ignore EXTRA tiles.
-        keep[tiles['PROGRAM'] == 'EXTRA'] = False
-
         # Restrict to a subset of tiles if requested.
         if tilesubset is not None:
-            keep[~tilesubset] = False
+            tiles = tiles[tilesubset]
 
-        # Trim un-used rows.
-        tiles.remove_rows(np.where(~keep)[0])
         numtiles = len(tiles)
 
         # Drop un-needed columns.
@@ -178,7 +170,6 @@ class surveyPlan:
             obsplanYYYYMMDD.fits
         """
         nto = len(tiles_observed)
-        print('ntiles', self.numtiles, nto)
 
         # Copy the STATUS for previously observed tiles.
         if nto > 0:
@@ -192,8 +183,6 @@ class surveyPlan:
 
         # Find all tiles with STATUS == 0
         finalTileList = self.tiles[self.tiles['STATUS'] == 0]
-        print('#tiles', len(finalTileList))
-        sys.stdout.flush()
 
         # Assign tiles to LST bins
         planList0 = []
@@ -340,7 +329,7 @@ class surveyPlan:
                     else:
                         continue
 
-        print('planList0', planList0)
+        print('afternoonPlan contains {0} tiles.'.format(len(planList0)))
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['MoonFrac']
         filename = 'obsplan' + day_stats['dirName'] + '.fits'
