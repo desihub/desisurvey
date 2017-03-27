@@ -124,7 +124,7 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                     if tableOutput:
                         t = Time(mjd, format = 'mjd')
                         tbase = str(t.isot)
-                        obsList.append((target['tileID'],  target['RA'], target['DEC'], target['Program'], target['Ebmv'],
+                        obsList.append((target['tileID'],  target['RA'], target['DEC'], target['PASS'], target['Program'], target['Ebmv'],
                                        target['maxLen'], target['MoonFrac'], target['MoonDist'], target['MoonAlt'], conditions['Seeing'], conditions['Transparency'],
                                        airmass, target['DESsn2'], target['Status'],
                                        target['Exposure'], target['obsSN2'], tbase, mjd))
@@ -174,6 +174,7 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                            names = ('TILEID  ',
                                     'RA      ',
                                     'DEC     ',
+                                    'PASS    ',
                                     'PROGRAM ',
                                     'EBMV    ',
                                     'MAXLEN  ',
@@ -189,7 +190,7 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                                     'OBSSN2  ',
                                     'DATE-OBS',
                                     'MJD     '),
-                            formats = ['i4', 'f8', 'f8', 'a8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'i4', 'f8', 'f8', 'a24', 'f8'])
+                            formats = ['i4', 'f8', 'f8', 'i4', 'a8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'i4', 'f8', 'f8', 'a24', 'f8'])
         tbhdu = pyfits.BinTableHDU.from_columns(cols)
         tbhdu.writeto(filename, clobber=True)
         # This file is to facilitate plotting

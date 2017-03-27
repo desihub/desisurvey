@@ -39,13 +39,14 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
 
     hdulist = pyfits.open(obsplan)
     tiledata = hdulist[1].data
-    moonfrac = hdulist[0].header['MOONFRAC']
+    moonfrac = hdulist[1].header['MOONFRAC']
     tileID = tiledata['TILEID']
     tmin = tiledata['LSTMIN']
     tmax = tiledata['LSTMAX']
     explen = tiledata['EXPLEN']/240.0 # Need to call exposure time estimator instead
     ra = tiledata['RA']
     dec = tiledata['DEC']
+    passnum = tiledata['PASS']
     program = tiledata['PROGRAM']
     obsconds = tiledata['OBSCONDITIONS']
 
@@ -75,13 +76,15 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
         tileID = tiledata['TILEID'][i]
         RA = ra[i]
         DEC = dec[i]
+        PASSNUM = passnum[i]
         Ebmv = tiledata['EBV_MED'][i]
         maxLen = 2.0*tiledata['EXPLEN'][i]
         DESsn2 = 100.0 # Some made-up number -> has to be the same as the reference in exposurecalc.py
         status = tiledata['STATUS'][i]
         exposure = -1.0 # Updated after observation
         obsSN2 = -1.0   # Idem
-        target = {'tileID' : tileID, 'RA' : RA, 'DEC' : DEC, 'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
+        target = {'tileID' : tileID, 'RA' : RA, 'DEC' : DEC, 'PASS': PASSNUM,
+                  'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
                   'MoonFrac': moonfrac, 'MoonDist': moondist, 'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
                   'Exposure': exposure, 'obsSN2': obsSN2, 'obsConds': obsconds[i]}
     else:
