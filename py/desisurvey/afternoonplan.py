@@ -188,7 +188,7 @@ class surveyPlan:
                     self.tiles[j]['STATUS'] = tiles_observed['STATUS'][i]
                     break
             if self.tiles[j]['STATUS']==0:
-                finalTileList.append(self.tiles[j])
+                finalTileList.append(np.array(self.tiles[j]))
 
         # Assign tiles to LST bins
         planList0 = []
