@@ -73,11 +73,9 @@ class surveyPlan:
         # Drop un-needed columns.
         tiles.remove_columns(['IN_DESI', 'AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC'])
 
-        # Add new columns.
+        # Add some new columns (more will be added later).
         for name, dtype in (('GAL_CAP', np.int8), ('SUBLIST', np.int8),
-                            ('PRIORITY', np.int32), ('STATUS', np.int32),
-                            ('HA', np.float64), ('LSTMIN', np.float64),
-                            ('LSTMAX', np.float64), ('EXPLEN', np.float64)):
+                            ('PRIORITY', np.int32), ('STATUS', np.int32)):
             tiles[name] = np.zeros(numtiles, dtype=dtype)
 
         # Determine which galactic cap each tile is in: -1=south, +1=north.
@@ -107,6 +105,8 @@ class surveyPlan:
 
         self.tiles = tiles
         self.numtiles = numtiles
+
+        # Add HA, LSTMIN, LSTMAX columns.
         self.assignHA(MJDstart, MJDend)
 
         self.tiles.sort(('SUBLIST', 'DEC'))
@@ -149,49 +149,21 @@ class surveyPlan:
                 f.write(line)
             f.close()
         else:
-            # Reads in the pre-computed HA a LSTbegin and LSTend
-            hdulist0 = pyfits.open(resource_filename('surveysim', 'data/tile-info.fits'))
-            tiledata0 = hdulist0[1].data
-            j = 0
-            for tile in self.tiles:
-                while j < len(tiledata0):
-                    if tile['TILEID'] == tiledata0[j][0]:
-                        tile['HA'] = tiledata0[j][8]
-                        tile['LSTMIN'] = tiledata0[j][16]
-                        tile['LSTMAX'] = tiledata0[j][17]
-                        tile['EXPLEN'] = tiledata0[j][14]
-                        break
-                    else:
-                        j += 1
+            # Read in the pre-computed HA and begin/end LST range.
+            info = astropy.table.Table.read(
+                resource_filename('surveysim', 'data/tile-info.fits'), hdu=1)
+            # Ignore most of the columns.
+            info = info[['TILEID', 'HA', 'BEGINOBS', 'ENDOBS', 'OBSTIME']]
+            # Join with our tiles table, matching on TILEID.
+            self.tiles = astropy.table.join(
+                self.tiles, info, keys='TILEID', join_type='left')
+            if len(self.tiles) != self.numtiles:
+                raise RuntimeError('Missing some tiles in tile-info.fits')
+            # Rename new columns.
+            self.tiles.rename_column('BEGINOBS', 'LSTMIN')
+            self.tiles.rename_column('ENDOBS', 'LSTMAX')
+            self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
-    def inFirstYearFullDepthField(self, dec, bgal, first_pass):
-        """Checks whether the given field centre is within the
-        area to be observed at full depth during the first year.
-        The current field characteristics are:
-        15 < dec < 25 for all the tiles in the NGC, buffered by
-        3degs for the first pass in each program.
-
-        Args:
-            ra: right ascension of the field centre in degrees
-            dec: declination of the field centre in degrees
-            first_pass: bool set to True if first pass of main survey or BGS
-
-        Returns:
-            True if it is within the area, False otherwise.
-        """
-
-        if (first_pass):
-            decmin = 12.0
-            decmax = 28.0
-        else:
-            decmin = 15.0
-            decmax = 25.0
-
-        answer = False
-        if (dec >= decmin and dec <= decmax and bgal > 0.0):
-            answer = True
-
-        return answer
 
     def afternoonPlan(self, day_stats, tiles_observed):
         """Main decision making method
