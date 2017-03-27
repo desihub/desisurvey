@@ -3,29 +3,27 @@
 import math
 import time
 import numpy as np
-import desimodel.io
-import ephem
-from astropy import coordinates
-from astropy.time import Time
-from astropy.coordinates import SkyCoord
-from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
-from astropy.coordinates import Angle, Latitude, Longitude
-#from astropy.utils.data import download_file
-#from astropy.utils import iers
-import astropy.units as u
+#from astropy.time import Time
+#from astropy.coordinates import SkyCoord
+#from astropy.coordinates import ICRS, FK5, AltAz, EarthLocation
+#from astropy.coordinates import Angle, Latitude, Longitude
+from astropy.table import Table
+from desimoon import getprogramname
+#import astropy.units as u
 
-def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
-    programname=None):
+def get_next_field(dateobs, skylevel, seeing, transparency, obsplan, 
+                   previoustiles, programname=None):
     """
     Returns structure with information about next field to observe.
     
     Args:
         dateobs (float): start time of observation in UTC (TAI).
-            Could be past, present, or future.
+            Could be past, present, or future. MJD format
         skylevel: current sky level [counts/s/cm^2/arcsec^2]
         seeing: current astmospheric seeing PSF FWHM [arcsec]
         transparency: current atmospheric transparency
-        previoustiles: list of tile IDs previously observed.
+        obsplan: filename containing the nights observing plan
+        previoustiles: list of tiles that have been observed that night
         programname (string, optional): if given, the output result will be for
             that program.  Otherwise, next_field_selector() chooses the
             program based upon the current conditions.
@@ -36,6 +34,8 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         programname: DESI (or other) program name, e.g. "Dark Time Survey",
             "Bright Galaxy Survey", etc. (or shorter names dark, bright, ...?)
             --> DOS should just add this to the raw data header
+        foundtile: boolean that indicates whether field selector was 
+            successful. True = success, False = failure
         telera, teledec: telescope central pointing RA, dec [J2000 degrees]
         exptime: expected exposure time [seconds]
         maxtime: maximum allowable exposure time [seconds]
@@ -98,7 +98,10 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
         used for testing purposes. 
     """
                 
-    tobs = Time(dateobs, format='jd', scale='ut1')
+    #tobs = Time(dateobs, format='jd', scale='ut1')
+    
+    dateobs = dateobs+2400000.5
+    programname = getprogramname(dateobs)
     
     #Find the Julian date of the previous midnight
     if (dateobs-math.floor(dateobs) >= 0.5):
@@ -134,30 +137,6 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     if last >= 360:
         n = math.floor(last/360)
         last = last-360*n
-    
-    #Use astropy to calculate the position of the Sun.
-    pos_sun = coordinates.get_sun(tobs)
-    
-    #Check to see if the Sun is up.
-    ra_sun = pos_sun.ra.value
-    dec_sun = pos_sun.dec.value
-    
-    ha_sun = last - ra_sun
-    if (ha_sun < 0):
-        ha_sun = ha_sun + 360
-    if (ha_sun > 360):
-        ha_sun = ha_sun - 360
-    
-    #Calculate the altitude of the Sun to determine if it is up
-    alt_sun = (math.asin(math.sin(dec_sun*math.pi/180)
-                         *math.sin(31.9614929*math.pi/180)
-                         +math.cos(dec_sun*math.pi/180)
-                         *math.cos(31.9614929*math.pi/180)
-                         *math.cos(ha_sun*math.pi/180)))*(180/math.pi)
-    
-    #Print warning if the Sun is up. We may decide this should do more than just warn
-    if (alt_sun >=-30):
-        print("WARNING: The Sun is up or within two hours of rising.")
         
     #- Find the position of the Moon using pyephem. After the compute statement below,
     #- many attributes of the Moon can be accessed including
@@ -167,80 +146,98 @@ def get_next_field(dateobs, skylevel, seeing, transparency, previoustiles,
     #- In order to calculate the Moon's attribute for dateobs, it is necessary to 
     #- convert to the Dublin Julian date which can be done by subtracting 2415020 from
     #- the Julian date.
-    moon = ephem.Moon() #- Setup the Moon object
-    moon.compute(dateobs-2415020.0, epoch=dateobs-2415020.0) #- Compute for dateobs
+    #moon = ephem.Moon() #- Setup the Moon object
+    #moon.compute(dateobs-2415020.0, epoch=dateobs-2415020.0) #- Compute for dateobs
     
     #Loads the tiles
-    tiles_array = desimodel.io.load_tiles()
-        
-    mindec = 100.0
+    tiles_array = Table.read(obsplan, hdu=1)
+
     nextfield = 0
     
     #- Perform coarse trim of tiles with mismatched coordinates
-    igood = np.where( (last-25 <= tiles_array['RA']) & (tiles_array['RA'] <= last+25) )[0]
+    igood = np.where( (last-5 <= tiles_array['BEGINOBS']) & (tiles_array['BEGINOBS'] <= last+5) )[0]
     tiles_array = tiles_array[igood]
     
     #- Setup astropy SkyCoord objects
-    tiles = SkyCoord(ra=tiles_array['RA']*u.deg, dec=tiles_array['DEC']*u.deg, frame='icrs')
+    #tiles = SkyCoord(ra=tiles_array['RA']*u.deg, dec=tiles_array['DEC']*u.deg, frame='icrs')
     
     #- Determine the current epoch from the input date and store as string
-    epoch = "J" + str(round(tobs.decimalyear, 3))
+    #epoch = "J" + str(round(tobs.decimalyear, 3))
     
-    #- Transform the RA and Dec to JNow right the transformed data back to the shorthand
-    tiles = tiles.transform_to(FK5(equinox=epoch))
+    #- Transform the RA and Dec to JNow write the transformed data back to the shorthand
+    #tiles = tiles.transform_to(FK5(equinox=epoch))
 
     #- Trim tiles_array to those within 15 degrees of the meridian
-    igood = np.where( (last-15 <= tiles.ra.value) & (tiles.ra.value <= last+15) )[0]
-    tiles_array = tiles_array[igood]
-    tiles = tiles[igood]
+    #igood = np.where( (last-15 <= tiles.ra.value) & (tiles.ra.value <= last+15) )[0]
+    #tiles_array = tiles_array[igood]
+    #tiles = tiles[igood]
     
     #- Remove previously observed tiles
     notobs = np.in1d(tiles_array['TILEID'], previoustiles, invert=True)
-    #inotobs = np.where(obs == False)
     tiles_array = tiles_array[notobs]
 
     #- will need to explicitly handle the case of running out of tiles later
-    assert len(tiles_array) > 0
+    #assert len(tiles_array) > 0
+    if len(tiles_array) > 0:
+        found = True
+    elif len(tiles_array) <= 0:
+        found = False
         
     #- shorthand    
-    ra = tiles.ra.value
-    dec = tiles.dec.value
+    #ra = tiles.ra.value
+    #dec = tiles.dec.value
 
     #- calculate the hour angle for those tiles
-    ha = (last - ra + 360) % 360
-    assert np.min(ha) >= 0
-    assert np.max(ha) <= 360.0
+    #ha = (last - ra + 360) % 360
+    #assert np.min(ha) >= 0
+    #assert np.max(ha) <= 360.0
 
-    alt = (np.arcsin(np.sin(dec*math.pi/180)
-                     *np.sin(31.9614929*math.pi/180)
-                     +np.cos(dec*math.pi/180)
-                     *np.cos(31.9614929*math.pi/180)
-                     *np.cos(ha*math.pi/180)))*(180/math.pi)
+    #alt = (np.arcsin(np.sin(dec*math.pi/180)
+    #                 *np.sin(31.9614929*math.pi/180)
+    #                 +np.cos(dec*math.pi/180)
+    #                 *np.cos(31.9614929*math.pi/180)
+    #                 *np.cos(ha*math.pi/180)))*(180/math.pi)
 
     #- Find the lowest dec tile; this could also be done faster with
     #- array calculations instead of a loop
-    ibest = -1
-    for i in range(len(alt)):
-        if alt[i] >= 0 and dec[i] < mindec:
-            mindec = dec[i]
+    ibest = 0
+    priority = 100000
+    for i in range(len(tiles_array)):
+        if tiles_array[i]['PRIORITY'] < priority:
             ibest = i
+            priority = tiles_array[i]['PRIORITY']
             
-    assert ibest >= 0
+    #assert ibest >= 0
                 
     #Create dictionary with information that is needed to point the telescope.
     #Currently the exptime and maxtime are just place holder values and fibers and gfa
     #dictionaries are just empty.
-    results = {
-        'tileid':int(tiles_array[ibest]['TILEID']),
-        'programname':'DESI',
-        'telera':float(tiles_array[ibest]['RA']),
-        'teledec':float(tiles_array[ibest]['DEC']),
-        'exptime':1800.0,
-        'maxtime':2000.0,
-        'fibers':{},
-        'gfa':{},
-        }
+    if found == True:
+        results = {
+            'tileid':int(tiles_array[ibest]['TILEID']),
+            'programname':'DESI',
+            'foundtile':found,
+            'telera':float(tiles_array[ibest]['RA']),
+            'teledec':float(tiles_array[ibest]['DEC']),
+            'exptime':tiles_array[ibest]['OBSTIME'],
+            'maxtime':(tiles_array[ibest]['ENDOBS']-last)*3600/15,
+            'fibers':{},
+            'gfa':{},
+            }
+    elif found == False:
+        results = {
+            'tileid':int(0),
+            'programname':'DESI',
+            'foundtile':found,
+            'telera':float(0),
+            'teledec':float(0),
+            'exptime':0,
+            'maxtime':0,
+            'fibers':{},
+            'gfa':{},
+            }
     
+    #print last
     #Return the dictionary
     return results
 
@@ -252,12 +249,14 @@ purposes of optimizing."""
 
 #dateobs = float(raw_input('Enter the date of observation: '))
 #skylevel = 0
-#seeing = 0.0
+#seeing = 1.1
 #transparency = 0
-#previoustiles = [23492, 943, 6705]
+#obsplan = 'plan58728.fits'
 #programname = 'DESI'
+#previoustiles = [262, 267, 264]
+#verbose = True
 #start_time = time.time()
-#next_field = get_next_field(dateobs, skylevel, seeing, transparency, previoustiles, programname)
+#next_field = get_next_field(dateobs, skylevel, seeing, transparency, obsplan, previoustiles, programname)
 
 #print("Total execution time: %s seconds" % (time.time()-start_time))
 #print next_field
