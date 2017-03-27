@@ -356,6 +356,7 @@ class surveyPlan:
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #
 ####################################################################
+    '''
     def plan_ha(self, survey_begin, survey_end, BGS=False):
         """Main driver of hour angle computations
 
@@ -789,3 +790,4 @@ class surveyPlan:
                 surveystruct['observed_times'][0:it-1] += res
             surveystruct['remaining_times'][t] -= (obs['endobs'][index]-t*res)
             surveystruct['observed_times'][t] += (obs['endobs'][index]-t*res)
+    '''
