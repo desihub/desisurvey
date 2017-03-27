@@ -13,6 +13,7 @@ from desisurvey.exposurecalc import airMassCalculator
 import copy
 import os.path
 import os
+import sys
 
 import warnings
 #warnings.simplefilter('error', RuntimeWarning)
@@ -178,17 +179,23 @@ class surveyPlan:
             string containg the filename for today's plan; it has the format
             obsplanYYYYMMDD.fits
         """
-
-        # Update status
-        finalTileList = []
         nto = len(tiles_observed)
-        for j in range(self.numtiles):
-            for i in range(nto):
-                if self.tiles[j]['TILEID'] == tiles_observed['TILEID'][i]:
-                    self.tiles[j]['STATUS'] = tiles_observed['STATUS'][i]
-                    break
-            if self.tiles[j]['STATUS']==0:
-                finalTileList.append(np.array(self.tiles[j]))
+        print('ntiles', self.numtiles, nto)
+
+        # Copy the STATUS for previously observed tiles.
+        if nto > 0:
+            joined = astropy.table.join(self.tiles, tiles_observed,
+                                        keys='TILEID', join_type='left',
+                                        table_names=['OLD', 'NEW'])
+            updated = ~joined['STATUS_NEW'].mask
+            print('Join', len(joined), np.count_nonzero(updated))
+            sys.stdout.flush()
+            self.tiles['STATUS'][updated] = joined['STATUS_NEW'][updated]
+
+        # Find all tiles with STATUS == 0
+        finalTileList = self.tiles[self.tiles['STATUS'] == 0]
+        print('#tiles', len(finalTileList))
+        sys.stdout.flush()
 
         # Assign tiles to LST bins
         planList0 = []
@@ -207,7 +214,7 @@ class surveyPlan:
             if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
                  not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
                 nfields = 0
-                for tile in finalTileList:
+                for tile_index, tile in enumerate(finalTileList):
                     tileLST = tile['RA'] + tile['HA']
                     if tileLST < 0.0:
                         tileLST += 360.0
@@ -220,14 +227,14 @@ class surveyPlan:
                         tile['PRIORITY'] = nfields + 3
                         #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
                         #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(tile)
+                        planList0.append(tile_index)
                         nfields += 1
                     if nfields == 5:
                         break
                     else:
                         continue
                 if nfields < 5: # If fewer than 5 dark tiles fall within this window, pad with grey tiles
-                    for tile in finalTileList:
+                    for tile_index, tile in enumerate(finalTileList):
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST < 0.0:
                             tileLST += 360.0
@@ -240,14 +247,14 @@ class surveyPlan:
                             tile['PRIORITY'] = nfields + 3
                             #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
                             #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile)
+                            planList0.append(tile_index)
                             nfields += 1
                         if nfields == 5:
                             break
                         else:
                             continue
                 if nfields < 5: # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles
-                    for tile in finalTileList:
+                    for tile_index, tile in enumerate(finalTileList):
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST < 0.0:
                             tileLST += 360.0
@@ -260,7 +267,7 @@ class surveyPlan:
                             tile['PRIORITY'] = nfields + 3
                             #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
                             #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile)
+                            planList0.append(tile_index)
                             nfields += 1
                         if nfields == 5:
                             break
@@ -271,7 +278,7 @@ class surveyPlan:
                  inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
                  not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                 nfields = 0
-                for tile in finalTileList:
+                for tile_index, tile in enumerate(finalTileList):
                     tileLST = tile['RA'] + tile['HA']
                     if tileLST < 0.0:
                         tileLST += 360.0
@@ -284,14 +291,14 @@ class surveyPlan:
                         tile['PRIORITY'] = nfields + 3
                         #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
                         #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(tile)
+                        planList0.append(tile_index)
                         nfields += 1
                     if nfields == 5:
                         break
                     else:
                         continue
                 if nfields < 5: # If fewer than 5 grey tiles fall within this window, pad with bright tiles
-                    for tile in finalTileList:
+                    for tile_index, tile in enumerate(finalTileList):
                         tileLST = tile['RA'] + tile['HA']
                         if tileLST < 0.0:
                             tileLST += 360.0
@@ -304,7 +311,7 @@ class surveyPlan:
                             tile['PRIORITY'] = nfields + 3
                             #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
                             #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile)
+                            planList0.append(tile_index)
                             nfields += 1
                         if nfields == 5:
                             break
@@ -315,7 +322,7 @@ class surveyPlan:
                   not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
                   inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                 nfields = 0
-                for tile in finalTileList:
+                for tile_index, tile in enumerate(finalTileList):
                     tileLST = tile['RA'] + tile['HA']
                     if tileLST < 0.0:
                         tileLST += 360.0
@@ -328,25 +335,18 @@ class surveyPlan:
                         tile['PRIORITY'] = nfields + 3
                         #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
                         #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(tile)
+                        planList0.append(tile_index)
                         nfields += 1
                     if nfields == 5:
                         break
                     else:
                         continue
 
-        cols = np.recarray((len(planList0),),
-                           names = ('TILEID', 'RA', 'DEC', 'PASS', 'EBV_MED', 'PROGRAM', 'OBSCONDITIONS', 'GAL_CAP', 'SUBLIST', 'PRIORITY', 'STATUS', 'HA', 'LSTMIN', 'LSTMAX', 'EXPLEN'),
-                           formats = ['i4', 'f8', 'f8', 'i4', 'f4', 'a6', 'i2', 'i4', 'i4', 'i4', 'i4', 'f8', 'f8', 'f8', 'f8'])
-        cols[:] = planList0[:]
-        tbhdu = pyfits.BinTableHDU.from_columns(cols)
-
-        prihdr = pyfits.Header()
-        prihdr['MOONFRAC'] = day_stats['MoonFrac']
-        prihdu = pyfits.PrimaryHDU(header=prihdr)
+        print('planList0', planList0)
+        table = finalTileList[planList0]
+        table.meta['MOONFRAC'] = day_stats['MoonFrac']
         filename = 'obsplan' + day_stats['dirName'] + '.fits'
-        thdulist = pyfits.HDUList([prihdu, tbhdu])
-        thdulist.writeto(filename, clobber=True)
+        table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)
 
