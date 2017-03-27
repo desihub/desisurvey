@@ -10,6 +10,7 @@ from operator import itemgetter
 from desisurvey.utils import radec2altaz, mjd2lst, equ2gal_J2000, sort2arr, inLSTwindow
 from desitarget.targetmask import obsconditions as obsbits
 from desisurvey.exposurecalc import airMassCalculator
+import desimodel.io
 import copy
 import os.path
 import os
@@ -50,12 +51,9 @@ class surveyPlan:
         #   'EXPOSEFAC'; format = 'E'
         #   'PROGRAM'; format = '6A'
         #   'OBSCONDITIONS'; format = 'J'
-        try:
-            tiles_path = os.path.join(
-                os.environ['DESIMODEL'], 'data', 'footprint', 'desi-tiles.fits')
-        except KeyError:
-            raise RuntimeError('DESIMODEL environment variable is not defined.')
-        tiles = astropy.table.Table.read(tiles_path, hdu=1)
+
+        tiles = astropy.table.Table(
+            desimodel.io.load_tiles(onlydesi=True, extra=False))
 
         # Only use tables with IN_DESI set.
         keep = tiles['IN_DESI'] > 0
