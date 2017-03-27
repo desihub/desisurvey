@@ -42,6 +42,7 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         ('MJDmtwi', float), ('MJDe13twi', float), ('MJDm13twi', float),
         ('MJDmoonrise', float), ('MJDmoonset', float), ('MoonFrac', float),
         ('MoonNightStart', float), ('MoonNightStop', float),
+        ('MJD_bright_start', float), ('MJD_bright_end', float),
         ('MoonAlt', float, num_moon_steps), ('dirName', 'S8')])
 
     # Initialize the observer.
@@ -103,8 +104,58 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         row['dirName'] = ('{y:04d}{m:02d}{d:02d}'
                           .format(y=day.year, m=day.month, d=day.day))
 
+        # Calculate the start/stop of any bright-time during this night.
+        t_moon, bright = get_bright(row)
+        if np.any(bright):
+            row['MJD_bright_start'] = np.min(t_moon[bright])
+            row['MJD_bright_end'] = np.max(t_moon[bright])
+        else:
+            row['MJD_bright_start'] = row['MJD_bright_end'] = 0.5 * (
+                row['MJDsunset'] + row['MJDsunrise'])
+
     t = astropy.table.Table(data, meta=dict(name='Survey Ephemerides'))
     if verbose:
         print('Saving ephemerides to {0}'.format(filename))
     t.write(filename, overwrite=True)
     return t
+
+
+def get_bright(row, interval_mins=1.):
+    """Identify bright-time for a single night, if any.
+
+    Parameters
+    ----------
+    row : astropy.table.Row
+        A single row from the ephemerides astropy Table corresponding to the
+        night in question.
+    interval_mins : float
+        Grid spacing for tabulating program changes in minutes.
+
+    Returns
+    -------
+    tuple
+        Tuple (t_moon, bright) where t_moon is an equally spaced MJD grid with
+        the requested interval and bright is a boolean array of the same length
+        that indicates which grid times are in the BRIGHT program.  All other
+        grid times are in the GRAY program.
+    """
+    # Calculate the grid of time steps where the program should be tabulated.
+    interval_days = interval_mins / (24. * 60.)
+    t_start = int(math.ceil(max(row['MoonNightStart'], row['MJDe13twi']) /
+                            interval_days))
+    t_stop = int(math.floor(min(row['MoonNightStop'], row['MJDm13twi']) /
+                            interval_days))
+    t_out = np.arange(t_start, t_stop + 1) * interval_days
+
+    # Calculate the grid of time steps where the moon altitude is tabulated.
+    t_in = np.linspace(row['MoonNightStart'], row['MoonNightStop'],
+                       len(row['MoonAlt']))
+
+    # Use linear interpolation of the moon altitude.
+    alt_out = np.interp(t_out, t_in, row['MoonAlt'])
+
+    # Set the program at each time step: 0=DARK, 1=GRAY, 2=BRIGHT.
+    moon_frac = row['MoonFrac']
+    bright = (moon_frac >= 60) or (alt_out * moon_frac >= 30.)
+
+    return t_out, bright
