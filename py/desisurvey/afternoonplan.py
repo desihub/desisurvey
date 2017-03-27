@@ -88,11 +88,11 @@ class surveyPlan:
         tiles['SUBLIST'][
             (tiles['GAL_CAP'] < 0) | (dec < dec_min) | (dec > dec_max)] += 8
 
-        self.LSTres = 2.5 # bin width in degrees, starting with 10 minutes for now
-        self.nLST = int(np.floor(360.0/self.LSTres))
-        self.LSTbins = np.zeros(self.nLST)
-        for i in range(self.nLST):
-            self.LSTbins[i] = (float(i) + 0.5) * self.LSTres
+        # Initialize the LST bins we will use for scheduling each night.
+        self.nLST = 144
+        self.LSTedges = np.linspace(0., 360., self.nLST + 1)
+        self.LSTbins = 0.5 * (self.LSTedges[1:] + self.LSTedges[:-1])
+        self.LSTres = self.LSTedges[1]
 
         self.tiles = tiles
         self.numtiles = numtiles
@@ -199,6 +199,24 @@ class surveyPlan:
         finalTileLST = finalTileList['RA'] + finalTileList['HA']
         assert np.min(finalTileLST) > -360.
         finalTileLST = np.fmod(finalTileLST + 360., 360.)
+
+        #finalTileLSTbin = np.digitize(finalTileLST, bins)
+
+        # Assign the program for each LST bin tonight.
+        def inLSTWindow(start, stop):
+            if start <= stop:
+                return (self.LSTbins > start) & (self.LSTbins < stop)
+            else:
+                return (self.LSTbins < stop) | (self.LSTbins > start)
+
+        night13 = inLSTWindow(lst13evening, lst13morning)
+        night15 = inLSTWindow(lst15evening, lst15morning)
+        moon_up = inLSTWindow(LSTmoonrise, LSTmoonset)
+        bright = inLSTWindow(LSTbrightstart, LSTbrightend)
+        dark =  night15 & ~moon_up
+        gray = night15 & moon_up & ~bright
+        # Check that each bin is assigned to at most one program.
+        assert np.max(dark.astype(int) + bright + gray) == 1
 
         # Loop over LST bins
         for i in range(self.nLST):
