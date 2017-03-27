@@ -195,6 +195,11 @@ class surveyPlan:
         LSTbrightstart = mjd2lst(day_stats['MJD_bright_start'])
         LSTbrightend = mjd2lst(day_stats['MJD_bright_end'])
 
+        # Calculate LST of each tile in the range [0, 360).
+        finalTileLST = finalTileList['RA'] + finalTileList['HA']
+        assert np.min(finalTileLST) > -360.
+        finalTileLST = np.fmod(finalTileLST + 360., 360.)
+
         # Loop over LST bins
         for i in range(self.nLST):
             # DARK time
@@ -202,11 +207,7 @@ class surveyPlan:
                  not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
                 nfields = 0
                 for tile_index, tile in enumerate(finalTileList):
-                    tileLST = tile['RA'] + tile['HA']
-                    if tileLST < 0.0:
-                        tileLST += 360.0
-                    if tileLST > 360.0:
-                        tileLST -= 360.0
+                    tileLST = finalTileLST[tile_index]
                     if ( tile['STATUS']<2 and
                          tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                          tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
@@ -222,11 +223,7 @@ class surveyPlan:
                         continue
                 if nfields < 5: # If fewer than 5 dark tiles fall within this window, pad with grey tiles
                     for tile_index, tile in enumerate(finalTileList):
-                        tileLST = tile['RA'] + tile['HA']
-                        if tileLST < 0.0:
-                            tileLST += 360.0
-                        if tileLST > 360.0:
-                            tileLST -= 360.0
+                        tileLST = finalTileLST[tile_index]
                         if ( tile['STATUS']<2 and
                             tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                             tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
@@ -242,11 +239,7 @@ class surveyPlan:
                             continue
                 if nfields < 5: # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles
                     for tile_index, tile in enumerate(finalTileList):
-                        tileLST = tile['RA'] + tile['HA']
-                        if tileLST < 0.0:
-                            tileLST += 360.0
-                        if tileLST > 360.0:
-                            tileLST -= 360.0
+                        tileLST = finalTileLST[tile_index]
                         if ( tile['STATUS']<2 and
                             tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                             tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
@@ -266,11 +259,7 @@ class surveyPlan:
                  not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                 nfields = 0
                 for tile_index, tile in enumerate(finalTileList):
-                    tileLST = tile['RA'] + tile['HA']
-                    if tileLST < 0.0:
-                        tileLST += 360.0
-                    if tileLST > 360.0:
-                        tileLST -= 360.0
+                    tileLST = finalTileLST[tile_index]
                     if ( tile['STATUS']<2 and
                          tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                          tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
@@ -286,11 +275,7 @@ class surveyPlan:
                         continue
                 if nfields < 5: # If fewer than 5 grey tiles fall within this window, pad with bright tiles
                     for tile_index, tile in enumerate(finalTileList):
-                        tileLST = tile['RA'] + tile['HA']
-                        if tileLST < 0.0:
-                            tileLST += 360.0
-                        if tileLST > 360.0:
-                            tileLST -= 360.0
+                        tileLST = finalTileLST[tile_index]
                         if ( tile['STATUS']<2 and
                             tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                             tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
@@ -310,11 +295,7 @@ class surveyPlan:
                   inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                 nfields = 0
                 for tile_index, tile in enumerate(finalTileList):
-                    tileLST = tile['RA'] + tile['HA']
-                    if tileLST < 0.0:
-                        tileLST += 360.0
-                    if tileLST > 360.0:
-                        tileLST -= 360.0
+                    tileLST = finalTileLST[tile_index]
                     if ( tile['STATUS']<2 and
                          tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
                          tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
