@@ -188,7 +188,7 @@ class surveyPlan:
         lst15evening = mjd2lst(day_stats['MJDetwi'])
         lst15morning = mjd2lst(day_stats['MJDmtwi'])
         lst13evening = mjd2lst(day_stats['MJDe13twi'])
-        lst13morning = mjd2lst(day_stats['MJDe13twi'])
+        lst13morning = mjd2lst(day_stats['MJDm13twi'])
         LSTmoonrise = mjd2lst(day_stats['MJDmoonrise'])
         LSTmoonset = mjd2lst(day_stats['MJDmoonset'])
         LSTbrightstart = mjd2lst(day_stats['MJD_bright_start'])
@@ -226,9 +226,8 @@ class surveyPlan:
         dark =  night15 & ~moon_up
         gray = night15 & moon_up & ~bright
 
-        # Add the time between 13 and 15 degree twilight to the bright time.
-        assert np.all(bright & night13 == bright)
-        #bright |= night13 & ~night15
+        # Add the time between 13 and 15 degree twilight to the BRIGHT program.
+        bright |= night13 & ~night15
 
         # Check that each bin is assigned to at most one program.
         assert np.max(dark.astype(int) + bright + gray) == 1
@@ -268,7 +267,7 @@ class surveyPlan:
                                      (finalTileList['STATUS'] < 2))[0]
                     scheduled.extend(found[:5 - len(scheduled)])
             # BRIGHT time
-            if (night13[i] and not night15[i]) or bright[i]:
+            if bright[i]:
                 # Find all BRIGHT tiles in this LST bin with STATUS < 2.
                 found = np.where(bright_tile & (finalTileLSTbin == i) &
                                  (finalTileList['STATUS'] < 2))[0]
