@@ -200,6 +200,15 @@ class surveyPlan:
         assert np.min(finalTileLST) > -360.
         finalTileLST = np.fmod(finalTileLST + 360., 360.)
 
+        # Select tiles assigned to each program.  The original code tested
+        # for bits in OBSCONDITIONS but this is equivalent and faster.
+        dark_tile = finalTileList['PROGRAM'] == 'DARK'
+        gray_tile = finalTileList['PROGRAM'] == 'GRAY'
+        bright_tile = finalTileList['PROGRAM'] == 'BRIGHT'
+
+        # Check that each tile is assigned to exactly one program.
+        assert np.all(dark_tile.astype(int) + gray_tile + bright_tile == 1)
+
         # Assign each tile to an LST bin.
         finalTileLSTbin = np.digitize(finalTileLST, self.LSTedges) - 1
         assert np.all(finalTileLSTbin >= 0)
@@ -217,14 +226,26 @@ class surveyPlan:
         bright = inLSTWindow(LSTbrightstart, LSTbrightend)
         dark =  night15 & ~moon_up
         gray = night15 & moon_up & ~bright
+
+        # Add the time between 13 and 15 degree twilight to the bright time.
+        assert np.all(bright & night13 == bright)
+        #bright |= night13 & ~night15
+
         # Check that each bin is assigned to at most one program.
         assert np.max(dark.astype(int) + bright + gray) == 1
 
         # Loop over LST bins
         for i in range(self.nLST):
+            scheduled = []
             # DARK time
             if dark[i]:
                 nfields = 0
+                # Find all DARK tiles in this LST bin with STATUS < 2.
+                found = np.where(dark_tile & (finalTileLSTbin == i) &
+                                 (finalTileList['STATUS'] < 2))[0]
+                # Schedule the first 5.
+                scheduled.extend(found[:5])
+                '''
                 for tile_index, tile in enumerate(finalTileList):
                     tileLST = finalTileLST[tile_index]
                     if ( tile['STATUS']<2 and
@@ -240,7 +261,13 @@ class surveyPlan:
                         break
                     else:
                         continue
-                if nfields < 5: # If fewer than 5 dark tiles fall within this window, pad with grey tiles
+                '''
+                # If fewer than 5 dark tiles fall within this window, pad with grey
+                if len(scheduled) < 5:
+                    found = np.where(gray_tile & (finalTileLSTbin == i) &
+                                     finalTileList['STATUS'] < 2)[0]
+                    scheduled.extend(found[:5 - len(scheduled)])
+                    '''
                     for tile_index, tile in enumerate(finalTileList):
                         tileLST = finalTileLST[tile_index]
                         if ( tile['STATUS']<2 and
@@ -256,7 +283,13 @@ class surveyPlan:
                             break
                         else:
                             continue
-                if nfields < 5: # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles
+                    '''
+                # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles
+                if len(scheduled) < 5:
+                    found = np.where(bright_tile & (finalTileLSTbin == i) &
+                                     finalTileList['STATUS'] < 2)[0]
+                    scheduled.extend(found[:5 - len(scheduled)])
+                    '''
                     for tile_index, tile in enumerate(finalTileList):
                         tileLST = finalTileLST[tile_index]
                         if ( tile['STATUS']<2 and
@@ -266,12 +299,19 @@ class surveyPlan:
                             tile['PRIORITY'] = nfields + 3
                             #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
                             #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile_index)
+                            ##planList0.append(tile_index)
+                            print('BRIGHT', i, tile_index)
+                            scheduled.append(tile_index)
                             nfields += 1
                         if nfields == 5:
                             break
                         else:
                             continue
+                    '''
+                # Assign priorites to each scheduled tile.
+                finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
+                print('scheduled', i, scheduled, list(finalTileList['PROGRAM'][scheduled]))
+                planList0.extend(scheduled)
             # GREY time
             if gray[i]:
                 nfields = 0
