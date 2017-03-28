@@ -107,7 +107,8 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
             target, setup_time = nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, ra_prev, dec_prev, use_jpl)
             if target != None:
                 # Compute mean to apparent to observed ra and dec???
-                airmass = airMassCalculator(target['RA'], target['DEC'], lst)
+                airmass, tile_alt, tile_az = airMassCalculator(
+                    target['RA'], target['DEC'], lst, return_altaz=True)
                 exposure = expTimeEstimator(conditions, airmass, target['Program'], target['Ebmv'], target['DESsn2'], day_stats['MoonFrac'], target['MoonDist'], target['MoonAlt'])
                 #exposure = target['maxLen']
                 #print ('Estimated exposure = ', exposure, 'Maximum allowed exposure for tileID', target['tileID'], ' = ', target['maxLen'])
