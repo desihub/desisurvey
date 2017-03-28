@@ -7,7 +7,8 @@ import numpy as np
 import desiutil.plots
 
 
-def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None, label='label'):
+def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
+                    label='label', save=None):
     """Plot sky maps for each pass of a per-tile scalar quantity.
 
     The matplotlib package must be installed to use this function.
@@ -28,6 +29,9 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None, label='labe
         See :meth:`desiutil.plot.prepare_data`
     label : string
         Brief description of per-tile value ``z`` to use for axis labels.
+    save : string or None
+        Name of file where plot should be saved.  Format is inferred from
+        the extension.
 
     Returns
     -------
@@ -73,5 +77,8 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None, label='labe
     hist_rect = ax[0, 2].get_position(original=True)
     hist_rect.y0 = 0.70
     ax[0, 2].set_position(hist_rect)
+
+    if save:
+        plt.savefig(save)
 
     return fig, ax
