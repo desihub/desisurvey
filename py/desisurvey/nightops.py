@@ -169,7 +169,7 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                 nightOver = True
 
     if tableOutput and len(obsList) > 0:
-        filename = 'obslist' + day_stats['dirName'] + '.fits'
+        filename = 'obslist' + day_stats['dirName'].decode('ascii') + '.fits'
         cols = np.rec.array(obsList,
                            names = ('TILEID  ',
                                     'RA      ',
