@@ -5,6 +5,7 @@ from astropy.time import Time
 import astropy.table
 from datetime import datetime, timedelta
 import numpy as np
+import scipy.interpolate
 import ephem
 import desisurvey.kpno as kpno
 import warnings
@@ -43,7 +44,8 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         ('MJDmoonrise', float), ('MJDmoonset', float), ('MoonFrac', float),
         ('MoonNightStart', float), ('MoonNightStop', float),
         ('MJD_bright_start', float), ('MJD_bright_end', float),
-        ('MoonAlt', float, num_moon_steps), ('dirName', 'S8')])
+        ('MoonAlt', float, num_moon_steps),
+        ('MoonAz', float, num_moon_steps), ('dirName', 'S8')])
 
     # Initialize the observer.
     mayall = ephem.Observer()
@@ -95,11 +97,12 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         # covering this interval.
         t_moon = np.linspace(row['MoonNightStart'], row['MoonNightStop'],
                              num_moon_steps)
-        moon_alt = row['MoonAlt']
+        moon_alt, moon_az = row['MoonAlt'], row['MoonAz']
         for i, t in enumerate(t_moon):
             mayall.date = ephem.Date(t - mjd0)
             m0.compute(mayall)
             moon_alt[i] = math.degrees(float(m0.alt))
+            moon_az[i] = math.degrees(float(m0.az))
         # Build the night's directory name.
         row['dirName'] = ('{y:04d}{m:02d}{d:02d}'
                           .format(y=day.year, m=day.month, d=day.day))
@@ -118,6 +121,45 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         print('Saving ephemerides to {0}'.format(filename))
     t.write(filename, overwrite=True)
     return t
+
+
+def get_moon_interpolator(row):
+    """Build a cubic interpolator for the moon (alt, az) on one night.
+
+    The returned interpolator is only valid for the night specified, so will
+    not return valid moon positions for the previous and next nights.
+
+    The values (alt, az) = (-1, 0) are returned for all times when the moon
+    is below the horizon.
+
+    Parameters
+    ----------
+    row : astropy.table.Row
+        A single row from the ephemerides astropy Table corresponding to the
+        night in question.
+
+    Returns
+    -------
+    callable
+        A callable object that takes a single MJD value or an array of MJD
+        values and returns corresponding (alt, az) values in degrees.
+    """
+    # Calculate the grid of time steps where the moon position is
+    # already tabulated in the ephemerides table.
+    n_moon = len(row['MoonAlt'])
+    t_grid = np.linspace(row['MoonNightStart'], row['MoonNightStop'], n_moon)
+
+    # Copy the (alt, az) for this night into 2d array.
+    # Is there any performance advantage to (2, n_moon) vs (n_moon, 2)?
+    moon_pos = np.empty((2, n_moon))
+    moon_pos[0, :] = row['MoonAlt']
+    moon_pos[1, :] = row['MoonAz']
+
+    # Return a cubic interpolator in (alt, az) during this interval.
+    # Return (-1, 0) outside the interval.
+    return scipy.interpolate.interp1d(
+        t_grid, moon_pos, axis=1, kind='cubic', copy=False,
+        bounds_error=False, fill_value=(-1, 0), assume_sorted=True)
 
 
 def get_bright(row, interval_mins=1.):
