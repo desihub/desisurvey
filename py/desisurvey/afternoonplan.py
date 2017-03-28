@@ -245,69 +245,16 @@ class surveyPlan:
                                  (finalTileList['STATUS'] < 2))[0]
                 # Schedule the first 5.
                 scheduled.extend(found[:5])
-                '''
-                for tile_index, tile in enumerate(finalTileList):
-                    tileLST = finalTileLST[tile_index]
-                    if ( tile['STATUS']<2 and
-                         tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                         tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                         (tile['OBSCONDITIONS'] & obsbits.mask('DARK')) != 0 ):
-                        tile['PRIORITY'] = nfields + 3
-                        #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                        #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(tile_index)
-                        nfields += 1
-                    if nfields == 5:
-                        break
-                    else:
-                        continue
-                '''
                 # If fewer than 5 dark tiles fall within this window, pad with grey
                 if len(scheduled) < 5:
                     found = np.where(gray_tile & (finalTileLSTbin == i) &
-                                     finalTileList['STATUS'] < 2)[0]
+                                     (finalTileList['STATUS'] < 2))[0]
                     scheduled.extend(found[:5 - len(scheduled)])
-                    '''
-                    for tile_index, tile in enumerate(finalTileList):
-                        tileLST = finalTileLST[tile_index]
-                        if ( tile['STATUS']<2 and
-                            tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                            tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['OBSCONDITIONS'] & obsbits.mask('GRAY')) != 0 ):
-                            tile['PRIORITY'] = nfields + 3
-                            #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                            #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile_index)
-                            nfields += 1
-                        if nfields == 5:
-                            break
-                        else:
-                            continue
-                    '''
                 # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles
                 if len(scheduled) < 5:
                     found = np.where(bright_tile & (finalTileLSTbin == i) &
-                                     finalTileList['STATUS'] < 2)[0]
+                                     (finalTileList['STATUS'] < 2))[0]
                     scheduled.extend(found[:5 - len(scheduled)])
-                    '''
-                    for tile_index, tile in enumerate(finalTileList):
-                        tileLST = finalTileLST[tile_index]
-                        if ( tile['STATUS']<2 and
-                            tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                            tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['OBSCONDITIONS'] & obsbits.mask('BRIGHT')) != 0 ):
-                            tile['PRIORITY'] = nfields + 3
-                            #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                            #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            ##planList0.append(tile_index)
-                            print('BRIGHT', i, tile_index)
-                            scheduled.append(tile_index)
-                            nfields += 1
-                        if nfields == 5:
-                            break
-                        else:
-                            continue
-                    '''
                 # Assign priorites to each scheduled tile.
                 finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
                 print('scheduled', i, scheduled, list(finalTileList['PROGRAM'][scheduled]))
