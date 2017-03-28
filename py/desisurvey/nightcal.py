@@ -123,6 +123,14 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
 def get_bright(row, interval_mins=1.):
     """Identify bright-time for a single night, if any.
 
+    The bright-time defintion used here is::
+
+        (sun altitude < -13) and
+        ((moon fraction > 0.6) or (moon_fraction * moon_altitude > 30 deg))
+
+    Note that this does definition not include times when the sun altitude
+    is between -13 and -15 deg that would otherwise be considered gray or dark.
+
     Parameters
     ----------
     row : astropy.table.Row
@@ -137,7 +145,8 @@ def get_bright(row, interval_mins=1.):
         Tuple (t_moon, bright) where t_moon is an equally spaced MJD grid with
         the requested interval and bright is a boolean array of the same length
         that indicates which grid times are in the BRIGHT program.  All other
-        grid times are in the GRAY program.
+        grid times are in the GRAY program.  Returns empty arrays if the
+        any bright time would last less than the specified interval.
     """
     # Calculate the grid of time steps where the program should be tabulated.
     interval_days = interval_mins / (24. * 60.)

@@ -4,7 +4,11 @@ from __future__ import print_function, division
 
 import numpy as np
 
+import astropy.table
+
 import desiutil.plots
+
+import desisurvey.nightcal
 
 
 def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
@@ -78,6 +82,77 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     hist_rect.y0 = 0.70
     ax[0, 2].set_position(hist_rect)
 
+    if save:
+        plt.savefig(save)
+
+    return fig, ax
+
+
+def plot_program(filename, save=None):
+    """Plot an overview of the DARK/GRAY/BRIGHT program.
+
+    The matplotlib package must be installed to use this function.
+
+    Parameters
+    ----------
+    filename : string
+        Name of a FITS file in the format written by :func:`nightcal.getCalAll`,
+        normally of the form 'ephem_<MJD1>_<MJD2>.fits'.
+    save : string or None
+        Name of file where plot should be saved.  Format is inferred from
+        the extension.
+
+    Returns
+    -------
+    tuple
+        Tuple (figure, axes) returned by ``plt.subplots()``.
+    """
+    import matplotlib.pyplot as plt
+
+    t = astropy.table.Table.read(filename)
+
+    mjd = np.floor(t['MJDsunset'])
+    dt = mjd - mjd[0]
+
+    # Center vertical axis on median "midnight"
+    midnight = 0.5 * (t['MJDsunset'] + t['MJDsunrise'])
+    mjd += np.median(midnight - mjd)
+
+    # Scale vertical axis to hours relative to median midnight.
+    y = lambda y_mjd: 24. * (y_mjd - mjd)
+
+    fig, ax = plt.subplots(1, 1, figsize=(9, 7), squeeze=True)
+
+    # Fill the time between 13deg twilights with orange (BRIGHT).
+    ax.fill_between(dt, y(t['MJDe13twi']), y(t['MJDm13twi']),
+                          color='orange')
+
+    # Fill the time between 15deg twilights with black (DARK).
+    ax.fill_between(dt, y(t['MJDetwi']), y(t['MJDmtwi']), color='k')
+
+    # Loop over nights.
+    for i, row in enumerate(t):
+        # Identify bright time when the moon is up.
+        t_moon, bright = desisurvey.nightcal.get_bright(row, interval_mins=2.)
+        if len(t_moon) == 0:
+            continue
+        # Gray time requires 15deg twighlight, moon up and not bright.
+        gray = ~bright & (t_moon > row['MJDetwi']) & (t_moon < row['MJDmtwi'])
+        # Fill in bright and gray times during this night.
+        today = np.full(len(t_moon), dt[i])
+        ax.scatter(today[bright], 24 * (t_moon[bright] - mjd[i]),
+                         marker='s', s=5, lw=0, c='orange')
+        ax.scatter(today[gray], 24 * (t_moon[gray] - mjd[i]),
+                         marker='s', s=5, lw=0, c='gray')
+
+    ax.set_axis_bgcolor('lightblue')
+    ax.set_xlim(0, dt[-1])
+    ax.set_ylim(-6.5, +6.5)
+    ax.grid()
+    ax.set_xlabel('Elapsed Survey Time [days]', fontsize='x-large')
+    ax.set_ylabel('Time During Night [hours]', fontsize='x-large')
+
+    plt.tight_layout()
     if save:
         plt.savefig(save)
 
