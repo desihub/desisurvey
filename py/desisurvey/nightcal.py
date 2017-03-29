@@ -83,9 +83,9 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
             row['MJDmoonrise'] = mayall.previous_rising(ephem.Moon()) + mjd0
         mayall.date = row['MJDmoonrise'] - mjd0
         row['MJDmoonset'] = mayall.next_setting(ephem.Moon()) + mjd0
-        # Calculate moon phase at the midpoint between moon rise and set.
+        # Calculate moon phase at the midpoint between sunset and sunrise.
         m0 = ephem.Moon()
-        m0.compute(0.5 * (row['MJDmoonrise'] + row['MJDmoonset']) - mjd0)
+        m0.compute(0.5 * (row['MJDsunset'] + row['MJDsunrise']) - mjd0)
         # Calculate the fraction of the moon's surface that is illuminated.
         row['MoonFrac'] = m0.moon_phase
         # Determine when the moon is up while the sun is down during this
@@ -124,7 +124,7 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
 
 
 def get_moon_interpolator(row):
-    """Build a cubic interpolator for the moon (alt, az) on one night.
+    """Build a linear interpolator for the moon (alt, az) on one night.
 
     The returned interpolator is only valid for the night specified, so will
     not return valid moon positions for the previous and next nights.
@@ -148,6 +148,8 @@ def get_moon_interpolator(row):
     # already tabulated in the ephemerides table.
     n_moon = len(row['MoonAlt'])
     t_grid = np.linspace(row['MoonNightStart'], row['MoonNightStop'], n_moon)
+    if t_grid[0] == t_grid[-1]:
+        return lambda mjd: np.array([-1., 0.])
 
     # Copy the (alt, az) for this night into 2d array.
     # Is there any performance advantage to (2, n_moon) vs (n_moon, 2)?
@@ -158,8 +160,8 @@ def get_moon_interpolator(row):
     # Return a cubic interpolator in (alt, az) during this interval.
     # Return (-1, 0) outside the interval.
     return scipy.interpolate.interp1d(
-        t_grid, moon_pos, axis=1, kind='cubic', copy=False,
-        bounds_error=False, fill_value=(-1, 0), assume_sorted=True)
+        t_grid, moon_pos, axis=1, kind='linear', copy=False,
+        bounds_error=False, fill_value=np.array([-1, 0]), assume_sorted=True)
 
 
 def get_bright(row, interval_mins=1.):
