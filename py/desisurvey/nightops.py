@@ -12,6 +12,8 @@ from desisurvey.exposurecalc import expTimeEstimator, airMassCalculator
 from desisurvey.utils import mjd2lst
 from desisurvey.nextobservation import nextFieldSelector
 from surveysim.observefield import observeField
+import desisurvey.nightcal
+
 
 class obsCount:
     """
@@ -97,6 +99,10 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
         print("\tTransparency: ", conditions['Transparency'])
         print("\tCloud cover: ", 100.0*conditions['Clouds'], "%")
 
+        # Initialize a moon (alt, az) interpolator using the pre-tabulated
+        # ephemerides for this night.
+        moon_pos = desisurvey.nightcal.get_moon_interpolator(day_stats)
+
         slew = False
         ra_prev = 1.0e99
         dec_prev = 1.0e99
@@ -104,7 +110,10 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
             conditions = w.updateValues(conditions, mjd)
 
             lst = mjd2lst(mjd)
-            target, setup_time = nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, ra_prev, dec_prev, use_jpl)
+            moon_alt, moon_az = moon_pos(mjd)
+            target, setup_time = nextFieldSelector(
+                obsplan, mjd, conditions, tilesObserved, slew,
+                ra_prev, dec_prev, moon_alt, moon_az, use_jpl)
             if target != None:
                 # Compute mean to apparent to observed ra and dec???
                 airmass, tile_alt, tile_az = airMassCalculator(
