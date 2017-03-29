@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import numpy as np
 from astropy.time import Time
 from desisurvey.kpno import mayall
@@ -22,8 +23,8 @@ def earthOrientation(MJD):
             - 0.006*np.sin(4.0*np.pi*T) + 0.007*np.cos(4.0*np.pi*T)
     A = 2.0*np.pi*(MJD-57681.0)/365.25
     C = 2.0*np.pi*(MJD-57681.0)/435.0
-    x =  0.1042 + 0.0809*np.cos(A) - 0.0636*np.sin(A) + 0.0229*np.cos(C) - 0.0156*np.sin(C) 
-    y =  0.3713 - 0.0593*np.cos(A) - 0.0798*np.sin(A) - 0.0156*np.cos(C) - 0.0229*np.sin(C) 
+    x =  0.1042 + 0.0809*np.cos(A) - 0.0636*np.sin(A) + 0.0229*np.cos(C) - 0.0156*np.sin(C)
+    y =  0.3713 - 0.0593*np.cos(A) - 0.0798*np.sin(A) - 0.0156*np.cos(C) - 0.0229*np.sin(C)
     UT1_UTC = -0.3259 - 0.00138*(MJD - 57689.0) - (UT2_UT1)
     return x, y, UT1_UTC
 
@@ -40,10 +41,10 @@ def mjd2lst(mjd):
 
     lon = str(mayall.west_lon_deg) + 'd'
     lat = str(mayall.lat_deg) + 'd'
-    
+
     t = Time(mjd, format = 'mjd', location=(lon, lat))
     lst_tmp = t.copy()
-    
+
     #try:
     #    lst_str = str(lst_tmp.sidereal_time('apparent'))
     #except IndexError:
@@ -88,7 +89,7 @@ def radec2altaz(ra, dec, lst):
             h += 2.0*np.pi
     d = np.radians(dec)
     phi = np.radians(mayall.lat_deg)
-    
+
     sinAz = np.sin(h) / (np.cos(h)*np.sin(phi) - np.tan(d)*np.cos(phi))
     sinAlt = np.sin(phi)*np.sin(d) + np.cos(phi)*np.cos(d)*np.cos(h)
 
@@ -164,7 +165,7 @@ def sort2arr(a, b):
 
     c = np.vstack((a,b)).T
     d = c[np.argsort(c[:, 1])]
-    
+
     return d[:,0]
 
 def inLSTwindow(lst, begin, end):
@@ -172,7 +173,9 @@ def inLSTwindow(lst, begin, end):
        Assumes that all values are between 0 and 360.
     """
     answer = False
-    if begin < end:
+    if begin == end:
+        return False
+    elif begin < end:
         if lst > begin and lst < end:
             answer = True
     else:

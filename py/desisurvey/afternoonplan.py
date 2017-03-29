@@ -1,5 +1,7 @@
+from __future__ import print_function, division
 import numpy as np
 import astropy.io.fits as pyfits
+import astropy.table
 from astropy.time import Time
 from astropy import units as u
 from astropy.coordinates import SkyCoord
@@ -8,18 +10,20 @@ from operator import itemgetter
 from desisurvey.utils import radec2altaz, mjd2lst, equ2gal_J2000, sort2arr, inLSTwindow
 from desitarget.targetmask import obsconditions as obsbits
 from desisurvey.exposurecalc import airMassCalculator
+import desimodel.io
 import copy
 import os.path
 import os
+import sys
 
 import warnings
-warnings.simplefilter('error', RuntimeWarning)
+#warnings.simplefilter('error', RuntimeWarning)
 
 class surveyPlan:
     """
     Main class for survey planning
     """
-    
+
     def __init__(self, MJDstart, MJDend, surveycal, tilesubset=None):
         """Initialises survey by reading in the file desi_tiles.fits
         and populates the class members.
@@ -47,108 +51,58 @@ class surveyPlan:
         #   'EXPOSEFAC'; format = 'E'
         #   'PROGRAM'; format = '6A'
         #   'OBSCONDITIONS'; format = 'J'
-        #hdulist0 = pyfits.open(resource_filename('desimodel', 'data/footprint/desi-tiles.fits'))
-        hdulist0 = pyfits.open(os.path.join(os.environ['DESIMODEL'], 'data/footprint/desi-tiles.fits'))
-#        hdulist0 = pyfits.open('/Users/mlandriau/DESI/desihub/desimodel/py/desimodel/data/footprint/desi-tiles.fits')
-        tiledata0 = hdulist0[1].data
-        # This works because original table has index = tileID.
+
+        tiles = astropy.table.Table(
+            desimodel.io.load_tiles(onlydesi=True, extra=False))
+
+        # Restrict to a subset of tiles if requested.
         if tilesubset is not None:
-            tiledata1 = tiledata0[tilesubset]
-        else:
-            tiledata1 = tiledata0
-        # Only keep DESI tiles
-        in_desi = np.where(tiledata1.field('IN_DESI')==1)
-        tb_temp = tiledata1[in_desi]
-        # Ignore EXTRA tiles (passes 8 and 9)
-        no_extra = np.where(tb_temp.field('PROGRAM') != 'EXTRA')
-        tiledata = tb_temp[no_extra]
-        hdulist0.close()
+            tiles = tiles[tilesubset]
 
-        # Dummy initilisations
-        priority = 0
-        status = 0
-        ha = 0.0
-        lstmin = 0.0
-        lstmax = 0.0
-        explen = 0.0
-        
-        # Loop over elements in table
-        self.numtiles = len(tiledata)
-        self.tiles = np.recarray((self.numtiles,),
-                                 names = ('TILEID', 'RA', 'DEC', 'PASS', 'EBV_MED', 'PROGRAM', 'OBSCONDITIONS', 'GAL_CAP', 'SUBLIST', 'PRIORITY', 'STATUS', 'HA', 'LSTMIN', 'LSTMAX', 'EXPLEN'),
-                                 formats = ['i4', 'f8', 'f8', 'i4', 'f4', 'a6', 'i2', 'i4', 'i4', 'i4', 'i4', 'f8', 'f8', 'f8', 'f8'])
-        for i in range(len(tiledata)):
-            #l, b = equ2gal_J2000(tiledata[i].field('RA'), tiledata[i].field('DEC'))
-            #cap = b / np.abs(b)
-            if tiledata[i].field('RA') > 75.0 and tiledata[i].field('RA') < 300.0:
-                cap = 1.0
-            else:
-                cap = -1.0
-            if tiledata[i].field('PASS') == 0:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
-                    sublist = 0
-                else:
-                    sublist = 8
-            elif tiledata[i].field('PASS') == 1:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 1
-                else:
-                    sublist = 9
-            elif tiledata[i].field('PASS') == 2:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 2
-                else:
-                    sublist = 10
-            elif tiledata[i].field('PASS') == 3:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 3
-                else:
-                    sublist = 11
-            elif tiledata[i].field('PASS') == 4:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
-                    sublist = 4
-                else:
-                    sublist = 12
-            elif tiledata[i].field('PASS') == 5:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, True):
-                    sublist = 5
-                else:
-                    sublist = 13
-            elif tiledata[i].field('PASS') == 6:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 6
-                else:
-                    sublist = 14
-            elif tiledata[i].field('PASS') == 7:
-                if self.inFirstYearFullDepthField(tiledata[i].field('DEC'), cap, False):
-                    sublist = 7
-                else:
-                    sublist = 15
-            self.tiles[i] = (tiledata[i].field('TILEID'),
-                              tiledata[i].field('RA'),
-                              tiledata[i].field('DEC'),
-                              tiledata[i].field('PASS'),
-                              tiledata[i].field('EBV_MED'),
-                              tiledata[i].field('PROGRAM'),
-                              tiledata[i].field('OBSCONDITIONS'),
-                              cap,
-                              sublist,
-                              priority,
-                              status,
-                              ha,
-                              lstmin,
-                              lstmax,
-                              explen)
+        numtiles = len(tiles)
 
-        self.LSTres = 2.5 # bin width in degrees, starting with 10 minutes for now
-        self.nLST = int(np.floor(360.0/self.LSTres))
-        self.LSTbins = np.zeros(self.nLST)
-        for i in range(self.nLST):
-            self.LSTbins[i] = (float(i) + 0.5) * self.LSTres
+        # Drop un-needed columns.
+        tiles.remove_columns(['IN_DESI', 'AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC'])
 
+        # Add some new columns (more will be added later).
+        for name, dtype in (('GAL_CAP', np.int8), ('SUBLIST', np.int8),
+                            ('PRIORITY', np.int32), ('STATUS', np.int32)):
+            tiles[name] = np.zeros(numtiles, dtype=dtype)
+
+        # Determine which galactic cap each tile is in: -1=south, +1=north.
+        tiles['GAL_CAP'] = -1
+        tiles['GAL_CAP'][(tiles['RA'] > 75) & (tiles['RA'] < 300)] = +1
+
+        # Assign a sublist to each tile equal to pass for tiles in the
+        # first-year full depth field, or else equal to pass+8.  The full
+        # depth field covers 15 deg <= dec <= 25 deg in the NGC,
+        # padded by 3 deg for the first pass in each program.
+        dec = tiles['DEC']
+        passnum = tiles['PASS']
+        first_pass = (passnum == 0) | (passnum == 4) | (passnum == 5)
+        dec_min = np.full(numtiles, 15.)
+        dec_max = np.full(numtiles, 25.)
+        dec_min[first_pass] -= 3.
+        dec_max[first_pass] += 3.
+        tiles['SUBLIST'] = passnum
+        tiles['SUBLIST'][
+            (tiles['GAL_CAP'] < 0) | (dec < dec_min) | (dec > dec_max)] += 8
+
+        # Initialize the LST bins we will use for scheduling each night.
+        self.nLST = 144
+        self.LSTedges = np.linspace(0., 360., self.nLST + 1)
+        self.LSTbins = 0.5 * (self.LSTedges[1:] + self.LSTedges[:-1])
+        self.LSTres = self.LSTedges[1]
+
+        self.tiles = tiles
+        self.numtiles = numtiles
+
+        # Add HA, LSTMIN, LSTMAX columns.
         self.assignHA(MJDstart, MJDend)
-        self.tiles.sort(axis=0, order=('SUBLIST', 'DEC'))
-                
+
+        self.tiles.sort(('SUBLIST', 'DEC'))
+
+
     def assignHA(self, MJDstart, MJDend, compute=False):
         """Assigns optimal hour angles for the DESI tiles;
         can be re-run at any point during the survey to
@@ -186,49 +140,21 @@ class surveyPlan:
                 f.write(line)
             f.close()
         else:
-            # Reads in the pre-computed HA a LSTbegin and LSTend
-            hdulist0 = pyfits.open(resource_filename('surveysim', 'data/tile-info.fits'))
-            tiledata0 = hdulist0[1].data
-            j = 0
-            for tile in self.tiles:
-                while j < len(tiledata0):
-                    if tile['TILEID'] == tiledata0[j][0]:
-                        tile['HA'] = tiledata0[j][8]
-                        tile['LSTMIN'] = tiledata0[j][16]
-                        tile['LSTMAX'] = tiledata0[j][17]
-                        tile['EXPLEN'] = tiledata0[j][14]
-                        break
-                    else:
-                        j += 1
+            # Read in the pre-computed HA and begin/end LST range.
+            info = astropy.table.Table.read(
+                resource_filename('surveysim', 'data/tile-info.fits'), hdu=1)
+            # Ignore most of the columns.
+            info = info[['TILEID', 'HA', 'BEGINOBS', 'ENDOBS', 'OBSTIME']]
+            # Join with our tiles table, matching on TILEID.
+            self.tiles = astropy.table.join(
+                self.tiles, info, keys='TILEID', join_type='left')
+            if len(self.tiles) != self.numtiles:
+                raise RuntimeError('Missing some tiles in tile-info.fits')
+            # Rename new columns.
+            self.tiles.rename_column('BEGINOBS', 'LSTMIN')
+            self.tiles.rename_column('ENDOBS', 'LSTMAX')
+            self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
-    def inFirstYearFullDepthField(self, dec, bgal, first_pass):
-        """Checks whether the given field centre is within the
-        area to be observed at full depth during the first year.
-        The current field characteristics are:
-        15 < dec < 25 for all the tiles in the NGC, buffered by
-        3degs for the first pass in each program.
-
-        Args:
-            ra: right ascension of the field centre in degrees
-            dec: declination of the field centre in degrees
-            first_pass: bool set to True if first pass of main survey or BGS
-
-        Returns:
-            True if it is within the area, False otherwise.
-        """
-
-        if (first_pass):
-            decmin = 12.0
-            decmax = 28.0
-        else:
-            decmin = 15.0
-            decmax = 25.0
-        
-        answer = False
-        if (dec >= decmin and dec <= decmax and bgal > 0.0):
-            answer = True
-
-        return answer
 
     def afternoonPlan(self, day_stats, tiles_observed):
         """Main decision making method
@@ -243,175 +169,119 @@ class surveyPlan:
             string containg the filename for today's plan; it has the format
             obsplanYYYYMMDD.fits
         """
-
-        # Update status
-        finalTileList = []
         nto = len(tiles_observed)
-        for j in range(self.numtiles):
-            for i in range(nto):
-                if self.tiles[j]['TILEID'] == tiles_observed['TILEID'][i]:
-                    self.tiles[j]['STATUS'] = tiles_observed['STATUS'][i]
-                    break
-            if self.tiles[j]['STATUS']==0:
-                finalTileList.append(self.tiles[j])
+
+        # Copy the STATUS for previously observed tiles.
+        if nto > 0:
+            joined = astropy.table.join(self.tiles, tiles_observed,
+                                        keys='TILEID', join_type='left',
+                                        table_names=['OLD', 'NEW'])
+            updated = ~joined['STATUS_NEW'].mask
+            sys.stdout.flush()
+            self.tiles['STATUS'][updated] = joined['STATUS_NEW'][updated]
+
+        # Find all tiles with STATUS == 0
+        finalTileList = self.tiles[self.tiles['STATUS'] == 0]
 
         # Assign tiles to LST bins
         planList0 = []
         lst15evening = mjd2lst(day_stats['MJDetwi'])
         lst15morning = mjd2lst(day_stats['MJDmtwi'])
         lst13evening = mjd2lst(day_stats['MJDe13twi'])
-        lst13morning = mjd2lst(day_stats['MJDe13twi'])
+        lst13morning = mjd2lst(day_stats['MJDm13twi'])
         LSTmoonrise = mjd2lst(day_stats['MJDmoonrise'])
         LSTmoonset = mjd2lst(day_stats['MJDmoonset'])
         LSTbrightstart = mjd2lst(day_stats['MJD_bright_start'])
         LSTbrightend = mjd2lst(day_stats['MJD_bright_end'])
 
+        # Calculate LST of each tile in the range [0, 360).
+        finalTileLST = finalTileList['RA'] + finalTileList['HA']
+        assert np.min(finalTileLST) > -360.
+        finalTileLST = np.fmod(finalTileLST + 360., 360.)
+
+        # Select tiles assigned to each program.  The original code tested
+        # for bits in OBSCONDITIONS but this is equivalent and faster.
+        dark_tile = finalTileList['PROGRAM'] == 'DARK'
+        gray_tile = finalTileList['PROGRAM'] == 'GRAY'
+        bright_tile = finalTileList['PROGRAM'] == 'BRIGHT'
+
+        # Check that each tile is assigned to exactly one program.
+        assert np.all(dark_tile.astype(int) + gray_tile + bright_tile == 1)
+
+        # Assign each tile to an LST bin.
+        finalTileLSTbin = np.digitize(finalTileLST, self.LSTedges) - 1
+        assert np.all(finalTileLSTbin >= 0)
+
+        # Assign the program for each LST bin tonight.
+        def inLSTWindow(start, stop):
+            if start <= stop:
+                return (self.LSTbins > start) & (self.LSTbins < stop)
+            else:
+                return (self.LSTbins < stop) | (self.LSTbins > start)
+
+        night13 = inLSTWindow(lst13evening, lst13morning)
+        night15 = inLSTWindow(lst15evening, lst15morning)
+        moon_up = inLSTWindow(LSTmoonrise, LSTmoonset)
+        bright = inLSTWindow(LSTbrightstart, LSTbrightend)
+        dark =  night15 & ~moon_up
+        gray = night15 & moon_up & ~bright
+
+        # Add the time between 13 and 15 degree twilight to the BRIGHT program.
+        bright |= night13 & ~night15
+
+        # Check that each bin is assigned to at most one program.
+        assert np.max(dark.astype(int) + bright + gray) == 1
+
         # Loop over LST bins
         for i in range(self.nLST):
+            scheduled = []
             # DARK time
-            if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
-                 not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
-                nfields = 0
-                for tile in finalTileList:
-                    tileLST = tile['RA'] + tile['HA']
-                    if tileLST < 0.0:
-                        tileLST += 360.0
-                    if tileLST > 360.0:
-                        tileLST -= 360.0
-                    if ( tile['STATUS']<2 and
-                         tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                         tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                         (tile['OBSCONDITIONS'] & obsbits.mask('DARK')) != 0 ):
-                        tile['PRIORITY'] = nfields + 3
-                        #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                        #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(tile)
-                        nfields += 1
-                    if nfields == 5:
-                        break
-                    else:
-                        continue
-                if nfields < 5: # If fewer than 5 dark tiles fall within this window, pad with grey tiles 
-                    for tile in finalTileList:
-                        tileLST = tile['RA'] + tile['HA']
-                        if tileLST < 0.0:
-                            tileLST += 360.0
-                        if tileLST > 360.0:
-                            tileLST -= 360.0
-                        if ( tile['STATUS']<2 and
-                            tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                            tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['OBSCONDITIONS'] & obsbits.mask('GRAY')) != 0 ):
-                            tile['PRIORITY'] = nfields + 3
-                            #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                            #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile)
-                            nfields += 1
-                        if nfields == 5:
-                            break
-                        else:
-                            continue
-                if nfields < 5: # If fewer than 5 dark or grey tiles fall within this window, pad with bright tiles 
-                    for tile in finalTileList:
-                        tileLST = tile['RA'] + tile['HA']
-                        if tileLST < 0.0:
-                            tileLST += 360.0
-                        if tileLST > 360.0:
-                            tileLST -= 360.0
-                        if ( tile['STATUS']<2 and
-                            tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                            tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['OBSCONDITIONS'] & obsbits.mask('BRIGHT')) != 0 ):
-                            tile['PRIORITY'] = nfields + 3
-                            #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                            #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile)
-                            nfields += 1
-                        if nfields == 5:
-                            break
-                        else:
-                            continue
-            # GREY time
-            if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
-                 inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
-                 not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
-                nfields = 0
-                for tile in finalTileList:
-                    tileLST = tile['RA'] + tile['HA']
-                    if tileLST < 0.0:
-                        tileLST += 360.0
-                    if tileLST > 360.0:
-                        tileLST -= 360.0
-                    if ( tile['STATUS']<2 and
-                         tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                         tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                         (tile['OBSCONDITIONS'] & obsbits.mask('GRAY')) != 0 ):
-                        tile['PRIORITY'] = nfields + 3
-                        #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                        #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(tile)
-                        nfields += 1
-                    if nfields == 5:
-                        break
-                    else:
-                        continue
-                if nfields < 5: # If fewer than 5 grey tiles fall within this window, pad with bright tiles 
-                    for tile in finalTileList:
-                        tileLST = tile['RA'] + tile['HA']
-                        if tileLST < 0.0:
-                            tileLST += 360.0
-                        if tileLST > 360.0:
-                            tileLST -= 360.0
-                        if ( tile['STATUS']<2 and
-                            tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                            tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                            (tile['OBSCONDITIONS'] & obsbits.mask('BRIGHT')) != 0 ):
-                            tile['PRIORITY'] = nfields + 3
-                            #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                            #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                            planList0.append(tile)
-                            nfields += 1
-                        if nfields == 5:
-                            break
-                        else:
-                            continue
+            if dark[i]:
+                # Find all DARK tiles in this LST bin with STATUS < 2.
+                found = np.where(dark_tile & (finalTileLSTbin == i) &
+                                 (finalTileList['STATUS'] < 2))[0]
+                # Schedule the first 5.
+                scheduled.extend(found[:5])
+                # If fewer than 5 dark tiles fall within this window, pad with grey
+                if len(scheduled) < 5:
+                    found = np.where(gray_tile & (finalTileLSTbin == i) &
+                                     (finalTileList['STATUS'] < 2))[0]
+                    scheduled.extend(found[:5 - len(scheduled)])
+                # If fewer than 5 dark or grey tiles fall within this window,
+                # pad with bright tiles.
+                if len(scheduled) < 5:
+                    found = np.where(bright_tile & (finalTileLSTbin == i) &
+                                     (finalTileList['STATUS'] < 2))[0]
+                    scheduled.extend(found[:5 - len(scheduled)])
+            # GRAY time
+            if gray[i]:
+                # Find all GRAY tiles in this LST bin with STATUS < 2.
+                found = np.where(gray_tile & (finalTileLSTbin == i) &
+                                 (finalTileList['STATUS'] < 2))[0]
+                # Schedule the first 5.
+                scheduled.extend(found[:5])
+                # If fewer than 5 grey tiles fall within this window, pad with
+                # bright tiles.
+                if len(scheduled) < 5:
+                    found = np.where(bright_tile & (finalTileLSTbin == i) &
+                                     (finalTileList['STATUS'] < 2))[0]
+                    scheduled.extend(found[:5 - len(scheduled)])
             # BRIGHT time
-            if ( (inLSTwindow(self.LSTbins[i], lst13evening, lst13morning) and
-                  not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
-                  inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
-                nfields = 0
-                for tile in finalTileList:
-                    tileLST = tile['RA'] + tile['HA']
-                    if tileLST < 0.0:
-                        tileLST += 360.0
-                    if tileLST > 360.0:
-                        tileLST -= 360.0
-                    if ( tile['STATUS']<2 and
-                         tileLST >= self.LSTbins[i] - 0.5*self.LSTres and
-                         tileLST <= self.LSTbins[i] + 0.5*self.LSTres and
-                         (tile['OBSCONDITIONS'] & obsbits.mask('BRIGHT')) != 0 ):
-                        tile['PRIORITY'] = nfields + 3
-                        #tile['LSTMIN'] = self.LSTbins[i] - 0.5*self.LSTres
-                        #tile['LSTMAX'] = self.LSTbins[i] + 0.5*self.LSTres
-                        planList0.append(tile)
-                        nfields += 1
-                    if nfields == 5:
-                        break
-                    else:
-                        continue
+            if bright[i]:
+                # Find all BRIGHT tiles in this LST bin with STATUS < 2.
+                found = np.where(bright_tile & (finalTileLSTbin == i) &
+                                 (finalTileList['STATUS'] < 2))[0]
+                # Schedule the first 5.
+                scheduled.extend(found[:5])
+            # Assign priorites to each scheduled tile.
+            finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
+            planList0.extend(scheduled)
 
-        cols = np.recarray((len(planList0),),
-                           names = ('TILEID', 'RA', 'DEC', 'PASS', 'EBV_MED', 'PROGRAM', 'OBSCONDITIONS', 'GAL_CAP', 'SUBLIST', 'PRIORITY', 'STATUS', 'HA', 'LSTMIN', 'LSTMAX', 'EXPLEN'),
-                           formats = ['i4', 'f8', 'f8', 'i4', 'f4', 'a6', 'i2', 'i4', 'i4', 'i4', 'i4', 'f8', 'f8', 'f8', 'f8'])
-        cols[:] = planList0[:]
-        tbhdu = pyfits.BinTableHDU.from_columns(cols)
-
-        prihdr = pyfits.Header()
-        prihdr['MOONFRAC'] = day_stats['MoonFrac']
-        prihdu = pyfits.PrimaryHDU(header=prihdr)
-        filename = 'obsplan' + day_stats['dirName'] + '.fits'
-        thdulist = pyfits.HDUList([prihdu, tbhdu])
-        thdulist.writeto(filename, clobber=True)
+        print('afternoonPlan contains {0} tiles.'.format(len(planList0)))
+        table = finalTileList[planList0]
+        table.meta['MOONFRAC'] = day_stats['MoonFrac']
+        filename = 'obsplan' + day_stats['dirName'].decode('ascii') + '.fits'
+        table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)
 
@@ -421,9 +291,10 @@ class surveyPlan:
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #
 ####################################################################
+    '''
     def plan_ha(self, survey_begin, survey_end, BGS=False):
         """Main driver of hour angle computations
-        
+
             Args:
                 survey_begin: MJD of (re-)start of survey
                 survey_end: MJD of the expected end
@@ -437,7 +308,7 @@ class surveyPlan:
         else:
             exptime = 1000.0 / 3600.0
         # First define general survey characteristics
-        r_threshold = 1.54 # this is an initial guess for required SN2/pixel over r-band 
+        r_threshold = 1.54 # this is an initial guess for required SN2/pixel over r-band
         b_threshold = 0.7 # same for g-band, scaled relative to r-band throughout analysis, the ratio of r-b cannot change
         times = np.copy(self.LSTbins)*24.0/360.0 # LST bins in hours
         scheduled_times = np.zeros(self.nLST) # available hours at each LST bin over the full survey, after accounting for weather loss
@@ -475,11 +346,11 @@ class surveyPlan:
                         scheduled_times[i] += 1.0
         scheduled_times *= weather*self.LSTres/15.0 # in hours
         remaining_times = np.copy(scheduled_times)
-        
+
         surveystruct = {'exptime' : exptime/3600.0,  # nominal exposure time
                         'overhead1' : 2.0/60.0,      # amount of time for cals and field acquisition
                         'overhead2' : 1.0/60.0,      # amount of time for readout
-                        'survey_begin' : survey_begin,  
+                        'survey_begin' : survey_begin,
                         'survey_end' : survey_end,
                         'res' : self.LSTres*24.0/360.0,
                         'avg_rsn' : 0.75,            # SN2/pixel in r-band during nominal exposure time under average conditions, needs to be empirically determined
@@ -657,7 +528,7 @@ class surveyPlan:
         surveystruct['ngcfraction_times'][index1] = 0.5*surveystruct['scheduled_times'][index1]/ngctime
         surveystruct['sgcfraction_times'][index2] = 0.5*surveystruct['scheduled_times'][index2]/sgctime
         surveystruct['ngcfraction_times'][index2] = 0.5*surveystruct['scheduled_times'][index2]/ngctime
-        
+
         obs['obstime'][:] = 0.0
         sgcplates = np.ravel(np.where( (obs['ra'] < surveystruct['ngc_begin']) |
                                        (obs['ra'] > surveystruct['ngc_end']) ))
@@ -854,6 +725,4 @@ class surveyPlan:
                 surveystruct['observed_times'][0:it-1] += res
             surveystruct['remaining_times'][t] -= (obs['endobs'][index]-t*res)
             surveystruct['observed_times'][t] += (obs['endobs'][index]-t*res)
-
-
-
+    '''

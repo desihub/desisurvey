@@ -1,3 +1,4 @@
+from __future__ import print_function, division
 import numpy as np
 from astropy.time import Time
 import astropy.units as u
@@ -133,10 +134,10 @@ def moonExposureTimeFactor(moonFrac, moonDist, moonAlt):
     return _moonCoefficients.dot(X)
 
 
-def airMassCalculator(ra, dec, lst): # Valid for small to moderate angles.
+def airMassCalculator(ra, dec, lst, return_altaz=False):
     """
     Calculates airmass given position and LST.  Uses formula from
-    Rosenberg (1966)
+    Rosenberg (1966) which is valid for small to moderate angles.
 
     Args:
         ra: float (degrees)
@@ -150,7 +151,7 @@ def airMassCalculator(ra, dec, lst): # Valid for small to moderate angles.
     Alt, Az = radec2altaz(ra, dec, lst)
     cosZ = np.cos(np.radians(90.0-Alt))
     if isinstance(Alt, np.ndarray):
-        amass = np.full(len(Alt), 1.0e99, dtype='f8') 
+        amass = np.full(len(Alt), 1.0e99, dtype='f8')
         amass[np.where(Alt>0.0)] = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
     else:
         if Alt > 0.0:
@@ -158,4 +159,4 @@ def airMassCalculator(ra, dec, lst): # Valid for small to moderate angles.
         else:
             amass = 1.0e99
 
-    return amass
+    return amass, Alt, Az if return_altaz else amass

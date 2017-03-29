@@ -1,4 +1,5 @@
 #! /usr/bin/python
+from __future__ import print_function, division
 
 import numpy as np
 from datetime import datetime, timedelta
@@ -7,11 +8,12 @@ from shutil import copyfile
 from astropy.time import Time
 import astropy.io.fits as pyfits
 from astropy.table import Table, vstack
-from desisurvey.nightcal import getCal
 from desisurvey.exposurecalc import expTimeEstimator, airMassCalculator
 from desisurvey.utils import mjd2lst
 from desisurvey.nextobservation import nextFieldSelector
 from surveysim.observefield import observeField
+import desisurvey.nightcal
+
 
 class obsCount:
     """
@@ -97,6 +99,10 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
         print("\tTransparency: ", conditions['Transparency'])
         print("\tCloud cover: ", 100.0*conditions['Clouds'], "%")
 
+        # Initialize a moon (alt, az) interpolator using the pre-tabulated
+        # ephemerides for this night.
+        moon_pos = desisurvey.nightcal.get_moon_interpolator(day_stats)
+
         slew = False
         ra_prev = 1.0e99
         dec_prev = 1.0e99
@@ -104,10 +110,14 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
             conditions = w.updateValues(conditions, mjd)
 
             lst = mjd2lst(mjd)
-            target, setup_time = nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, ra_prev, dec_prev, use_jpl)
+            moon_alt, moon_az = moon_pos(mjd)
+            target, setup_time = nextFieldSelector(
+                obsplan, mjd, conditions, tilesObserved, slew,
+                ra_prev, dec_prev, moon_alt, moon_az, use_jpl)
             if target != None:
                 # Compute mean to apparent to observed ra and dec???
-                airmass = airMassCalculator(target['RA'], target['DEC'], lst)
+                airmass, tile_alt, tile_az = airMassCalculator(
+                    target['RA'], target['DEC'], lst, return_altaz=True)
                 exposure = expTimeEstimator(conditions, airmass, target['Program'], target['Ebmv'], target['DESsn2'], day_stats['MoonFrac'], target['MoonDist'], target['MoonAlt'])
                 #exposure = target['maxLen']
                 #print ('Estimated exposure = ', exposure, 'Maximum allowed exposure for tileID', target['tileID'], ' = ', target['maxLen'])
@@ -124,7 +134,7 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                     if tableOutput:
                         t = Time(mjd, format = 'mjd')
                         tbase = str(t.isot)
-                        obsList.append((target['tileID'],  target['RA'], target['DEC'], target['Program'], target['Ebmv'],
+                        obsList.append((target['tileID'],  target['RA'], target['DEC'], target['PASS'], target['Program'], target['Ebmv'],
                                        target['maxLen'], target['MoonFrac'], target['MoonDist'], target['MoonAlt'], conditions['Seeing'], conditions['Transparency'],
                                        airmass, target['DESsn2'], target['Status'],
                                        target['Exposure'], target['obsSN2'], tbase, mjd))
@@ -169,11 +179,12 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                 nightOver = True
 
     if tableOutput and len(obsList) > 0:
-        filename = 'obslist' + day_stats['dirName'] + '.fits'
+        filename = 'obslist' + day_stats['dirName'].decode('ascii') + '.fits'
         cols = np.rec.array(obsList,
                            names = ('TILEID  ',
                                     'RA      ',
                                     'DEC     ',
+                                    'PASS    ',
                                     'PROGRAM ',
                                     'EBMV    ',
                                     'MAXLEN  ',
@@ -189,7 +200,7 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                                     'OBSSN2  ',
                                     'DATE-OBS',
                                     'MJD     '),
-                            formats = ['i4', 'f8', 'f8', 'a8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'i4', 'f8', 'f8', 'a24', 'f8'])
+                            formats = ['i4', 'f8', 'f8', 'i4', 'a8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'f8', 'i4', 'f8', 'f8', 'a24', 'f8'])
         tbhdu = pyfits.BinTableHDU.from_columns(cols)
         tbhdu.writeto(filename, clobber=True)
         # This file is to facilitate plotting
@@ -202,4 +213,3 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
             copyfile(filename, 'obslist_all.fits')
 
     return tilesObserved
-

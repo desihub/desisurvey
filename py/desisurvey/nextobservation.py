@@ -1,14 +1,19 @@
+from __future__ import print_function, division
 import numpy as np
 import astropy.io.fits as pyfits
 from astropy.time import Time
 from desisurvey.utils import mjd2lst
 from desitarget.targetmask import obsconditions as obsbits
+import desisurvey.exposurecalc
+
 
 MAX_AIRMASS = 2.0
 MIN_MOON_SEP = 50.0
 MIN_MOON_SEP_BGS = 50.0
 
-def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra, previous_dec, use_jpl=False):
+def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
+                      previous_ra, previous_dec, moon_alt, moon_az,
+                      use_jpl=False):
     """
     Returns the first tile for which the current time falls inside
     its assigned LST window and is far enough from the Moon and
@@ -22,6 +27,8 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
         slew: bool, True if a slew time needs to be taken into account
         previous_ra: float, ra of the previous observed tile (degrees)
         previous_dec: float, dec of the previous observed tile (degrees)
+        moon_alt: moon altitude angle in degrees for mjd.
+        moon_az: moon azimuth angle in degrees for mjd.
         use_jpl: bool, True if using jplephem and astropy instead of pyephem
 
     Returns:
@@ -38,13 +45,14 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
 
     hdulist = pyfits.open(obsplan)
     tiledata = hdulist[1].data
-    moonfrac = hdulist[0].header['MOONFRAC']
+    moonfrac = hdulist[1].header['MOONFRAC']
     tileID = tiledata['TILEID']
     tmin = tiledata['LSTMIN']
     tmax = tiledata['LSTMAX']
     explen = tiledata['EXPLEN']/240.0 # Need to call exposure time estimator instead
     ra = tiledata['RA']
     dec = tiledata['DEC']
+    passnum = tiledata['PASS']
     program = tiledata['PROGRAM']
     obsconds = tiledata['OBSCONDITIONS']
 
@@ -60,6 +68,23 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
         t1 = tmin[i] + overhead/240.0
         t2 = tmax[i] - explen[i]
         if ( ((t1 <= t2) and (lst > t1 and lst < t2)) or ( (t2 < t1) and ((lst > t1 and t1 <=360.0) or (lst >= 0.0 and lst < t2))) ):
+            '''
+            ####################################################################
+            # I plan to use this instead of calling moonLoc() since it is much
+            # faster, but they give significantly different separation angles
+            # and I don't know which (if either) is correct yet.
+            ####################################################################
+            # Calculate the tile (alt, az, airmass)
+            airmass, tile_alt, tile_az = desisurvey.exposurecalc.airMassCalculator(
+                ra[i], dec[i], lst, return_altaz=True)
+            # Calculate the angular separation between the tile and moon
+            # using https://en.wikipedia.org/wiki/Great-circle_distance
+            alt1, az1, alt2, az2 = np.radians(
+                [tile_alt, tile_az, moon_alt, moon_az])
+            moon_dist = 2 * np.degrees(np.arcsin(np.sqrt(
+                np.sin(0.5 * (alt1 - alt2)) ** 2 +
+                np.cos(alt1) * np.cos(alt2) * np.sin(0.5 * (az1 - az2)) ** 2)))
+            '''
             moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
             if (obsconds[i] & obsbits.mask('BRIGHT')) == 0:
                 min_moon_sep = MIN_MOON_SEP
@@ -74,13 +99,15 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew, previous_ra
         tileID = tiledata['TILEID'][i]
         RA = ra[i]
         DEC = dec[i]
+        PASSNUM = passnum[i]
         Ebmv = tiledata['EBV_MED'][i]
         maxLen = 2.0*tiledata['EXPLEN'][i]
         DESsn2 = 100.0 # Some made-up number -> has to be the same as the reference in exposurecalc.py
         status = tiledata['STATUS'][i]
         exposure = -1.0 # Updated after observation
         obsSN2 = -1.0   # Idem
-        target = {'tileID' : tileID, 'RA' : RA, 'DEC' : DEC, 'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
+        target = {'tileID' : tileID, 'RA' : RA, 'DEC' : DEC, 'PASS': PASSNUM,
+                  'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
                   'MoonFrac': moonfrac, 'MoonDist': moondist, 'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
                   'Exposure': exposure, 'obsSN2': obsSN2, 'obsConds': obsconds[i]}
     else:
