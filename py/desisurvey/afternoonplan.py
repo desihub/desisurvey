@@ -280,7 +280,7 @@ class surveyPlan:
         print('afternoonPlan contains {0} tiles.'.format(len(planList0)))
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['MoonFrac']
-        filename = 'obsplan' + day_stats['dirName'] + '.fits'
+        filename = 'obsplan' + day_stats['dirName'].decode('ascii') + '.fits'
         table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)
