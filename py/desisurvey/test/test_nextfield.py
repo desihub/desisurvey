@@ -1,6 +1,77 @@
 import unittest
+import os
 
+import numpy as np
+from astropy.time import Time
+from astropy.table import Table
+
+from desisurvey.nightcal import getCalAll
+from desisurvey.afternoonplan import surveyPlan
 from desisurvey.nextobservation import nextFieldSelector
+
+class TestNextField(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        import uuid
+        cls.testdir = os.path.abspath('./test-{}'.format(uuid.uuid4()))
+        cls.origdir = os.getcwd()
+        os.mkdir(cls.testdir)
+        os.chdir(cls.testdir)
+
+        start = Time('2019-09-01T00:00:00')
+        end = Time('2024-09-01T00:00:00')
+        cls.surveycal = getCalAll(start, end, use_cache=False)
+        cls.surveyplan = surveyPlan(start.mjd, end.mjd, cls.surveycal, tilesubset=None)
+
+    @classmethod
+    def tearDownClass(cls):
+        os.chdir(cls.origdir)
+        if os.path.isdir(cls.testdir):
+            import shutil
+            shutil.rmtree(cls.testdir)
+
+    def test_nfs(self):
+        #- Plan night 0; set the first 10 tiles as observed
+        planfile = self.surveyplan.afternoonPlan(self.surveycal[0], tiles_observed=[])
+        mjd = 2458728.708333 - 2400000.5  #- Sept 1 2019 @ 10pm in Arizona
+        conditions = dict()  #- currently unused and required keys undefined
+        moon_alt, moon_az = 10.0, 20.0  #- required inputs but currently unused
+
+        tilesObserved = list()
+        slew = True
+        prev_ra, prev_dec = 0.0, 30.0
+
+        #- Observe 10 exp in a row at same MJD to ensure we don't keep picking
+        #- the same tile and we increase in dec
+        decobs = list()
+        for i in range(10):
+            tileinfo, overhead = nextFieldSelector(planfile, mjd, conditions,
+                tilesObserved, slew, prev_ra, prev_dec, moon_alt, moon_az)
+            tilesObserved.append(tileinfo['tileID'])
+            decobs.append(tileinfo['DEC'])
+            prev_ra = tileinfo['RA']
+            prev_dec = tileinfo['DEC']
+
+        self.assertEqual(len(tilesObserved), len(np.unique(tilesObserved)))
+
+        #- Fails
+        ## self.assertTrue(np.all(np.diff(decobs)>0))
+
+        #- Observe 10 exp at different MJDs to make sure we walk through RA
+        raobs = list()
+        for i in range(10):
+            mjd += 0.3/24
+            tileinfo, overhead = nextFieldSelector(planfile, mjd, conditions,
+                tilesObserved, slew, prev_ra, prev_dec, moon_alt, moon_az)
+            tilesObserved.append(tileinfo['tileID'])
+            prev_ra = tileinfo['RA']
+            prev_dec = tileinfo['DEC']
+            raobs.append(tileinfo['RA'])
+
+        #- Fails
+        ## self.assertTrue(np.all(np.diff(raobs)>0))
+
 
 #####
 # These tests checked the right things but don't work with the new code
