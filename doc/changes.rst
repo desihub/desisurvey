@@ -2,22 +2,22 @@
 desisurvey change log
 =====================
 
-2016-12-21 (0.3.2)
+0.3.2 (unreleased)
 ------------------
 
-* no changes yet
+* Add unit tests; fix afternoon planning tile updates and other minor bugs
 
-2016-12-21 (0.3.1)
+0.3.1 (2016-12-21)
 ------------------
 
 * fixed E(B-V) scaling for exposure time (PR #12)
 
-2016-11-29 (0.3.0)
+0.3.0 (2016-11-29)
 ------------------
 
 First release after refactoring.
 
-2016-11-19 (0.2.0)
+0.2.0 (2016-11-19)
 ------------------
 
 Last version before repackaging of surveysim.
