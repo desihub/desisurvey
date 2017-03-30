@@ -56,6 +56,13 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     program = tiledata['PROGRAM']
     obsconds = tiledata['OBSCONDITIONS']
 
+    #- support tilesObserved as list or array or Table
+    try:
+        x = tilesObserved['TILEID']
+        tilesObserved = x
+    except (TypeError, KeyError, IndexError):
+        pass
+
     lst = mjd2lst(mjd)
     dt = Time(mjd, format='mjd')
     found = False
@@ -91,7 +98,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
             else:
                 min_moon_sep = MIN_MOON_SEP_BGS
             if (avoidObject(dt, ra[i], dec[i]) and moondist > min_moon_sep):
-                if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved['TILEID']) or len(tilesObserved) == 0 ):
+                if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved) or len(tilesObserved) == 0 ):
                     found = True
                     break
 

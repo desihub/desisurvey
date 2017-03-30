@@ -142,7 +142,7 @@ class surveyPlan:
         else:
             # Read in the pre-computed HA and begin/end LST range.
             info = astropy.table.Table.read(
-                resource_filename('surveysim', 'data/tile-info.fits'), hdu=1)
+                resource_filename('desisurvey', 'data/tile-info.fits'), hdu=1)
             # Ignore most of the columns.
             info = info[['TILEID', 'HA', 'BEGINOBS', 'ENDOBS', 'OBSTIME']]
             # Join with our tiles table, matching on TILEID.
@@ -173,12 +173,10 @@ class surveyPlan:
 
         # Copy the STATUS for previously observed tiles.
         if nto > 0:
-            joined = astropy.table.join(self.tiles, tiles_observed,
-                                        keys='TILEID', join_type='left',
-                                        table_names=['OLD', 'NEW'])
-            updated = ~joined['STATUS_NEW'].mask
-            sys.stdout.flush()
-            self.tiles['STATUS'][updated] = joined['STATUS_NEW'][updated]
+            for status in set(tiles_observed['STATUS']):
+                ii = (tiles_observed['STATUS'] == status)
+                jj = np.in1d(self.tiles['TILEID'], tiles_observed['TILEID'][ii])
+                self.tiles['STATUS'][jj] = status
 
         # Find all tiles with STATUS == 0
         finalTileList = self.tiles[self.tiles['STATUS'] == 0]

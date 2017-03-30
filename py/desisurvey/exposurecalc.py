@@ -3,7 +3,6 @@ import numpy as np
 from astropy.time import Time
 import astropy.units as u
 import specsim.simulator
-from surveysim.weather import weatherModule
 from desisurvey.utils import radec2altaz
 
 def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, moonAlt):
@@ -159,4 +158,4 @@ def airMassCalculator(ra, dec, lst, return_altaz=False):
         else:
             amass = 1.0e99
 
-    return amass, Alt, Az if return_altaz else amass
+    return (amass, Alt, Az) if return_altaz else amass
