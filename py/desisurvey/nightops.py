@@ -35,24 +35,7 @@ class obsCount:
             string containing the part of the filename with the observation number
         """
         self.obsNumber += 1
-        obsNumber = self.obsNumber
-        if obsNumber >= 10000000:
-            partFileName = str(obsNumber)
-        elif obsNumber < 10000000 and obsNumber >= 1000000:
-            partFileName = '0' + str(obsNumber)
-        elif obsNumber < 1000000 and obsNumber >= 100000:
-            partFileName = '00' + str(obsNumber)
-        elif obsNumber < 100000 and obsNumber >= 10000:
-            partFileName = '000' + str(obsNumber)
-        elif obsNumber < 10000 and obsNumber >= 1000:
-            partFileName = '0000' + str(obsNumber)
-        elif obsNumber < 1000 and obsNumber >= 100:
-            partFileName = '00000' + str(obsNumber)
-        elif obsNumber < 100 and obsNumber >= 10:
-            partFileName = '000000' + str(obsNumber)
-        else:
-            partFileName = '0000000' + str(obsNumber)
-        return partFileName
+        return '{:08d}'.format(self.obsNumber)
 
 def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_jpl=False):
     """
