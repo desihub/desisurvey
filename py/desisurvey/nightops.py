@@ -14,6 +14,10 @@ from desisurvey.nextobservation import nextFieldSelector
 from surveysim.observefield import observeField
 import desisurvey.nightcal
 
+LSTres = 1.0/144.0 # Should be the same as in afternoon planner and next field selector
+MaxExpLen = 3600.0 # One hour
+CRsplit = 1200.0   # 20 minutes
+ReadOutTime = 120.0 # Should be the same as in next field selector
 
 class obsCount:
     """
@@ -102,10 +106,9 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                 airmass, tile_alt, tile_az = airMassCalculator(
                     target['RA'], target['DEC'], lst, return_altaz=True)
                 exposure = expTimeEstimator(conditions, airmass, target['Program'], target['Ebmv'], target['DESsn2'], day_stats['MoonFrac'], target['MoonDist'], target['MoonAlt'])
-                #exposure = target['maxLen']
-                #print ('Estimated exposure = ', exposure, 'Maximum allowed exposure for tileID', target['tileID'], ' = ', target['maxLen'])
-                if exposure <= 3.0 * target['maxLen']:
+                if exposure <= MaxExpLen:
                     status, real_exposure, real_sn2 = observeField(target, exposure)
+                    real_exposure += ReadOutTime * np.floor(real_exposure/CRsplit)
                     target['Status'] = status
                     target['Exposure'] = real_exposure
                     target['obsSN2'] = real_sn2
@@ -152,10 +155,10 @@ def nightOps(day_stats, obsplan, w, ocnt, tilesObserved, tableOutput=True, use_j
                 else:
                     # Try another target?
                     # Observe longer split into modulo(max_len)
-                    mjd += 0.25/24.0
+                    mjd += LSTres
                     slew = False # Can slew to new target while waiting.
             else:
-                mjd += 0.25/24.0
+                mjd += LSTres
                 slew = False
             # Check time
             if mjd > day_stats['MJDsunrise']:
