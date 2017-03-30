@@ -11,6 +11,8 @@ MAX_AIRMASS = 2.0
 MIN_MOON_SEP = 50.0
 MIN_MOON_SEP_BGS = 50.0
 
+LSTresSec = 600.0 # Also in afternoon planner and night obs.
+
 def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
                       previous_ra, previous_dec, moon_alt, moon_az,
                       use_jpl=False):
@@ -137,3 +139,16 @@ def setup_time(slew, dra, ddec):
     if overhead < 120.0:
         overhead = 120.0
     return overhead
+
+def obsprio(priority, lst_assigned, lst):
+    """Merit function for a tile given its priority and
+    assigned LST.
+
+    Args:
+        priority (integer): priority (0-10) assigned by afternoon planner.
+        lst_assigned (float): LST assigned by afternoon planner.
+        lst (float): current LST
+    Returns:
+        float: merit function value
+    """
+    return ( float(priority) - (lst_assigned-lst)*(lst_assigned-lst)/(LSTresSec*LSTresSec) )
