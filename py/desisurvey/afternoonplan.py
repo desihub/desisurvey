@@ -180,8 +180,8 @@ class surveyPlan:
             sys.stdout.flush()
             self.tiles['STATUS'][updated] = joined['STATUS_NEW'][updated]
 
-        # Find all tiles with STATUS == 0
-        finalTileList = self.tiles[self.tiles['STATUS'] == 0]
+        # Find all tiles with STATUS < 2 
+        finalTileList = self.tiles[self.tiles['STATUS'] < 2]
 
         # Assign tiles to LST bins
         planList0 = []
