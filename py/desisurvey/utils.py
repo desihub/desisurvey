@@ -124,6 +124,9 @@ def angsep(ra1, dec1, ra2, dec2):
 
     Returns:
         delta: float (degrees)
+
+    Notes: fast but not accurate at very small angles; useful for survey
+        planning but not detailed work like fiber assignment
     """
 
     deltaRA = np.radians(ra1-ra2)
@@ -160,13 +163,10 @@ def sort2arr(a, b):
     """
 
     if len(a) != len(b):
-        print("error: a and b are not of the same length.")
-        exit()
+        raise ValueError("error: a and b are not of the same length.")
 
-    c = np.vstack((a,b)).T
-    d = c[np.argsort(c[:, 1])]
-
-    return d[:,0]
+    a = np.asarray(a)
+    return a[np.argsort(b)]
 
 def inLSTwindow(lst, begin, end):
     """Determines if LST is within the given window.
