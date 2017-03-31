@@ -6,6 +6,7 @@ desisurvey change log
 ------------------
 
 * Add unit tests; fix afternoon planning tile updates and other minor bugs
+* Fix off-by-one with YEARMMDD vs. MJD of sunset
 
 0.3.1 (2016-12-21)
 ------------------
