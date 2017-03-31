@@ -136,6 +136,10 @@ def angsep(ra1, dec1, ra2, dec2):
     return np.degrees(np.arccos(cosDelta))
 
 def equ2gal_J2000(ra_deg, dec_deg):
+    """Input and output in degrees.
+       Matrix elements obtained from
+       https://casper.berkeley.edu/astrobaki/index.php/Coordinates
+    """
 
     ra = np.radians(ra_deg)
     dec = np.radians(dec_deg)

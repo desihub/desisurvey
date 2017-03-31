@@ -22,13 +22,12 @@ class TestUtils(unittest.TestCase):
         self.assertFalse(utils.inLSTwindow(-10, -5, 10))
         self.assertFalse(utils.inLSTwindow(15, -5, 10))
 
-    @unittest.expectedFailure
     def test_equ2gal_J2000(self):
-        # http://ned.ipac.caltech.edu/cgi-bin/calc?in_csys=Equatorial&in_equinox=J2000.0&obs_epoch=2000.0&lon=1&lat=20&pa=0.0&out_csys=Galactic&out_equinox=J2000.0
+        # Test against astropy.SkyCoords result.
         ra, dec = 15, 20
         l, b = utils.equ2gal_J2000(ra, dec)
-        self.assertAlmostEqual(l, 125.67488266, 4)
-        self.assertAlmostEqual(b, -42.82605200, 4)    
+        self.assertAlmostEqual(l, 125.67487462, 4)
+        self.assertAlmostEqual(b, -42.82614243, 4)    
 
     def test_angsep(self):
         self.assertAlmostEqual(utils.angsep(0,0,10,0), 10.0)
