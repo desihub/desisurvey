@@ -141,9 +141,9 @@ def equ2gal_J2000(ra_deg, dec_deg):
     dec = np.radians(dec_deg)
 
     x = np.empty(3, dtype='f8')
-    x[0] = np.cos(ra) * np.cos(dec)
-    x[1] = np.cos(ra) * np.sin(dec)
-    x[2] = np.sin(ra)
+    x[0] = np.cos(dec) * np.cos(ra)
+    x[1] = np.cos(dec) * np.sin(ra)
+    x[2] = np.sin(dec)
 
     M = np.array([ [-0.054876, -0.873437, -0.483835],
                    [ 0.494109, -0.444830,  0.746982],
@@ -154,6 +154,8 @@ def equ2gal_J2000(ra_deg, dec_deg):
     l = np.arctan2(y[1], y[0])
 
     l_deg = np.degrees(l)
+    if l_deg < 0.0:
+        l_deg += 360.0
     b_deg = np.degrees(b)
 
     return l_deg, b_deg
