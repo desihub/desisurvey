@@ -66,23 +66,23 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         row = data[day_offset]
         # Calculate sun rise/set with different horizons.
         mayall.horizon = '-0:34' # the value that the USNO uses.
-        row['MJDsunset'] = mayall.next_setting(ephem.Sun()) + mjd0
-        row['MJDsunrise'] = mayall.next_rising(ephem.Sun()) + mjd0
+        row['MJDsunset'] = Time(mayall.next_setting(ephem.Sun()).datetime()).mjd
+        row['MJDsunrise'] = Time(mayall.next_rising(ephem.Sun()).datetime()).mjd
         # 13 deg twilight, adequate (?) for BGS sample.
         mayall.horizon = '-13'
-        row['MJDe13twi'] = mayall.next_setting(ephem.Sun(), use_center=True) + mjd0
-        row['MJDm13twi'] = mayall.next_rising(ephem.Sun(), use_center=True) + mjd0
+        row['MJDe13twi'] = Time(mayall.next_setting(ephem.Sun(), use_center=True).datetime()).mjd
+        row['MJDm13twi'] = Time(mayall.next_rising(ephem.Sun(), use_center=True).datetime()).mjd
         # 15 deg twilight, start of dark time if the moon is down.
         mayall.horizon = '-15'
-        row['MJDetwi'] = mayall.next_setting(ephem.Sun(), use_center=True) + mjd0
-        row['MJDmtwi'] = mayall.next_rising(ephem.Sun(), use_center=True) + mjd0
+        row['MJDetwi'] = Time(mayall.next_setting(ephem.Sun(), use_center=True).datetime()).mjd
+        row['MJDmtwi'] = Time(mayall.next_rising(ephem.Sun(), use_center=True).datetime()).mjd
         # Moon.
         mayall.horizon = '-0:34' # the value that the USNO uses.
-        row['MJDmoonrise'] = mayall.next_rising(ephem.Moon()) + mjd0
+        row['MJDmoonrise'] = Time(mayall.next_rising(ephem.Moon()).datetime()).mjd
         if row['MJDmoonrise'] > row['MJDsunrise']:
-            row['MJDmoonrise'] = mayall.previous_rising(ephem.Moon()) + mjd0
-        mayall.date = row['MJDmoonrise'] - mjd0
-        row['MJDmoonset'] = mayall.next_setting(ephem.Moon()) + mjd0
+            row['MJDmoonrise'] = Time(mayall.previous_rising(ephem.Moon()).datetime()).mjd
+        mayall.date = Time(row['MJDmoonrise'], format='mjd').to_datetime()
+        row['MJDmoonset'] = Time(mayall.next_setting(ephem.Moon()).datetime()).mjd
         # Calculate moon phase at the midpoint between sunset and sunrise.
         m0 = ephem.Moon()
         m0.compute(0.5 * (row['MJDsunset'] + row['MJDsunrise']) - mjd0)
