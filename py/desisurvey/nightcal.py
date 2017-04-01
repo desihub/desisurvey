@@ -11,10 +11,10 @@ import desisurvey.kpno as kpno
 import warnings
 import math
 import os.path
+import desiutil.log
 
 
-def getCalAll(startdate, enddate, num_moon_steps=32,
-              verbose=True, use_cache=True):
+def getCalAll(startdate, enddate, num_moon_steps=32, use_cache=True):
     """Computes the nightly sun and moon ephemerides for the date range given.
 
     Args:
@@ -22,18 +22,18 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
         enddate: astropy Time for survey end
         num_moon_steps: number of steps for calculating moon altitude
             during the night, when it is up.
-        verbose: print information to stdout.
         use_cache: use a previously cached table if available.
     Returns:
         Astropy table of sun and moon ephemerides.
     """
+    log = desiutil.log.get_logger()
+
     # Build filename for saving the ephemerides.
     mjd_start = int(math.floor(startdate.mjd))
     mjd_stop = int(math.ceil(enddate.mjd))
     filename = 'ephem_{0}_{1}.fits'.format(mjd_start, mjd_stop)
     if use_cache and os.path.exists(filename):
-        if verbose:
-            print('Loading cached ephemerides from {0}'.format(filename))
+        log.info('Loading cached ephemerides from {0}'.format(filename))
         return astropy.table.Table.read(filename)
 
     # Allocate space for the data we will calculate.
@@ -117,8 +117,7 @@ def getCalAll(startdate, enddate, num_moon_steps=32,
                 row['MJDsunset'] + row['MJDsunrise'])
 
     t = astropy.table.Table(data, meta=dict(name='Survey Ephemerides'))
-    if verbose:
-        print('Saving ephemerides to {0}'.format(filename))
+    log.info('Saving ephemerides to {0}'.format(filename))
     t.write(filename, overwrite=True)
     return t
 

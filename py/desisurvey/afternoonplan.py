@@ -11,6 +11,7 @@ from desisurvey.utils import radec2altaz, mjd2lst, equ2gal_J2000, sort2arr, inLS
 from desitarget.targetmask import obsconditions as obsbits
 from desisurvey.exposurecalc import airMassCalculator
 import desimodel.io
+import desiutil.log
 import copy
 import os.path
 import os
@@ -36,6 +37,7 @@ class surveyPlan:
         Optional:
             tilesubset: array of integer tileids to use; ignore others
         """
+        self.log = desiutil.log.get_logger()
 
         self.surveycal = surveycal
         # Read in DESI tile data
@@ -178,7 +180,7 @@ class surveyPlan:
                 jj = np.in1d(self.tiles['TILEID'], tiles_observed['TILEID'][ii])
                 self.tiles['STATUS'][jj] = status
 
-        # Find all tiles with STATUS < 2 
+        # Find all tiles with STATUS < 2
         finalTileList = self.tiles[self.tiles['STATUS'] < 2]
 
         # Assign tiles to LST bins
@@ -275,7 +277,8 @@ class surveyPlan:
             finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
             planList0.extend(scheduled)
 
-        print('afternoonPlan contains {0} tiles.'.format(len(planList0)))
+        self.log.info('Afternoon plan contains {0} tiles.'
+                      .format(len(planList0)))
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['MoonFrac']
         filename = 'obsplan' + day_stats['dirName'].decode('ascii') + '.fits'

@@ -4,6 +4,8 @@ from astropy.time import Time
 import astropy.units as u
 import specsim.simulator
 from desisurvey.utils import radec2altaz
+import desiutil.log
+
 
 def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, moonAlt):
     """
@@ -116,7 +118,7 @@ def moonExposureTimeFactor(moonFrac, moonDist, moonAlt):
     global _moonModel
     if not _moonModel:
         # Create a specim moon model.
-        print('Creating a specsim moon model.')
+        desiutil.log.get_logger().info('Creating a specsim moon model.')
         desi = specsim.simulator.Simulator('desi')
         _moonModel = desi.atmosphere.moon
 
