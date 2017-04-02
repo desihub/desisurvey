@@ -25,7 +25,7 @@ class surveyPlan:
     Main class for survey planning
     """
 
-    def __init__(self, MJDstart, MJDend, surveycal, tilesubset=None):
+    def __init__(self, MJDstart, MJDend, tilesubset=None):
         """Initialises survey by reading in the file desi_tiles.fits
         and populates the class members.
 
@@ -39,21 +39,7 @@ class surveyPlan:
         """
         self.log = desiutil.log.get_logger()
 
-        self.surveycal = surveycal
         # Read in DESI tile data
-        # Columns are:
-        #   'TILEID'; format = 'J'
-        #   'RA'; format = 'D'
-        #   'DEC'; format = 'D'
-        #   'PASS'; format = 'I'
-        #   'IN_DESI'; format = 'I'
-        #   'EBV_MED'; format = 'E'
-        #   'AIRMASS'; format = 'E'
-        #   'STAR_DENSITY'; format = 'E'
-        #   'EXPOSEFAC'; format = 'E'
-        #   'PROGRAM'; format = '6A'
-        #   'OBSCONDITIONS'; format = 'J'
-
         tiles = astropy.table.Table(
             desimodel.io.load_tiles(onlydesi=True, extra=False))
 
