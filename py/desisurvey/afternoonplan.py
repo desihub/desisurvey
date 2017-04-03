@@ -144,13 +144,12 @@ class surveyPlan:
             self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
 
-    def afternoonPlan(self, day_stats, tiles_observed):
+    def afternoonPlan(self, day_stats, date_string, tiles_observed):
         """Main decision making method
 
         Args:
-            day_stats: dictionnary containing the following keys:
-                       'MJDsunset', 'MJDsunrise', 'MJDetwi', 'MJDmtwi', 'MJDe13twi',
-                       'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName'
+            day_stats: row of tabulated ephmerides data for today
+            date_string: string of the form YYYYMMDD
             tiles_observed: table with follwing columns: tileID, status
 
         Returns:
@@ -267,7 +266,7 @@ class surveyPlan:
                       .format(len(planList0)))
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['MoonFrac']
-        filename = 'obsplan' + day_stats['dirName'].decode('ascii') + '.fits'
+        filename = 'obsplan{0}.fits'.format(date_string)
         table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)
