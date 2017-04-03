@@ -88,17 +88,15 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     return fig, ax
 
 
-def plot_program(filename, save=None):
+def plot_program(ephemerides, save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
     The matplotlib package must be installed to use this function.
 
     Parameters
     ----------
-    filename : string
-        Name of a FITS file in the format written by
-        :class:`ephemerides.Ephemerides`,
-        normally of the form 'ephem_<MJD1>_<MJD2>.fits'.
+    ephemerides : :class:`desisurvey.ephemerides.Ephemerides`
+        Tabulated ephemerides data.
     save : string or None
         Name of file where plot should be saved.  Format is inferred from
         the extension.
@@ -110,8 +108,7 @@ def plot_program(filename, save=None):
     """
     import matplotlib.pyplot as plt
 
-    t = astropy.table.Table.read(filename)
-
+    t = ephemerides._table
     mjd = np.floor(t['MJDsunset'])
     dt = mjd - mjd[0]
 
