@@ -103,6 +103,14 @@ def radec2altaz(ra, dec, lst):
             sinAlt = -1.0
     cosAlt = np.sqrt(1.0-sinAlt*sinAlt)
     cosAz = ( np.sin(d) - sinAlt*np.sin(phi) ) / ( cosAlt*np.cos(phi) )
+    if isinstance(cosAz, np.ndarray):
+        cosAz[np.where(cosAz>1.0)] = 1.0
+        cosAz[np.where(cosAz<-1.0)] = -1.0
+    else:
+        if cosAz > 1.0:
+            cosAz = 1.0
+        if cosAz < -1.0:
+            cosAz = -1.0
 
     Alt = np.degrees(np.arcsin(sinAlt))
     Az = np.degrees(np.arccos(cosAz))
