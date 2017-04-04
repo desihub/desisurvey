@@ -5,6 +5,7 @@ from astropy.time import Time
 from desisurvey.utils import mjd2lst
 from desitarget.targetmask import obsconditions as obsbits
 import desisurvey.exposurecalc
+import desiutil.log
 
 
 MAX_AIRMASS = 2.0
@@ -40,6 +41,8 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
                 'Exposure', 'obsSN2', 'obsConds'
         overhead: float (seconds)
     """
+    log = desiutil.log.get_logger()
+
     if (use_jpl):
         from desisurvey.avoidobjectJPL import avoidObject, moonLoc
     else:
@@ -49,8 +52,9 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     tiledata = hdulist[1].data
     moonfrac = hdulist[1].header['MOONFRAC']
     tileID = tiledata['TILEID']
-    tmin = tiledata['LSTMIN']
-    tmax = tiledata['LSTMAX']
+    # Convert LST values from hours to degrees.
+    tmin = tiledata['LSTMIN'] * 15
+    tmax = tiledata['LSTMAX'] * 15
     explen = tiledata['EXPLEN']/240.0 # Need to call exposure time estimator instead
     ra = tiledata['RA']
     dec = tiledata['DEC']
