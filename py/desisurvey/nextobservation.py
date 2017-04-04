@@ -78,9 +78,18 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
             dra = 360.0 - dra
         ddec = np.abs(dec[i]-previous_dec)
         overhead = setup_time(slew, dra, ddec)
+        '''
         t1 = tmin[i] + overhead/240.0
         t2 = tmax[i] - explen[i]
         if ( ((t1 <= t2) and (lst > t1 and lst < t2)) or ( (t2 < t1) and ((lst > t1 and t1 <=360.0) or (lst >= 0.0 and lst < t2))) ):
+        '''
+        # Estimate the exposure midpoint LST for this tile.
+        lst_midpoint = lst + overhead / 240. + 0.5 * explen[i]
+        if lst_midpoint >= 360:
+            lst_midpoint -= 360
+        # Select the first tile whose exposure midpoint falls within the
+        # tile's LST window.
+        if tmin[i] <= lst_midpoint and lst_midpoint <= tmax[i]:
             '''
             ####################################################################
             # I plan to use this instead of calling moonLoc() since it is much
