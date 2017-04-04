@@ -8,7 +8,7 @@ import astropy.table
 
 import desiutil.plots
 
-import desisurvey.nightcal
+import desisurvey.ephemerides
 
 
 def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
@@ -88,16 +88,15 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     return fig, ax
 
 
-def plot_program(filename, save=None):
+def plot_program(ephemerides, save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
     The matplotlib package must be installed to use this function.
 
     Parameters
     ----------
-    filename : string
-        Name of a FITS file in the format written by :func:`nightcal.getCalAll`,
-        normally of the form 'ephem_<MJD1>_<MJD2>.fits'.
+    ephemerides : :class:`desisurvey.ephemerides.Ephemerides`
+        Tabulated ephemerides data.
     save : string or None
         Name of file where plot should be saved.  Format is inferred from
         the extension.
@@ -109,8 +108,7 @@ def plot_program(filename, save=None):
     """
     import matplotlib.pyplot as plt
 
-    t = astropy.table.Table.read(filename)
-
+    t = ephemerides._table
     mjd = np.floor(t['MJDsunset'])
     dt = mjd - mjd[0]
 
@@ -133,7 +131,7 @@ def plot_program(filename, save=None):
     # Loop over nights.
     for i, row in enumerate(t):
         # Identify bright time when the moon is up.
-        t_moon, bright = desisurvey.nightcal.get_bright(row, interval_mins=2.)
+        t_moon, bright = desisurvey.ephemerides.get_bright(row)
         if len(t_moon) == 0:
             continue
         # Gray time requires 15deg twighlight, moon up and not bright.

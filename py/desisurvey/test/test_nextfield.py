@@ -5,7 +5,7 @@ import numpy as np
 from astropy.time import Time
 from astropy.table import Table
 
-from desisurvey.nightcal import getCalAll
+from desisurvey.ephemerides import Ephemerides
 from desisurvey.afternoonplan import surveyPlan
 from desisurvey.nextobservation import nextFieldSelector
 
@@ -21,8 +21,8 @@ class TestNextField(unittest.TestCase):
 
         start = Time('2019-09-01T00:00:00')
         end = Time('2024-09-01T00:00:00')
-        cls.surveycal = getCalAll(start, end, use_cache=False)
-        cls.surveyplan = surveyPlan(start.mjd, end.mjd, cls.surveycal, tilesubset=None)
+        cls.ephem = Ephemerides(start, end, use_cache=False)
+        cls.surveyplan = surveyPlan(start.mjd, end.mjd, tilesubset=None)
 
     @classmethod
     def tearDownClass(cls):
@@ -33,7 +33,8 @@ class TestNextField(unittest.TestCase):
 
     def test_nfs(self):
         #- Plan night 0; set the first 10 tiles as observed
-        planfile = self.surveyplan.afternoonPlan(self.surveycal[0], tiles_observed=[])
+        planfile = self.surveyplan.afternoonPlan(
+            self.ephem._table[0], '20190901', tiles_observed=[])
         mjd = 2458728.708333 - 2400000.5  #- Sept 1 2019 @ 10pm in Arizona
         conditions = dict()  #- currently unused and required keys undefined
         moon_alt, moon_az = 10.0, 20.0  #- required inputs but currently unused
@@ -142,6 +143,6 @@ class TestNextField(unittest.TestCase):
 #             next_field = get_next_field(2458728.708 + 137.0*test, self.skylevel, self.seeing, \
 #                 self.transparency, self.previoustiles, self.programname)
 #             self.assertEqual(next_field['tileid'], rightanswer[test])
-                            
+
 if __name__ == '__main__':
     unittest.main()

@@ -11,6 +11,7 @@ from desisurvey.utils import radec2altaz, mjd2lst, equ2gal_J2000, sort2arr, inLS
 from desitarget.targetmask import obsconditions as obsbits
 from desisurvey.exposurecalc import airMassCalculator
 import desimodel.io
+import desiutil.log
 import copy
 import os.path
 import os
@@ -24,7 +25,7 @@ class surveyPlan:
     Main class for survey planning
     """
 
-    def __init__(self, MJDstart, MJDend, surveycal, tilesubset=None):
+    def __init__(self, MJDstart, MJDend, tilesubset=None):
         """Initialises survey by reading in the file desi_tiles.fits
         and populates the class members.
 
@@ -36,22 +37,9 @@ class surveyPlan:
         Optional:
             tilesubset: array of integer tileids to use; ignore others
         """
+        self.log = desiutil.log.get_logger()
 
-        self.surveycal = surveycal
         # Read in DESI tile data
-        # Columns are:
-        #   'TILEID'; format = 'J'
-        #   'RA'; format = 'D'
-        #   'DEC'; format = 'D'
-        #   'PASS'; format = 'I'
-        #   'IN_DESI'; format = 'I'
-        #   'EBV_MED'; format = 'E'
-        #   'AIRMASS'; format = 'E'
-        #   'STAR_DENSITY'; format = 'E'
-        #   'EXPOSEFAC'; format = 'E'
-        #   'PROGRAM'; format = '6A'
-        #   'OBSCONDITIONS'; format = 'J'
-
         tiles = astropy.table.Table(
             desimodel.io.load_tiles(onlydesi=True, extra=False))
 
@@ -156,13 +144,12 @@ class surveyPlan:
             self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
 
-    def afternoonPlan(self, day_stats, tiles_observed):
+    def afternoonPlan(self, day_stats, date_string, tiles_observed):
         """Main decision making method
 
         Args:
-            day_stats: dictionnary containing the following keys:
-                       'MJDsunset', 'MJDsunrise', 'MJDetwi', 'MJDmtwi', 'MJDe13twi',
-                       'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName'
+            day_stats: row of tabulated ephmerides data for today
+            date_string: string of the form YYYYMMDD
             tiles_observed: table with follwing columns: tileID, status
 
         Returns:
@@ -178,7 +165,7 @@ class surveyPlan:
                 jj = np.in1d(self.tiles['TILEID'], tiles_observed['TILEID'][ii])
                 self.tiles['STATUS'][jj] = status
 
-        # Find all tiles with STATUS < 2 
+        # Find all tiles with STATUS < 2
         finalTileList = self.tiles[self.tiles['STATUS'] < 2]
 
         # Assign tiles to LST bins
@@ -275,10 +262,11 @@ class surveyPlan:
             finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
             planList0.extend(scheduled)
 
-        print('afternoonPlan contains {0} tiles.'.format(len(planList0)))
+        self.log.info('Afternoon plan contains {0} tiles.'
+                      .format(len(planList0)))
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['MoonFrac']
-        filename = 'obsplan' + day_stats['dirName'].decode('ascii') + '.fits'
+        filename = 'obsplan{0}.fits'.format(date_string)
         table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)

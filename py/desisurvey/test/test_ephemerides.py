@@ -3,12 +3,12 @@ import os
 import uuid
 
 import numpy as np
-from desisurvey.nightcal import getCalAll
+from desisurvey.ephemerides import Ephemerides
 from astropy.time import Time
 from astropy import units
 
-class TestNightCal(unittest.TestCase):
-    
+class TestEphemerides(unittest.TestCase):
+
     @classmethod
     def setUpClass(cls):
         cls.origdir = os.getcwd()
@@ -21,13 +21,13 @@ class TestNightCal(unittest.TestCase):
         os.chdir(cls.origdir)
         if os.path.isdir(cls.testdir):
             import shutil
-            shutil.rmtree(cls.testdir)            
-            
+            shutil.rmtree(cls.testdir)
+
     def test_getcal(self):
         #- Start at 19:00 UTC = noon Arizona
         start = Time('2019-09-01T19:00:00')
         end = Time('2019-10-01T19:00:00')
-        ephem = getCalAll(start, end, use_cache=False)
+        ephem = Ephemerides(start, end, use_cache=False)._table
 
         self.assertEqual(len(ephem), 31)
         self.assertTrue(np.all(ephem['MJDsunrise'] > ephem['MJDsunset']))
@@ -40,8 +40,9 @@ class TestNightCal(unittest.TestCase):
         self.assertTrue(np.all(ephem['MJDmoonrise'] < ephem['MJDmoonset']))
 
         for x in ephem:
-            night = x['dirName'].decode('ascii')
 
+            date = Time(x['MJDstart'], format='mjd').datetime.date()
+            night = date.strftime('%Y%m%d')
             for key in [
                     'MJDsunset', 'MJDsunrise',
                     'MJDe13twi', 'MJDm13twi',
@@ -53,6 +54,6 @@ class TestNightCal(unittest.TestCase):
                 yearmmdd = (localtime - 12*units.hour).to_datetime().strftime('%Y%m%d')
                 msg = '{} != {} for {}={}'.format(night, yearmmdd, key, x[key])
                 self.assertEqual(night, yearmmdd, msg)
-                
+
 if __name__ == '__main__':
     unittest.main()
