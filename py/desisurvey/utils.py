@@ -115,7 +115,8 @@ def radec2altaz(ra, dec, lst):
     Alt = np.degrees(np.arcsin(sinAlt))
     Az = np.degrees(np.arccos(cosAz))
     if isinstance(h, np.ndarray):
-        Az[np.where(np.sin(h)>0.0)] = 360.0 - Az
+        ii = np.where(np.sin(h)>0.0)
+        Az[ii] = 360.0 - Az[ii]
     else:
         if np.sin(h) > 0.0:
             Az = 360.0 - Az
