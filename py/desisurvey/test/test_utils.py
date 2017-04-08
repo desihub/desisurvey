@@ -36,5 +36,25 @@ class TestUtils(unittest.TestCase):
         self.assertAlmostEqual(utils.angsep(0,20,0,10), 10.0)
         self.assertAlmostEqual(utils.angsep(60,70,60,50), 20.0)
 
+    def test_radec2altaz(self):
+        # Test against astropy SkyCoord and AltAz
+        LST = 91.74715323341904  # 2017-04-15 00:00:00 at KPNO according to astropy.time
+
+        ra, dec, lst = LST, 60, LST
+        alt, az = utils.radec2altaz(ra, dec, lst)
+        self.assertAlmostEqual(alt, 61.96451022, 0)
+        self.assertAlmostEqual(az, 0.406365, 0) # I don't get this value, it should be 0
+
+        ra, dec, lst = 150, 20, LST
+        alt, az = utils.radec2altaz(ra, dec, lst)
+        self.assertAlmostEqual(alt, 36.66732297, 0)
+        self.assertAlmostEqual(az, 87.93562759, 0)
+
+        ra, dec, lst = 0, 45, LST
+        alt, az = utils.radec2altaz(ra, dec, lst)
+        self.assertAlmostEqual(alt, 21.03485612, 0)
+        self.assertAlmostEqual(az, 310.87827568, 0)
+        
+
 if __name__ == '__main__':
     unittest.main()

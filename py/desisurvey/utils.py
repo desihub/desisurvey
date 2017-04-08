@@ -87,10 +87,10 @@ def radec2altaz(ra, dec, lst):
     else:
         if h < 0.0:
             h += 2.0*np.pi
+
     d = np.radians(dec)
     phi = np.radians(mayall.lat_deg)
 
-    sinAz = np.sin(h) / (np.cos(h)*np.sin(phi) - np.tan(d)*np.cos(phi))
     sinAlt = np.sin(phi)*np.sin(d) + np.cos(phi)*np.cos(d)*np.cos(h)
 
     if isinstance(sinAlt, np.ndarray):
@@ -101,16 +101,27 @@ def radec2altaz(ra, dec, lst):
             sinAlt = 1.0
         if sinAlt < -1.0:
             sinAlt = -1.0
-    if isinstance(sinAz, np.ndarray):
-        sinAz[np.where(sinAz>1.0)] = 1.0
-        sinAz[np.where(sinAz<-1.0)] = -1.0
+    cosAlt = np.sqrt(1.0-sinAlt*sinAlt)
+    cosAz = ( np.sin(d) - sinAlt*np.sin(phi) ) / ( cosAlt*np.cos(phi) )
+    if isinstance(cosAz, np.ndarray):
+        cosAz[np.where(cosAz>1.0)] = 1.0
+        cosAz[np.where(cosAz<-1.0)] = -1.0
     else:
-        if sinAz > 1.0:
-            sinAz = 1.0
-        if sinAz < -1.0:
-            sinAz = -1.0
+        if cosAz > 1.0:
+            cosAz = 1.0
+        if cosAz < -1.0:
+            cosAz = -1.0
 
-    return np.degrees(np.arcsin(sinAlt)), np.degrees(np.arcsin(sinAz))
+    Alt = np.degrees(np.arcsin(sinAlt))
+    Az = np.degrees(np.arccos(cosAz))
+    if isinstance(h, np.ndarray):
+        ii = np.where(np.sin(h)>0.0)
+        Az[ii] = 360.0 - Az[ii]
+    else:
+        if np.sin(h) > 0.0:
+            Az = 360.0 - Az
+
+    return Alt, Az
 
 def angsep(ra1, dec1, ra2, dec2):
     """
@@ -158,9 +169,10 @@ def equ2gal_J2000(ra_deg, dec_deg):
     l = np.arctan2(y[1], y[0])
 
     l_deg = np.degrees(l)
+    b_deg = np.degrees(b)
+
     if l_deg < 0.0:
         l_deg += 360.0
-    b_deg = np.degrees(b)
 
     return l_deg, b_deg
 

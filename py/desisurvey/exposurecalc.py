@@ -139,6 +139,7 @@ def airMassCalculator(ra, dec, lst, return_altaz=False):
     """
     Calculates airmass given position and LST.  Uses formula from
     Rosenberg (1966) which is valid for small to moderate angles.
+    Defaults to value at horizon if object below the horizon.
 
     Args:
         ra: float (degrees)
@@ -152,12 +153,15 @@ def airMassCalculator(ra, dec, lst, return_altaz=False):
     Alt, Az = radec2altaz(ra, dec, lst)
     cosZ = np.cos(np.radians(90.0-Alt))
     if isinstance(Alt, np.ndarray):
-        amass = np.full(len(Alt), 1.0e99, dtype='f8')
-        amass[np.where(Alt>0.0)] = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
+        amass = np.full(len(Alt), 40.0, dtype='f8')
+        ii = np.where(Alt>0.0)
+        amass[ii] = 1.0/(cosZ[ii] + 0.025*np.exp(-11.0*cosZ[ii]))
     else:
         if Alt > 0.0:
             amass = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
         else:
-            amass = 1.0e99
+            amass = 40.0
+            
+    assert( np.all((amass <= 40.0) & (amass > 0.0)) )
 
     return (amass, Alt, Az) if return_altaz else amass
