@@ -465,11 +465,15 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     desiutil.plots.plot_grid_map(data, ra_edges, dec_edges, label='Airmass',
                                  cmap='viridis', basemap=basemap)
 
-    dha = desiutil.plots.prepare_data(dha, clip_lo=-180, clip_hi=180, save_limits=True)
+    dha = desiutil.plots.prepare_data(
+        dha, clip_lo=-180, clip_hi=180, save_limits=True)
     desiutil.plots.plot_sky_circles(ra_plan, dec_plan, data=dha, cmap='bwr',
-                                    colorbar=False, edgecolor='none', basemap=basemap)
-    desiutil.plots.plot_sky_circles(ra_tile, dec_tile, field_of_view=10, facecolors=(1, 1, 1, 0.5),
-                                    edgecolor=program_color[tile['PROGRAM']], basemap=basemap)
+                                    colorbar=False, edgecolor='none',
+                                    basemap=basemap)
+    desiutil.plots.plot_sky_circles(ra_tile, dec_tile, field_of_view=10,
+                                    facecolors=(1, 1, 1, 0.5),
+                                    edgecolor=program_color[tile['PROGRAM']],
+                                    basemap=basemap)
 
     # Draw the location of the moon.
     basemap.scatter(
