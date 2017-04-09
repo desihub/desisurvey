@@ -5,6 +5,7 @@ from __future__ import print_function, division
 import numpy as np
 
 import astropy.table
+import astropy.units as u
 
 import desiutil.plots
 
@@ -313,6 +314,8 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
                     save=None):
     """Plot diagnostics for the next field selector.
 
+    The matplotlib package must be installed to use this function.
+
     Parameters
     ----------
     date_string : string
@@ -322,6 +325,10 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     ephem : :class:`desisurvey.ephemerides.Ephemerides`
         Ephemerides covering this night.
     """
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec
+    import matplotlib.colors
+
     # Location of Mayall at KPNO.
     where = astropy.coordinates.EarthLocation.from_geodetic(
         lat='31d57m50.30s', lon='-111d35m57.61s', height=2120.*u.m)
