@@ -59,6 +59,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     pass_map = [(0, 0), (0, 1), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)]
     # Mapping of passes to programs.
     pass_program = ['DARK'] * 4 + ['GRAY'] + ['BRIGHT'] * 3
+    max_count = 0.
     for p in range(8):
         color = program_color[pass_program[p]]
         basemap = desiutil.plots.init_sky(ax=ax[pass_map[p]],
@@ -74,10 +75,12 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
             ra_center=ra[sel], dec_center=dec[sel], data=z_sel,
             colorbar=True, basemap=basemap, edgecolor='none', label=label)
         # Plot the histogram of values for this pass.
-        ax[0, 2].hist(z[sel], color=color, **hopts)
+        counts, _, _ = ax[0, 2].hist(z[sel], color=color, **hopts)
+        max_count = max(counts.max(), max_count)
 
     # Decorate the histogram subplot.
-    ax[0, 2].set_ylim(0, None)
+    ax[0, 2].set_xlim(vmin, vmax)
+    ax[0, 2].set_ylim(0, 1.05 * max_count)
     ax[0, 2].set_xlabel(label)
     ax[0, 2].get_yaxis().set_ticks([])
 
@@ -91,6 +94,74 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
         plt.savefig(save)
 
     return fig, ax
+
+
+def plot_observations(start=None, stop=None, what='EXPTIME',
+                      verbose=False, save=None):
+    """Plot a summary of observed tiles.
+
+    Reads the file ``obsall_list.fits`` and uses :func:`plot_sky_passes` to
+    display a summary of observed tiles in each pass.
+
+    Parameters
+    ----------
+    start : date or None
+        First night to include in the plot or use the start of the
+        calculated ephemerides.  Must be convertible to an astropy time.
+    stop : date or None
+        First night to include in the plot or use the start of the
+        calculated ephemerides.  Must be convertible to an astropy time.
+    what : string
+        What quantity to plot for each planned tile. Must be a
+        column name in the obsall_list FITS file.  Useful values include
+        EXPTIME, OBSSN2, AIRMASS, SEEING.
+    verbose : bool
+        Print a summary of observed tiles.
+    save : string or None
+        Name of file where plot should be saved.
+
+    Returns
+    -------
+    tuple
+        Tuple (figure, axes) returned by ``plt.subplots()``.
+    """
+    t = astropy.table.Table.read('obslist_all.fits')
+    if what not in t.colnames:
+        raise ValueError('Valid names are: {0}'
+                         .format(','.join(t.colnames)))
+
+    sel = t['STATUS'] > 0
+    if start is None:
+        start = astropy.time.Time(t['MJD'][0], format='mjd')
+    else:
+        start = astropy.time.Time(start)
+        sel &= t['MJD'] >= start.mjd
+    if stop is None:
+        stop = astropy.time.Time(t['MJD'][-1], format='mjd')
+    else:
+        stop = astropy.time.Time(stop)
+        sel &= t['MJD'] <= stop.mjd
+    date_label = '{0} to {1}'.format(
+        start.datetime.date(), stop.datetime.date())
+    t = t[sel]
+
+    if verbose:
+        print('Observing summary for {0}:'.format(date_label))
+        for pass_num in range(8):
+            sel_pass = t['PASS'] == pass_num
+            n_exps = np.count_nonzero(sel_pass)
+            n_tiles = len(np.unique(t['TILEID'][sel_pass]))
+            print('Observed {0:7d} tiles with {1:5d} repeats from PASS {2}'
+                  .format(n_tiles, n_exps - n_tiles, pass_num))
+        n_exps = len(t)
+        n_tiles = len(np.unique(t['TILEID']))
+        print('Observed {0:7d} tiles with {1:5d} repeats total.'
+              .format(n_tiles, n_exps - n_tiles))
+
+    label = '{0} ({1})'.format(what, date_label)
+    return desisurvey.plots.plot_sky_passes(
+        t['RA'], t['DEC'], t['PASS'], t[what],
+        label=label, save=save)
 
 
 def plot_program(ephem, start=None, stop=None, window_size=7.,
