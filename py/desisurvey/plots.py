@@ -11,6 +11,10 @@ import desiutil.plots
 import desisurvey.ephemerides
 
 
+# Color associated with each program in the functions below.
+program_color = {'DARK': 'black', 'GRAY': 'gray', 'BRIGHT': 'orange'}
+
+
 def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
                     label='label', save=None):
     """Plot sky maps for each pass of a per-tile scalar quantity.
@@ -53,13 +57,14 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
 
     # Mapping of subplots to passes.
     pass_map = [(0, 0), (0, 1), (1, 0), (1, 1), (1, 2), (2, 0), (2, 1), (2, 2)]
-    # Color code for each pass.
-    pass_color = ['k', 'k', 'k', 'k', 'gray', 'orange', 'orange', 'orange']
+    # Mapping of passes to programs.
+    pass_program = ['DARK'] * 4 + ['GRAY'] + ['BRIGHT'] * 3
     for p in range(8):
+        color = program_color[pass_program[p]]
         basemap = desiutil.plots.init_sky(ax=ax[pass_map[p]],
-                                          dec_labels=[-120, 0, 120],
-                                          ra_labels=None,
-                                          galactic_plane_color=pass_color[p])
+                                          ra_labels=[-120, 0, 120],
+                                          dec_labels=None,
+                                          galactic_plane_color=color)
         # Select the tiles in this pass.
         sel = np.where(passnum == p)[0]
         z_sel = desiutil.plots.prepare_data(
@@ -69,7 +74,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
             ra_center=ra[sel], dec_center=dec[sel], data=z_sel,
             colorbar=True, basemap=basemap, edgecolor='none', label=label)
         # Plot the histogram of values for this pass.
-        ax[0, 2].hist(z[sel], color=pass_color[p], **hopts)
+        ax[0, 2].hist(z[sel], color=color, **hopts)
 
     # Decorate the histogram subplot.
     ax[0, 2].set_ylim(0, None)
@@ -167,7 +172,8 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
         program[i][bright] = 3.
 
     # Prepare a custom colormap.
-    colors = ['lightblue', 'black', 'gray', 'orange']
+    colors = ['lightblue', program_color['DARK'],
+              program_color['GRAY'], program_color['BRIGHT']]
     mycmap = matplotlib.colors.ListedColormap(colors, 'programs')
 
     # Make the plot.
@@ -217,11 +223,12 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
     # Draw program labels.
     y = 0.025
     opts = dict(fontsize='xx-large', fontweight='bold',
-                horizontalalignment='center')
-    c = 'axes fraction'
-    ax.annotate('DARK', (0, 0), (0.2, y), c, c, color=colors[1], **opts)
-    ax.annotate('GRAY', (0, 0), (0.5, y), c, c, color=colors[2], **opts)
-    ax.annotate('BRIGHT', (0, 0), (0.8, y), c, c, color=colors[3], **opts)
+                horizontalalignment='center',
+                xy=(0, 0), textcoords='axes fraction')
+    ax.annotate('DARK', xytext=(0.2, y), color=program_color['DARK'], **opts)
+    ax.annotate('GRAY', xytext=(0.5, y), color=program_color['GRAY'], **opts)
+    ax.annotate(
+        'BRIGHT', xytext=(0.8, y), color=program_color['BRIGHT'], **opts)
 
     plt.tight_layout()
     if save:
