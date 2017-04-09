@@ -88,15 +88,28 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     return fig, ax
 
 
-def plot_program(ephemerides, save=None):
+def plot_program(ephem, start=None, stop=None, window_size=7.,
+                 num_points=500, save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
-    The matplotlib package must be installed to use this function.
+    The matplotlib and pytz packages must be installed to use this function.
 
     Parameters
     ----------
-    ephemerides : :class:`desisurvey.ephemerides.Ephemerides`
-        Tabulated ephemerides data.
+    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+        Tabulated ephemerides data to use for determining the program.
+    start : date or None
+        First night to include in the plot or use the start of the
+        calculated ephemerides.  Must be convertible to an astropy time.
+    stop : date or None
+        First night to include in the plot or use the start of the
+        calculated ephemerides.  Must be convertible to an astropy time.
+    window_size : float
+        Number of hours on both sides of local midnight to display on the
+        vertical axis.
+    num_points : int
+        Number of subdivisions of the vertical axis to use for tabulating
+        the program during each night.
     save : string or None
         Name of file where plot should be saved.  Format is inferred from
         the extension.
@@ -107,48 +120,108 @@ def plot_program(ephemerides, save=None):
         Tuple (figure, axes) returned by ``plt.subplots()``.
     """
     import matplotlib.pyplot as plt
+    import matplotlib.colors
+    import matplotlib.dates
+    import matplotlib.ticker
+    import pytz
 
-    t = ephemerides._table
-    mjd = np.floor(t['MJDsunset'])
-    dt = mjd - mjd[0]
+    # Determine plot date range.
+    t = ephem._table
+    sel = np.ones(len(t), bool)
+    if start is not None:
+        sel &= t['MJDstart'] >= astropy.time.Time(start).mjd
+    if stop is not None:
+        sel &= t['MJDstart'] <= astropy.time.Time(stop).mjd
+    t = t[sel]
+    num_nights = len(t)
 
-    # Center vertical axis on median "midnight"
-    midnight = 0.5 * (t['MJDsunset'] + t['MJDsunrise'])
-    mjd += np.median(midnight - mjd)
+    # Date labels use the KPNO UTC-7 timezone.
+    tz_offset = -7
+    tz = pytz.FixedOffset(tz_offset * 60)
+    # Convert noon UTC-7 into midnight UTC before and after display range.
+    start = astropy.time.Time(
+        t['MJDstart'][0] + tz_offset / 24. - 0.5, format='mjd')
+    stop = astropy.time.Time(
+        t['MJDstart'][-1] + tz_offset / 24. + 0.5, format='mjd')
+    # Calculate numerical limits of matplotlib date axis.
+    x_lo = matplotlib.dates.date2num(tz.localize(start.datetime))
+    x_hi = matplotlib.dates.date2num(tz.localize(stop.datetime))
 
-    # Scale vertical axis to hours relative to median midnight.
-    y = lambda y_mjd: 24. * (y_mjd - mjd)
+    # Display 24-hour local time on y axis.
+    window_int = int(np.floor(window_size))
+    y_ticks = np.arange(-window_int, +window_int + 1, dtype=int)
+    y_labels = ['{:02d}h'.format(hr) for hr in (24 + y_ticks) % 24]
 
-    fig, ax = plt.subplots(1, 1, figsize=(9, 7), squeeze=True)
+    # Build a grid of elapsed time relative to local midnight during each night.
+    midnight = t['MJDstart'] + 0.5
+    t_edges = np.linspace(-window_size, +window_size, num_points + 1) / 24.
+    t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
 
-    # Fill the time between 13deg twilights with orange (BRIGHT).
-    ax.fill_between(dt, y(t['MJDe13twi']), y(t['MJDm13twi']),
-                          color='orange')
+    # Loop over nights to build image data to plot.
+    program = np.zeros((num_nights, len(t_centers)))
+    for i in np.arange(num_nights):
+        mjd_grid = midnight[i] + t_centers
+        dark, gray, bright = ephem.get_program(mjd_grid)
+        program[i][dark] = 1.
+        program[i][gray] = 2.
+        program[i][bright] = 3.
 
-    # Fill the time between 15deg twilights with black (DARK).
-    ax.fill_between(dt, y(t['MJDetwi']), y(t['MJDmtwi']), color='k')
+    # Prepare a custom colormap.
+    colors = ['lightblue', 'black', 'gray', 'orange']
+    mycmap = matplotlib.colors.ListedColormap(colors, 'programs')
 
-    # Loop over nights.
-    for i, row in enumerate(t):
-        # Identify bright time when the moon is up.
-        t_moon, bright = desisurvey.ephemerides.get_bright(row)
-        if len(t_moon) == 0:
-            continue
-        # Gray time requires 15deg twighlight, moon up and not bright.
-        gray = ~bright & (t_moon > row['MJDetwi']) & (t_moon < row['MJDmtwi'])
-        # Fill in bright and gray times during this night.
-        today = np.full(len(t_moon), dt[i])
-        ax.scatter(today[bright], 24 * (t_moon[bright] - mjd[i]),
-                         marker='s', s=5, lw=0, c='orange')
-        ax.scatter(today[gray], 24 * (t_moon[gray] - mjd[i]),
-                         marker='s', s=5, lw=0, c='gray')
+    # Make the plot.
+    fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
 
-    ax.set_axis_bgcolor('lightblue')
-    ax.set_xlim(0, dt[-1])
-    ax.set_ylim(-6.5, +6.5)
-    ax.grid()
-    ax.set_xlabel('Elapsed Survey Time [days]', fontsize='x-large')
-    ax.set_ylabel('Time During Night [hours]', fontsize='x-large')
+    ax.imshow(program.T, origin='lower', interpolation='none',
+              aspect='auto', cmap=mycmap, vmin=-0.5, vmax=+3.5,
+              extent=[x_lo, x_hi, -window_size, +window_size])
+
+    # Display 24-hour local time on y axis.
+    ax.set_ylabel('Local Time [UTC{0:+d}]'.format(tz_offset),
+                  fontsize='x-large')
+    ax.set_yticks(y_ticks)
+    ax.set_yticklabels(y_labels)
+
+    # Display date on x axis.
+    ax.set_xlabel('Survey Date', fontsize='x-large')
+    ax.set_xlim(tz.localize(start.datetime), tz.localize(stop.datetime))
+    if num_nights < 50:
+        # Major ticks at month boundaries.
+        ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(tz=tz))
+        ax.xaxis.set_major_formatter(
+            matplotlib.dates.DateFormatter('%m/%y', tz=tz))
+        # Minor ticks at day boundaries.
+        ax.xaxis.set_minor_locator(matplotlib.dates.DayLocator(tz=tz))
+    elif num_nights <= 650:
+        # Major ticks at month boundaries with no labels.
+        ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(tz=tz))
+        ax.xaxis.set_major_formatter(matplotlib.ticker.NullFormatter())
+        # Minor ticks at month midpoints with centered labels.
+        ax.xaxis.set_minor_locator(
+            matplotlib.dates.MonthLocator(bymonthday=15, tz=tz))
+        ax.xaxis.set_minor_formatter(
+            matplotlib.dates.DateFormatter('%m/%y', tz=tz))
+        for tick in ax.xaxis.get_minor_ticks():
+            tick.tick1line.set_markersize(0)
+            tick.tick2line.set_markersize(0)
+            tick.label1.set_horizontalalignment('center')
+    else:
+        # Major ticks at year boundaries.
+        ax.xaxis.set_major_locator(matplotlib.dates.YearLocator(tz=tz))
+        ax.xaxis.set_major_formatter(
+            matplotlib.dates.DateFormatter('%Y', tz=tz))
+
+    ax.grid(b=True, which='major', color='w', linestyle=':', lw=1)
+
+    # Draw program labels.
+    y = 0.025
+    opts = dict(fontsize='xx-large', fontweight='bold',
+                horizontalalignment='center')
+    c = 'axes fraction'
+    ax.annotate('DARK', (0, 0), (0.2, y), c, c, color=colors[1], **opts)
+    ax.annotate('GRAY', (0, 0), (0.5, y), c, c, color=colors[2], **opts)
+    ax.annotate('BRIGHT', (0, 0), (0.8, y), c, c, color=colors[3], **opts)
 
     plt.tight_layout()
     if save:
