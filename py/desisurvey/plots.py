@@ -245,13 +245,13 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
     # Prepare a custom colormap.
     colors = ['lightblue', program_color['DARK'],
               program_color['GRAY'], program_color['BRIGHT']]
-    mycmap = matplotlib.colors.ListedColormap(colors, 'programs')
+    cmap = matplotlib.colors.ListedColormap(colors, 'programs')
 
     # Make the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
 
     ax.imshow(program.T, origin='lower', interpolation='none',
-              aspect='auto', cmap=mycmap, vmin=-0.5, vmax=+3.5,
+              aspect='auto', cmap=cmap, vmin=-0.5, vmax=+3.5,
               extent=[x_lo, x_hi, -window_size, +window_size])
 
     # Display 24-hour local time on y axis.
@@ -306,3 +306,167 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
         plt.savefig(save)
 
     return fig, ax
+
+
+def plot_next_field(date_string, obs_num, ephem, window_size=7.,
+                    max_airmass=2., min_moon_sep=50., max_bin_area=1.,
+                    save=None):
+    """Plot diagnostics for the next field selector.
+
+    Parameters
+    ----------
+    date_string : string
+        Observation date of the form 'YYYYMMDD'.
+    obs_num : int
+        Observation number on the specified night, counting from zero.
+    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+        Ephemerides covering this night.
+    """
+    # Location of Mayall at KPNO.
+    where = astropy.coordinates.EarthLocation.from_geodetic(
+        lat='31d57m50.30s', lon='-111d35m57.61s', height=2120.*u.m)
+
+    # Lookup the afternoon plan and observed tiles for this night.
+    plan = astropy.table.Table.read('obsplan' + date_string + '.fits')
+    obs = astropy.table.Table.read('obslist' + date_string + '.fits')
+
+    # Lookup the requested exposure number.
+    if obs_num < 0 or obs_num >= len(obs):
+        raise ValueError('Invalid obs_num {0}'.format(obs_num))
+    tile = obs[obs_num]
+    t_start = astropy.time.Time(tile['MJD'], format='mjd')
+    exptime = tile['EXPTIME']
+
+    # Use the exposure midpoint for calculations below.
+    when = t_start + 0.5 * exptime * u.s
+    when.location = where
+    night = ephem.get(when)
+
+    # Calculate the program during this night.
+    midnight = night['MJDstart'] + 0.5
+    t_edges = midnight + np.linspace(
+        -window_size, +window_size, 2 * window_size * 60 + 1) / 24.
+    t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
+    dark, gray, bright = ephem.get_program(t_centers)
+
+    # Determine the program during the exposure midpoint.
+    t_index = np.digitize(when.mjd, t_edges) - 1
+    if dark[t_index]:
+        program = 'DARK'
+    elif gray[t_index]:
+        program = 'GRAY'
+    else:
+        program = 'BRIGHT'
+
+    # Restrict the plan to tiles in the current program.
+    plan = plan[plan['PROGRAM'] == program]
+
+    # Calculate the apparent HA of each tile in the plan in degrees [0,360].
+    lst = when.sidereal_time(kind='apparent').to(u.deg).value
+    ha = np.fmod(lst - plan['RA'] + 360, 360)
+
+    # Calculate the difference between the actual and optimum HA for
+    # each tile in degrees [-180, +180].
+    dha = np.fmod(ha - 15 * plan['HA'] + 540, 360) - 180
+
+    # Build (ra,dec) grid where quantities will be tabulated.
+    max_bin_area = max_bin_area * (np.pi / 180.) ** 2
+
+    # Pick the number of bins in cos(DEC) and RA to use.
+    n_cos_dec = int(np.ceil(2 / np.sqrt(max_bin_area)))
+    n_ra = int(np.ceil(4 * np.pi / max_bin_area / n_cos_dec))
+    # Calculate the actual pixel area in sq. degrees.
+    bin_area = 360 ** 2 / np.pi / (n_cos_dec * n_ra)
+
+    # Calculate the bin edges in degrees.
+    ra_edges = np.linspace(-180., +180., n_ra + 1)
+    dec_edges = np.degrees(np.arcsin(np.linspace(-1., +1., n_cos_dec + 1)))
+
+    # Place a SkyCoord at the center of each bin.
+    ra = 0.5 * (ra_edges[1:] + ra_edges[:-1])
+    dec = 0.5 * (dec_edges[1:] + dec_edges[:-1])[:, np.newaxis]
+    radec_grid = astropy.coordinates.SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+
+    # Ignore atmospheric refraction and restrict to small airmass, for speed.
+    altaz_frame = astropy.coordinates.AltAz(
+        location=where, obstime=when, pressure=0)
+
+    # Transform (ra,dec) grid to (alt,az)
+    altaz_grid = radec_grid.transform_to(altaz_frame)
+    zenith = 90 * u.deg - altaz_grid.alt
+
+    # Calculate airmass at each grid point.
+    airmass = 1. / np.cos(zenith.to(u.rad).value)
+
+    # Calculate position of moon.
+    moon_pos = desisurvey.ephemerides.get_moon_interpolator(night)
+    moon_alt, moon_az = moon_pos(when.mjd)
+    moon_altaz = astropy.coordinates.AltAz(
+        alt=moon_alt * u.deg, az=moon_az * u.deg,
+        location=where, obstime=when, pressure=0)
+    moon_radec = moon_altaz.transform_to(astropy.coordinates.ICRS)
+    moon_ra = moon_radec.ra.to(u.deg).value
+    moon_dec = moon_radec.dec.to(u.deg).value
+    moon_sep = moon_altaz.separation(altaz_grid).to(u.deg).value
+    # Mask regions of the sky too close to the moon if it is above the horizon.
+    if moon_alt > 0:
+        data_mask = moon_sep < min_moon_sep
+    else:
+        data_mask = None
+
+    data = desiutil.plots.prepare_data(
+        airmass, mask=data_mask, clip_lo='!1.',
+        clip_hi='!{0}'.format(max_airmass))
+
+    # Prepare tile coords to display.
+    ra_plan = plan['RA'] * u.deg
+    dec_plan = plan['DEC'] * u.deg
+    ra_tile = [tile['RA']] * u.deg
+    dec_tile = [tile['DEC']] * u.deg
+
+    time = when.datetime.time()
+    title1 = '{} {:02d}:{:02d} Exp #{}/{} {:.1f}min {:04d}-{:6s}'.format(
+        when.datetime.date(), time.hour, time.minute, obs_num + 1, len(obs),
+        exptime / 60., tile['TILEID'], tile['PROGRAM'])
+    title2 = 'LST={:.1f}deg X={:.2f} Moon {:.1f}%'.format(
+        lst, tile['AIRMASS'], 100 * tile['MOONFRAC'])
+
+    fig = plt.figure(figsize=(11, 7.5))
+    gs = matplotlib.gridspec.GridSpec(2, 1, height_ratios=[8, 1],
+                                      top=0.95, hspace=0.01)
+    top = plt.subplot(gs[0])
+    btm = plt.subplot(gs[1])
+
+    # Draw the night program.
+    program_code = np.zeros((len(t_centers), 1))
+    program_code[dark] = 1.
+    program_code[gray] = 2.
+    program_code[bright] = 3.
+    colors = ['lightblue', program_color['DARK'],
+              program_color['GRAY'], program_color['BRIGHT']]
+    cmap = matplotlib.colors.ListedColormap(colors, 'programs')
+    btm.imshow(program_code.T, origin='lower', interpolation='none',
+               aspect='auto', cmap=cmap, vmin=-0.5, vmax=+3.5,
+               extent=[-window_size, +window_size, 0, 1])
+    btm.set_yticks([])
+    btm.axvline(24 * (when.mjd - midnight), color='r', lw=2)
+    btm.set_xlabel('Local Time [UTC-7]')
+
+    plt.suptitle(title1 + ' ' + title2, fontsize='x-large')
+    basemap = desiutil.plots.init_sky(
+        galactic_plane_color=program_color[program], ax=top)
+    desiutil.plots.plot_grid_map(data, ra_edges, dec_edges, label='Airmass',
+                                 cmap='viridis', basemap=basemap)
+
+    dha = desiutil.plots.prepare_data(dha, clip_lo=-180, clip_hi=180, save_limits=True)
+    desiutil.plots.plot_sky_circles(ra_plan, dec_plan, data=dha, cmap='bwr',
+                                    colorbar=False, edgecolor='none', basemap=basemap)
+    desiutil.plots.plot_sky_circles(ra_tile, dec_tile, field_of_view=10, facecolors=(1, 1, 1, 0.5),
+                                    edgecolor=program_color[tile['PROGRAM']], basemap=basemap)
+
+    # Draw the location of the moon.
+    basemap.scatter(
+        moon_ra, moon_dec, marker='x', color='k', s=100, latlon=True)
+
+    if save:
+        plt.savefig(save)
