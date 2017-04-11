@@ -120,7 +120,7 @@ class surveyPlan:
             compute: bool, False reads a pre-computed table; for development purposes only.
         """
 
-        #compute = True
+        compute = True
         if compute:
             obs_dark = self.plan_ha(MJDstart, MJDend, False)
             obs_bright = self.plan_ha(MJDstart, MJDend, True)
@@ -320,10 +320,9 @@ class surveyPlan:
             LSTbrightend = mjd2lst(night['MJD_bright_end'])
             for i in range(self.nLST):
                 if BGS:
-                    #if ( (inLSTwindow(self.LSTbins[i], lst13evening, lst13morning) and
-                    #      not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
-                    #     inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
-                    if inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend):
+                    if ( (inLSTwindow(self.LSTbins[i], lst13evening, lst13morning) and
+                          not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
+                          inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0
                 else:
                     if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
@@ -333,10 +332,6 @@ class surveyPlan:
                          inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
                          not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0
-        if not BGS:
-            f = open("scheduled_times.dat", "w")
-            f.write(str(scheduled_times))
-            f.close()
         scheduled_times *= weather*self.LSTres
         remaining_times = np.copy(scheduled_times)
 
@@ -399,6 +394,8 @@ class surveyPlan:
             #print(t_scheduled, t_required)
         obs['obs_bit'][:] = 0
         self.retile(obs, surveystruct, optimize)
+
+        print("Number of un-assigned tiles:", len(np.ravel(np.where(obs['obs_bit']==0))))
 
         return obs
 
@@ -480,28 +477,7 @@ class surveyPlan:
 
         ha_tmp = np.empty(num_obs, dtype='f8')
         airmass_tmp = np.empty(num_obs, dtype='f8')
-        """
-        for i in range(num_times):
-            ha_tmp = surveystruct['times'][i] - ra
-            ha_tmp[ha_tmp >= 180.0] -= 360.0
-            ha_tmp[ha_tmp <= -180.0] += 360.0
-            airmass_tmp = airMassCalculator(ra, dec, ha_tmp+ra)
-            above_hor = np.where(airmass_tmp < 40.0)
-            airmass_tmp = airmass_tmp[above_hor]
-            i_inc_tmp = obs['i_increase'][above_hor]
-            i_inc_tmp *= surveystruct['alpha_red']
-            temp_rank = np.power(airmass_tmp, i_inc_tmp)
-            rank_times[i] = np.mean(temp_rank)
 
-        r1 = np.max(rank_times[0:num_times//2-1])
-        r2 = np.max(rank_times[num_times//2:num_times-1])
-        a1 = np.where(rank_times == r1)
-        a2 = np.where(rank_times == r2)
-        a = np.concatenate([np.ravel(a1), np.ravel(a2)])
-        a.sort()
-        index1 = a[0] + 2
-        index2 = a[1] - 7 # Adjust boundary between SGC + NGC: should be done iteratively.
-        """
         index1 = 30
         index2 = 120
         ends =  0.5*surveystruct['scheduled_times'][index1] + 0.5*surveystruct['scheduled_times'][index2]
@@ -549,18 +525,17 @@ class surveyPlan:
             rank_plates_tmp = np.power(airmass, surveystruct['alpha_red']*obs['i_increase'][ngcplates])
             if optimize:
                 rank_plates_tmp -= np.power(orig_airmass, surveystruct['alpha_red']*obs['i_increase'][ngcplates])
-            angc = np.ravel(np.where( (obs_bit < 2) & (np.abs(ha) < 1.0) ))
-            asize = len(angc)
-            if asize > 0 and optimize == 0:
-                rank_plates_tmp[angc] = 1000.0
-            if len(np.ravel(np.where(obs_bit < 2))) == 0:
+            else:
+                rank_plates_tmp[np.where( (obs_bit < 2) & (np.abs(ha) < 15.0) )] = 1000.0
+            todo = np.where(obs_bit < 2)
+            asize = len(np.ravel(todo))
+            if asize == 0:
                 break
             if asize < num_reqplates:
                 num_reqplates = asize
-            angc = np.where(obs_bit < 2)
-            rank_plates = rank_plates_tmp[angc]
-            tile0 = sort2arr(tile[angc],rank_plates)
-            ha0 = sort2arr(ha[angc], rank_plates)
+            rank_plates = rank_plates_tmp[todo]
+            tile0 = sort2arr(tile[todo],rank_plates)
+            ha0 = sort2arr(ha[todo], rank_plates)
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile[j]))[0]
                 d = obs['dec'][j2]
@@ -609,17 +584,16 @@ class surveyPlan:
             rank_plates = np.power(airmass, surveystruct['alpha_red']*obs['i_increase'][sgcplates])
             if optimize:
                 rank_plates -= np.power(orig_airmass, surveystruct['alpha_red']*obs['i_increase'][sgcplates])
-            asgc = np.ravel(np.where( (obs_bit < 2) & (np.abs(ha) < 1.0) ))
-            asize = len(asgc)
-            if  asize > 0 and optimize == 0:
-                rank_plates[asgc] = 1000.0
-            if len(np.ravel(np.where(obs_bit < 2))) == 0:
+            else:
+                rank_plates[np.where( (obs_bit < 2) & (np.abs(ha) < 15.0) )] = 1000.0
+            todo = np.where(obs_bit < 2)
+            asize = len(np.ravel(todo))
+            if asize == 0:
                 break
             num_reqplates = min([num_reqplates,asize])
-            asgc = np.where(obs_bit < 2)
-            rank_plates = rank_plates[asgc]
-            tile0 = sort2arr(tile[asgc],rank_plates)
-            ha0 = sort2arr(ha[asgc], rank_plates)
+            rank_plates = rank_plates[todo]
+            tile0 = sort2arr(tile[todo],rank_plates)
+            ha0 = sort2arr(ha[todo], rank_plates)
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile[j]))[0]
                 d = obs['dec'][j2]
