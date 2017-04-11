@@ -438,11 +438,13 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     title2 = 'LST={:.1f}deg X={:.2f} Moon {:.1f}%'.format(
         lst, tile['AIRMASS'], 100 * tile['MOONFRAC'])
 
+    # Initialize the plots.
     fig = plt.figure(figsize=(11, 7.5))
     gs = matplotlib.gridspec.GridSpec(2, 1, height_ratios=[8, 1],
                                       top=0.95, hspace=0.01)
     top = plt.subplot(gs[0])
     btm = plt.subplot(gs[1])
+    plt.suptitle(title1 + ' ' + title2, fontsize='x-large')
 
     # Draw the night program.
     program_code = np.zeros((len(t_centers), 1))
@@ -456,10 +458,15 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
                aspect='auto', cmap=cmap, vmin=-0.5, vmax=+3.5,
                extent=[-window_size, +window_size, 0, 1])
     btm.set_yticks([])
+    window_hours = int(np.floor(window_size))
+    x_ticks = np.arange(2 * window_hours + 1) - window_hours
+    x_labels = ['{0:02d}h'.format((hr + 24) % 24) for hr in x_ticks]
+    btm.set_xticks(x_ticks)
+    btm.set_xticklabels(x_labels)
     btm.axvline(24 * (when.mjd - midnight), color='r', lw=2)
     btm.set_xlabel('Local Time [UTC-7]')
 
-    plt.suptitle(title1 + ' ' + title2, fontsize='x-large')
+    # Draw an all-sky overview of the afternoon plan and selected tile.
     basemap = desiutil.plots.init_sky(
         galactic_plane_color=program_color[program], ax=top)
     desiutil.plots.plot_grid_map(data, ra_edges, dec_edges, label='Airmass',
