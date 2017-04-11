@@ -344,6 +344,11 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     t_start = astropy.time.Time(tile['MJD'], format='mjd')
     exptime = tile['EXPTIME']
 
+    # Lookup the corresponding tile in the plan.
+    tile_plan = plan[plan['TILEID'] == tile['TILEID']]
+    assert len(tile_plan) == 1
+    tile_plan = tile_plan[0]
+
     # Use the exposure midpoint for calculations below.
     when = t_start + 0.5 * exptime * u.s
     when.location = where
@@ -432,11 +437,13 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     dec_tile = [tile['DEC']] * u.deg
 
     time = when.datetime.time()
-    title1 = '{} {:02d}:{:02d} Exp #{}/{} {:.1f}min {:04d}-{:6s}'.format(
+    title1 = '{} {:02d}:{:02d} Exp #{}/{} {:.1f}[{:.0f}]m {:04d}-{:6s}'.format(
         when.datetime.date(), time.hour, time.minute, obs_num + 1, len(obs),
-        exptime / 60., tile['TILEID'], tile['PROGRAM'])
-    title2 = 'LST={:.1f}deg X={:.2f} Moon {:.1f}%'.format(
-        lst, tile['AIRMASS'], 100 * tile['MOONFRAC'])
+        exptime / 60., tile_plan['EXPLEN'] / 60.,
+        tile['TILEID'], tile['PROGRAM'])
+    title2 = 'LST={:.1f}[{:.0f},{:.0f}]d X={:.2f} M={:.1f}%'.format(
+        lst, 15. * tile_plan['LSTMIN'], 15. * tile_plan['LSTMAX'],
+        tile['AIRMASS'], 100. * tile['MOONFRAC'])
 
     # Initialize the plots.
     fig = plt.figure(figsize=(11, 7.5))
