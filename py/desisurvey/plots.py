@@ -346,7 +346,9 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
 
     # Lookup the corresponding tile in the plan.
     tile_plan = plan[plan['TILEID'] == tile['TILEID']]
-    assert len(tile_plan) == 1
+    if len(tile_plan) != 1:
+        raise RuntimeError('Observed tile {0} not in plan for {1} obs #{2}.'
+                           .format(tile['TILEID'], date_string, obs_num))
     tile_plan = tile_plan[0]
 
     # Use the exposure midpoint for calculations below.
