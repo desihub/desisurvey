@@ -159,6 +159,51 @@ class Ephemerides(object):
         return self._table[day_index]
 
 
+    def get_program(self, mjd):
+        """Tabulate the program during one night.
+
+        Parameters
+        ----------
+        mjd : float or array
+            MJD values during a single night where the program should be
+            tabulated.
+
+        Returns
+        -------
+        tuple
+            Tuple (dark, gray, bright) of boolean arrays that tabulates the
+            program at each input MJD.
+        """
+        # Get the night of the earliest time.
+        mjd = np.asarray(mjd)
+        night = self.get(astropy.time.Time(np.min(mjd), format='mjd'))
+
+        # Check that all input MJDs are valid for this night.
+        mjd0 = night['MJDstart']
+        if np.any((mjd < mjd0) | (mjd >= mjd0 + 1)):
+            raise ValueError('MJD values span more than one night.')
+
+        # Calculate the moon altitude angle in degrees at each grid time.
+        moon_alt, _ = get_moon_interpolator(night)(mjd)
+        moon_frac = night['MoonFrac']
+
+        # Identify times between 13 and 15 degree twilight.
+        twilight13 = (mjd >= night['MJDe13twi']) & (mjd <= night['MJDm13twi'])
+        twilight15 = (mjd >= night['MJDetwi']) & (mjd <= night['MJDmtwi'])
+
+        # Identify program during each MJD.
+        dark = twilight15 & (moon_alt < 0)
+        bright = twilight13 & (
+            ~twilight15 |
+            ((moon_alt > 0) & (moon_frac > 0.6)) |
+            (moon_frac * moon_alt > 30))
+        gray = twilight15 & ~dark & ~bright
+
+        assert not np.any(dark & gray | dark & bright | gray & bright)
+
+        return dark, gray, bright
+
+
 def get_moon_interpolator(row):
     """Build an interpolator for the moon (alt, az) during one night.
 
