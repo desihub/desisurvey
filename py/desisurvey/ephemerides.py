@@ -12,12 +12,12 @@ import scipy.interpolate
 
 import astropy.time
 import astropy.table
-import astropy.units
+import astropy.units as u
 
 import ephem
 
 import desiutil.log
-import desisurvey.kpno as kpno
+import desisurvey.config
 
 
 class Ephemerides(object):
@@ -33,11 +33,13 @@ class Ephemerides(object):
     """
     def __init__(self, start_date, stop_date, num_moon_steps=49, use_cache=True):
         self.log = desiutil.log.get_logger()
+        config = desisurvey.config.Configuration()
 
         # Build filename for saving the ephemerides.
         mjd_start = int(math.floor(start_date.mjd))
         mjd_stop = int(math.floor(stop_date.mjd))
-        filename = 'ephem_{0}_{1}.fits'.format(mjd_start, mjd_stop)
+        filename = config.get_path(
+            'ephem_{0}_{1}.fits'.format(mjd_start, mjd_stop))
         if use_cache and os.path.exists(filename):
             self._table = astropy.table.Table.read(filename)
             self.start_date = astropy.time.Time(
@@ -62,8 +64,8 @@ class Ephemerides(object):
 
         # Initialize the observer.
         mayall = ephem.Observer()
-        mayall.lat = np.radians(kpno.mayall.lat_deg)
-        mayall.lon = np.radians(kpno.mayall.west_lon_deg)
+        mayall.lat = config.location.latitude().to(u.rad).value
+        mayall.lon = config.location.longitude().to(u.rad).value
         # Disable atmospheric refraction corrections.
         mayall.pressure = 0.0
         # Calculate the MJD corresponding to date=0. in ephem.
@@ -76,7 +78,7 @@ class Ephemerides(object):
 
         # Loop over days.
         for day_offset in range(num_days):
-            day = start_date + day_offset * astropy.units.day
+            day = start_date + day_offset * u.day
             mayall.date = day.datetime
             row = data[day_offset]
             # Store local noon for this day.
@@ -86,13 +88,15 @@ class Ephemerides(object):
             row['MJDsunset'] = mayall.next_setting(ephem.Sun()) + mjd0
             row['MJDsunrise'] = mayall.next_rising(ephem.Sun()) + mjd0
             # 13 deg twilight, adequate (?) for BGS sample.
-            mayall.horizon = '-13'
+            mayall.horizon = (
+                config.programs.BRIGHT.max_sun_altitude().to(u.rad).value)
             row['MJDe13twi'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
             row['MJDm13twi'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
             # 15 deg twilight, start of dark time if the moon is down.
-            mayall.horizon = '-15'
+            mayall.horizon = (
+                config.programs.DARK.max_sun_altitude().to(u.rad).value)
             row['MJDetwi'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
             row['MJDmtwi'] = mayall.next_rising(
@@ -192,6 +196,8 @@ class Ephemerides(object):
 
         # Calculate the moon altitude angle in degrees at each grid time.
         moon_alt, _ = get_moon_interpolator(night)(mjd)
+
+        # Lookup the moon illuminated fraction for this night.
         moon_frac = night['MoonFrac']
 
         # Identify times between 13 and 15 degree twilight.
@@ -199,12 +205,13 @@ class Ephemerides(object):
         twilight15 = (mjd >= night['MJDetwi']) & (mjd <= night['MJDmtwi'])
 
         # Identify program during each MJD.
+        GRAY = desisurvey.config.Configuration().programs.GRAY
+        gray = twilight15 & (moon_alt >= 0) & (
+            (moon_frac <= GRAY.max_moon_illumination()) &
+            (moon_frac * moon_alt <=
+             GRAY.max_moon_illumination_altitude_product().to(u.deg).value))
         dark = twilight15 & (moon_alt < 0)
-        bright = twilight13 & (
-            ~twilight15 |
-            ((moon_alt > 0) & (moon_frac > 0.6)) |
-            (moon_frac * moon_alt > 30))
-        gray = twilight15 & ~dark & ~bright
+        bright = twilight13 & ~(dark | gray)
 
         assert not np.any(dark & gray | dark & bright | gray & bright)
 
