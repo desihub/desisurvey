@@ -29,12 +29,30 @@ class TestConfig(unittest.TestCase):
     def tearDown(self):
         # Remove the directory after the test.
         shutil.rmtree(self.tmpdir)
+        # Reset configuration for other unit test classes.
+        Configuration.reset()
 
 
     def test_default(self):
         """Default config file is valid"""
         Configuration.reset()
         c = Configuration()
+
+
+    def test_repeat_default(self):
+        """Repeated calls to default init return same object"""
+        Configuration.reset()
+        c1 = Configuration()
+        c2 = Configuration()
+        self.assertEqual(id(c1), id(c2))
+
+
+    def test_repeat_non_default(self):
+        """Repeated calls to non-default init return same object"""
+        Configuration.reset()
+        c1 = Configuration(self.simple)
+        c2 = Configuration(self.simple)
+        self.assertEqual(id(c1), id(c2))
 
 
     def test_valid(self):
