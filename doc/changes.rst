@@ -2,10 +2,17 @@
 desisurvey change log
 =====================
 
-0.4.1 (unreleased)
+0.5.1 (unreleased)
+------------------
+
+* No changes yet
+
+0.5.0 (2017-04-13)
 ------------------
 
 * Add new plot methods
+* Bug fix to Az computation and airmass calculator
+* Code reorganization
 
 0.4.0 (2017-04-04)
 ------------------
