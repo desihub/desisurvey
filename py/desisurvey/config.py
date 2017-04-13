@@ -92,34 +92,56 @@ class Node(object):
 
 class Configuration(Node):
     """Top-level configuration data node.
-
     """
     __instance = None
 
-    def __new__(cls):
+    @staticmethod
+    def reset():
+        """Forget our singleton instance.  Mainly intended for unit tests."""
+        Configuration.__instance = None
+
+
+    def __new__(cls, file_name='config.yaml'):
         """Implement a singleton access pattern.
         """
         if Configuration.__instance is None:
             Configuration.__instance = object.__new__(cls)
-            Configuration.__instance._initialize()
+            Configuration.__instance._initialize(file_name)
+        elif file_name != Configuration.__instance.file_name:
+            raise RuntimeError('Configuration already loaded from {0}'
+                               .format(Configuration.__instance.file_name))
         return Configuration.__instance
 
 
-    def __init__(self):
-        pass
+    def __init__(self, file_name='config.yaml'):
+        """Return the unique configuration object for this session.
 
-
-    def _initialize(self, file_name='config.yaml'):
-        """Initialize a configuration data structure from a YAML file.
+        The configuration will be loaded from the specified file when this
+        constructor is called for the first time.  Subsequent calls with
+        a different file name will result in a RuntimeError.
 
         Parameters
         ----------
         file_name : string
-            Name of a YAML file under this package's data/ directory.
+            Name of a YAML file including a valid YAML extension.  The file
+            is assumed to be under this package's data/ directory unless
+            an absolute path is specified.
         """
-        # Locate the config file in our package data/ directory.
-        full_path = astropy.utils.data._find_pkg_data_path(
-            os.path.join('data', file_name))
+        pass
+
+
+    def _initialize(self, file_name):
+        """Initialize a configuration data structure from a YAML file.
+        """
+        # Remember the file name since it is not allowed to change.
+        self.file_name = file_name
+
+        if os.path.isabs(file_name):
+            full_path = file_name
+        else:
+            # Locate the config file in our package data/ directory.
+            full_path = astropy.utils.data._find_pkg_data_path(
+                os.path.join('data', file_name))
 
         # Validate that all mapping keys are valid python identifiers
         # and that there are no embedded sequences.
