@@ -22,7 +22,7 @@ calls to Configuration() always return the same object.
 """
 from __future__ import print_function, division
 
-import os.path
+import os
 import re
 
 import yaml
@@ -66,6 +66,8 @@ class Node(object):
                         raise ValueError(
                             'Invalid unit for {0}: {1}'
                             .format('.'.join(self._path), unit))
+                else:
+                    self._value = value
             except TypeError:
                 self._value = value
 
@@ -108,7 +110,8 @@ class Configuration(Node):
 
 
     def _initialize(self, file_name='config.yaml'):
-        """
+        """Initialize a configuration data structure from a YAML file.
+
         Parameters
         ----------
         file_name : string
@@ -141,3 +144,18 @@ class Configuration(Node):
         # Load the config data into memory.
         with open(full_path) as f:
             Node.__init__(self, yaml.safe_load(f))
+
+        # Check for a valid output_path.
+        try:
+            self._output_path = self.output_path().format(**os.environ)
+        except KeyError as e:
+            raise RuntimeError(
+                'Environment variable not set for output_path: {0}'.format(e))
+        if not os.path.isdir(self._output_path):
+            raise RuntimeError(
+                'Non-existent output_path: {0}'.format(self._output_path))
+
+    def get_path(self, name):
+        """Prepend this configuration's output_path to non-absolute paths.
+        """
+        return os.path.join(self._output_path, name)

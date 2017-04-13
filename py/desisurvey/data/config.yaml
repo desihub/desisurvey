@@ -101,4 +101,4 @@ num_lst_bins: 144
 # variables.
 #-------------------------------------------------------------------
 
-output_path: '{DESISURVEY}/output'
+output_path: '{DESISURVEY}'
