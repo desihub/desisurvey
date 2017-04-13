@@ -8,11 +8,17 @@ The normal usage is::
     >>> config.programs.BRIGHT.max_sun_altitude()
     <Quantity -13.0 deg>
 
-Use dot notation to specify nodes in the configuration hieararchy.
+Use dot notation to specify nodes in the configuration hieararchy and
+function call notation to access terminal node values.
+
 Terminal node values are first converted according to YAML rules. Strings
 containing a number followed by valid astropy units are subsequently converted
 to astropy quantities.  Strings of the form YYYY-MM-DD are converted to
 datetime.date objects.
+
+The configuration is implemented as a singleton so the YAML file is only
+loaded and parsed the first time a Configuration() is built.  Subsequent
+calls to Configuration() always return the same object.
 """
 from __future__ import print_function, division
 
@@ -85,14 +91,29 @@ class Node(object):
 class Configuration(Node):
     """Top-level configuration data node.
 
-    Parameters
-    ----------
-    config : dict
-        Dictionary of configuration parameters, normally obtained by parsing
-        a YAML file with :func:`load`.
     """
-    def __init__(self, file_name='config.yaml'):
+    __instance = None
 
+    def __new__(cls):
+        """Implement a singleton access pattern.
+        """
+        if Configuration.__instance is None:
+            Configuration.__instance = object.__new__(cls)
+            Configuration.__instance._initialize()
+        return Configuration.__instance
+
+
+    def __init__(self):
+        pass
+
+
+    def _initialize(self, file_name='config.yaml'):
+        """
+        Parameters
+        ----------
+        file_name : string
+            Name of a YAML file under this package's data/ directory.
+        """
         # Locate the config file in our package data/ directory.
         full_path = astropy.utils.data._find_pkg_data_path(
             os.path.join('data', file_name))
