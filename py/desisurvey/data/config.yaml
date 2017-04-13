@@ -46,8 +46,7 @@ programs:
         # Moon must be below the horizon.
     GRAY:
         # Twilight requirement is the same as DARK.
-        # Moon must be above the horizon and satisfy at least
-        # one of these conditions:
+        # Moon must be above the horizon and pass both of these cuts:
         max_moon_illumination: 0.6
         max_moon_illumination_altitude_product: 30 deg
     BRIGHT:
