@@ -3,8 +3,6 @@
 The normal usage is::
 
     >>> config = Configuration()
-    >>> config.max_airmass()
-    2.0
     >>> config.programs.BRIGHT.max_sun_altitude()
     <Quantity -13.0 deg>
 
