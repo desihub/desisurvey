@@ -26,7 +26,7 @@ class surveyPlan:
     Main class for survey planning
     """
 
-    def __init__(self, MJDstart, MJDend, surveycal, tilesubset=None):
+    def __init__(self, MJDstart, MJDend, surveycal, tilesubset=None, HA_assign=False):
         """Initialises survey by reading in the file desi_tiles.fits
         and populates the class members.
 
@@ -100,7 +100,7 @@ class surveyPlan:
         self.numtiles = numtiles
 
         # Add HA, LSTMIN, LSTMAX columns.
-        self.assignHA(MJDstart, MJDend)
+        self.assignHA(MJDstart, MJDend, compute=HA_assign)
 
         self.tiles.sort(('SUBLIST', 'DEC'))
 
@@ -120,7 +120,6 @@ class surveyPlan:
             compute: bool, False reads a pre-computed table; for development purposes only.
         """
 
-        compute = True
         if compute:
             obs_dark = self.plan_ha(MJDstart, MJDend, False)
             obs_bright = self.plan_ha(MJDstart, MJDend, True)
@@ -293,9 +292,9 @@ class surveyPlan:
         """
 
         if BGS:
-            exptime = 600.0 / 3600.0
+            exptime = 600.0
         else:
-            exptime = 1000.0 / 3600.0
+            exptime = 1000.0
         # First define general survey characteristics
         r_threshold = 1.54 # this is an initial guess for required SN2/pixel over r-band
         b_threshold = 0.7 # same for g-band, scaled relative to r-band throughout analysis, the ratio of r-b cannot change
@@ -334,21 +333,22 @@ class surveyPlan:
                         scheduled_times[i] += 1.0
         scheduled_times *= weather*self.LSTres
         remaining_times = np.copy(scheduled_times)
+        print("Total scheduled times:", np.sum(scheduled_times)/15.0)
 
-        surveystruct = {'exptime' : exptime/240.0,  # nominal exposure time (converted to degrees)
-                        'overhead1' : 120.0 / 240.0,      # amount of time for cals and field acquisition
-                        'overhead2' : 60.0 / 240.0,      # amount of time for readout
+        surveystruct = {'exptime' : exptime/240.0,  # nominal exposure time (converted from seconds to degrees)
+                        'overhead1' : 120.0 / 240.0,      # amount of time for cals and field acquisition (idem)
+                        'overhead2' : 60.0 / 240.0,      # amount of time for readout (idem)
                         'survey_begin' : survey_begin,
                         'survey_end' : survey_end,
                         'res' : self.LSTres,
-                        'avg_rsn' : 0.75,            # SN2/pixel in r-band during nominal exposure time under average conditions, needs to be empirically determined
-                        'avg_bsn' : 0.36,            # same, for g-band
+                        'avg_rsn' : 0.75, # SN2/pixel in r-band during nominal exposure time under average conditions, needs to be empirically determined
+                        'avg_bsn' : 0.36, # same, for g-band
                         'alpha_red' : 1.25,          # power law for airmass dependence, r-band
                         'alpha_blue' : 1.25,         # same, for g-band
                         'r_threshold' : r_threshold,
                         'b_threshold' : b_threshold,
                         'weather' : weather,         # estimate of time available, after weather loss
-                        'times' : times,             # time is in hours
+                        'times' : times,             # time is in degrees
                         'scheduled_times' : scheduled_times,
                         'observed_times' : observed_times,
                         'remaining_times' : remaining_times,
@@ -357,12 +357,11 @@ class surveyPlan:
                         'ngc_begin' : 75.0,           # estimate of bounds for NGC
                         'ngc_end' : 300.0,            # estimate of bounds for NGC
                         'platearea' : 1.4,           # area in sq degrees per unique tile
-                        'surveyarea' : 14000.0,      # required survey area
-                        'survey_duration' : 0.0,     # Total time for survey, after weather
-                        'fiducial_exptime' : 0.0,    # open shutter time at zero extinction and 1 airmass
-                        'dark' : 0.55}               # definition of dark time, in terms of moon phase
+                        'surveyarea' : 14000.0}      # required survey area
 
         obs = self.compute_extinction(BGS)
+        surveystruct['platearea'] = surveystruct['surveyarea'] / float( len(obs['tileid']) )
+        print("Adjusted plate area =", surveystruct['platearea'])
 
         # FIND MINIMUM AMOUNT OF TIME REQUIRED TO COMPLETE PLATES
         num_obs = len(obs['ra'])
@@ -373,17 +372,17 @@ class surveyPlan:
         # FIND OPTIMAL HA FOR FOOTPRINT, ITERATE ONLY ONCE
         optimize = 1
         self.retile(obs, surveystruct, optimize)
+        print("Number of un-assigned tiles:", len(np.ravel(np.where(obs['obs_bit']==0))))
 
         # ADJUST THRESHOLDS ONCE TO MATCH AVAILABLE LST DISTRIBUTION
         a = np.ravel(np.where(obs['obs_bit'] > 1))
         rel_area = len(a)*surveystruct['platearea']/surveystruct['surveyarea']
-        oh_avg = 0.0
+        obs_avg = np.mean(obs['obstime'][a])
+        oh_avg = np.mean(obs['overhead'][a])
         if rel_area < 1.0 and rel_area > 0.0:
-            obs_avg = np.mean(obs['obstime'][a])
-            oh_avg = np.mean(obs['overhead'][a])
             t_scheduled = obs_avg - oh_avg
             t_required = obs_avg*rel_area - oh_avg
-            #print(rel_area, obs_avg, oh_avg, t_scheduled, t_required)
+            print(rel_area, obs_avg, oh_avg, t_scheduled, t_required)
             surveystruct['r_threshold'] *= t_required/t_scheduled
             surveystruct['b_threshold'] *= t_required/t_scheduled
         if np.sum(surveystruct['remaining_times']) > 0.0:
@@ -391,11 +390,11 @@ class surveyPlan:
             t_required = np.sum(surveystruct['scheduled_times'])/num_obs - oh_avg
             surveystruct['r_threshold'] *= t_required/t_scheduled*excess
             surveystruct['b_threshold'] *= t_required/t_scheduled*excess
-            #print(t_scheduled, t_required)
+            print(t_scheduled, t_required)
         obs['obs_bit'][:] = 0
         self.retile(obs, surveystruct, optimize)
 
-        print("Number of un-assigned tiles:", len(np.ravel(np.where(obs['obs_bit']==0))))
+        print("Number of un-assigned tiles after adjustment:", len(np.ravel(np.where(obs['obs_bit']==0))))
 
         return obs
 
@@ -478,8 +477,8 @@ class surveyPlan:
         ha_tmp = np.empty(num_obs, dtype='f8')
         airmass_tmp = np.empty(num_obs, dtype='f8')
 
-        index1 = 30
-        index2 = 120
+        index1 = int(np.floor(self.nLST*surveystruct['ngc_begin']/360.0))
+        index2 = int(np.floor(self.nLST*surveystruct['ngc_end']/360.0))
         ends =  0.5*surveystruct['scheduled_times'][index1] + 0.5*surveystruct['scheduled_times'][index2]
         ngctime = np.sum(surveystruct['scheduled_times'][index1:index2-1]) + ends
         sgctime = np.sum(surveystruct['scheduled_times'][0:index1-1]) + np.sum(surveystruct['scheduled_times'][index2:num_times-1]) + ends
@@ -595,7 +594,7 @@ class surveyPlan:
             tile0 = sort2arr(tile[todo],rank_plates)
             ha0 = sort2arr(ha[todo], rank_plates)
             for j in range(num_reqplates):
-                j2 = np.ravel(np.where(obs['tileid'] == tile[j]))[0]
+                j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 d = obs['dec'][j2]
                 ra = obs['ra'][j2]
                 h = ha0[j]
@@ -623,7 +622,7 @@ class surveyPlan:
         rtime = surveystruct['exptime']*surveystruct['r_threshold']/red
         blue = surveystruct['avg_bsn'] / np.power(airmass, surveystruct['alpha_blue'])/obs['g_increase'][index]
         btime = surveystruct['exptime']*surveystruct['b_threshold']/blue
-        if btime > 1.0 or rtime > 1.0:
+        if btime > 5.0 or rtime > 5.0:
             overhead += surveystruct['overhead2']
         rtime += overhead
         btime += overhead
@@ -670,7 +669,7 @@ class surveyPlan:
             obs['beginobs'][index] += 360.0
 
         if obs['endobs'][index] > 360.0:
-            obs['endobs'][index] -= 360.0
+            obs['endobs'][index] -= 360.0 * np.floor(obs['endobs'][index]/360.0)
             t = np.floor(obs['endobs'][index]/res)
             it = int(t)
             if t > 0.0:
