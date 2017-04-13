@@ -7,7 +7,7 @@
 #-------------------------------------------------------------------
 
 location:
-    latitude: -70.749416667 deg
+    latitude: 31.963972222 deg
     longitude: -111.599336111 deg
     elevation: 2120 m
     timezone: US/Mountain
@@ -45,12 +45,11 @@ programs:
         max_sun_altitude: -15 deg
         # Moon must be below the horizon.
     GRAY:
-        # Twilight requirement.
-        max_sun_altitude: -15 deg
+        # Twilight requirement is the same as DARK.
         # Moon must be above the horizon and satisfy at least
         # one of these conditions:
         max_moon_illumination: 0.6
-        max_moon_altitude_illumination_product: 30 deg
+        max_moon_illumination_altitude_product: 30 deg
     BRIGHT:
         # Twilight requirement.
         max_sun_altitude: -13 deg
