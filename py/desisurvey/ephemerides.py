@@ -2,18 +2,22 @@
 """
 from __future__ import print_function, division
 
-from astropy.time import Time
-import astropy.table
-import astropy.units as u
-from datetime import datetime, timedelta
-import numpy as np
-import scipy.interpolate
-import ephem
-import desisurvey.kpno as kpno
 import warnings
 import math
 import os.path
+import datetime
+
+import numpy as np
+import scipy.interpolate
+
+import astropy.time
+import astropy.table
+import astropy.units
+
+import ephem
+
 import desiutil.log
+import desisurvey.kpno as kpno
 
 
 class Ephemerides(object):
@@ -36,8 +40,10 @@ class Ephemerides(object):
         filename = 'ephem_{0}_{1}.fits'.format(mjd_start, mjd_stop)
         if use_cache and os.path.exists(filename):
             self._table = astropy.table.Table.read(filename)
-            self.start_date = Time(self._table.meta['START'], format='isot')
-            self.stop_date = Time(self._table.meta['STOP'], format='isot')
+            self.start_date = astropy.time.Time(
+                self._table.meta['START'], format='isot')
+            self.stop_date = astropy.time.Time(
+                self._table.meta['STOP'], format='isot')
             self.log.info('Loaded ephemerides from {0} for {1} to {2}'
                           .format(filename, start_date, stop_date))
             return
@@ -65,11 +71,12 @@ class Ephemerides(object):
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 'ignore', category=astropy.utils.exceptions.AstropyUserWarning)
-            mjd0 = Time(datetime(1899, 12, 31, 12, 0, 0)).mjd
+            mjd0 = astropy.time.Time(
+                datetime.datetime(1899, 12, 31, 12, 0, 0)).mjd
 
         # Loop over days.
         for day_offset in range(num_days):
-            day = start_date + day_offset * u.day
+            day = start_date + day_offset * astropy.units.day
             mayall.date = day.datetime
             row = data[day_offset]
             # Store local noon for this day.
