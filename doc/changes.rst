@@ -6,6 +6,7 @@ desisurvey change log
 ------------------
 
 * Add new plot methods
+* Add new config yaml file and python wrapper
 
 0.4.0 (2017-04-04)
 ------------------
