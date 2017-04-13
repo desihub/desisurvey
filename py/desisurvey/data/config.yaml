@@ -10,7 +10,7 @@ location:
     latitude: 31.963972222 deg
     longitude: -111.599336111 deg
     elevation: 2120 m
-    timezone: US/Mountain
+    timezone: US/Arizona
 
 #-------------------------------------------------------------------
 # Observing calendar.
@@ -68,7 +68,7 @@ full_depth_field:
 # Parameters used to plan observation during a night.
 #-------------------------------------------------------------------
 
-max_airmass: 2.0
+min_altitude: 30 deg
 
 # Setup time
 focus_time: 30 s
