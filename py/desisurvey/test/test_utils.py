@@ -37,24 +37,22 @@ class TestUtils(unittest.TestCase):
         self.assertAlmostEqual(utils.angsep(60,70,60,50), 20.0)
 
     def test_radec2altaz(self):
-        # Test against astropy SkyCoord and AltAz
-        LST = 91.74715323341904  # 2017-04-15 00:00:00 at KPNO according to astropy.time
 
+        LST = 168.86210588900758  # 2000-01-01 12:00:00 at KPNO according to astropy.time
         ra, dec, lst = LST, 60, LST
         alt, az = utils.radec2altaz(ra, dec, lst)
-        self.assertAlmostEqual(alt, 61.96451022, 0)
-        self.assertAlmostEqual(az, 0.406365, 0) # I don't get this value, it should be 0
+        self.assertAlmostEqual(alt, 61.96710605261274, 2) # Values from Astropy SkyCoords
+        self.assertAlmostEqual(az, 0.0011510242215743817, 2)
 
-        ra, dec, lst = 150, 20, LST
-        alt, az = utils.radec2altaz(ra, dec, lst)
-        self.assertAlmostEqual(alt, 36.66732297, 0)
-        self.assertAlmostEqual(az, 87.93562759, 0)
-
-        ra, dec, lst = 0, 45, LST
-        alt, az = utils.radec2altaz(ra, dec, lst)
-        self.assertAlmostEqual(alt, 21.03485612, 0)
-        self.assertAlmostEqual(az, 310.87827568, 0)
-        
+        # Value close to zenith
+        ra, dec, lst = LST, 31.965, LST
+        alt_z, az_z = utils.radec2altaz(ra, dec, lst)
+        alt_plus, az_minus = utils.radec2altaz(ra, dec+5.0, lst)
+        alt_minus, az_minus = utils.radec2altaz(ra, dec-5.0, lst)
+        self.assertAlmostEqual(alt_plus, alt_minus, 2)
+        alt_plus, az_minus = utils.radec2altaz(ra+5.0, dec, lst)
+        alt_minus, az_minus = utils.radec2altaz(ra-5.0, dec, lst)
+        self.assertAlmostEqual(alt_plus, alt_minus)        
 
 if __name__ == '__main__':
     unittest.main()
