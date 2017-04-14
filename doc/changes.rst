@@ -2,11 +2,27 @@
 desisurvey change log
 =====================
 
-0.3.2 (unreleased)
+0.5.1 (unreleased)
 ------------------
+
+* No changes yet
+
+0.5.0 (2017-04-13)
+------------------
+
+* Add new plot methods
+* Bug fix to Az computation and airmass calculator
+* Code reorganization
+
+0.4.0 (2017-04-04)
+------------------
+
+This version was tagged for the 2% sprint data challenge.
 
 * Add unit tests; fix afternoon planning tile updates and other minor bugs
 * Fix off-by-one with YEARMMDD vs. MJD of sunset
+* Add new plots module
+* Refactor nightcal module into ephmerides
 
 0.3.1 (2016-12-21)
 ------------------
@@ -22,4 +38,3 @@ First release after refactoring.
 ------------------
 
 Last version before repackaging of surveysim.
-

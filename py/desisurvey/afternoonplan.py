@@ -1,23 +1,19 @@
 from __future__ import print_function, division
-import numpy as np
-import astropy.io.fits as pyfits
-import astropy.table
-from astropy.time import Time
-from astropy import units as u
-from astropy.coordinates import SkyCoord
-from pkg_resources import resource_filename
-from operator import itemgetter
-from desisurvey.utils import radec2altaz, mjd2lst, equ2gal_J2000, sort2arr, inLSTwindow
-from desitarget.targetmask import obsconditions as obsbits
-from desisurvey.exposurecalc import airMassCalculator
-import desimodel.io
+
 import copy
-import os.path
 import os
 import sys
+import pkg_resources
 
-import warnings
-#warnings.simplefilter('error', RuntimeWarning)
+import numpy as np
+
+import astropy.table
+
+import desimodel.io
+import desiutil.log
+
+from desisurvey.utils import mjd2lst
+
 
 SURVEY_NOMINAL_LENGTH = 5.0 * 365.25 #Survey duration
 
@@ -26,34 +22,22 @@ class surveyPlan:
     Main class for survey planning
     """
 
-    def __init__(self, MJDstart, MJDend, surveycal, tilesubset=None, HA_assign=False):
+    def __init__(self, MJDstart, MJDend, ephem, tilesubset=None, HA_assign=False):
         """Initialises survey by reading in the file desi_tiles.fits
         and populates the class members.
 
         Arguments:
             MJDstart: day of the (re-)start of the survey
             MJDend: day of the end of the survey
-            surveycal: list of dictionnaries with times of sunset, twilight, etc
+            ephem: Ephemerides covering MJDstart - MJDend
 
         Optional:
             tilesubset: array of integer tileids to use; ignore others
         """
+        self.log = desiutil.log.get_logger()
+        self.ephem = ephem
 
-        self.surveycal = surveycal
         # Read in DESI tile data
-        # Columns are:
-        #   'TILEID'; format = 'J'
-        #   'RA'; format = 'D'
-        #   'DEC'; format = 'D'
-        #   'PASS'; format = 'I'
-        #   'IN_DESI'; format = 'I'
-        #   'EBV_MED'; format = 'E'
-        #   'AIRMASS'; format = 'E'
-        #   'STAR_DENSITY'; format = 'E'
-        #   'EXPOSEFAC'; format = 'E'
-        #   'PROGRAM'; format = '6A'
-        #   'OBSCONDITIONS'; format = 'J'
-
         tiles = astropy.table.Table(
             desimodel.io.load_tiles(onlydesi=True, extra=False))
 
@@ -132,7 +116,8 @@ class surveyPlan:
         else:
             # Read in the pre-computed HA and begin/end LST range.
             info = astropy.table.Table.read(
-                resource_filename('desisurvey', 'data/tile-info.fits'), hdu=1)
+                pkg_resources.resource_filename(
+                    'desisurvey', 'data/tile-info.fits'), hdu=1)
             # Ignore most of the columns.
             info = info[['TILEID', 'HA', 'BEGINOBS', 'ENDOBS', 'OBSTIME']]
 
@@ -147,13 +132,12 @@ class surveyPlan:
         self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
 
-    def afternoonPlan(self, day_stats, tiles_observed):
+    def afternoonPlan(self, day_stats, date_string, tiles_observed):
         """Main decision making method
 
         Args:
-            day_stats: dictionnary containing the following keys:
-                       'MJDsunset', 'MJDsunrise', 'MJDetwi', 'MJDmtwi', 'MJDe13twi',
-                       'MJDm13twi', 'MJDmoonrise', 'MJDmoonset', 'MoonFrac', 'dirName'
+            day_stats: row of tabulated ephmerides data for today
+            date_string: string of the form YYYYMMDD
             tiles_observed: table with follwing columns: tileID, status
 
         Returns:
@@ -169,7 +153,7 @@ class surveyPlan:
                 jj = np.in1d(self.tiles['TILEID'], tiles_observed['TILEID'][ii])
                 self.tiles['STATUS'][jj] = status
 
-        # Find all tiles with STATUS < 2 
+        # Find all tiles with STATUS < 2
         finalTileList = self.tiles[self.tiles['STATUS'] < 2]
 
         # Assign tiles to LST bins
@@ -266,17 +250,18 @@ class surveyPlan:
             finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
             planList0.extend(scheduled)
 
-        print('afternoonPlan contains {0} tiles.'.format(len(planList0)))
+        self.log.info('Afternoon plan contains {0} tiles.'
+                      .format(len(planList0)))
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['MoonFrac']
-        filename = 'obsplan' + day_stats['dirName'].decode('ascii') + '.fits'
+        filename = 'obsplan{0}.fits'.format(date_string)
         table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)
 
         return filename
 
-
+      
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #
 ####################################################################
@@ -308,7 +293,7 @@ class surveyPlan:
 
         # There is some repeated code from the afternoon plan
         # which should be factored out.
-        for night in self.surveycal:
+        for night in self.ephem._table:
             lst15evening = mjd2lst(night['MJDetwi'])
             lst15morning = mjd2lst(night['MJDmtwi'])
             lst13evening = mjd2lst(night['MJDe13twi'])
