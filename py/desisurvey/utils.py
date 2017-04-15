@@ -1,7 +1,49 @@
+"""Utility functions for survey planning and scheduling.
+"""
 from __future__ import print_function, division
+
+import datetime
+
 import numpy as np
-from astropy.time import Time
+
+import pytz
+
+import astropy.time
+
+import desisurvey.config
 from desisurvey.kpno import mayall
+
+
+def local_noon_on_date(day):
+    """Convert a date to an astropy time at local noon.
+
+    Local noon is used as the separator between observing nights.
+
+    Parameters
+    ----------
+    day : datetime.date
+        The day to use for generating a time object.
+
+    Returns
+    -------
+    astropy.time.Time
+        A Time object with the input date and a time corresponding to
+        local noon at the telescope.
+    """
+    # Fetch our configuration.
+    config = desisurvey.config.Configuration()
+
+    # Build a datetime object at local noon.
+    tz = pytz.timezone(config.location.timezone())
+    local_noon = tz.localize(
+        datetime.datetime.combine(day, datetime.time(hour=12)))
+
+    # Convert to UTC.
+    utc_noon = local_noon.astimezone(pytz.utc)
+
+    # Return a corresponding astropy Time.
+    return astropy.time.Time(utc_noon)
+
 
 def earthOrientation(MJD):
     """
@@ -42,7 +84,7 @@ def mjd2lst(mjd):
     lon = str(mayall.west_lon_deg) + 'd'
     lat = str(mayall.lat_deg) + 'd'
 
-    t = Time(mjd, format = 'mjd', location=(lon, lat))
+    t = astropy.time.Time(mjd, format = 'mjd', location=(lon, lat))
     lst_tmp = t.copy()
 
     #try:

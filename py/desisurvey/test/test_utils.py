@@ -1,11 +1,25 @@
 import unittest
+import datetime
+
 import numpy as np
+
 from desisurvey import utils
 
 class TestUtils(unittest.TestCase):
 
     def setUp(self):
         pass
+
+
+    def test_local_noon(self):
+        """The telescope is 7 hours behind of UTC during winter and summer.
+        """
+        for month in (1, 7):
+            day = datetime.date(2019, month, 1)
+            noon = utils.local_noon_on_date(day)
+            self.assertEqual(noon.datetime.date(), day)
+            self.assertEqual(noon.datetime.time(), datetime.time(hour=12 + 7))
+
 
     def test_sort2arr(self):
         a = [1,2,3]
@@ -27,7 +41,7 @@ class TestUtils(unittest.TestCase):
         ra, dec = 15, 20
         l, b = utils.equ2gal_J2000(ra, dec)
         self.assertAlmostEqual(l, 125.67487462, 4)
-        self.assertAlmostEqual(b, -42.82614243, 4)    
+        self.assertAlmostEqual(b, -42.82614243, 4)
 
     def test_angsep(self):
         self.assertAlmostEqual(utils.angsep(0,0,10,0), 10.0)
@@ -52,7 +66,7 @@ class TestUtils(unittest.TestCase):
         self.assertAlmostEqual(alt_plus, alt_minus, 2)
         alt_plus, az_minus = utils.radec2altaz(ra+5.0, dec, lst)
         alt_minus, az_minus = utils.radec2altaz(ra-5.0, dec, lst)
-        self.assertAlmostEqual(alt_plus, alt_minus)        
+        self.assertAlmostEqual(alt_plus, alt_minus)
 
 if __name__ == '__main__':
     unittest.main()
