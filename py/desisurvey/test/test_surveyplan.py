@@ -30,7 +30,7 @@ class TestSurveyPlan(unittest.TestCase):
         start = Time('2019-09-01T00:00:00')
         end = Time('2019-10-01T00:00:00')
         ephem = Ephemerides(start, end, use_cache=False)._table
-        sp = surveyPlan(start.mjd, end.mjd, tilesubset=None)
+        sp = surveyPlan(start.mjd, end.mjd, ephem, tilesubset=None)
 
         tiles = sp.tiles
         dLST = tiles['LSTMAX'] - tiles['LSTMIN']
