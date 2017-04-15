@@ -1,4 +1,4 @@
-"""Tabulate sun and moon ephemerides on each night of the survey calendar.
+"""Tabulate sun and moon ephemerides during the survey.
 """
 from __future__ import print_function, division
 
@@ -18,40 +18,50 @@ import ephem
 
 import desiutil.log
 import desisurvey.config
+import desisurvey.utils
 
 
 class Ephemerides(object):
-    """Computes the nightly sun and moon ephemerides for the date range given.
+    """Tabulate sun and moon ephemerides during the survey.
 
-    Args:
-        start_date: astropy Time for local noon of first day to compute.
-        stop_date: astropy Time for local noon of last day to compute.
-        num_moon_steps: number of steps for tabulating moon (alt, az)
-            during each 24-hour period from local noon to local noon.
-            Ignored when a cached file is loaded.
-        use_cache: use a previously cached table if available.
+    Parameters
+    ----------
+    start_date : datetime.date
+        Survey starts on the evening of this date.
+    stop_date : datetime.date
+        Survey stops on the morning of this date.
+    num_moon_steps : int
+        Number of steps for tabulating moon (alt, az) during each 24-hour
+        period from local noon to local noon. Ignored when a cached file
+        is loaded.
+    use_cache : bool
+        When True, use a previously cached table if available.
     """
     def __init__(self, start_date, stop_date, num_moon_steps=49, use_cache=True):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
 
+        # Validate date range.
+        num_days = (stop_date - start_date).days + 1
+        if num_days <= 0:
+            raise ValueError('Expected start_date < stop_date.')
+
+        # Convert to astropy times at local noon.
+        self.start = desisurvey.utils.local_noon_on_date(start_date)
+        self.stop = desisurvey.utils.local_noon_on_date(stop_date)
+
         # Build filename for saving the ephemerides.
-        mjd_start = int(math.floor(start_date.mjd))
-        mjd_stop = int(math.floor(stop_date.mjd))
         filename = config.get_path(
-            'ephem_{0}_{1}.fits'.format(mjd_start, mjd_stop))
+            'ephem_{0}_{1}.fits'.format(start_date, stop_date))
         if use_cache and os.path.exists(filename):
             self._table = astropy.table.Table.read(filename)
-            self.start_date = astropy.time.Time(
-                self._table.meta['START'], format='isot')
-            self.stop_date = astropy.time.Time(
-                self._table.meta['STOP'], format='isot')
+            assert self._table.meta['START'] == str(start_date)
+            assert self._table.meta['STOP'] == str(stop_date)
             self.log.info('Loaded ephemerides from {0} for {1} to {2}'
                           .format(filename, start_date, stop_date))
             return
 
         # Allocate space for the data we will calculate.
-        num_days = (stop_date.datetime - start_date.datetime).days + 1
         data = np.empty(num_days, dtype=[
             ('MJDstart', float),
             ('MJDsunset', float), ('MJDsunrise', float), ('MJDetwi', float),
@@ -78,7 +88,7 @@ class Ephemerides(object):
 
         # Loop over days.
         for day_offset in range(num_days):
-            day = start_date + day_offset * u.day
+            day = self.start + day_offset * u.day
             mayall.date = day.datetime
             row = data[day_offset]
             # Store local noon for this day.
@@ -140,12 +150,9 @@ class Ephemerides(object):
 
         t = astropy.table.Table(
             data, meta=dict(NAME='Survey Ephemerides',
-                            START=start_date.isot, STOP=stop_date.isot))
+                            START=str(start_date), STOP=str(stop_date)))
         self.log.info('Saving ephemerides to {0}'.format(filename))
         t.write(filename, overwrite=True)
-
-        self.start_date = start_date
-        self.stop_date = stop_date
         self._table = t
 
 
@@ -163,7 +170,7 @@ class Ephemerides(object):
             Row of ephemeris data for the requested 24-hour period.
         """
         # The extra 1e-6 is to avoid roundoff error bumping us down a day.
-        day_index = int(np.floor(time.mjd - self.start_date.mjd + 1e-6))
+        day_index = int(np.floor(time.mjd - self.start.mjd + 1e-6))
         if day_index < 0 or day_index >= len(self._table):
             raise ValueError('Requested time outside ephemerides: {0}'
                              .format(time.datetime))

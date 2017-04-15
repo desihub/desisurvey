@@ -1,11 +1,15 @@
 import unittest
 import os
 import uuid
+import datetime
 
 import numpy as np
-from desisurvey.ephemerides import Ephemerides
+
 from astropy.time import Time
 from astropy import units
+
+from desisurvey.ephemerides import Ephemerides
+
 
 class TestEphemerides(unittest.TestCase):
 
@@ -23,12 +27,14 @@ class TestEphemerides(unittest.TestCase):
             import shutil
             shutil.rmtree(cls.testdir)
 
-    def test_getcal(self):
-        #- Start at 19:00 UTC = noon Arizona
-        start = Time('2019-09-01T19:00:00')
-        end = Time('2019-10-01T19:00:00')
-        ephem = Ephemerides(start, end, use_cache=False)._table
+    def test_getephem(self):
+        """Tabulate one month of ephemerides"""
+        start = datetime.date(2019, 9, 1)
+        stop = datetime.date(2019, 10, 1)
+        ephem = Ephemerides(start, stop, use_cache=False)
+        self.assertEqual(ephem.start.mjd, ephem.get(ephem.start)['MJDstart'])
 
+        ephem = ephem._table
         self.assertEqual(len(ephem), 31)
         self.assertTrue(np.all(ephem['MJDsunrise'] > ephem['MJDsunset']))
         self.assertTrue(np.all(ephem['MJDetwi'] > ephem['MJDe13twi']))

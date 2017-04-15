@@ -1,8 +1,8 @@
 import unittest
 import os
+import datetime
 
 import numpy as np
-from astropy.time import Time
 from astropy.table import Table
 
 from desisurvey.ephemerides import Ephemerides
@@ -19,11 +19,11 @@ class TestNextField(unittest.TestCase):
         os.mkdir(cls.testdir)
         os.chdir(cls.testdir)
 
-        start = Time('2019-09-01T00:00:00')
-        end = Time('2024-09-01T00:00:00')
-        cls.ephem = Ephemerides(start, end, use_cache=False)
+        start = datetime.date(2019, 9, 1)
+        stop = datetime.date(2019, 10, 1)
+        cls.ephem = Ephemerides(start, stop, use_cache=False)
         cls.surveyplan = surveyPlan(
-            start.mjd, end.mjd, cls.ephem, tilesubset=None)
+            cls.ephem.start.mjd, cls.ephem.stop.mjd, cls.ephem, tilesubset=None)
 
     @classmethod
     def tearDownClass(cls):
