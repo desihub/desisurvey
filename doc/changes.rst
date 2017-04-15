@@ -2,11 +2,17 @@
 desisurvey change log
 =====================
 
-0.4.1 (unreleased)
+0.6.0 (unreleased)
+------------------
+
+* Add new config yaml file and python wrapper
+
+0.5.0 (2017-04-13)
 ------------------
 
 * Add new plot methods
-* Add new config yaml file and python wrapper
+* Bug fix to Az computation and airmass calculator
+* Code reorganization
 
 0.4.0 (2017-04-04)
 ------------------
