@@ -11,9 +11,17 @@ class TestUtils(unittest.TestCase):
         pass
 
 
+    def test_monsoon(self):
+        """Monsoon based on (month, day) comparisons"""
+        for year in range(2019, 2025):
+            self.assertFalse(utils.is_monsoon(datetime.date(year, 7, 12)))
+            self.assertTrue(utils.is_monsoon(datetime.date(year, 7, 13)))
+            self.assertTrue(utils.is_monsoon(datetime.date(year, 8, 26)))
+            self.assertFalse(utils.is_monsoon(datetime.date(year, 8, 27)))
+
+
     def test_local_noon(self):
-        """The telescope is 7 hours behind of UTC during winter and summer.
-        """
+        """The telescope is 7 hours behind of UTC during winter and summer."""
         for month in (1, 7):
             day = datetime.date(2019, month, 1)
             noon = utils.local_noon_on_date(day)

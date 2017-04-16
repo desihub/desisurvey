@@ -14,10 +14,45 @@ import desisurvey.config
 from desisurvey.kpno import mayall
 
 
+def is_monsoon(day):
+    """Test if the night of this day falls in the monsoon shutdown.
+
+    Uses the monsoon date range defined in the
+    :class:`desisurvey.config.Configuration`.  Based on (month, day) comparisons
+    rather than day-of-year comparisons, so the monsoon always starts on the
+    same calendar date, even in leap years.
+
+    Parameters
+    ----------
+    day : datetime.date
+        The day to use for generating a time object.
+
+    Returns
+    -------
+    bool
+        True if the night of this day falls during the monsoon shutdown.
+    """
+    # Fetch our configuration.
+    config = desisurvey.config.Configuration()
+    start = config.monsoon_start()
+    stop = config.monsoon_stop()
+
+    # Not in monsoon if (day < start) or (day >= stop)
+    m, d = day.month, day.day
+    if m < start.month or (m == start.month and d < start.day):
+        return False
+    if m > stop.month or (m == stop.month and d >= stop.day):
+        return False
+
+    return True
+
+
 def local_noon_on_date(day):
     """Convert a date to an astropy time at local noon.
 
-    Local noon is used as the separator between observing nights.
+    Local noon is used as the separator between observing nights. The purpose
+    of this function is to standardize the boundary between observing nights
+    and the mapping of dates to times.
 
     Parameters
     ----------
