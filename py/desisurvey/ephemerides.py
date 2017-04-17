@@ -26,10 +26,12 @@ class Ephemerides(object):
 
     Parameters
     ----------
-    start_date : datetime.date
-        Survey starts on the evening of this date.
-    stop_date : datetime.date
-        Survey stops on the morning of this date.
+    start_date : datetime.date or None
+        Survey starts on the evening of this date. Use the ``first_day``
+        config parameter if None (the default).
+    stop_date : datetime.date or None
+        Survey stops on the morning of this date. Use the ``last_day``
+        config parameter if None (the default).
     num_moon_steps : int
         Number of steps for tabulating moon (alt, az) during each 24-hour
         period from local noon to local noon. Ignored when a cached file
@@ -37,9 +39,16 @@ class Ephemerides(object):
     use_cache : bool
         When True, use a previously cached table if available.
     """
-    def __init__(self, start_date, stop_date, num_moon_steps=49, use_cache=True):
+    def __init__(self, start_date=None, stop_date=None, num_moon_steps=49,
+                 use_cache=True):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
+
+        # Use our config to set any unspecified dates.
+        if start_date is None:
+            start_date = config.first_day()
+        if stop_date is None:
+            stop_date = config.last_day()
 
         # Validate date range.
         num_days = (stop_date - start_date).days + 1
