@@ -103,6 +103,19 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(c.get_path('/blah'), '/blah')
 
 
+    def test_set_output_path(self):
+        """output_path can be changed"""
+        Configuration.reset()
+        c = Configuration(self.simple)
+        os.environ['_OUTPUT_PATH_'] = self.tmpdir
+        c.set_output_path('{_OUTPUT_PATH_}')
+        self.assertEqual(c.output_path(), '{_OUTPUT_PATH_}')
+        self.assertEqual(c.get_path('blah'), os.path.join(self.tmpdir, 'blah'))
+        with self.assertRaises(ValueError):
+            c.set_output_path('{_OUTPUT_PATH_}/_non_existent_')
+        del os.environ['_OUTPUT_PATH_']
+
+
     def test_bad_abs_path(self):
         """Cannot read config from a non-existent absolute path"""
         Configuration.reset()
@@ -136,7 +149,7 @@ class TestConfig(unittest.TestCase):
         with open(bad, 'w') as f:
             f.write('output_path: _non_existent_\n')
         Configuration.reset()
-        with self.assertRaises(RuntimeError):
+        with self.assertRaises(ValueError):
             c = Configuration(bad)
 
 

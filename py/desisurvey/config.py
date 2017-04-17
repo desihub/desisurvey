@@ -165,17 +165,53 @@ class Configuration(Node):
         with open(full_path) as f:
             Node.__init__(self, yaml.safe_load(f))
 
-        # Check for a valid output_path.
+        # Set the output path.
+        self.set_output_path(self.output_path())
+
+
+    def set_output_path(self, output_path):
+        """Set the output directory for relative paths.
+
+        The path must exist when this method is called. Used by :meth:`ge_path`.
+        This method updates the configuration output_path value.
+
+        Parameters
+        ----------
+        output_path : str
+            A path possibly including environment variables enclosed in {...}
+            that will be substituted from the current environment.
+
+        Raises
+        ------
+        ValueError
+            Path uses undefined environment variable or does not exist.
+        """
         try:
-            self._output_path = self.output_path().format(**os.environ)
+            self._output_path = output_path.format(**os.environ)
         except KeyError as e:
-            raise RuntimeError(
+            raise ValueError(
                 'Environment variable not set for output_path: {0}'.format(e))
         if not os.path.isdir(self._output_path):
-            raise RuntimeError(
+            raise ValueError(
                 'Non-existent output_path: {0}'.format(self._output_path))
+        # Update our config node.
+        self.output_path._value = output_path
+
 
     def get_path(self, name):
         """Prepend this configuration's output_path to non-absolute paths.
+
+        Configured by the ``output_path`` node and :meth:`set_output_path`.
+
+        Parameters
+        ----------
+        name : str
+            Absolute or relative path name, which does not need to exist yet.
+
+        Returns
+        -------
+        str
+            Path name to use. Relative path names will have our output_path
+            prepended.  Absolute path names will be unchanged.
         """
         return os.path.join(self._output_path, name)
