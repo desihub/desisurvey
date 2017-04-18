@@ -32,7 +32,7 @@ monsoon_stop: 2019-08-27
 
 # Number of nights reserved for engineering / guest observing
 # during each full moon.
-full_moon_break: 7 day
+full_moon_nights: 7
 
 #-------------------------------------------------------------------
 # Definition of the DARK / GRAY / BRIGHT nominal programs based on
