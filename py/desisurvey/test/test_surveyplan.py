@@ -32,7 +32,7 @@ class TestSurveyPlan(unittest.TestCase):
     def test_planning(self):
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 10, 1)
-        ephem = Ephemerides(start, stop, use_cache=False)
+        ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
         sp = surveyPlan(ephem.start.mjd, ephem.stop.mjd, ephem, tilesubset=None)
 
         tiles = sp.tiles

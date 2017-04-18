@@ -21,7 +21,7 @@ class TestNextField(unittest.TestCase):
 
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 10, 1)
-        cls.ephem = Ephemerides(start, stop, use_cache=False)
+        cls.ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
         cls.surveyplan = surveyPlan(
             cls.ephem.start.mjd, cls.ephem.stop.mjd, cls.ephem, tilesubset=None)
 

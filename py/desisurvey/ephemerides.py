@@ -37,10 +37,13 @@ class Ephemerides(object):
         period from local noon to local noon. Ignored when a cached file
         is loaded.
     use_cache : bool
-        When True, use a previously cached table if available.
+        When True, use a previously saved table if available.
+    write_cache : bool
+        When True, write a generated table so it is available for
+        future invocations.
     """
     def __init__(self, start_date=None, stop_date=None, num_moon_steps=49,
-                 use_cache=True):
+                 use_cache=True, write_cache=True):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
 
@@ -54,6 +57,7 @@ class Ephemerides(object):
         num_days = (stop_date - start_date).days + 1
         if num_days <= 0:
             raise ValueError('Expected start_date < stop_date.')
+        self.num_days = num_days
 
         # Convert to astropy times at local noon.
         self.start = desisurvey.utils.local_noon_on_date(start_date)
@@ -66,6 +70,7 @@ class Ephemerides(object):
             self._table = astropy.table.Table.read(filename)
             assert self._table.meta['START'] == str(start_date)
             assert self._table.meta['STOP'] == str(stop_date)
+            assert len(self._table) == num_days
             self.log.info('Loaded ephemerides from {0} for {1} to {2}'
                           .format(filename, start_date, stop_date))
             return
@@ -130,8 +135,8 @@ class Ephemerides(object):
             mayall.date = row['MJDmoonrise'] - mjd0
             row['MJDmoonset'] = mayall.next_setting(ephem.Moon()) + mjd0
             # Calculate the fraction of the moon's surface that is illuminated
-            # at the midpoint between sunset and sunrise.
-            m0.compute(0.5 * (row['MJDsunset'] + row['MJDsunrise']) - mjd0)
+            # at local midnight.
+            m0.compute(row['MJDstart'] + 0.5 - mjd0)
             row['MoonFrac'] = m0.moon_phase
             # Determine when the moon is up while the sun is down during this
             # night, if at all.
@@ -160,8 +165,9 @@ class Ephemerides(object):
         t = astropy.table.Table(
             data, meta=dict(NAME='Survey Ephemerides',
                             START=str(start_date), STOP=str(stop_date)))
-        self.log.info('Saving ephemerides to {0}'.format(filename))
-        t.write(filename, overwrite=True)
+        if write_cache:
+            self.log.info('Saving ephemerides to {0}'.format(filename))
+            t.write(filename, overwrite=True)
         self._table = t
 
 
@@ -240,6 +246,52 @@ class Ephemerides(object):
         assert not np.any(dark & gray | dark & bright | gray & bright)
 
         return dark, gray, bright
+
+
+    def is_full_moon(self, night, num_nights=None):
+        """Test if a night occurs during a full-moon break.
+
+        The full moon break is defined as the ``num_nights`` nights where
+        the moon is most fully illuminated at local midnight.  This method
+        should normally be called with ``num_nights`` equal to None, in which
+        case the value is taken from our
+        :class:`desisurvey.config.Configuration``. Any partial break at the
+        begining or end of the period where ephemerides are calculated
+        is ignored.
+
+        Parameters
+        ----------
+        night : datetime.date or astropy.time.Time or int
+            Specifies the night in question using :meth:`get_night`.
+        num_nights : int or None
+            Number of nights reserved for each full-moon break.
+
+        Returns
+        -------
+        bool
+            True if the specified night falls during a full-moon break.
+        """
+        # Check the requested length of the full moon break.
+        if num_nights is None:
+            num_nights = desisurvey.config.Configuration().full_moon_nights()
+        half_cycle = 12
+        if num_nights < 1 or num_nights > 2 * half_cycle:
+            raise ValueError('Full moon break must be 1-24 nights.')
+        # Look up the offset of this night in our table.
+        night = self.get_night(night)
+        offset = int(round(night['MJDstart'] - self._table[0]['MJDstart']))
+        # Ignore any partial breaks at the ends of our date range.
+        if offset < num_nights or offset + num_nights >= len(self._table):
+            return False
+        # Fetch a single lunar cycle of illumination data centered
+        # on this night (unless we are close to one end of the table).
+        lo = max(0, offset - half_cycle)
+        hi = min(self.num_days, offset + half_cycle + 1)
+        cycle = self._table['MoonFrac'][lo:hi]
+        # Sort the illumination fractions in this cycle.
+        sort_order = np.argsort(cycle)
+        # Return True if tonight's illumination is in the top num_nights.
+        return offset - lo in sort_order[-num_nights:]
 
 
 def get_moon_interpolator(row):
