@@ -354,7 +354,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     # Use the exposure midpoint for calculations below.
     when = t_start + 0.5 * exptime * u.s
     when.location = where
-    night = ephem.get(when)
+    night = ephem.get_night(when)
 
     # Calculate the program during this night.
     midnight = night['MJDstart'] + 0.5

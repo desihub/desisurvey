@@ -165,24 +165,32 @@ class Ephemerides(object):
         self._table = t
 
 
-    def get(self, time):
-        """Return the row for the 24-hour period including the specified time.
+    def get_night(self, which):
+        """Return the row of ephemerides for a single night.
 
         Parameters
         ----------
-        time : astropy.time.Time
-            Time during the day requested.
+        which : int or datetime.date or astropy.time.Time
+            Which night to return.  An integer specifies a row index.
+            A date specifies the evening of the night to return. A time
+            is rounded down to the previous local noon and specifies
+            the subsequent night.
 
         Returns
         -------
         astropy.table.Row
             Row of ephemeris data for the requested 24-hour period.
         """
-        # The extra 1e-6 is to avoid roundoff error bumping us down a day.
-        day_index = int(np.floor(time.mjd - self.start.mjd + 1e-6))
+        if isinstance(which, astropy.time.Time):
+            # The extra 1e-6 is to avoid roundoff error bumping us down a day.
+            day_index = int(np.floor(which.mjd - self.start.mjd + 1e-6))
+        elif isinstance(which, datetime.date):
+            day_index = (which - self.start.datetime.date()).days
+        else:
+            day_index = which
         if day_index < 0 or day_index >= len(self._table):
-            raise ValueError('Requested time outside ephemerides: {0}'
-                             .format(time.datetime))
+            raise ValueError('Requested night outside ephemerides: {0}'
+                             .format(which))
         return self._table[day_index]
 
 
@@ -203,7 +211,7 @@ class Ephemerides(object):
         """
         # Get the night of the earliest time.
         mjd = np.asarray(mjd)
-        night = self.get(astropy.time.Time(np.min(mjd), format='mjd'))
+        night = self.get_night(astropy.time.Time(np.min(mjd), format='mjd'))
 
         # Check that all input MJDs are valid for this night.
         mjd0 = night['MJDstart']

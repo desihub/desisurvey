@@ -32,7 +32,9 @@ class TestEphemerides(unittest.TestCase):
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 10, 1)
         ephem = Ephemerides(start, stop, use_cache=False)
-        self.assertEqual(ephem.start.mjd, ephem.get(ephem.start)['MJDstart'])
+        self.assertEqual(ephem.start.mjd, ephem.get_night(0)['MJDstart'])
+        self.assertEqual(ephem.start.mjd, ephem.get_night(start)['MJDstart'])
+        self.assertEqual(ephem.start.mjd, ephem.get_night(ephem.start)['MJDstart'])
 
         ephem = ephem._table
         self.assertEqual(len(ephem), 31)
