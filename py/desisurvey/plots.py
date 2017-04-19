@@ -100,7 +100,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     return fig, ax
 
 
-def plot_observations(start=None, stop=None, what='EXPTIME',
+def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
                       verbose=False, save=None):
     """Plot a summary of observed tiles.
 
@@ -109,12 +109,14 @@ def plot_observations(start=None, stop=None, what='EXPTIME',
 
     Parameters
     ----------
-    start : date or None
-        First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
-    stop : date or None
-        First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
+    start_date : date or None
+        Plot observations starting on the night of this date, or starting
+        with the first observation if None. Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
+        Plot observations ending on the morning of this date, or ending with
+        the last observation if None. Must be convertible to a date using
+        :func:`desisurvey.utils.get_date`.
     what : string
         What quantity to plot for each planned tile. Must be a
         column name in the obsall_list FITS file.  Useful values include
@@ -134,19 +136,21 @@ def plot_observations(start=None, stop=None, what='EXPTIME',
         raise ValueError('Valid names are: {0}'
                          .format(','.join(t.colnames)))
 
-    sel = t['STATUS'] > 0
-    if start is None:
-        start = astropy.time.Time(t['MJD'][0], format='mjd')
-    else:
-        start = astropy.time.Time(start)
-        sel &= t['MJD'] >= start.mjd
-    if stop is None:
-        stop = astropy.time.Time(t['MJD'][-1], format='mjd')
-    else:
-        stop = astropy.time.Time(stop)
-        sel &= t['MJD'] <= stop.mjd
-    date_label = '{0} to {1}'.format(
-        start.datetime.date(), stop.datetime.date())
+    if start_date is None:
+        start_date = desisurvey.utils.get_date(t['MJD'][0])
+    if stop_date is None:
+        stop_date = (desisurvey.utils.get_date(t['MJD'][-1]) +
+                     datetime.timedelta(days=1))
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
+    date_label = '{0} to {1}'.format(start_date, stop_date)
+
+    # Convert date range to MJDs at local noon.
+    start_mjd = desisurvey.utils.local_noon_on_date(start_date).mjd
+    stop_mjd = desisurvey.utils.local_noon_on_date(stop_date).mjd
+
+    # Trim table to requested observations.
+    sel = (t['STATUS'] > 0) & (t['MJD'] >= start_mjd) & (t['MJD'] < stop_mjd)
     t = t[sel]
 
     if verbose:
