@@ -3,9 +3,12 @@ import datetime
 
 import numpy as np
 
+import pytz
+
 import astropy.time
 
-from desisurvey import utils
+from desisurvey import utils, config
+
 
 class TestUtils(unittest.TestCase):
 
@@ -15,22 +18,35 @@ class TestUtils(unittest.TestCase):
 
     def test_get_date(self):
         """Test date conversions"""
+        # Start at local noon
+        tz = pytz.timezone(config.Configuration().location.timezone())
         start = datetime.datetime(2019, 8, 23, 12)
         one_day = datetime.timedelta(days=1)
-        for offset in range(500):
-            day = start + one_day * offset
+        one_hour = datetime.timedelta(hours=1)
+        for day_offset in range(500):
+            noon = start + one_day * day_offset
+            local_noon = tz.localize(noon)
+            answer = noon.date()
             # date -> date
-            self.assertEqual(utils.get_date(day.date()), day.date())
-            # datetime -> date
-            self.assertEqual(utils.get_date(day), day.date())
-            # astropy time -> datetime -> date
-            t = astropy.time.Time(day)
-            self.assertEqual(utils.get_date(t), day.date())
-            # MJD -> astropy time -> datetime -> date
-            self.assertEqual(utils.get_date(t.mjd), day.date())
+            self.assertEqual(utils.get_date(answer), answer)
             # YYYY-MM-DD -> datetime -> date
-            self.assertEqual(utils.get_date(str(day.date())), day.date())
-
+            self.assertEqual(utils.get_date(str(answer)), answer)
+            # Test specifications with time of day included.
+            for hour_offset in (-1, 0, +1):
+                time = noon + hour_offset * one_hour
+                local_time = tz.localize(time)
+                # unlocalized datetime -> date. UTC noon is 3am local,
+                # so all hour offsets refer to the previous day.
+                self.assertEqual(utils.get_date(time), answer - one_day)
+                # The answer for localized datetimes depends on the hour offset.
+                local_answer = answer - one_day if hour_offset < 0 else answer
+                # localized datetime -> date
+                self.assertEqual(utils.get_date(local_time), local_answer)
+                # astropy time -> datetime -> date.
+                t = astropy.time.Time(local_time)
+                self.assertEqual(utils.get_date(t), local_answer)
+                # MJD -> astropy time -> datetime -> date
+                self.assertEqual(utils.get_date(t.mjd), local_answer)
 
     def test_monsoon(self):
         """Monsoon based on (month, day) comparisons"""

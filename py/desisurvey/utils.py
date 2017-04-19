@@ -91,6 +91,12 @@ def get_date(date):
     ``.datetime.date()`` for an astropy time and ``datetime.date()`` for a
     datetime.
 
+    Date specifications that include a time of day (datetime, astropy time, MJD)
+    are rounded down to the previous local noon before converting to a date.
+    This ensures that all times during a local observing night are mapped to
+    the same date, when the night started.  A "naive" (un-localized) datetime
+    is assumed to refer to UTC.
+
     Parameters
     ----------
     date : astropy.time.Time, datetime.date, datetime.datetime, string or number
@@ -103,28 +109,44 @@ def get_date(date):
     datetime.date
     """
     input_date = date
+    # valid types: string, number, Time, datetime, date
     try:
-        # Convert a string of the form YYYY-MM-DD into a datetime.
+        # Convert a string of the form YYYY-MM-DD into a date.
         # This will raise a ValueError for a badly formatted string
         # or invalid date such as 2019-13-01.
-        date = datetime.datetime.strptime(date, '%Y-%m-%d')
+        date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
     except TypeError:
         pass
+    # valid types: number, Time, datetime, date
     try:
         # Convert a number to an astropy time, assuming it is a UTC MJD value.
         date = astropy.time.Time(date, format='mjd')
     except ValueError:
         pass
+    # valid types: Time, datetime, date
     try:
         # Convert an astropy time into a datetime
         date = date.datetime
     except AttributeError:
         pass
+    # valid types: datetime, date
     try:
-        # Convert a datetime into a date
-        date = date.date()
+        # Localize a naive datetime assuming it refers to UTC.
+        date = pytz.utc.localize(date)
+    except (AttributeError, ValueError):
+        pass
+    # valid types: localized datetime, date
+    try:
+        # Convert a localized datetime into the date of the previous noon.
+        local_tz = pytz.timezone(
+            desisurvey.config.Configuration().location.timezone())
+        local_time = date.astimezone(local_tz)
+        date = local_time.date()
+        if local_time.hour < 12:
+            date -= datetime.timedelta(days=1)
     except AttributeError:
         pass
+    # valid types: date
     if not isinstance(date, datetime.date):
         raise ValueError('Invalid date specification: {0}.'.format(input_date))
     return date
