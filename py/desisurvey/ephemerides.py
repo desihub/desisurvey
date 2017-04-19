@@ -180,16 +180,33 @@ class Ephemerides(object):
         self._table = t
 
 
-    def get_night(self, which, as_index=False):
+    def get_row(self, row_index):
+        """Return the specified row of our table.
+
+        Parameters
+        ----------
+        row_index : int
+            Index starting from zero of the requested row.  Negative values
+            are allowed and specify offsets from the end of the table in
+            the usual way.
+
+        Returns
+        astropy.table.Row or int
+            Row of ephemeris data for the requested night.
+        """
+        if row_index < -self.num_nights or row_index >= self.num_nights:
+            raise ValueError('Requested row index outside table: {0}'
+                             .format(row_index))
+        return self._table[row_index]
+
+
+    def get_night(self, night, as_index=False):
         """Return the row of ephemerides for a single night.
 
         Parameters
         ----------
-        which : int or datetime.date or astropy.time.Time
-            Which night to return.  An integer specifies a row index.
-            A date specifies the evening of the night to return. A time
-            is rounded down to the previous local noon and specifies
-            the subsequent night.
+        night : date
+            Converted to a date using :func:`desisurvey.utils.get_date`.
         as_index : bool
             Return the row index of the specified night in our per-night table
             if True.  Otherwise return the row itself.
@@ -197,20 +214,15 @@ class Ephemerides(object):
         Returns
         -------
         astropy.table.Row or int
-            Row of ephemeris data for the requested 24-hour period or index
+            Row of ephemeris data for the requested night or the index
             of this row (selected via ``as_index``).
         """
-        if isinstance(which, astropy.time.Time):
-            # The extra 1e-6 is to avoid roundoff error bumping us down a day.
-            day_index = int(np.floor(which.mjd - self.start.mjd + 1e-6))
-        elif isinstance(which, datetime.date):
-            day_index = (which - self.start.datetime.date()).days
-        else:
-            day_index = which
-        if day_index < 0 or day_index >= len(self._table):
-            raise ValueError('Requested night index outside ephemerides: {0}'
-                             .format(which))
-        return day_index if as_index else self._table[day_index]
+        date = desisurvey.utils.get_date(night)
+        row_index = (date - self.start.datetime.date()).days
+        if row_index < 0 or row_index >= self.num_nights:
+            raise ValueError('Requested night outside ephemerides: {0}'
+                             .format(night))
+        return row_index if as_index else self._table[row_index]
 
 
     def get_program(self, mjd):
