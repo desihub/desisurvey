@@ -63,7 +63,7 @@ class Ephemerides(object):
             stop_date = config.last_day()
 
         # Validate date range.
-        num_nights = (stop_date - start_date).days + 1
+        num_nights = (stop_date - start_date).days
         if num_nights <= 0:
             raise ValueError('Expected start_date < stop_date.')
         self.num_nights = num_nights

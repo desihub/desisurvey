@@ -35,21 +35,27 @@ class TestEphemerides(unittest.TestCase):
         ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
         self.assertEqual(ephem.start.mjd, ephem.get_night(0)['MJDstart'])
         self.assertEqual(ephem.start.mjd, ephem.get_night(start)['MJDstart'])
-        self.assertEqual(ephem.start.mjd, ephem.get_night(ephem.start)['MJDstart'])
+        self.assertEqual(ephem.stop.mjd,
+                         ephem.get_night(ephem.num_nights - 1)['MJDstart'] + 1)
+        self.assertEqual(ephem.start.mjd,
+                         ephem.get_night(ephem.start)['MJDstart'])
+        self.assertEqual(ephem.num_nights,
+                         int(round(ephem.stop.mjd - ephem.start.mjd)))
 
-        ephem = ephem._table
-        self.assertEqual(len(ephem), 31)
-        self.assertTrue(np.all(ephem['MJDsunrise'] > ephem['MJDsunset']))
-        self.assertTrue(np.all(ephem['MJDetwi'] > ephem['MJDe13twi']))
-        self.assertTrue(np.all(ephem['MJDmtwi'] < ephem['MJDm13twi']))
-        self.assertGreater(np.max(ephem['MoonFrac']), 0.99)
-        self.assertLessEqual(np.max(ephem['MoonFrac']), 1.0)
-        self.assertLess(np.min(ephem['MoonFrac']), 0.01)
-        self.assertGreaterEqual(np.min(ephem['MoonFrac']), 0.00)
-        self.assertTrue(np.all(ephem['MJDmoonrise'] < ephem['MJDmoonset']))
+        etable = ephem._table
+        self.assertEqual(len(etable), 30)
+        self.assertTrue(np.all(etable['MJDsunrise'] > etable['MJDsunset']))
+        self.assertTrue(np.all(etable['MJDetwi'] > etable['MJDe13twi']))
+        self.assertTrue(np.all(etable['MJDmtwi'] < etable['MJDm13twi']))
+        self.assertGreater(np.max(etable['MoonFrac']), 0.99)
+        self.assertLessEqual(np.max(etable['MoonFrac']), 1.0)
+        self.assertLess(np.min(etable['MoonFrac']), 0.01)
+        self.assertGreaterEqual(np.min(etable['MoonFrac']), 0.00)
+        self.assertTrue(np.all(etable['MJDmoonrise'] < etable['MJDmoonset']))
 
-        for x in ephem:
+        for i in range(ephem.num_nights):
 
+            x = ephem.get_night(i)
             date = Time(x['MJDstart'], format='mjd').datetime.date()
             night = date.strftime('%Y%m%d')
             for key in [
@@ -69,8 +75,8 @@ class TestEphemerides(unittest.TestCase):
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 9, 30)
         ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
-        full = np.empty(ephem.num_days, bool)
-        for i in range(ephem.num_days):
+        full = np.empty(ephem.num_nights, bool)
+        for i in range(ephem.num_nights):
             night = start + datetime.timedelta(days=i)
             full[i] = ephem.is_full_moon(night)
         expected = np.zeros_like(full, bool)
