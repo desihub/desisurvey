@@ -24,7 +24,10 @@ class TestUtils(unittest.TestCase):
             # datetime -> date
             self.assertEqual(utils.get_date(day), day.date())
             # astropy time -> datetime -> date
-            self.assertEqual(utils.get_date(astropy.time.Time(day)), day.date())
+            t = astropy.time.Time(day)
+            self.assertEqual(utils.get_date(t), day.date())
+            # MJD -> astropy time -> datetime -> date
+            self.assertEqual(utils.get_date(t.mjd), day.date())
             # YYYY-MM-DD -> datetime -> date
             self.assertEqual(utils.get_date(str(day.date())), day.date())
 

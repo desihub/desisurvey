@@ -93,9 +93,10 @@ def get_date(date):
 
     Parameters
     ----------
-    date : astropy.time.Time or datetime.date or datetime.datetime or string
+    date : astropy.time.Time, datetime.date, datetime.datetime, string or number
         Specification of the date to return.  A string must have the format
-        YYYY-MM-DD (but leading zeros on MM and DD are optional).
+        YYYY-MM-DD (but leading zeros on MM and DD are optional).  A number
+        will be interpreted as a UTC MJD value.
 
     Returns
     -------
@@ -108,6 +109,11 @@ def get_date(date):
         # or invalid date such as 2019-13-01.
         date = datetime.datetime.strptime(date, '%Y-%m-%d')
     except TypeError:
+        pass
+    try:
+        # Convert a number to an astropy time, assuming it is a UTC MJD value.
+        date = astropy.time.Time(date, format='mjd')
+    except ValueError:
         pass
     try:
         # Convert an astropy time into a datetime
