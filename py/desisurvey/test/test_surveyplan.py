@@ -44,13 +44,13 @@ class TestSurveyPlan(unittest.TestCase):
         self.assertTrue(np.all(tiles['EXPLEN'] > 500))
 
         #- Plan night 0; set the first 10 tiles as observed
-        day0 = ephem.get_night(0)
+        day0 = ephem.get_row(0)
         planfile0 = sp.afternoonPlan(day0, '20190901', tiles_observed=[])
         plan0 = Table.read(planfile0)
         plan0['STATUS'][0:10] = 2
 
         #- Plan night 1
-        day1 = ephem.get_night(1)
+        day1 = ephem.get_row(1)
         planfile1 = sp.afternoonPlan(day1, '20190902', tiles_observed=plan0)
         plan1 = Table.read(planfile1)
 
