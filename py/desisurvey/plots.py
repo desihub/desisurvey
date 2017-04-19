@@ -136,11 +136,8 @@ def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
         raise ValueError('Valid names are: {0}'
                          .format(','.join(t.colnames)))
 
-    if start_date is None:
-        start_date = desisurvey.utils.get_date(t['MJD'][0])
-    if stop_date is None:
-        stop_date = (desisurvey.utils.get_date(t['MJD'][-1]) +
-                     datetime.timedelta(days=1))
+    start_date = desisurvey.utils.get_date(start_date or t['MJD'][0])
+    stop_date = desisurvey.utils.get_date(stop_date or (t['MJD'][-1] + 1.0))
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
     date_label = '{0} to {1}'.format(start_date, stop_date)
