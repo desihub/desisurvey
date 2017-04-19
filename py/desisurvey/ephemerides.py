@@ -41,6 +41,15 @@ class Ephemerides(object):
     write_cache : bool
         When True, write a generated table so it is available for
         future invocations.
+
+    Attributes
+    ----------
+    start : astropy.time.Time
+        Local noon before the first night for which ephemerides are calculated.
+    stop : astropy.time.Time
+        Local noon after the last night for which ephemerides are calculated.
+    num_nights : int
+        Number of consecutive nights for which ephemerides are calculated.
     """
     def __init__(self, start_date=None, stop_date=None, num_moon_steps=49,
                  use_cache=True, write_cache=True):
@@ -54,10 +63,10 @@ class Ephemerides(object):
             stop_date = config.last_day()
 
         # Validate date range.
-        num_days = (stop_date - start_date).days + 1
-        if num_days <= 0:
+        num_nights = (stop_date - start_date).days + 1
+        if num_nights <= 0:
             raise ValueError('Expected start_date < stop_date.')
-        self.num_days = num_days
+        self.num_nights = num_nights
 
         # Convert to astropy times at local noon.
         self.start = desisurvey.utils.local_noon_on_date(start_date)
@@ -70,13 +79,13 @@ class Ephemerides(object):
             self._table = astropy.table.Table.read(filename)
             assert self._table.meta['START'] == str(start_date)
             assert self._table.meta['STOP'] == str(stop_date)
-            assert len(self._table) == num_days
+            assert len(self._table) == num_nights
             self.log.info('Loaded ephemerides from {0} for {1} to {2}'
                           .format(filename, start_date, stop_date))
             return
 
         # Allocate space for the data we will calculate.
-        data = np.empty(num_days, dtype=[
+        data = np.empty(num_nights, dtype=[
             ('MJDstart', float),
             ('MJDsunset', float), ('MJDsunrise', float), ('MJDetwi', float),
             ('MJDmtwi', float), ('MJDe13twi', float), ('MJDm13twi', float),
@@ -101,7 +110,7 @@ class Ephemerides(object):
                 datetime.datetime(1899, 12, 31, 12, 0, 0)).mjd
 
         # Loop over days.
-        for day_offset in range(num_days):
+        for day_offset in range(num_nights):
             day = self.start + day_offset * u.day
             mayall.date = day.datetime
             row = data[day_offset]
@@ -289,7 +298,7 @@ class Ephemerides(object):
         # Fetch a single lunar cycle of illumination data centered
         # on this night (unless we are close to one end of the table).
         lo = max(0, index - half_cycle)
-        hi = min(self.num_days, index + half_cycle + 1)
+        hi = min(self.num_nights, index + half_cycle + 1)
         cycle = self._table['MoonFrac'][lo:hi]
         # Sort the illumination fractions in this cycle.
         sort_order = np.argsort(cycle)
