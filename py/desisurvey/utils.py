@@ -80,6 +80,50 @@ def local_noon_on_date(day):
     return astropy.time.Time(utc_noon)
 
 
+def get_date(date):
+    """Convert different date specifications into a datetime.date object.
+
+    We use strptime() to convert an input string, so leading zeros are not
+    required for strings in the format YYYY-MM-DD, e.g. 2019-8-3 is considered
+    valid.
+
+    Instead of testing the input type, we try different conversion methods:
+    ``.datetime.date()`` for an astropy time and ``datetime.date()`` for a
+    datetime.
+
+    Parameters
+    ----------
+    date : astropy.time.Time or datetime.date or datetime.datetime or string
+        Specification of the date to return.  A string must have the format
+        YYYY-MM-DD (but leading zeros on MM and DD are optional).
+
+    Returns
+    -------
+    datetime.date
+    """
+    input_date = date
+    try:
+        # Convert a string of the form YYYY-MM-DD into a datetime.
+        # This will raise a ValueError for a badly formatted string
+        # or invalid date such as 2019-13-01.
+        date = datetime.datetime.strptime(date, '%Y-%m-%d')
+    except TypeError:
+        pass
+    try:
+        # Convert an astropy time into a datetime
+        date = date.datetime
+    except AttributeError:
+        pass
+    try:
+        # Convert a datetime into a date
+        date = date.date()
+    except AttributeError:
+        pass
+    if not isinstance(date, datetime.date):
+        raise ValueError('Invalid date specification: {0}.'.format(input_date))
+    return date
+
+
 def earthOrientation(MJD):
     """
     This is an approximate formula because the ser7.dat file's range

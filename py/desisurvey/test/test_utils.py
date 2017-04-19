@@ -3,12 +3,30 @@ import datetime
 
 import numpy as np
 
+import astropy.time
+
 from desisurvey import utils
 
 class TestUtils(unittest.TestCase):
 
     def setUp(self):
         pass
+
+
+    def test_get_date(self):
+        """Test date conversions"""
+        start = datetime.datetime(2019, 8, 23, 12)
+        one_day = datetime.timedelta(days=1)
+        for offset in range(500):
+            day = start + one_day * offset
+            # date -> date
+            self.assertEqual(utils.get_date(day.date()), day.date())
+            # datetime -> date
+            self.assertEqual(utils.get_date(day), day.date())
+            # astropy time -> datetime -> date
+            self.assertEqual(utils.get_date(astropy.time.Time(day)), day.date())
+            # YYYY-MM-DD -> datetime -> date
+            self.assertEqual(utils.get_date(str(day.date())), day.date())
 
 
     def test_monsoon(self):
