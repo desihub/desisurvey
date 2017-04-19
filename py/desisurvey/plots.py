@@ -2,6 +2,8 @@
 """
 from __future__ import print_function, division
 
+import datetime
+
 import numpy as np
 
 import astropy.table
@@ -10,6 +12,7 @@ import astropy.units as u
 import desiutil.plots
 
 import desisurvey.ephemerides
+import desisurvey.config
 
 
 # Color associated with each program in the functions below.
@@ -169,7 +172,7 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
                  num_points=500, save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
-    The matplotlib and pytz packages must be installed to use this function.
+    The matplotlib package must be installed to use this function.
 
     Parameters
     ----------
@@ -186,7 +189,8 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
         vertical axis.
     num_points : int
         Number of subdivisions of the vertical axis to use for tabulating
-        the program during each night.
+        the program during each night. The resulting resolution will be
+        ``2 * window_size / num_points`` hours.
     save : string or None
         Name of file where plot should be saved.  Format is inferred from
         the extension.
@@ -212,17 +216,19 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
     t = t[sel]
     num_nights = len(t)
 
-    # Date labels use the KPNO UTC-7 timezone.
-    tz_offset = -7
-    tz = pytz.FixedOffset(tz_offset * 60)
-    # Convert noon UTC-7 into midnight UTC before and after display range.
-    start = astropy.time.Time(
-        t['MJDstart'][0] + tz_offset / 24. - 0.5, format='mjd')
-    stop = astropy.time.Time(
-        t['MJDstart'][-1] + tz_offset / 24. + 0.5, format='mjd')
-    # Calculate numerical limits of matplotlib date axis.
-    x_lo = matplotlib.dates.date2num(tz.localize(start.datetime))
-    x_hi = matplotlib.dates.date2num(tz.localize(stop.datetime))
+    # Matplotlib date axes uses local time and puts ticks between days
+    # at local midnight. We explicitly specify UTC for x-axis labels so
+    # that the plot does not depend on the caller's local timezone.
+    start_date = astropy.time.Time(
+        t['MJDstart'][0], format='mjd').datetime.date()
+    stop_date = astropy.time.Time(
+        t['MJDstart'][-1] + 1, format='mjd').datetime.date()
+    tz = pytz.utc
+    midnight = datetime.time(hour=0)
+    xaxis_start = tz.localize(datetime.datetime.combine(start_date, midnight))
+    xaxis_stop = tz.localize(datetime.datetime.combine(stop_date, midnight))
+    xaxis_lo = matplotlib.dates.date2num(xaxis_start)
+    xaxis_hi = matplotlib.dates.date2num(xaxis_stop)
 
     # Display 24-hour local time on y axis.
     window_int = int(np.floor(window_size))
@@ -253,17 +259,18 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
 
     ax.imshow(program.T, origin='lower', interpolation='none',
               aspect='auto', cmap=cmap, vmin=-0.5, vmax=+3.5,
-              extent=[x_lo, x_hi, -window_size, +window_size])
+              extent=[xaxis_lo, xaxis_hi, -window_size, +window_size])
 
-    # Display 24-hour local time on y axis.
-    ax.set_ylabel('Local Time [UTC{0:+d}]'.format(tz_offset),
-                  fontsize='x-large')
+    # Display 24-hour local time on the y axis.
+    config = desisurvey.config.Configuration()
+    ax.set_ylabel('Local Time [{0}]'
+                  .format(config.location.timezone()), fontsize='x-large')
     ax.set_yticks(y_ticks)
     ax.set_yticklabels(y_labels)
 
-    # Display date on x axis.
+    # Display dates on the x axis.
     ax.set_xlabel('Survey Date', fontsize='x-large')
-    ax.set_xlim(tz.localize(start.datetime), tz.localize(stop.datetime))
+    ax.set_xlim(xaxis_start, xaxis_stop)
     if num_nights < 50:
         # Major ticks at month boundaries.
         ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(tz=tz))
