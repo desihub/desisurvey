@@ -171,7 +171,7 @@ class Ephemerides(object):
         self._table = t
 
 
-    def get_night(self, which):
+    def get_night(self, which, as_index=False):
         """Return the row of ephemerides for a single night.
 
         Parameters
@@ -181,11 +181,15 @@ class Ephemerides(object):
             A date specifies the evening of the night to return. A time
             is rounded down to the previous local noon and specifies
             the subsequent night.
+        as_index : bool
+            Return the row index of the specified night in our per-night table
+            if True.  Otherwise return the row itself.
 
         Returns
         -------
-        astropy.table.Row
-            Row of ephemeris data for the requested 24-hour period.
+        astropy.table.Row or int
+            Row of ephemeris data for the requested 24-hour period or index
+            of this row (selected via ``as_index``).
         """
         if isinstance(which, astropy.time.Time):
             # The extra 1e-6 is to avoid roundoff error bumping us down a day.
@@ -195,9 +199,9 @@ class Ephemerides(object):
         else:
             day_index = which
         if day_index < 0 or day_index >= len(self._table):
-            raise ValueError('Requested night outside ephemerides: {0}'
+            raise ValueError('Requested night index outside ephemerides: {0}'
                              .format(which))
-        return self._table[day_index]
+        return day_index if as_index else self._table[day_index]
 
 
     def get_program(self, mjd):
@@ -277,21 +281,20 @@ class Ephemerides(object):
         half_cycle = 12
         if num_nights < 1 or num_nights > 2 * half_cycle:
             raise ValueError('Full moon break must be 1-24 nights.')
-        # Look up the offset of this night in our table.
-        night = self.get_night(night)
-        offset = int(round(night['MJDstart'] - self._table[0]['MJDstart']))
+        # Look up the index of this night in our table.
+        index = self.get_night(night, as_index=True)
         # Ignore any partial breaks at the ends of our date range.
-        if offset < num_nights or offset + num_nights >= len(self._table):
+        if index < num_nights or index + num_nights >= len(self._table):
             return False
         # Fetch a single lunar cycle of illumination data centered
         # on this night (unless we are close to one end of the table).
-        lo = max(0, offset - half_cycle)
-        hi = min(self.num_days, offset + half_cycle + 1)
+        lo = max(0, index - half_cycle)
+        hi = min(self.num_days, index + half_cycle + 1)
         cycle = self._table['MoonFrac'][lo:hi]
         # Sort the illumination fractions in this cycle.
         sort_order = np.argsort(cycle)
         # Return True if tonight's illumination is in the top num_nights.
-        return offset - lo in sort_order[-num_nights:]
+        return index - lo in sort_order[-num_nights:]
 
 
 def get_moon_interpolator(row):
