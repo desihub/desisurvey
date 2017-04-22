@@ -286,8 +286,8 @@ class Ephemerides(object):
 
         Parameters
         ----------
-        night : datetime.date or astropy.time.Time or int
-            Specifies the night in question using :meth:`get_night`.
+        night : date
+            Converted to a date using :func:`desisurvey.utils.get_date`.
         num_nights : int or None
             Number of nights reserved for each full-moon break.
 
