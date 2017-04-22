@@ -13,6 +13,7 @@ import desiutil.plots
 
 import desisurvey.ephemerides
 import desisurvey.config
+import desisurvey.utils
 
 
 # Color associated with each program in the functions below.
@@ -169,7 +170,7 @@ def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
         label=label, save=save)
 
 
-def plot_program(ephem, start=None, stop=None, window_size=7.,
+def plot_program(ephem, start_date=None, stop_date=None, window_size=7.,
                  num_points=500, save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
@@ -179,12 +180,14 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
     ----------
     ephem : :class:`desisurvey.ephemerides.Ephemerides`
         Tabulated ephemerides data to use for determining the program.
-    start : date or None
+    start_date : date or None
         First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
-    stop : date or None
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
         First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
     window_size : float
         Number of hours on both sides of local midnight to display on the
         vertical axis.
@@ -208,22 +211,19 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
     import pytz
 
     # Determine plot date range.
-    t = ephem._table
-    sel = np.ones(len(t), bool)
-    if start is not None:
-        sel &= t['MJDstart'] >= astropy.time.Time(start).mjd
-    if stop is not None:
-        sel &= t['MJDstart'] <= astropy.time.Time(stop).mjd
-    t = t[sel]
+    start_date = desisurvey.utils.get_date(start_date or ephem.start)
+    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
+    mjd = ephem._table['MJDstart']
+    sel = ((mjd >= desisurvey.utils.local_noon_on_date(start_date).mjd) &
+           (mjd < desisurvey.utils.local_noon_on_date(stop_date).mjd))
+    t = ephem._table[sel]
     num_nights = len(t)
 
     # Matplotlib date axes uses local time and puts ticks between days
     # at local midnight. We explicitly specify UTC for x-axis labels so
     # that the plot does not depend on the caller's local timezone.
-    start_date = astropy.time.Time(
-        t['MJDstart'][0], format='mjd').datetime.date()
-    stop_date = astropy.time.Time(
-        t['MJDstart'][-1] + 1, format='mjd').datetime.date()
     tz = pytz.utc
     midnight = datetime.time(hour=0)
     xaxis_start = tz.localize(datetime.datetime.combine(start_date, midnight))
