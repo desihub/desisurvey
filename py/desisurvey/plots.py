@@ -102,7 +102,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
 
 
 def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
-                      verbose=False, save=None):
+                      filename='obslist_all.fits', verbose=False, save=None):
     """Plot a summary of observed tiles.
 
     Reads the file ``obsall_list.fits`` and uses :func:`plot_sky_passes` to
@@ -122,6 +122,11 @@ def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
         What quantity to plot for each planned tile. Must be a
         column name in the obsall_list FITS file.  Useful values include
         EXPTIME, OBSSN2, AIRMASS, SEEING.
+    filename : string
+        Name of the output file listing all the observations. Unless an
+        absolute path is provided, the filename is relative to the
+        :meth:`configuration output path
+        <desisurvey.config.Configuration.set_output_path>`.
     verbose : bool
         Print a summary of observed tiles.
     save : string or None
@@ -132,7 +137,8 @@ def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
     tuple
         Tuple (figure, axes) returned by ``plt.subplots()``.
     """
-    t = astropy.table.Table.read('obslist_all.fits')
+    config = desisurvey.config.Configuration()
+    t = astropy.table.Table.read(config.get_path(filename))
     if what not in t.colnames:
         raise ValueError('Valid names are: {0}'
                          .format(','.join(t.colnames)))
