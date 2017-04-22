@@ -14,8 +14,8 @@ import desisurvey.config
 from desisurvey.kpno import mayall
 
 
-def is_monsoon(day):
-    """Test if the night of this day falls in the monsoon shutdown.
+def is_monsoon(night):
+    """Test if this night's observing falls in the monsoon shutdown.
 
     Uses the monsoon date range defined in the
     :class:`desisurvey.config.Configuration`.  Based on (month, day) comparisons
@@ -24,21 +24,23 @@ def is_monsoon(day):
 
     Parameters
     ----------
-    day : datetime.date
-        The day to use for generating a time object.
+    night : date
+        Converted to a date using :func:`desisurvey.utils.get_date`.
 
     Returns
     -------
     bool
-        True if the night of this day falls during the monsoon shutdown.
+        True if this night's observing falls during the monsoon shutdown.
     """
+    date = get_date(night)
+
     # Fetch our configuration.
     config = desisurvey.config.Configuration()
     start = config.monsoon_start()
     stop = config.monsoon_stop()
 
     # Not in monsoon if (day < start) or (day >= stop)
-    m, d = day.month, day.day
+    m, d = date.month, date.day
     if m < start.month or (m == start.month and d < start.day):
         return False
     if m > stop.month or (m == stop.month and d >= stop.day):

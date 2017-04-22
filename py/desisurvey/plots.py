@@ -171,8 +171,9 @@ def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
 
 
 def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
-                 window_size=7., num_points=500, bg_color='lightblue',
-                 save=None):
+                 include_monsoon=False, include_full_moon=False,
+                 night_start=-6.5, night_stop=7.5, num_points=500,
+                 bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
     The matplotlib package must be installed to use this function.
@@ -194,13 +195,16 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         relative to local midnight, "histogram" shows elapsed time for
         each program during each night, and "cumulative" shows the
         cummulative time for each program since ``start_date``.
-    window_size : float
-        Number of hours on both sides of local midnight to display on the
-        vertical axis.
+    night_start : float
+        Start of night in hours relative to local midnight used to set
+        y-axis minimum for 'localtime' style and tabulate nightly program.
+    night_stop : float
+        End of night in hours relative to local midnight used to set
+        y-axis maximum for 'localtime' style and tabulate nightly program.
     num_points : int
         Number of subdivisions of the vertical axis to use for tabulating
         the program during each night. The resulting resolution will be
-        ``2 * window_size / num_points`` hours.
+        ``(night_stop - night_start) / num_points`` hours.
     bg_color : matplotlib color
         Axis background color to use.  Must be a valid matplotlib color.
     save : string or None
@@ -221,6 +225,9 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     styles = ('localtime', 'histogram', 'cumulative')
     if style not in styles:
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
+
+    if night_start >= night_stop:
+        raise ValueError('Expected night_start < night_stop.')
 
     # Determine plot date range.
     start_date = desisurvey.utils.get_date(start_date or ephem.start)
@@ -245,8 +252,24 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
 
     # Build a grid of elapsed time relative to local midnight during each night.
     midnight = t['MJDstart'] + 0.5
-    t_edges = np.linspace(-window_size, +window_size, num_points + 1) / 24.
+    t_edges = np.linspace(night_start, night_stop, num_points + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
+
+    # Calculate the number of hours for each program during each night.
+    dt = (night_stop - night_start) / num_points
+    hours = np.zeros((3, num_nights))
+    observing_night = np.zeros(num_nights, bool)
+    for i in np.arange(num_nights):
+        if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
+            continue
+        if not include_full_moon and ephem.is_full_moon(midnight[i]):
+            continue
+        observing_night[i] = True
+        mjd_grid = midnight[i] + t_centers
+        dark, gray, bright = ephem.get_program(mjd_grid)
+        hours[0, i] = dt * np.count_nonzero(dark)
+        hours[1, i] = dt * np.count_nonzero(gray)
+        hours[2, i] = dt * np.count_nonzero(bright)
 
     # Initialize the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
@@ -256,6 +279,8 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         # Loop over nights to build image data to plot.
         program = np.zeros((num_nights, len(t_centers)))
         for i in np.arange(num_nights):
+            if not observing_night[i]:
+                continue
             mjd_grid = midnight[i] + t_centers
             dark, gray, bright = ephem.get_program(mjd_grid)
             program[i][dark] = 1.
@@ -269,11 +294,12 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
 
         ax.imshow(program.T, origin='lower', interpolation='none',
                   aspect='auto', cmap=cmap, vmin=-0.5, vmax=+3.5,
-                  extent=[xaxis_lo, xaxis_hi, -window_size, +window_size])
+                  extent=[xaxis_lo, xaxis_hi, night_start, night_stop])
 
         # Display 24-hour local time on y axis.
-        window_int = int(np.floor(window_size))
-        y_ticks = np.arange(-window_int, +window_int + 1, dtype=int)
+        y_lo = int(np.ceil(night_start))
+        y_hi = int(np.floor(night_stop))
+        y_ticks = np.arange(y_lo, y_hi + 1, dtype=int)
         y_labels = ['{:02d}h'.format(hr) for hr in (24 + y_ticks) % 24]
         config = desisurvey.config.Configuration()
         ax.set_ylabel('Local Time [{0}]'
@@ -283,29 +309,22 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
 
     else:
 
-        hours = np.zeros((3, num_nights), dtype=int)
-        for i in np.arange(num_nights):
-            mjd_grid = midnight[i] + t_centers
-            dark, gray, bright = ephem.get_program(mjd_grid)
-            hours[0, i] = np.count_nonzero(dark)
-            hours[1, i] = np.count_nonzero(gray)
-            hours[2, i] = np.count_nonzero(bright)
-
-        if style == 'cumulative':
-            hours = np.cumsum(hours, axis=1)
-
-        dt = 2.0 * window_size / num_points
         x = xaxis_lo + np.arange(num_nights) + 0.5
-        fmt = '.-' if num_nights < 150 else '-'
-        plt.plot(x, dt * hours[0], fmt, color=program_color['DARK'])
-        plt.plot(x, dt * hours[1], fmt, color=program_color['GRAY'])
-        plt.plot(x, dt * hours[2], fmt, color=program_color['BRIGHT'])
+        y = hours if style == 'histogram' else np.cumsum(hours, axis=1)
+        size = min(15., (300./num_nights) ** 2)
+        opts = dict(linestyle='-', marker='.' if size > 1 else None,
+                    markersize=size)
+        plt.plot(x, y[0], color=program_color['DARK'], **opts)
+        plt.plot(x, y[1], color=program_color['GRAY'], **opts)
+        plt.plot(x, y[2], color=program_color['BRIGHT'], **opts)
 
         ax.set_axis_bgcolor(bg_color)
-        plt.ylim(0, None)
+        plt.ylim(0, 1.07 * y.max())
 
     # Display dates on the x axis.
-    ax.set_xlabel('Survey Date', fontsize='x-large')
+    ax.set_xlabel('Survey Date (observing {0} / {1} nights)'
+                  .format(np.count_nonzero(observing_night), num_nights),
+                  fontsize='x-large')
     ax.set_xlim(xaxis_start, xaxis_stop)
     if num_nights < 50:
         # Major ticks at month boundaries.
@@ -340,10 +359,13 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     opts = dict(fontsize='xx-large', fontweight='bold', xy=(0, 0),
                 horizontalalignment='center', verticalalignment='top',
                 xycoords='axes fraction', textcoords='axes fraction')
-    ax.annotate('DARK', xytext=(0.2, y), color=program_color['DARK'], **opts)
-    ax.annotate('GRAY', xytext=(0.5, y), color=program_color['GRAY'], **opts)
+    ax.annotate('DARK {0:.1f}h'.format(hours[0].sum()), xytext=(0.2, y),
+                color=program_color['DARK'], **opts)
+    ax.annotate('GRAY {0:.1f}h'.format(hours[1].sum()), xytext=(0.5, y),
+                color=program_color['GRAY'], **opts)
     ax.annotate(
-        'BRIGHT', xytext=(0.8, y), color=program_color['BRIGHT'], **opts)
+        'BRIGHT {0:.1f}h'.format(hours[2].sum()), xytext=(0.8, y),
+        color=program_color['BRIGHT'], **opts)
 
     plt.tight_layout()
     if save:
