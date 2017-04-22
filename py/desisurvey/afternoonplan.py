@@ -12,6 +12,7 @@ import astropy.table
 import desimodel.io
 import desiutil.log
 
+import desisurvey.config
 from desisurvey.utils import mjd2lst
 
 
@@ -35,6 +36,7 @@ class surveyPlan:
             tilesubset: array of integer tileids to use; ignore others
         """
         self.log = desiutil.log.get_logger()
+        self.config = desisurvey.config.Configuration()
         self.ephem = ephem
 
         # Read in DESI tile data
@@ -254,14 +256,14 @@ class surveyPlan:
                       .format(len(planList0)))
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['MoonFrac']
-        filename = 'obsplan{0}.fits'.format(date_string)
+        filename = self.config.get_path('obsplan{0}.fits'.format(date_string))
         table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)
 
         return filename
 
-      
+
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #
 ####################################################################
@@ -447,7 +449,7 @@ class surveyPlan:
         # Re-initialise remaining and observed time arrays.
         surveystruct['remaining_times'] = np.copy(surveystruct['scheduled_times'])
         surveystruct['observed_times'] *= 0.0
-        
+
         num_obs = len(obs['tileid'])
         times = surveystruct['times']
         num_times = len(times)
@@ -479,13 +481,13 @@ class surveyPlan:
                               (obs['ra'] < surveystruct['ngc_end']) )
 
         # Start by filling the hardest regions with tiles, NGC then SGC
-        
+
         dec = obs['dec'][ngcplates]
         ra = obs['ra'][ngcplates]
         orig_ha = np.copy(obs['ha'][ngcplates])
         tile = obs['tileid'][ngcplates]
         #obs_bit = obs['obs_bit'][ngcplates]
-        
+
         nindices = index2-index1
         for i in range(nindices):
             ihalf = i//2
@@ -576,7 +578,7 @@ class surveyPlan:
             rank_plates = rank_plates[todo]
             tile0 = sort2arr(tile[todo],rank_plates)
             ha0 = sort2arr(ha[todo], rank_plates)
-            
+
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]
