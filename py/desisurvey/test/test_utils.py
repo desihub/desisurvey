@@ -56,13 +56,36 @@ class TestUtils(unittest.TestCase):
         when = astropy.time.Time(self.table['jd'], format='jd')
         sky = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
         true_altaz = utils.get_observer(when, alt * u.deg, az * u.deg)
-        zeros = np.zeros(len(alt))
-        obs_altaz = sky.transform_to(
-            utils.get_observer(when, zeros * u.deg, zeros * u.deg))
+        obs_altaz = sky.transform_to(utils.get_observer(when))
         sep = true_altaz.separation(obs_altaz).to(u.arcsec).value
         # Opening angle between true and observed (alt,az) unit vectors
         # must be within 30 arcsec.
         self.assertTrue(np.max(np.fabs(sep)) < 30)
+
+    def test_get_observer_args(self):
+        """Must provide both alt and az to get_observer()"""
+        t = astropy.time.Time('2020-01-01')
+        with self.assertRaises(ValueError):
+            utils.get_observer(t, alt=0 * u.deg)
+        with self.assertRaises(ValueError):
+            utils.get_observer(t, az=0 * u.deg)
+
+    def test_get_observer_units(self):
+        """Alt,az must have angular units for get_observer()"""
+        t = astropy.time.Time('2020-01-01')
+        with self.assertRaises(TypeError):
+            utils.get_observer(t, alt=1, az=1)
+        with self.assertRaises(TypeError):
+            utils.get_observer(t, alt=1 * u.m, az=1 * u.m)
+
+    def test_get_observer_time(self):
+        """Must pass arg convertible to astropy Time to get_observer()"""
+        utils.get_observer('2020-01-01')
+        utils.get_observer(datetime.datetime(2020, 1, 1, 0, 0))
+        with self.assertRaises(ValueError):
+            utils.get_observer(datetime.date(2020, 1, 1))
+        with self.assertRaises(ValueError):
+            utils.get_observer(50000.)
 
     def test_get_location(self):
         """Check for sensible coordinates"""

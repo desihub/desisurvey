@@ -38,7 +38,7 @@ def get_location():
     return _telescope_location
 
 
-def get_observer(when, alt=90 * u.deg, az=0 * u.deg):
+def get_observer(when, alt=None, az=None):
     """Return the AltAz frame for the telescope at the specified time(s).
 
     Refraction corrections are not applied (for now).
@@ -49,18 +49,25 @@ def get_observer(when, alt=90 * u.deg, az=0 * u.deg):
     ----------
     when : astropy.time.Time
         One or more times when the AltAz transformations should be calculated.
-    alt : astropy.units.Quantity
+    alt : astropy.units.Quantity or None
         Local altitude angle(s)
-    az : astropy.units.Quantity
+    az : astropy.units.Quantity or None
         Local azimuth angle(s)
 
     Returns
     -------
     astropy.coordinates.AltAz
-        AltAz frame object pointed at the zenith (alt=90 deg, az=0 deg).
+        AltAz frame object suitable for transforming to/from local horizon
+        (alt, az) coordinates.
     """
+    if alt is not None and az is not None:
+        kwargs = dict(alt=alt, az=az)
+    elif alt is not None or az is not None:
+        raise ValueError('Must specify both alt and az.')
+    else:
+        kwargs = {}
     return astropy.coordinates.AltAz(
-        alt=alt, az=az, location=get_location(), obstime=when, pressure=0)
+        location=get_location(), obstime=when, pressure=0, **kwargs)
 
 
 def is_monsoon(night):
