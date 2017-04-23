@@ -1,11 +1,15 @@
 import unittest
 import datetime
+import os
 
 import numpy as np
 
 import pytz
 
 import astropy.time
+import astropy.coordinates
+import astropy.io
+import astropy.utils.data
 import astropy.units as u
 
 from desisurvey import utils, config
@@ -14,8 +18,51 @@ from desisurvey import utils, config
 class TestUtils(unittest.TestCase):
 
     def setUp(self):
-        pass
+        # Configure a CSV reader for the Horizons output format.
+        csv_reader = astropy.io.ascii.Csv()
+        csv_reader.header.comment = r'[^ ]'
+        csv_reader.data.start_line = 35
+        csv_reader.data.end_line = 203
+        # Read moon ephemerides for the first week of 2020.
+        path = astropy.utils.data._find_pkg_data_path(
+            os.path.join('data', 'horizons_2020_week1_moon.csv'),
+            package='desisurvey')
+        self.table = csv_reader.read(path)
+        # Horizons CSV file has a trailing comma on each line.
+        self.table.remove_column('col10')
+        # Use more convenient column names.
+        names = ('date', 'jd', 'sun', 'moon', 'ra', 'dec',
+                 'az', 'alt', 'lst', 'frac')
+        for old_name, new_name in zip(self.table.colnames, names):
+            self.table[old_name].name = new_name
 
+    def test_get_observer_to_sky(self):
+        """Check (alt,az) -> (ra,dec) against JPL Horizons"""
+        ra, dec = self.table['ra'], self.table['dec']
+        alt, az = self.table['alt'], self.table['az']
+        when = astropy.time.Time(self.table['jd'], format='jd')
+        obs = utils.get_observer(when, alt * u.deg, az * u.deg)
+        obs_sky = obs.transform_to(astropy.coordinates.ICRS)
+        true_sky = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
+        sep = true_sky.separation(obs_sky).to(u.arcsec).value
+        # Opening angle between true and observed (ra,dec) unit vectors
+        # must be within 30 arcsec.
+        self.assertTrue(np.max(np.fabs(sep)) < 30)
+
+    def test_get_observer_from_sky(self):
+        """Check (alt,az) -> (ra,dec) against JPL Horizons"""
+        ra, dec = self.table['ra'], self.table['dec']
+        alt, az = self.table['alt'], self.table['az']
+        when = astropy.time.Time(self.table['jd'], format='jd')
+        sky = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
+        true_altaz = utils.get_observer(when, alt * u.deg, az * u.deg)
+        zeros = np.zeros(len(alt))
+        obs_altaz = sky.transform_to(
+            utils.get_observer(when, zeros * u.deg, zeros * u.deg))
+        sep = true_altaz.separation(obs_altaz).to(u.arcsec).value
+        # Opening angle between true and observed (alt,az) unit vectors
+        # must be within 30 arcsec.
+        self.assertTrue(np.max(np.fabs(sep)) < 30)
 
     def test_get_location(self):
         """Check for sensible coordinates"""
@@ -24,11 +71,9 @@ class TestUtils(unittest.TestCase):
         self.assertTrue(np.fabs(loc.longitude.to(u.deg).value + 111.6) < 0.1)
         self.assertTrue(np.fabs(loc.height.to(u.m).value - 2120) < 0.1)
 
-
     def test_get_location_cache(self):
         """Test location object caching"""
         self.assertEqual(id(utils.get_location()), id(utils.get_location()))
-
 
     def test_get_date(self):
         """Test date conversions"""
@@ -70,7 +115,6 @@ class TestUtils(unittest.TestCase):
             self.assertTrue(utils.is_monsoon(datetime.date(year, 8, 26)))
             self.assertFalse(utils.is_monsoon(datetime.date(year, 8, 27)))
 
-
     def test_local_noon(self):
         """The telescope is 7 hours behind of UTC during winter and summer."""
         for month in (1, 7):
@@ -78,7 +122,6 @@ class TestUtils(unittest.TestCase):
             noon = utils.local_noon_on_date(day)
             self.assertEqual(noon.datetime.date(), day)
             self.assertEqual(noon.datetime.time(), datetime.time(hour=12 + 7))
-
 
     def test_sort2arr(self):
         a = [1,2,3]
@@ -126,6 +169,7 @@ class TestUtils(unittest.TestCase):
         alt_plus, az_minus = utils.radec2altaz(ra+5.0, dec, lst)
         alt_minus, az_minus = utils.radec2altaz(ra-5.0, dec, lst)
         self.assertAlmostEqual(alt_plus, alt_minus)
+
 
 if __name__ == '__main__':
     unittest.main()
