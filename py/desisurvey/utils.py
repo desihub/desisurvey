@@ -10,9 +10,9 @@ import pytz
 
 import astropy.time
 import astropy.coordinates
+import astropy.units as u
 
 import desisurvey.config
-from desisurvey.kpno import mayall
 
 
 _telescope_location = None
@@ -214,10 +214,7 @@ def mjd2lst(mjd):
         lst: float (degrees)
     """
 
-    lon = str(mayall.west_lon_deg) + 'd'
-    lat = str(mayall.lat_deg) + 'd'
-
-    t = astropy.time.Time(mjd, format = 'mjd', location=(lon, lat))
+    t = astropy.time.Time(mjd, format = 'mjd', location=get_location())
     lst_tmp = t.copy()
 
     #try:
@@ -264,7 +261,7 @@ def radec2altaz(ra, dec, lst):
             h += 2.0*np.pi
 
     d = np.radians(dec)
-    phi = np.radians(mayall.lat_deg)
+    phi = get_location().latitude.to(u.rad).value
 
     sinAlt = np.sin(phi)*np.sin(d) + np.cos(phi)*np.cos(d)*np.cos(h)
 
