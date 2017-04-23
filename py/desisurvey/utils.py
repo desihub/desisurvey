@@ -9,9 +9,33 @@ import numpy as np
 import pytz
 
 import astropy.time
+import astropy.coordinates
 
 import desisurvey.config
 from desisurvey.kpno import mayall
+
+
+_telescope_location = None
+
+
+def get_location():
+    """Return the telescope's earth location.
+
+    The location object is cached after the first call, so there is no need
+    to cache this function's return value externally.
+
+    Returns
+    -------
+    astropy.coordinates.EarthLocation
+    """
+    global _telescope_location
+    if _telescope_location is None:
+        config = desisurvey.config.Configuration()
+        _telescope_location = astropy.coordinates.EarthLocation.from_geodetic(
+            lat=config.location.latitude(),
+            lon=config.location.longitude(),
+            height=config.location.elevation())
+    return _telescope_location
 
 
 def is_monsoon(night):

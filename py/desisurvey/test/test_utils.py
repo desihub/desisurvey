@@ -6,6 +6,7 @@ import numpy as np
 import pytz
 
 import astropy.time
+import astropy.units as u
 
 from desisurvey import utils, config
 
@@ -14,6 +15,19 @@ class TestUtils(unittest.TestCase):
 
     def setUp(self):
         pass
+
+
+    def test_get_location(self):
+        """Check for sensible coordinates"""
+        loc = utils.get_location()
+        self.assertTrue(np.fabs(loc.latitude.to(u.deg).value - 32.0) < 0.1)
+        self.assertTrue(np.fabs(loc.longitude.to(u.deg).value + 111.6) < 0.1)
+        self.assertTrue(np.fabs(loc.height.to(u.m).value - 2120) < 0.1)
+
+
+    def test_get_location_cache(self):
+        """Test location object caching"""
+        self.assertEqual(id(utils.get_location()), id(utils.get_location()))
 
 
     def test_get_date(self):
