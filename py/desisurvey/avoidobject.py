@@ -38,6 +38,7 @@ def avoidObject(datetime, ra0, dec0):
     config = desisurvey.config.Configuration()
     gatech.lat = config.location.latitude().to(u.rad).value
     gatech.lon = config.location.longitude().to(u.rad).value
+    gatech.elevation = config.location.elevation().to(u.m).value
     gatech.date = dt
     gatech.epoch = dt
 
@@ -93,6 +94,7 @@ def moonLoc (datetime, ra0, dec0):
     config = desisurvey.config.Configuration()
     gatech.lat = config.location.latitude().to(u.rad).value
     gatech.lon = config.location.longitude().to(u.rad).value
+    gatech.elevation = config.location.elevation().to(u.m).value
     gatech.date = dt
     gatech.epoch = dt
 

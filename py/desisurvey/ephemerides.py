@@ -99,6 +99,7 @@ class Ephemerides(object):
         mayall = ephem.Observer()
         mayall.lat = config.location.latitude().to(u.rad).value
         mayall.lon = config.location.longitude().to(u.rad).value
+        mayall.elevation = config.location.elevation().to(u.m).value
         # Disable atmospheric refraction corrections.
         mayall.pressure = 0.0
         # Calculate the MJD corresponding to date=0. in ephem.
