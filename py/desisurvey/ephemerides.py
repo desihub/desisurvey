@@ -86,9 +86,8 @@ class Ephemerides(object):
 
         # Allocate space for the data we will calculate.
         data = np.empty(num_nights, dtype=[
-            ('noon', float),
-            ('MJDsunset', float), ('MJDsunrise', float), ('dusk', float),
-            ('dawn', float), ('brightdusk', float), ('brightdawn', float),
+            ('noon', float), ('dusk', float), ('dawn', float),
+            ('brightdusk', float), ('brightdawn', float),
             ('MJDmoonrise', float), ('MJDmoonset', float), ('MoonFrac', float),
             ('MoonNightStart', float), ('MoonNightStop', float),
             ('MJD_bright_start', float), ('MJD_bright_end', float),
@@ -121,18 +120,14 @@ class Ephemerides(object):
             row = data[day_offset]
             # Store local noon for this day.
             row['noon'] = day.mjd
-            # Calculate sun rise/set with different horizons.
-            mayall.horizon = '-0:34' # the value that the USNO uses.
-            row['MJDsunset'] = mayall.next_setting(ephem.Sun()) + mjd0
-            row['MJDsunrise'] = mayall.next_rising(ephem.Sun()) + mjd0
-            # 13 deg twilight, adequate (?) for BGS sample.
+            # Calculate bright twilight.
             mayall.horizon = (
                 config.programs.BRIGHT.max_sun_altitude().to(u.rad).value)
             row['brightdusk'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
             row['brightdawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
-            # 15 deg twilight, start of dark time if the moon is down.
+            # Calculate dark / gray twilight.
             mayall.horizon = (
                 config.programs.DARK.max_sun_altitude().to(u.rad).value)
             row['dusk'] = mayall.next_setting(
@@ -143,7 +138,7 @@ class Ephemerides(object):
             m0 = ephem.Moon()
             mayall.horizon = '-0:34' # the value that the USNO uses.
             row['MJDmoonrise'] = mayall.next_rising(m0) + mjd0
-            if row['MJDmoonrise'] > row['MJDsunrise']:
+            if row['MJDmoonrise'] > row['brightdawn']:
                 # Any moon visible tonight is from the previous moon rise.
                 row['MJDmoonrise'] = mayall.previous_rising(m0) + mjd0
             mayall.date = row['MJDmoonrise'] - mjd0
@@ -154,9 +149,9 @@ class Ephemerides(object):
             row['MoonFrac'] = m0.moon_phase
             # Determine when the moon is up while the sun is down during this
             # night, if at all.
-            row['MoonNightStart'] = max(row['MJDmoonrise'], row['MJDsunset'])
-            row['MoonNightStop'] = min(max(row['MJDmoonset'], row['MJDsunset']),
-                                       row['MJDsunrise'])
+            row['MoonNightStart'] = max(row['MJDmoonrise'], row['brightdusk'])
+            row['MoonNightStop'] = min(max(row['MJDmoonset'], row['brightdusk']),
+                                       row['brightdawn'])
             # Tabulate the moon altitude at num_moon_steps equally spaced times
             # covering this interval.
             t_moon = row['noon'] + np.linspace(0., 1., num_moon_steps)
@@ -173,8 +168,7 @@ class Ephemerides(object):
                 row['MJD_bright_start'] = np.min(t_moon[bright])
                 row['MJD_bright_end'] = np.max(t_moon[bright])
             else:
-                row['MJD_bright_start'] = row['MJD_bright_end'] = 0.5 * (
-                    row['MJDsunset'] + row['MJDsunrise'])
+                row['MJD_bright_start'] = row['MJD_bright_end'] = row['noon'] + 0.5
 
         t = astropy.table.Table(
             data, meta=dict(NAME='Survey Ephemerides',

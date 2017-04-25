@@ -43,7 +43,8 @@ class TestEphemerides(unittest.TestCase):
 
         etable = ephem._table
         self.assertEqual(len(etable), 30)
-        self.assertTrue(np.all(etable['MJDsunrise'] > etable['MJDsunset']))
+        self.assertTrue(np.all(etable['dusk'] > etable['noon']))
+        self.assertTrue(np.all(etable['dawn'] > etable['dusk']))
         self.assertTrue(np.all(etable['dusk'] > etable['brightdusk']))
         self.assertTrue(np.all(etable['dawn'] < etable['brightdawn']))
         self.assertGreater(np.max(etable['MoonFrac']), 0.99)
@@ -58,7 +59,6 @@ class TestEphemerides(unittest.TestCase):
             date = Time(x['noon'], format='mjd').datetime.date()
             night = date.strftime('%Y%m%d')
             for key in [
-                    'MJDsunset', 'MJDsunrise',
                     'brightdusk', 'brightdawn',
                     'dusk', 'dawn',
                 ]:
