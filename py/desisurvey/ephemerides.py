@@ -227,6 +227,10 @@ class Ephemerides(object):
     def get_program(self, mjd):
         """Tabulate the program during one night.
 
+        The program definitions are taken from
+        :class:`desisurvey.config.Configuration` and depend only on
+        sun and moon ephemerides for the night.
+
         Parameters
         ----------
         mjd : float or array
@@ -237,7 +241,8 @@ class Ephemerides(object):
         -------
         tuple
             Tuple (dark, gray, bright) of boolean arrays that tabulates the
-            program at each input MJD.
+            program at each input MJD.  Each output array has the same
+            shape as the input ``mjd`` array.
         """
         # Get the night of the earliest time.
         mjd = np.asarray(mjd)
@@ -254,18 +259,19 @@ class Ephemerides(object):
         # Lookup the moon illuminated fraction for this night.
         moon_frac = night['moon_illum_frac']
 
-        # Identify times between 13 and 15 degree twilight.
-        twilight13 = (mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
-        twilight15 = (mjd >= night['dusk']) & (mjd <= night['dawn'])
+        # Select bright and dark night conditions.
+        bright_night = (
+            mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
+        dark_night = (mjd >= night['dusk']) & (mjd <= night['dawn'])
 
         # Identify program during each MJD.
         GRAY = desisurvey.config.Configuration().programs.GRAY
-        gray = twilight15 & (moon_alt >= 0) & (
+        gray = dark_night & (moon_alt >= 0) & (
             (moon_frac <= GRAY.max_moon_illumination()) &
             (moon_frac * moon_alt <=
              GRAY.max_moon_illumination_altitude_product().to(u.deg).value))
-        dark = twilight15 & (moon_alt < 0)
-        bright = twilight13 & ~(dark | gray)
+        dark = dark_night & (moon_alt < 0)
+        bright = bright_night & ~(dark | gray)
 
         assert not np.any(dark & gray | dark & bright | gray & bright)
 
@@ -364,6 +370,36 @@ def get_moon_interpolator(row):
         az = np.fmod(360 + np.degrees(np.arctan2(sin_az, cos_az)), 360)
         return alt, az
     return wrapper
+
+
+def get_grid(step_size = 1 * u.min,
+             night_start = -6 * u.hour, night_stop = 7 * u.hour):
+    """Calculate a grid of equally spaced times covering one night.
+
+    In case the requested step size does not evenly divide the requested
+    range, the last grid point will be rounded up.
+
+    The default range covers all possible observing times at KPNO.
+
+    Parameters
+    ----------
+    step_size : astropy.units.Quantity
+        Size of each grid step with time units.
+    night_start : astropy.units.Quantity
+        First grid point relative to local midnight with time units.
+    night_stop : astropy.units.Quantity
+        Last grid point relative to local midnight with time units.
+
+    Returns
+    -------
+    array
+        Numpy array of dimensionless offsets relative to local midnight
+        in units of days.
+    """
+    num_points = int(round(((night_stop - night_start) / step_size).to(1)))
+    night_stop = night_start + num_points * step_size
+    return (night_start.to(u.day).value +
+            step_size.to(u.day).value * np.arange(num_points + 1))
 
 
 def get_bright(row, interval_mins=1.):

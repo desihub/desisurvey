@@ -6,9 +6,9 @@ import datetime
 import numpy as np
 
 from astropy.time import Time
-from astropy import units
+import astropy.units as u
 
-from desisurvey.ephemerides import Ephemerides
+from desisurvey.ephemerides import Ephemerides, get_grid
 from desisurvey.config import Configuration
 
 
@@ -63,9 +63,9 @@ class TestEphemerides(unittest.TestCase):
                     'dusk', 'dawn',
                 ]:
                 #- AZ local time
-                localtime = Time(x[key], format='mjd') - 7*units.hour
+                localtime = Time(x[key], format='mjd') - 7*u.hour
                 #- YEARMMDD of sunset for that time
-                yearmmdd = (localtime - 12*units.hour).to_datetime().strftime('%Y%m%d')
+                yearmmdd = (localtime - 12*u.hour).to_datetime().strftime('%Y%m%d')
                 msg = '{} != {} for {}={}'.format(night, yearmmdd, key, x[key])
                 self.assertEqual(night, yearmmdd, msg)
 
@@ -81,6 +81,17 @@ class TestEphemerides(unittest.TestCase):
         expected = np.zeros_like(full, bool)
         expected[9:16] = True
         self.assertTrue(np.all(full == expected))
+
+    def test_get_grid(self):
+        """Verify grid calculations"""
+        for step_size in (1 * u.min, 0.3 * u.hour):
+            for night_start in (-6 * u.hour, -6.4 * u.hour):
+                g = get_grid(step_size, night_start)
+                self.assertTrue(g[0] == night_start.to(u.day).value)
+                self.assertAlmostEqual(g[1] - g[0], step_size.to(u.day).value)
+                self.assertAlmostEqual(g[-1] - g[0],
+                                (len(g) - 1) * step_size.to(u.day).value)
+
 
 if __name__ == '__main__':
     unittest.main()
