@@ -46,8 +46,10 @@ class Node(object):
     def __init__(self, value, path=[]):
         self._path = path
         if isinstance(value, dict):
+            # Remember our keys.
+            self._keys = value.keys()
             # Recursively add sub-dictionaries as new child attributes.
-            for name in value.keys():
+            for name in self._keys:
                 child_path = path + [name]
                 self.__dict__[name] = Node(value[name], child_path)
         else:
@@ -69,13 +71,22 @@ class Node(object):
             except TypeError:
                 self._value = value
 
-
     @property
     def path(self):
         """Return the full path to this node using dot notation.
         """
         return '.'.join(self._path)
 
+    @property
+    def keys(self):
+        """Return the list of keys for a non-leaf node or raise a RuntimeError
+        for a terminal node.
+        """
+        try:
+            return self._keys
+        except AttributeError:
+            raise RuntimeError(
+                '{0} is a terminal config node.'.format(self.path))
 
     def __call__(self):
         """Return a terminal node's value or raise a RuntimeError for

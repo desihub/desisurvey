@@ -25,19 +25,16 @@ class TestConfig(unittest.TestCase):
             f.write('  pi: 3.141\n')
             f.write('output_path: .\n')
 
-
     def tearDown(self):
         # Remove the directory after the test.
         shutil.rmtree(self.tmpdir)
         # Reset configuration for other unit test classes.
         Configuration.reset()
 
-
     def test_default(self):
         """Default config file is valid"""
         Configuration.reset()
         c = Configuration()
-
 
     def test_repeat_default(self):
         """Repeated calls to default init return same object"""
@@ -46,7 +43,6 @@ class TestConfig(unittest.TestCase):
         c2 = Configuration()
         self.assertEqual(id(c1), id(c2))
 
-
     def test_repeat_non_default(self):
         """Repeated calls to non-default init return same object"""
         Configuration.reset()
@@ -54,12 +50,10 @@ class TestConfig(unittest.TestCase):
         c2 = Configuration(self.simple)
         self.assertEqual(id(c1), id(c2))
 
-
     def test_valid(self):
         """Simple config file really is valid"""
         Configuration.reset()
         c = Configuration(self.simple)
-
 
     def test_terminal_value(self):
         """Terminal node values accessed via __call__"""
@@ -69,14 +63,12 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(c.const.pi(), 3.141)
         self.assertEqual(c.output_path(), '.')
 
-
     def test_non_terminal_value(self):
         """Non-terminal nodes do not have an associated value"""
         Configuration.reset()
         c = Configuration(self.simple)
         with self.assertRaises(RuntimeError):
             c.const()
-
 
     def test_node_path(self):
         """Config nodes have associated paths"""
@@ -88,20 +80,17 @@ class TestConfig(unittest.TestCase):
         c = Configuration()
         self.assertEqual(c.programs.DARK.path, 'programs.DARK')
 
-
     def test_get_path_rel(self):
         """A relative path has output_path prepended"""
         Configuration.reset()
         c = Configuration(self.simple)
         self.assertEqual(c.get_path('blah'), os.path.join('.', 'blah'))
 
-
     def test_get_path_abs(self):
         """An absolute path does not have output_path prepended"""
         Configuration.reset()
         c = Configuration(self.simple)
         self.assertEqual(c.get_path('/blah'), '/blah')
-
 
     def test_set_output_path(self):
         """output_path can be changed"""
@@ -115,7 +104,6 @@ class TestConfig(unittest.TestCase):
             c.set_output_path('{_OUTPUT_PATH_}/_non_existent_')
         del os.environ['_OUTPUT_PATH_']
 
-
     def test_bad_abs_path(self):
         """Cannot read config from a non-existent absolute path"""
         Configuration.reset()
@@ -123,13 +111,11 @@ class TestConfig(unittest.TestCase):
         with self.assertRaises(IOError):
             c = Configuration(name)
 
-
     def test_bad_rel_path(self):
         """Cannot read config from a non-existent relative path"""
         Configuration.reset()
         with self.assertRaises(IOError):
             c = Configuration('_non_existent_.yaml')
-
 
     def test_change_name(self):
         """Cannot read config from differerent files in same session."""
@@ -142,7 +128,6 @@ class TestConfig(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             c = Configuration('config.yaml')
 
-
     def test_output_path(self):
         """output_path must exist"""
         bad = os.path.join(self.tmpdir, 'bad.yaml')
@@ -151,7 +136,6 @@ class TestConfig(unittest.TestCase):
         Configuration.reset()
         with self.assertRaises(ValueError):
             c = Configuration(bad)
-
 
     def test_dict_key_type(self):
         """Dictionary keys must be valid python identifiers"""
@@ -163,7 +147,6 @@ class TestConfig(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             c = Configuration(bad)
 
-
     def test_dict_key_name(self):
         """Dictionary keys must be valid python identifiers"""
         bad = os.path.join(self.tmpdir, 'bad.yaml')
@@ -174,7 +157,6 @@ class TestConfig(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             c = Configuration(bad)
 
-
     def test_no_seq(self):
         """YAML sequences are not allowed"""
         bad = os.path.join(self.tmpdir, 'bad.yaml')
@@ -184,6 +166,21 @@ class TestConfig(unittest.TestCase):
         Configuration.reset()
         with self.assertRaises(RuntimeError):
             c = Configuration(bad)
+
+    def test_keys(self):
+        """Non-terminal node has keys property"""
+        Configuration.reset()
+        c = Configuration()
+        k = c.avoid_bodies.keys
+        self.assertTrue('moon' in k)
+        self.assertTrue('jupiter' in k)
+
+    def test_terminal_keys(self):
+        """Terminal nodes have no keys"""
+        Configuration.reset()
+        c = Configuration()
+        with self.assertRaises(RuntimeError):
+            k = c.avoid_bodies.moon.keys
 
 
 if __name__ == '__main__':
