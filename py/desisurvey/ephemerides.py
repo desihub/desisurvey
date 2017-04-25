@@ -88,7 +88,7 @@ class Ephemerides(object):
         data = np.empty(num_nights, dtype=[
             ('noon', float), ('dusk', float), ('dawn', float),
             ('brightdusk', float), ('brightdawn', float),
-            ('moonrise', float), ('moonset', float), ('MoonFrac', float),
+            ('moonrise', float), ('moonset', float), ('moon_illum_frac', float),
             ('MoonNightStart', float), ('MoonNightStop', float),
             ('MJD_bright_start', float), ('MJD_bright_end', float),
             ('MoonAlt', float, num_moon_steps),
@@ -146,7 +146,7 @@ class Ephemerides(object):
             # Calculate the fraction of the moon's surface that is illuminated
             # at local midnight.
             m0.compute(row['noon'] + 0.5 - mjd0)
-            row['MoonFrac'] = m0.moon_phase
+            row['moon_illum_frac'] = m0.moon_phase
             # Determine when the moon is up while the sun is down during this
             # night, if at all.
             row['MoonNightStart'] = max(row['moonrise'], row['brightdusk'])
@@ -252,7 +252,7 @@ class Ephemerides(object):
         moon_alt, _ = get_moon_interpolator(night)(mjd)
 
         # Lookup the moon illuminated fraction for this night.
-        moon_frac = night['MoonFrac']
+        moon_frac = night['moon_illum_frac']
 
         # Identify times between 13 and 15 degree twilight.
         twilight13 = (mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
@@ -310,7 +310,7 @@ class Ephemerides(object):
         # on this night (unless we are close to one end of the table).
         lo = max(0, index - half_cycle)
         hi = min(self.num_nights, index + half_cycle + 1)
-        cycle = self._table['MoonFrac'][lo:hi]
+        cycle = self._table['moon_illum_frac'][lo:hi]
         # Sort the illumination fractions in this cycle.
         sort_order = np.argsort(cycle)
         # Return True if tonight's illumination is in the top num_nights.
@@ -407,7 +407,7 @@ def get_bright(row, interval_mins=1.):
     alt_out, _ = f_moon(t_out)
 
     # Identify grid times falling in the BRIGHT program.
-    moon_frac = row['MoonFrac']
+    moon_frac = row['moon_illum_frac']
     bright = (moon_frac >= 0.6) | (alt_out * moon_frac >= 30.)
 
     return t_out, bright

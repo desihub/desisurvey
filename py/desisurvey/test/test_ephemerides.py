@@ -47,10 +47,10 @@ class TestEphemerides(unittest.TestCase):
         self.assertTrue(np.all(etable['dawn'] > etable['dusk']))
         self.assertTrue(np.all(etable['dusk'] > etable['brightdusk']))
         self.assertTrue(np.all(etable['dawn'] < etable['brightdawn']))
-        self.assertGreater(np.max(etable['MoonFrac']), 0.99)
-        self.assertLessEqual(np.max(etable['MoonFrac']), 1.0)
-        self.assertLess(np.min(etable['MoonFrac']), 0.01)
-        self.assertGreaterEqual(np.min(etable['MoonFrac']), 0.00)
+        self.assertGreater(np.max(etable['moon_illum_frac']), 0.99)
+        self.assertLessEqual(np.max(etable['moon_illum_frac']), 1.0)
+        self.assertLess(np.min(etable['moon_illum_frac']), 0.01)
+        self.assertGreaterEqual(np.min(etable['moon_illum_frac']), 0.00)
         self.assertTrue(np.all(etable['moonrise'] < etable['moonset']))
 
         for i in range(ephem.num_nights):

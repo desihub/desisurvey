@@ -255,7 +255,7 @@ class surveyPlan:
         self.log.info('Afternoon plan contains {0} tiles.'
                       .format(len(planList0)))
         table = finalTileList[planList0]
-        table.meta['MOONFRAC'] = day_stats['MoonFrac']
+        table.meta['MOONFRAC'] = day_stats['moon_illum_frac']
         filename = self.config.get_path('obsplan{0}.fits'.format(date_string))
         table.write(filename, overwrite=True)
 
