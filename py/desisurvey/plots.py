@@ -240,7 +240,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
-    mjd = ephem._table['MJDstart']
+    mjd = ephem._table['noon']
     sel = ((mjd >= desisurvey.utils.local_noon_on_date(start_date).mjd) &
            (mjd < desisurvey.utils.local_noon_on_date(stop_date).mjd))
     t = ephem._table[sel]
@@ -257,7 +257,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     xaxis_hi = matplotlib.dates.date2num(xaxis_stop)
 
     # Build a grid of elapsed time relative to local midnight during each night.
-    midnight = t['MJDstart'] + 0.5
+    midnight = t['noon'] + 0.5
     t_edges = np.linspace(night_start, night_stop, num_points + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
 
@@ -428,7 +428,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     night = ephem.get_night(when)
 
     # Calculate the program during this night.
-    midnight = night['MJDstart'] + 0.5
+    midnight = night['noon'] + 0.5
     t_edges = midnight + np.linspace(
         -window_size, +window_size, 2 * window_size * 60 + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])

@@ -86,7 +86,7 @@ class Ephemerides(object):
 
         # Allocate space for the data we will calculate.
         data = np.empty(num_nights, dtype=[
-            ('MJDstart', float),
+            ('noon', float),
             ('MJDsunset', float), ('MJDsunrise', float), ('dusk', float),
             ('dawn', float), ('brightdusk', float), ('brightdawn', float),
             ('MJDmoonrise', float), ('MJDmoonset', float), ('MoonFrac', float),
@@ -120,7 +120,7 @@ class Ephemerides(object):
             mayall.date = day.datetime
             row = data[day_offset]
             # Store local noon for this day.
-            row['MJDstart'] = day.mjd
+            row['noon'] = day.mjd
             # Calculate sun rise/set with different horizons.
             mayall.horizon = '-0:34' # the value that the USNO uses.
             row['MJDsunset'] = mayall.next_setting(ephem.Sun()) + mjd0
@@ -150,7 +150,7 @@ class Ephemerides(object):
             row['MJDmoonset'] = mayall.next_setting(ephem.Moon()) + mjd0
             # Calculate the fraction of the moon's surface that is illuminated
             # at local midnight.
-            m0.compute(row['MJDstart'] + 0.5 - mjd0)
+            m0.compute(row['noon'] + 0.5 - mjd0)
             row['MoonFrac'] = m0.moon_phase
             # Determine when the moon is up while the sun is down during this
             # night, if at all.
@@ -159,7 +159,7 @@ class Ephemerides(object):
                                        row['MJDsunrise'])
             # Tabulate the moon altitude at num_moon_steps equally spaced times
             # covering this interval.
-            t_moon = row['MJDstart'] + np.linspace(0., 1., num_moon_steps)
+            t_moon = row['noon'] + np.linspace(0., 1., num_moon_steps)
             moon_alt, moon_az = row['MoonAlt'], row['MoonAz']
             for i, t in enumerate(t_moon):
                 mayall_no_ar.date = t - mjd0
@@ -250,7 +250,7 @@ class Ephemerides(object):
         night = self.get_night(astropy.time.Time(np.min(mjd), format='mjd'))
 
         # Check that all input MJDs are valid for this night.
-        mjd0 = night['MJDstart']
+        mjd0 = night['noon']
         if np.any((mjd < mjd0) | (mjd >= mjd0 + 1)):
             raise ValueError('MJD values span more than one night.')
 
@@ -346,7 +346,7 @@ def get_moon_interpolator(row):
     # Calculate the grid of time steps where the moon position is
     # already tabulated in the ephemerides table.
     n_moon = len(row['MoonAlt'])
-    t_grid = row['MJDstart'] + np.linspace(0., 1., n_moon)
+    t_grid = row['noon'] + np.linspace(0., 1., n_moon)
 
     # Construct a 3D array of (alt, cos(az), sin(az)) values for this night.
     # Use cos(az), sin(az) instead of az directly to avoid wrap-around

@@ -33,11 +33,11 @@ class TestEphemerides(unittest.TestCase):
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 10, 1)
         ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
-        self.assertEqual(ephem.start.mjd, ephem.get_row(0)['MJDstart'])
-        self.assertEqual(ephem.start.mjd, ephem.get_night(start)['MJDstart'])
-        self.assertEqual(ephem.stop.mjd, ephem.get_row(-1)['MJDstart'] + 1)
+        self.assertEqual(ephem.start.mjd, ephem.get_row(0)['noon'])
+        self.assertEqual(ephem.start.mjd, ephem.get_night(start)['noon'])
+        self.assertEqual(ephem.stop.mjd, ephem.get_row(-1)['noon'] + 1)
         self.assertEqual(ephem.start.mjd,
-                         ephem.get_night(ephem.start)['MJDstart'])
+                         ephem.get_night(ephem.start)['noon'])
         self.assertEqual(ephem.num_nights,
                          int(round(ephem.stop.mjd - ephem.start.mjd)))
 
@@ -55,7 +55,7 @@ class TestEphemerides(unittest.TestCase):
         for i in range(ephem.num_nights):
 
             x = ephem.get_row(i)
-            date = Time(x['MJDstart'], format='mjd').datetime.date()
+            date = Time(x['noon'], format='mjd').datetime.date()
             night = date.strftime('%Y%m%d')
             for key in [
                     'MJDsunset', 'MJDsunrise',
