@@ -75,6 +75,8 @@ class Ephemerides(object):
         # Build filename for saving the ephemerides.
         filename = config.get_path(
             'ephem_{0}_{1}.fits'.format(start_date, stop_date))
+
+        # Use cached ephemerides if requested and available.
         if use_cache and os.path.exists(filename):
             self._table = astropy.table.Table.read(filename)
             assert self._table.meta['START'] == str(start_date)
@@ -84,15 +86,47 @@ class Ephemerides(object):
                           .format(filename, start_date, stop_date))
             return
 
-        # Allocate space for the data we will calculate.
-        data = np.empty(num_nights, dtype=[
-            ('noon', float), ('dusk', float), ('dawn', float),
-            ('brightdusk', float), ('brightdawn', float),
-            ('moonrise', float), ('moonset', float), ('moon_illum_frac', float),
-            ('brightstart', float), ('brightstop', float),
-            ('MoonNightStart', float), ('MoonNightStop', float),
-            ('MoonAlt', float, num_moon_steps),
-            ('MoonAz', float, num_moon_steps)])
+        # Initialize an empty table to fill.
+        meta = dict(NAME='Survey Ephemerides',
+                    START=str(start_date), STOP=str(stop_date))
+        self._table = astropy.table.Table(meta=meta)
+        mjd_format = '%.5f'
+        self._table['noon'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD of local noon before night')
+        self._table['dusk'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD of dark/gray sunset')
+        self._table['dawn'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD of dark/gray sunrise')
+        self._table['brightdusk'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD of bright sunset')
+        self._table['brightdawn'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD of bright sunrise')
+        self._table['moonrise'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD of moonrise before/during night')
+        self._table['moonset'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD of moonset after/during night')
+        self._table['moon_illum_frac'] = astropy.table.Column(
+            length=num_nights, format='%.3f',
+            description='Illuminated fraction of moon surface')
+        self._table['brightstart'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD when any bright time starts after twilight')
+        self._table['brightstop'] = astropy.table.Column(
+            length=num_nights, format=mjd_format,
+            description='MJD when any bright time stops after twilight')
+        self._table['MoonAlt'] = astropy.table.Column(
+            length=num_nights, shape=(num_moon_steps,), format='%.1f',
+            description='Moon altitude during night in degrees')
+        self._table['MoonAz'] = astropy.table.Column(
+            length=num_nights, shape=(num_moon_steps,), format='%.1f',
+            description='Moon azimuth during night in degrees')
 
         # Initialize the observer.
         mayall = ephem.Observer()
@@ -113,11 +147,14 @@ class Ephemerides(object):
             mjd0 = astropy.time.Time(
                 datetime.datetime(1899, 12, 31, 12, 0, 0)).mjd
 
+        # Initialize a grid covering each night with 15sec resolution.
+        t_grid = get_grid(step_size=15 * u.s)
+
         # Loop over days.
         for day_offset in range(num_nights):
             day = self.start + day_offset * u.day
             mayall.date = day.datetime
-            row = data[day_offset]
+            row = self._table[day_offset]
             # Store local noon for this day.
             row['noon'] = day.mjd
             # Calculate bright twilight.
@@ -147,11 +184,6 @@ class Ephemerides(object):
             # at local midnight.
             m0.compute(row['noon'] + 0.5 - mjd0)
             row['moon_illum_frac'] = m0.moon_phase
-            # Determine when the moon is up while the sun is down during this
-            # night, if at all.
-            row['MoonNightStart'] = max(row['moonrise'], row['brightdusk'])
-            row['MoonNightStop'] = min(max(row['moonset'], row['brightdusk']),
-                                       row['brightdawn'])
             # Tabulate the moon altitude at num_moon_steps equally spaced times
             # covering this interval.
             t_moon = row['noon'] + np.linspace(0., 1., num_moon_steps)
@@ -162,22 +194,24 @@ class Ephemerides(object):
                 moon_alt[i] = math.degrees(float(m0.alt))
                 moon_az[i] = math.degrees(float(m0.az))
 
-            # Calculate the start/stop of any bright-time during this night.
-            t_moon, bright = get_bright(row)
-            if np.any(bright):
-                row['brightstart'] = np.min(t_moon[bright])
-                row['brightstop'] = np.max(t_moon[bright])
+            # Tabulate the program during the night.
+            t_night = row['noon'] + 0.5 + t_grid
+            dark, gray, bright = self.get_program(t_night)
+            # Select BRIGHT times during dark night, i.e., excluding the
+            # bright twilight component of bright time.
+            bright_night = (
+                bright & (t_night > row['dusk']) & (t_night < row['dawn']))
+            if np.any(bright_night):
+                # Record the first/last BRIGHT time during dark night.
+                row['brightstart'] = np.min(t_night[bright_night])
+                row['brightstop'] = np.max(t_night[bright_night])
             else:
+                # Set brightstart/stop equal to local midnight.
                 row['brightstart'] = row['brightstop'] = row['noon'] + 0.5
 
-        t = astropy.table.Table(
-            data, meta=dict(NAME='Survey Ephemerides',
-                            START=str(start_date), STOP=str(stop_date)))
         if write_cache:
             self.log.info('Saving ephemerides to {0}'.format(filename))
-            t.write(filename, overwrite=True)
-        self._table = t
-
+            self._table.write(filename, overwrite=True)
 
     def get_row(self, row_index):
         """Return the specified row of our table.
@@ -197,7 +231,6 @@ class Ephemerides(object):
             raise ValueError('Requested row index outside table: {0}'
                              .format(row_index))
         return self._table[row_index]
-
 
     def get_night(self, night, as_index=False):
         """Return the row of ephemerides for a single night.
@@ -222,7 +255,6 @@ class Ephemerides(object):
             raise ValueError('Requested night outside ephemerides: {0}'
                              .format(night))
         return row_index if as_index else self._table[row_index]
-
 
     def get_program(self, mjd):
         """Tabulate the program during one night.
@@ -276,7 +308,6 @@ class Ephemerides(object):
         assert not np.any(dark & gray | dark & bright | gray & bright)
 
         return dark, gray, bright
-
 
     def is_full_moon(self, night, num_nights=None):
         """Test if a night occurs during a full-moon break.
@@ -400,50 +431,3 @@ def get_grid(step_size = 1 * u.min,
     night_stop = night_start + num_points * step_size
     return (night_start.to(u.day).value +
             step_size.to(u.day).value * np.arange(num_points + 1))
-
-
-def get_bright(row, interval_mins=1.):
-    """Identify bright-time for a single night, if any.
-
-    The bright-time defintion used here is::
-
-        (sun altitude < -13) and
-        ((moon fraction > 0.6) or (moon_fraction * moon_altitude > 30 deg))
-
-    Note that this does definition not include times when the sun altitude
-    is between -13 and -15 deg that would otherwise be considered gray or dark.
-
-    Parameters
-    ----------
-    row : astropy.table.Row
-        A single row from the ephemerides astropy Table corresponding to the
-        night in question.
-    interval_mins : float
-        Grid spacing for tabulating program changes in minutes.
-
-    Returns
-    -------
-    tuple
-        Tuple (t_moon, bright) where t_moon is an equally spaced MJD grid with
-        the requested interval and bright is a boolean array of the same length
-        that indicates which grid times are in the BRIGHT program.  All other
-        grid times are in the GRAY program.  Returns empty arrays if the
-        any bright time would last less than the specified interval.
-    """
-    # Calculate the grid of time steps where the program should be tabulated.
-    interval_days = interval_mins / (24. * 60.)
-    t_start = int(math.ceil(max(row['MoonNightStart'], row['brightdusk']) /
-                            interval_days))
-    t_stop = int(math.floor(min(row['MoonNightStop'], row['brightdawn']) /
-                            interval_days))
-    t_out = np.arange(t_start, t_stop + 1) * interval_days
-
-    # Calculate the moon altitude at each grid time.
-    f_moon = get_moon_interpolator(row)
-    alt_out, _ = f_moon(t_out)
-
-    # Identify grid times falling in the BRIGHT program.
-    moon_frac = row['moon_illum_frac']
-    bright = (moon_frac >= 0.6) | (alt_out * moon_frac >= 30.)
-
-    return t_out, bright
