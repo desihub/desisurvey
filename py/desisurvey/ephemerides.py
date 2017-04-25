@@ -88,7 +88,7 @@ class Ephemerides(object):
         data = np.empty(num_nights, dtype=[
             ('noon', float), ('dusk', float), ('dawn', float),
             ('brightdusk', float), ('brightdawn', float),
-            ('MJDmoonrise', float), ('MJDmoonset', float), ('MoonFrac', float),
+            ('moonrise', float), ('moonset', float), ('MoonFrac', float),
             ('MoonNightStart', float), ('MoonNightStop', float),
             ('MJD_bright_start', float), ('MJD_bright_end', float),
             ('MoonAlt', float, num_moon_steps),
@@ -134,23 +134,23 @@ class Ephemerides(object):
                 ephem.Sun(), use_center=True) + mjd0
             row['dawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
-            # Moon.
+            # Calculate the moonrise/set for any moon visible tonight.
             m0 = ephem.Moon()
             mayall.horizon = '-0:34' # the value that the USNO uses.
-            row['MJDmoonrise'] = mayall.next_rising(m0) + mjd0
-            if row['MJDmoonrise'] > row['brightdawn']:
+            row['moonrise'] = mayall.next_rising(m0) + mjd0
+            if row['moonrise'] > row['brightdawn']:
                 # Any moon visible tonight is from the previous moon rise.
-                row['MJDmoonrise'] = mayall.previous_rising(m0) + mjd0
-            mayall.date = row['MJDmoonrise'] - mjd0
-            row['MJDmoonset'] = mayall.next_setting(ephem.Moon()) + mjd0
+                row['moonrise'] = mayall.previous_rising(m0) + mjd0
+            mayall.date = row['moonrise'] - mjd0
+            row['moonset'] = mayall.next_setting(ephem.Moon()) + mjd0
             # Calculate the fraction of the moon's surface that is illuminated
             # at local midnight.
             m0.compute(row['noon'] + 0.5 - mjd0)
             row['MoonFrac'] = m0.moon_phase
             # Determine when the moon is up while the sun is down during this
             # night, if at all.
-            row['MoonNightStart'] = max(row['MJDmoonrise'], row['brightdusk'])
-            row['MoonNightStop'] = min(max(row['MJDmoonset'], row['brightdusk']),
+            row['MoonNightStart'] = max(row['moonrise'], row['brightdusk'])
+            row['MoonNightStop'] = min(max(row['moonset'], row['brightdusk']),
                                        row['brightdawn'])
             # Tabulate the moon altitude at num_moon_steps equally spaced times
             # covering this interval.

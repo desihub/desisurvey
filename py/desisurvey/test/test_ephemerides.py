@@ -51,7 +51,7 @@ class TestEphemerides(unittest.TestCase):
         self.assertLessEqual(np.max(etable['MoonFrac']), 1.0)
         self.assertLess(np.min(etable['MoonFrac']), 0.01)
         self.assertGreaterEqual(np.min(etable['MoonFrac']), 0.00)
-        self.assertTrue(np.all(etable['MJDmoonrise'] < etable['MJDmoonset']))
+        self.assertTrue(np.all(etable['moonrise'] < etable['moonset']))
 
         for i in range(ephem.num_nights):
 

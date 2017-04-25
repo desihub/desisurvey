@@ -164,8 +164,8 @@ class surveyPlan:
         lst_dawn = mjd2lst(day_stats['dawn'])
         lst_brightdusk = mjd2lst(day_stats['brightdusk'])
         lst_brightdawn = mjd2lst(day_stats['brightdawn'])
-        LSTmoonrise = mjd2lst(day_stats['MJDmoonrise'])
-        LSTmoonset = mjd2lst(day_stats['MJDmoonset'])
+        LSTmoonrise = mjd2lst(day_stats['moonrise'])
+        LSTmoonset = mjd2lst(day_stats['moonset'])
         LSTbrightstart = mjd2lst(day_stats['MJD_bright_start'])
         LSTbrightend = mjd2lst(day_stats['MJD_bright_end'])
 
@@ -300,8 +300,8 @@ class surveyPlan:
             lst_dawn = mjd2lst(night['dawn'])
             lst_brightdusk = mjd2lst(night['brightdusk'])
             lst_brightdawn = mjd2lst(night['brightdawn'])
-            LSTmoonrise = mjd2lst(night['MJDmoonrise'])
-            LSTmoonset = mjd2lst(night['MJDmoonset'])
+            LSTmoonrise = mjd2lst(night['moonrise'])
+            LSTmoonset = mjd2lst(night['moonset'])
             LSTbrightstart = mjd2lst(night['MJD_bright_start'])
             LSTbrightend = mjd2lst(night['MJD_bright_end'])
             for i in range(self.nLST):
