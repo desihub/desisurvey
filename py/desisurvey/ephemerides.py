@@ -89,8 +89,8 @@ class Ephemerides(object):
             ('noon', float), ('dusk', float), ('dawn', float),
             ('brightdusk', float), ('brightdawn', float),
             ('moonrise', float), ('moonset', float), ('moon_illum_frac', float),
+            ('brightstart', float), ('brightstop', float),
             ('MoonNightStart', float), ('MoonNightStop', float),
-            ('MJD_bright_start', float), ('MJD_bright_end', float),
             ('MoonAlt', float, num_moon_steps),
             ('MoonAz', float, num_moon_steps)])
 
@@ -165,10 +165,10 @@ class Ephemerides(object):
             # Calculate the start/stop of any bright-time during this night.
             t_moon, bright = get_bright(row)
             if np.any(bright):
-                row['MJD_bright_start'] = np.min(t_moon[bright])
-                row['MJD_bright_end'] = np.max(t_moon[bright])
+                row['brightstart'] = np.min(t_moon[bright])
+                row['brightstop'] = np.max(t_moon[bright])
             else:
-                row['MJD_bright_start'] = row['MJD_bright_end'] = row['noon'] + 0.5
+                row['brightstart'] = row['brightstop'] = row['noon'] + 0.5
 
         t = astropy.table.Table(
             data, meta=dict(NAME='Survey Ephemerides',

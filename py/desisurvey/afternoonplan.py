@@ -166,8 +166,8 @@ class surveyPlan:
         lst_brightdawn = mjd2lst(day_stats['brightdawn'])
         LSTmoonrise = mjd2lst(day_stats['moonrise'])
         LSTmoonset = mjd2lst(day_stats['moonset'])
-        LSTbrightstart = mjd2lst(day_stats['MJD_bright_start'])
-        LSTbrightend = mjd2lst(day_stats['MJD_bright_end'])
+        LSTbrightstart = mjd2lst(day_stats['brightstart'])
+        LSTbrightend = mjd2lst(day_stats['brightstop'])
 
         # Calculate LST of each tile in the range [0, 360).
         finalTileLST = finalTileList['RA'] + finalTileList['HA']
@@ -302,8 +302,8 @@ class surveyPlan:
             lst_brightdawn = mjd2lst(night['brightdawn'])
             LSTmoonrise = mjd2lst(night['moonrise'])
             LSTmoonset = mjd2lst(night['moonset'])
-            LSTbrightstart = mjd2lst(night['MJD_bright_start'])
-            LSTbrightend = mjd2lst(night['MJD_bright_end'])
+            LSTbrightstart = mjd2lst(night['brightstart'])
+            LSTbrightend = mjd2lst(night['brightstop'])
             for i in range(self.nLST):
                 if BGS:
                     if ( (inLSTwindow(self.LSTbins[i], lst_brightdusk, lst_brightdawn) and
