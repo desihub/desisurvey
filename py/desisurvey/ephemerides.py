@@ -100,8 +100,12 @@ class Ephemerides(object):
         mayall.lat = config.location.latitude().to(u.rad).value
         mayall.lon = config.location.longitude().to(u.rad).value
         mayall.elevation = config.location.elevation().to(u.m).value
-        # Disable atmospheric refraction corrections.
-        mayall.pressure = 0.0
+        # Configure atmospheric refraction model for rise/set calculations.
+        mayall.pressure = 1e3 * config.location.pressure().to(u.bar).value
+        mayall.temp = config.location.temperature().to(u.C).value
+        # Do not use atmospheric refraction corrections for other calculations.
+        mayall_no_ar = mayall.copy()
+        mayall_no_ar.pressure = 0.
         # Calculate the MJD corresponding to date=0. in ephem.
         # This throws a warning because of the early year, but it is harmless.
         with warnings.catch_warnings():
@@ -158,8 +162,8 @@ class Ephemerides(object):
             t_moon = row['MJDstart'] + np.linspace(0., 1., num_moon_steps)
             moon_alt, moon_az = row['MoonAlt'], row['MoonAz']
             for i, t in enumerate(t_moon):
-                mayall.date = t - mjd0
-                m0.compute(mayall)
+                mayall_no_ar.date = t - mjd0
+                m0.compute(mayall_no_ar)
                 moon_alt[i] = math.degrees(float(m0.alt))
                 moon_az[i] = math.degrees(float(m0.az))
 

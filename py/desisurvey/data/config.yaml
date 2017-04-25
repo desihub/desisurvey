@@ -10,6 +10,8 @@ location:
     latitude: 31.963972222 deg
     longitude: -111.599336111 deg
     elevation: 2120 m
+    pressure: 78318 Pa    # from 1976 standard atmosphere model
+    temperature: 5 C      # a guess at mean night-time temperature
     timezone: US/Arizona
 
 #-------------------------------------------------------------------
