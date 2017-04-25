@@ -160,10 +160,10 @@ class surveyPlan:
 
         # Assign tiles to LST bins
         planList0 = []
-        lst15evening = mjd2lst(day_stats['MJDetwi'])
-        lst15morning = mjd2lst(day_stats['MJDmtwi'])
-        lst13evening = mjd2lst(day_stats['MJDe13twi'])
-        lst13morning = mjd2lst(day_stats['MJDm13twi'])
+        lst_dusk = mjd2lst(day_stats['dusk'])
+        lst_dawn = mjd2lst(day_stats['dawn'])
+        lst_brightdusk = mjd2lst(day_stats['brightdusk'])
+        lst_brightdawn = mjd2lst(day_stats['brightdawn'])
         LSTmoonrise = mjd2lst(day_stats['MJDmoonrise'])
         LSTmoonset = mjd2lst(day_stats['MJDmoonset'])
         LSTbrightstart = mjd2lst(day_stats['MJD_bright_start'])
@@ -194,15 +194,15 @@ class surveyPlan:
             else:
                 return (self.LSTbins < stop) | (self.LSTbins > start)
 
-        night13 = inLSTWindow(lst13evening, lst13morning)
-        night15 = inLSTWindow(lst15evening, lst15morning)
+        bright_night = inLSTWindow(lst_brightdusk, lst_brightdawn)
+        dark_night = inLSTWindow(lst_dusk, lst_dawn)
         moon_up = inLSTWindow(LSTmoonrise, LSTmoonset)
         bright = inLSTWindow(LSTbrightstart, LSTbrightend)
-        dark =  night15 & ~moon_up
-        gray = night15 & moon_up & ~bright
+        dark =  dark_night & ~moon_up
+        gray = dark_night & moon_up & ~bright
 
-        # Add the time between 13 and 15 degree twilight to the BRIGHT program.
-        bright |= night13 & ~night15
+        # Add the bright twilight periods to the BRIGHT program.
+        bright |= bright_night & ~dark_night
 
         # Check that each bin is assigned to at most one program.
         assert np.max(dark.astype(int) + bright + gray) == 1
@@ -296,25 +296,25 @@ class surveyPlan:
         # There is some repeated code from the afternoon plan
         # which should be factored out.
         for night in self.ephem._table:
-            lst15evening = mjd2lst(night['MJDetwi'])
-            lst15morning = mjd2lst(night['MJDmtwi'])
-            lst13evening = mjd2lst(night['MJDe13twi'])
-            lst13morning = mjd2lst(night['MJDm13twi'])
+            lst_dusk = mjd2lst(night['dusk'])
+            lst_dawn = mjd2lst(night['dawn'])
+            lst_brightdusk = mjd2lst(night['brightdusk'])
+            lst_brightdawn = mjd2lst(night['brightdawn'])
             LSTmoonrise = mjd2lst(night['MJDmoonrise'])
             LSTmoonset = mjd2lst(night['MJDmoonset'])
             LSTbrightstart = mjd2lst(night['MJD_bright_start'])
             LSTbrightend = mjd2lst(night['MJD_bright_end'])
             for i in range(self.nLST):
                 if BGS:
-                    if ( (inLSTwindow(self.LSTbins[i], lst13evening, lst13morning) and
-                          not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
+                    if ( (inLSTwindow(self.LSTbins[i], lst_brightdusk, lst_brightdawn) and
+                          not inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn)) or
                           inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0
                 else:
-                    if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
+                    if ( inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn) and
                          not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
                         scheduled_times[i] += 1.0
-                    if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
+                    if ( inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn) and
                          inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
                          not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0

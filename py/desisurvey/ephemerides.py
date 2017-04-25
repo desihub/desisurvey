@@ -87,8 +87,8 @@ class Ephemerides(object):
         # Allocate space for the data we will calculate.
         data = np.empty(num_nights, dtype=[
             ('MJDstart', float),
-            ('MJDsunset', float), ('MJDsunrise', float), ('MJDetwi', float),
-            ('MJDmtwi', float), ('MJDe13twi', float), ('MJDm13twi', float),
+            ('MJDsunset', float), ('MJDsunrise', float), ('dusk', float),
+            ('dawn', float), ('brightdusk', float), ('brightdawn', float),
             ('MJDmoonrise', float), ('MJDmoonset', float), ('MoonFrac', float),
             ('MoonNightStart', float), ('MoonNightStop', float),
             ('MJD_bright_start', float), ('MJD_bright_end', float),
@@ -128,16 +128,16 @@ class Ephemerides(object):
             # 13 deg twilight, adequate (?) for BGS sample.
             mayall.horizon = (
                 config.programs.BRIGHT.max_sun_altitude().to(u.rad).value)
-            row['MJDe13twi'] = mayall.next_setting(
+            row['brightdusk'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
-            row['MJDm13twi'] = mayall.next_rising(
+            row['brightdawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
             # 15 deg twilight, start of dark time if the moon is down.
             mayall.horizon = (
                 config.programs.DARK.max_sun_altitude().to(u.rad).value)
-            row['MJDetwi'] = mayall.next_setting(
+            row['dusk'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
-            row['MJDmtwi'] = mayall.next_rising(
+            row['dawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
             # Moon.
             m0 = ephem.Moon()
@@ -261,8 +261,8 @@ class Ephemerides(object):
         moon_frac = night['MoonFrac']
 
         # Identify times between 13 and 15 degree twilight.
-        twilight13 = (mjd >= night['MJDe13twi']) & (mjd <= night['MJDm13twi'])
-        twilight15 = (mjd >= night['MJDetwi']) & (mjd <= night['MJDmtwi'])
+        twilight13 = (mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
+        twilight15 = (mjd >= night['dusk']) & (mjd <= night['dawn'])
 
         # Identify program during each MJD.
         GRAY = desisurvey.config.Configuration().programs.GRAY
@@ -402,9 +402,9 @@ def get_bright(row, interval_mins=1.):
     """
     # Calculate the grid of time steps where the program should be tabulated.
     interval_days = interval_mins / (24. * 60.)
-    t_start = int(math.ceil(max(row['MoonNightStart'], row['MJDe13twi']) /
+    t_start = int(math.ceil(max(row['MoonNightStart'], row['brightdusk']) /
                             interval_days))
-    t_stop = int(math.floor(min(row['MoonNightStop'], row['MJDm13twi']) /
+    t_stop = int(math.floor(min(row['MoonNightStop'], row['brightdawn']) /
                             interval_days))
     t_out = np.arange(t_start, t_stop + 1) * interval_days
 

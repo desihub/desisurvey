@@ -44,8 +44,8 @@ class TestEphemerides(unittest.TestCase):
         etable = ephem._table
         self.assertEqual(len(etable), 30)
         self.assertTrue(np.all(etable['MJDsunrise'] > etable['MJDsunset']))
-        self.assertTrue(np.all(etable['MJDetwi'] > etable['MJDe13twi']))
-        self.assertTrue(np.all(etable['MJDmtwi'] < etable['MJDm13twi']))
+        self.assertTrue(np.all(etable['dusk'] > etable['brightdusk']))
+        self.assertTrue(np.all(etable['dawn'] < etable['brightdawn']))
         self.assertGreater(np.max(etable['MoonFrac']), 0.99)
         self.assertLessEqual(np.max(etable['MoonFrac']), 1.0)
         self.assertLess(np.min(etable['MoonFrac']), 0.01)
@@ -59,8 +59,8 @@ class TestEphemerides(unittest.TestCase):
             night = date.strftime('%Y%m%d')
             for key in [
                     'MJDsunset', 'MJDsunrise',
-                    'MJDe13twi', 'MJDm13twi',
-                    'MJDetwi', 'MJDmtwi',
+                    'brightdusk', 'brightdawn',
+                    'dusk', 'dawn',
                 ]:
                 #- AZ local time
                 localtime = Time(x[key], format='mjd') - 7*units.hour
