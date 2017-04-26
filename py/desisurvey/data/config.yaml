@@ -90,7 +90,7 @@ avoid_bodies:
     saturn: 2 deg
     neptune: 2 deg
     uranus: 2 deg
-    ceres: 2 deg
+    #ceres: 2 deg  # not implemented in pyephem
 
 # Number of LST bins covering 24h=360d used for afternoon planning.
 num_lst_bins: 144
