@@ -484,7 +484,8 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     airmass = 1. / np.cos(zenith.to(u.rad).value)
 
     # Calculate position of moon.
-    moon_pos = desisurvey.ephemerides.get_moon_interpolator(night)
+    moon_pos = desisurvey.ephemerides.get_object_interpolator(
+        night, 'moon', altaz=True)
     moon_alt, moon_az = moon_pos(when.mjd)
     moon_altaz = astropy.coordinates.AltAz(
         alt=moon_alt * u.deg, az=moon_az * u.deg,

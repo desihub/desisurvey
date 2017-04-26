@@ -32,8 +32,8 @@ class Ephemerides(object):
     stop_date : datetime.date or None
         Survey stops on the morning of this date. Use the ``last_day``
         config parameter if None (the default).
-    num_moon_steps : int
-        Number of steps for tabulating moon (alt, az) during each 24-hour
+    num_obj_steps : int
+        Number of steps for tabulating object (ra, dec) during each 24-hour
         period from local noon to local noon. Ignored when a cached file
         is loaded.
     use_cache : bool
@@ -51,7 +51,7 @@ class Ephemerides(object):
     num_nights : int
         Number of consecutive nights for which ephemerides are calculated.
     """
-    def __init__(self, start_date=None, stop_date=None, num_moon_steps=49,
+    def __init__(self, start_date=None, stop_date=None, num_obj_steps=25,
                  use_cache=True, write_cache=True):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
@@ -71,6 +71,10 @@ class Ephemerides(object):
         # Convert to astropy times at local noon.
         self.start = desisurvey.utils.local_noon_on_date(start_date)
         self.stop = desisurvey.utils.local_noon_on_date(stop_date)
+
+        # Moon illumination fraction interpolator will be initialized the
+        # first time it is used.
+        self._moon_illum_frac_interpolator = None
 
         # Build filename for saving the ephemerides.
         filename = config.get_path(
@@ -121,12 +125,22 @@ class Ephemerides(object):
         self._table['brightstop'] = astropy.table.Column(
             length=num_nights, format=mjd_format,
             description='MJD when any bright time stops after twilight')
-        self._table['MoonAlt'] = astropy.table.Column(
-            length=num_nights, shape=(num_moon_steps,), format='%.1f',
-            description='Moon altitude during night in degrees')
-        self._table['MoonAz'] = astropy.table.Column(
-            length=num_nights, shape=(num_moon_steps,), format='%.1f',
-            description='Moon azimuth during night in degrees')
+
+        # Add (ra,dec) arrays for each object that we need to avoid and
+        # check that ephem has a model for it.
+        models = {}
+        for name in config.avoid_bodies.keys:
+            models[name] = getattr(ephem, name.capitalize())()
+            self._table[name + '_ra'] = astropy.table.Column(
+                length=num_nights, shape=(num_obj_steps,), format='%.2f',
+                description='RA of {0} during night in degrees'.format(name))
+            self._table[name + '_dec'] = astropy.table.Column(
+                length=num_nights, shape=(num_obj_steps,), format='%.2f',
+                description='DEC of {0} during night in degrees'.format(name))
+
+        # The moon is required.
+        if 'moon' not in models:
+            raise ValueError('Missing required avoid_bodies entry for "moon".')
 
         # Initialize the observer.
         mayall = ephem.Observer()
@@ -147,10 +161,11 @@ class Ephemerides(object):
             mjd0 = astropy.time.Time(
                 datetime.datetime(1899, 12, 31, 12, 0, 0)).mjd
 
-        # Initialize a grid covering each night with 15sec resolution.
-        t_grid = get_grid(step_size=15 * u.s)
+        # Initialize a grid covering each 24-hour period for
+        # tabulating the (ra,dec) of objects to avoid.
+        t_obj = np.linspace(0., 1., num_obj_steps)
 
-        # Loop over days.
+        # Calculate ephmerides for each night.
         for day_offset in range(num_nights):
             day = self.start + day_offset * u.day
             mayall.date = day.datetime
@@ -184,17 +199,22 @@ class Ephemerides(object):
             # at local midnight.
             m0.compute(row['noon'] + 0.5 - mjd0)
             row['moon_illum_frac'] = m0.moon_phase
-            # Tabulate the moon altitude at num_moon_steps equally spaced times
-            # covering this interval.
-            t_moon = row['noon'] + np.linspace(0., 1., num_moon_steps)
-            moon_alt, moon_az = row['MoonAlt'], row['MoonAz']
-            for i, t in enumerate(t_moon):
-                mayall_no_ar.date = t - mjd0
-                m0.compute(mayall_no_ar)
-                moon_alt[i] = math.degrees(float(m0.alt))
-                moon_az[i] = math.degrees(float(m0.az))
+            # Loop over objects to avoid.
+            for i, t in enumerate(t_obj):
+                # Set the date of the no-refraction model.
+                mayall_no_ar.date = row['noon'] + t - mjd0
+                for name, model in models.items():
+                    model.compute(mayall_no_ar)
+                    row[name + '_ra'][i] = math.degrees(float(model.ra))
+                    row[name + '_dec'][i] = math.degrees(float(model.dec))
 
-            # Tabulate the program during the night.
+        # Initialize a grid covering each night with 15sec resolution
+        # for tabulating the night program.
+        t_grid = get_grid(step_size=15 * u.s)
+
+        # Tabulate the observing program for each night to initialize the
+        # brightstart/stop values needed by the afternoonplan module.
+        for day_offset in range(num_nights):
             t_night = row['noon'] + 0.5 + t_grid
             dark, gray, bright = self.get_program(t_night)
             # Select BRIGHT times during dark night, i.e., excluding the
@@ -256,6 +276,36 @@ class Ephemerides(object):
                              .format(night))
         return row_index if as_index else self._table[row_index]
 
+    def get_moon_illuminated_fraction(self, mjd):
+        """Return the illuminated fraction of the moon.
+
+        Uses linear interpolation on the tabulated fractions at midnight and
+        should be accurate to about 0.01.  For reference, the fraction changes
+        by up to 0.004 per hour.
+
+        Parameters
+        ----------
+        mjd : float or array
+            MJD values during a single night where the program should be
+            tabulated.
+
+        Returns
+        -------
+        float or array
+            Illuminated fraction at each input time.
+        """
+        mjd = np.asarray(mjd)
+        if (np.min(mjd) < self._table['noon'][0] or
+            np.max(mjd) >= self._table['noon'][-1] + 1):
+            raise ValueError('Requested MJD is outside ephemerides range.')
+        if self._moon_illum_frac_interpolator is None:
+            # Lazy initialization of a cubic interpolator.
+            midnight = self._table['noon'] + 0.5
+            self._moon_illum_frac_interpolator = scipy.interpolate.interp1d(
+                midnight, self._table['moon_illum_frac'], copy=True,
+                kind='linear', fill_value='extrapolate', assume_sorted=True)
+        return self._moon_illum_frac_interpolator(mjd)
+
     def get_program(self, mjd):
         """Tabulate the program during one night.
 
@@ -285,11 +335,11 @@ class Ephemerides(object):
         if np.any((mjd < mjd0) | (mjd >= mjd0 + 1)):
             raise ValueError('MJD values span more than one night.')
 
-        # Calculate the moon altitude angle in degrees at each grid time.
-        moon_alt, _ = get_moon_interpolator(night)(mjd)
+        # Calculate the moon (ra, dec) in degrees at each grid time.
+        moon_alt, _ = get_object_interpolator(night, 'moon', altaz=True)(mjd)
 
-        # Lookup the moon illuminated fraction for this night.
-        moon_frac = night['moon_illum_frac']
+        # Lookup the moon illuminated fraction at each time.
+        moon_frac = self.get_moon_illuminated_fraction(mjd)
 
         # Select bright and dark night conditions.
         bright_night = (
@@ -298,10 +348,10 @@ class Ephemerides(object):
 
         # Identify program during each MJD.
         GRAY = desisurvey.config.Configuration().programs.GRAY
+        max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
         gray = dark_night & (moon_alt >= 0) & (
             (moon_frac <= GRAY.max_moon_illumination()) &
-            (moon_frac * moon_alt <=
-             GRAY.max_moon_illumination_altitude_product().to(u.deg).value))
+            (moon_frac * moon_alt <= max_prod))
         dark = dark_night & (moon_alt < 0)
         bright = bright_night & ~(dark | gray)
 
@@ -354,52 +404,77 @@ class Ephemerides(object):
         return index - lo in sort_order[-num_nights:]
 
 
-def get_moon_interpolator(row):
-    """Build an interpolator for the moon (alt, az) during one night.
+def get_object_interpolator(row, object_name, altaz=False):
+    """Build an interpolator for object location during one night.
 
-    The values (alt, az) = (-1, 0) are returned for all times when the moon
-    is below the horizon or outside of the 24-hour period that this
-    interpolator covers.
+    Wrap around in RA is handled correctly and we assume that the object never
+    wraps around in DEC.  The interpolated unit vectors should be within
+    0.3 degrees of the true unit vectors in both (dec,ra) and (alt,az).
 
     Parameters
     ----------
     row : astropy.table.Row
         A single row from the ephemerides astropy Table corresponding to the
         night in question.
+    object_name : string
+        Name of the object to build an interpolator for.  Must be listed under
+        avoid_objects in :class:`our configuration
+        <desisurvey.config.Configuration>`.
+    altaz : bool
+        Interpolate in (alt,az) if True, else interpolate in (dec,ra).
 
     Returns
     -------
     callable
         A callable object that takes a single MJD value or an array of MJD
-        values and returns corresponding (alt, az) values in degrees, with
-        -90 <= alt <= +90 and 0 <= az < 360.
+        values and returns the corresponding (dec,ra) or (alt,az) values in
+        degrees, with -90 <= dec,alt <= +90 and 0 <= ra,az < 360.
     """
-    # Calculate the grid of time steps where the moon position is
-    # already tabulated in the ephemerides table.
-    n_moon = len(row['MoonAlt'])
-    t_grid = row['noon'] + np.linspace(0., 1., n_moon)
+    # Find the tabulated (ra, dec) values for the requested object.
+    try:
+        ra = row[object_name + '_ra']
+        dec = row[object_name + '_dec']
+    except AttributeError:
+        raise ValueError('Invalid object_name {0}.'.format(object_name))
 
-    # Construct a 3D array of (alt, cos(az), sin(az)) values for this night.
-    # Use cos(az), sin(az) instead of az directly to avoid wrap-around
-    # discontinuities.
-    moon_pos = np.empty((3, n_moon))
-    moon_pos[0, :] = row['MoonAlt']
-    az = np.radians(row['MoonAz'])
-    moon_pos[1, :] = np.cos(az)
-    moon_pos[2, :] = np.sin(az)
+    # Calculate the grid of MJD time steps where (ra,dec) are tabulated.
+    t_obj = row['noon'] + np.linspace(0., 1., len(ra))
+
+    # Interpolate in (theta,phi) = (dec,ra) or (alt,az)?
+    if altaz:
+        # Convert each (ra,dec) to (alt,az) at the appropriate time.
+        times = astropy.time.Time(t_obj, format='mjd')
+        frame = desisurvey.utils.get_observer(times)
+        sky = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
+        altaz = sky.transform_to(frame)
+        theta = altaz.alt.to(u.deg).value
+        phi = altaz.az.to(u.deg).value
+    else:
+        theta = dec
+        phi = ra
+
+    # Construct arrays of (theta, cos(phi), sin(phi)) values for this night.
+    # Use cos(phi), sin(phi) instead of phi directly to avoid wrap-around
+    # discontinuities.  Leave theta in degrees.
+    data = np.empty((3, len(ra)))
+    data[0] = theta
+    phi = np.radians(phi)
+    data[1] = np.cos(phi)
+    data[2] = np.sin(phi)
 
     # Build a cubic interpolator in (alt, az) during this interval.
     # Return (0, 0, 0) outside the interval.
     interpolator = scipy.interpolate.interp1d(
-        t_grid, moon_pos, axis=1, kind='cubic', copy=False,
+        t_obj, data, axis=1, kind='cubic', copy=True,
         bounds_error=False, fill_value=0., assume_sorted=True)
 
-    # Wrap the interpolator to convert (cos(az), sin(az)) to az in degrees.
+    # Wrap the interpolator to convert (cos(phi), sin(phi)) back to an angle
+    # in degrees.
     def wrapper(mjd):
-        alt, cos_az, sin_az = interpolator(mjd)
+        theta, cos_phi, sin_phi = interpolator(mjd)
         # Map arctan2 range [-180, +180] into [0, 360] with fmod().
-        az = np.fmod(360 + np.degrees(np.arctan2(sin_az, cos_az)), 360)
-        return alt, az
+        phi = np.fmod(360 + np.degrees(np.arctan2(sin_phi, cos_phi)), 360)
+        return theta, phi
     return wrapper
 
 

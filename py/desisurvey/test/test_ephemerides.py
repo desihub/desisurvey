@@ -6,10 +6,13 @@ import datetime
 import numpy as np
 
 from astropy.time import Time
+from astropy.coordinates import ICRS, AltAz
 import astropy.units as u
+import astropy.io
 
-from desisurvey.ephemerides import Ephemerides, get_grid
+from desisurvey.ephemerides import Ephemerides, get_grid, get_object_interpolator
 from desisurvey.config import Configuration
+from desisurvey.utils import get_date, get_location
 
 
 class TestEphemerides(unittest.TestCase):
@@ -20,6 +23,23 @@ class TestEphemerides(unittest.TestCase):
         cls.testdir = os.path.abspath('./test-{}'.format(uuid.uuid4()))
         os.mkdir(cls.testdir)
         os.chdir(cls.testdir)
+        # Configure a CSV reader for the Horizons output format.
+        csv_reader = astropy.io.ascii.Csv()
+        csv_reader.header.comment = r'[^ ]'
+        csv_reader.data.start_line = 35
+        csv_reader.data.end_line = 203
+        # Read moon ephemerides for the first week of 2020.
+        path = astropy.utils.data._find_pkg_data_path(
+            os.path.join('data', 'horizons_2020_week1_moon.csv'),
+            package='desisurvey')
+        cls.table = csv_reader.read(path)
+        # Horizons CSV file has a trailing comma on each line.
+        cls.table.remove_column('col10')
+        # Use more convenient column names.
+        names = ('date', 'jd', 'sun', 'moon', 'ra', 'dec',
+                 'az', 'alt', 'lst', 'frac')
+        for old_name, new_name in zip(cls.table.colnames, names):
+            cls.table[old_name].name = new_name
 
     @classmethod
     def tearDownClass(cls):
@@ -91,6 +111,52 @@ class TestEphemerides(unittest.TestCase):
                 self.assertAlmostEqual(g[1] - g[0], step_size.to(u.day).value)
                 self.assertAlmostEqual(g[-1] - g[0],
                                 (len(g) - 1) * step_size.to(u.day).value)
+
+    def test_moon_phase(self):
+        """Verfify moon illuminated fraction for first week of 2020"""
+        ephem = Ephemerides(
+            get_date('2019-12-31'), get_date('2020-02-02'),
+            use_cache=False, write_cache=False)
+        for i, jd in enumerate(self.table['jd']):
+            t = Time(jd, format='jd')
+            frac = ephem.get_moon_illuminated_fraction(t.mjd)
+            truth = 1e-2 * self.table['frac'][i]
+            self.assertTrue(abs(frac - truth) < 0.01)
+
+    def test_moon_radec(self):
+        """Verify moon (ra,dec) for first week of 2020"""
+        ephem = Ephemerides(
+            get_date('2019-12-31'), get_date('2020-02-02'),
+            use_cache=False, write_cache=False)
+        for i, jd in enumerate(self.table['jd']):
+            t = Time(jd, format='jd')
+            night = ephem.get_night(t)
+            f_moon = get_object_interpolator(night, 'moon', altaz=False)
+            dec, ra = f_moon(t.mjd)
+            truth = ICRS(ra=self.table['ra'][i] * u.deg,
+                         dec=self.table['dec'][i] * u.deg)
+            calc = ICRS(ra=ra * u.deg, dec=dec * u.deg)
+            sep = truth.separation(calc)
+            self.assertTrue(abs(sep.to(u.deg).value) < 0.3)
+
+    def test_moon_altaz(self):
+        """Verify moon (alt,az) for first week of 2020"""
+        ephem = Ephemerides(
+            get_date('2019-12-31'), get_date('2020-02-02'),
+            use_cache=False, write_cache=False)
+        location = get_location()
+        for i, jd in enumerate(self.table['jd']):
+            t = Time(jd, format='jd')
+            night = ephem.get_night(t)
+            f_moon = get_object_interpolator(night, 'moon', altaz=True)
+            alt, az = f_moon(t.mjd)
+            truth = AltAz(alt=self.table['alt'][i] * u.deg,
+                          az=self.table['az'][i] * u.deg,
+                          obstime=t, location=location, pressure=0)
+            calc = AltAz(alt=alt * u.deg, az=az * u.deg,
+                         obstime=t, location=location, pressure=0)
+            sep = truth.separation(calc)
+            self.assertTrue(abs(sep.to(u.deg).value) < 0.3)
 
 
 if __name__ == '__main__':
