@@ -118,9 +118,11 @@ def moonExposureTimeFactor(moonFrac, moonDist, moonAlt):
     global _moonModel
     if not _moonModel:
         # Create a specim moon model.
-        desiutil.log.get_logger().info('Creating a specsim moon model.')
         desi = specsim.simulator.Simulator('desi')
         _moonModel = desi.atmosphere.moon
+        desiutil.log.get_logger().info(
+            'Created a specsim moon model with EV={0}'
+            .format(_moonModel._vband_extinction))
 
     # Convert input parameters to those used in the specim moon model.
     _moonModel.moon_phase = np.arccos(2 * moonFrac - 1) / np.pi
@@ -161,7 +163,7 @@ def airMassCalculator(ra, dec, lst, return_altaz=False):
             amass = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
         else:
             amass = 40.0
-            
+
     assert( np.all((amass <= 40.0) & (amass > 0.0)) )
 
     return (amass, Alt, Az) if return_altaz else amass

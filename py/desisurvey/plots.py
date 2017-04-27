@@ -2,6 +2,8 @@
 """
 from __future__ import print_function, division
 
+import datetime
+
 import numpy as np
 
 import astropy.table
@@ -10,6 +12,8 @@ import astropy.units as u
 import desiutil.plots
 
 import desisurvey.ephemerides
+import desisurvey.config
+import desisurvey.utils
 
 
 # Color associated with each program in the functions below.
@@ -97,8 +101,8 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     return fig, ax
 
 
-def plot_observations(start=None, stop=None, what='EXPTIME',
-                      verbose=False, save=None):
+def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
+                      filename='obslist_all.fits', verbose=False, save=None):
     """Plot a summary of observed tiles.
 
     Reads the file ``obsall_list.fits`` and uses :func:`plot_sky_passes` to
@@ -106,16 +110,23 @@ def plot_observations(start=None, stop=None, what='EXPTIME',
 
     Parameters
     ----------
-    start : date or None
-        First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
-    stop : date or None
-        First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
+    start_date : date or None
+        Plot observations starting on the night of this date, or starting
+        with the first observation if None. Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
+        Plot observations ending on the morning of this date, or ending with
+        the last observation if None. Must be convertible to a date using
+        :func:`desisurvey.utils.get_date`.
     what : string
         What quantity to plot for each planned tile. Must be a
         column name in the obsall_list FITS file.  Useful values include
         EXPTIME, OBSSN2, AIRMASS, SEEING.
+    filename : string
+        Name of the output file listing all the observations. Unless an
+        absolute path is provided, the filename is relative to the
+        :meth:`configuration output path
+        <desisurvey.config.Configuration.set_output_path>`.
     verbose : bool
         Print a summary of observed tiles.
     save : string or None
@@ -126,24 +137,24 @@ def plot_observations(start=None, stop=None, what='EXPTIME',
     tuple
         Tuple (figure, axes) returned by ``plt.subplots()``.
     """
-    t = astropy.table.Table.read('obslist_all.fits')
+    config = desisurvey.config.Configuration()
+    t = astropy.table.Table.read(config.get_path(filename))
     if what not in t.colnames:
         raise ValueError('Valid names are: {0}'
                          .format(','.join(t.colnames)))
 
-    sel = t['STATUS'] > 0
-    if start is None:
-        start = astropy.time.Time(t['MJD'][0], format='mjd')
-    else:
-        start = astropy.time.Time(start)
-        sel &= t['MJD'] >= start.mjd
-    if stop is None:
-        stop = astropy.time.Time(t['MJD'][-1], format='mjd')
-    else:
-        stop = astropy.time.Time(stop)
-        sel &= t['MJD'] <= stop.mjd
-    date_label = '{0} to {1}'.format(
-        start.datetime.date(), stop.datetime.date())
+    start_date = desisurvey.utils.get_date(start_date or t['MJD'][0])
+    stop_date = desisurvey.utils.get_date(stop_date or (t['MJD'][-1] + 1.0))
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
+    date_label = '{0} to {1}'.format(start_date, stop_date)
+
+    # Convert date range to MJDs at local noon.
+    start_mjd = desisurvey.utils.local_noon_on_date(start_date).mjd
+    stop_mjd = desisurvey.utils.local_noon_on_date(stop_date).mjd
+
+    # Trim table to requested observations.
+    sel = (t['STATUS'] > 0) & (t['MJD'] >= start_mjd) & (t['MJD'] < stop_mjd)
     t = t[sel]
 
     if verbose:
@@ -165,28 +176,43 @@ def plot_observations(start=None, stop=None, what='EXPTIME',
         label=label, save=save)
 
 
-def plot_program(ephem, start=None, stop=None, window_size=7.,
-                 num_points=500, save=None):
+def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
+                 include_monsoon=False, include_full_moon=False,
+                 night_start=-6.5, night_stop=7.5, num_points=500,
+                 bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
-    The matplotlib and pytz packages must be installed to use this function.
+    The matplotlib package must be installed to use this function.
 
     Parameters
     ----------
     ephem : :class:`desisurvey.ephemerides.Ephemerides`
         Tabulated ephemerides data to use for determining the program.
-    start : date or None
+    start_date : date or None
         First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
-    stop : date or None
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
         First night to include in the plot or use the start of the
-        calculated ephemerides.  Must be convertible to an astropy time.
-    window_size : float
-        Number of hours on both sides of local midnight to display on the
-        vertical axis.
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    style : string
+        Plot style to use for the vertical axis: "localtime" shows time
+        relative to local midnight, "histogram" shows elapsed time for
+        each program during each night, and "cumulative" shows the
+        cummulative time for each program since ``start_date``.
+    night_start : float
+        Start of night in hours relative to local midnight used to set
+        y-axis minimum for 'localtime' style and tabulate nightly program.
+    night_stop : float
+        End of night in hours relative to local midnight used to set
+        y-axis maximum for 'localtime' style and tabulate nightly program.
     num_points : int
         Number of subdivisions of the vertical axis to use for tabulating
-        the program during each night.
+        the program during each night. The resulting resolution will be
+        ``(night_stop - night_start) / num_points`` hours.
+    bg_color : matplotlib color
+        Axis background color to use.  Must be a valid matplotlib color.
     save : string or None
         Name of file where plot should be saved.  Format is inferred from
         the extension.
@@ -202,68 +228,110 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
     import matplotlib.ticker
     import pytz
 
+    styles = ('localtime', 'histogram', 'cumulative')
+    if style not in styles:
+        raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
+
+    if night_start >= night_stop:
+        raise ValueError('Expected night_start < night_stop.')
+
     # Determine plot date range.
-    t = ephem._table
-    sel = np.ones(len(t), bool)
-    if start is not None:
-        sel &= t['MJDstart'] >= astropy.time.Time(start).mjd
-    if stop is not None:
-        sel &= t['MJDstart'] <= astropy.time.Time(stop).mjd
-    t = t[sel]
+    start_date = desisurvey.utils.get_date(start_date or ephem.start)
+    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
+    mjd = ephem._table['noon']
+    sel = ((mjd >= desisurvey.utils.local_noon_on_date(start_date).mjd) &
+           (mjd < desisurvey.utils.local_noon_on_date(stop_date).mjd))
+    t = ephem._table[sel]
     num_nights = len(t)
 
-    # Date labels use the KPNO UTC-7 timezone.
-    tz_offset = -7
-    tz = pytz.FixedOffset(tz_offset * 60)
-    # Convert noon UTC-7 into midnight UTC before and after display range.
-    start = astropy.time.Time(
-        t['MJDstart'][0] + tz_offset / 24. - 0.5, format='mjd')
-    stop = astropy.time.Time(
-        t['MJDstart'][-1] + tz_offset / 24. + 0.5, format='mjd')
-    # Calculate numerical limits of matplotlib date axis.
-    x_lo = matplotlib.dates.date2num(tz.localize(start.datetime))
-    x_hi = matplotlib.dates.date2num(tz.localize(stop.datetime))
-
-    # Display 24-hour local time on y axis.
-    window_int = int(np.floor(window_size))
-    y_ticks = np.arange(-window_int, +window_int + 1, dtype=int)
-    y_labels = ['{:02d}h'.format(hr) for hr in (24 + y_ticks) % 24]
+    # Matplotlib date axes uses local time and puts ticks between days
+    # at local midnight. We explicitly specify UTC for x-axis labels so
+    # that the plot does not depend on the caller's local timezone.
+    tz = pytz.utc
+    midnight = datetime.time(hour=0)
+    xaxis_start = tz.localize(datetime.datetime.combine(start_date, midnight))
+    xaxis_stop = tz.localize(datetime.datetime.combine(stop_date, midnight))
+    xaxis_lo = matplotlib.dates.date2num(xaxis_start)
+    xaxis_hi = matplotlib.dates.date2num(xaxis_stop)
 
     # Build a grid of elapsed time relative to local midnight during each night.
-    midnight = t['MJDstart'] + 0.5
-    t_edges = np.linspace(-window_size, +window_size, num_points + 1) / 24.
+    midnight = t['noon'] + 0.5
+    t_edges = np.linspace(night_start, night_stop, num_points + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
 
-    # Loop over nights to build image data to plot.
-    program = np.zeros((num_nights, len(t_centers)))
+    # Calculate the number of hours for each program during each night.
+    dt = (night_stop - night_start) / num_points
+    hours = np.zeros((3, num_nights))
+    observing_night = np.zeros(num_nights, bool)
     for i in np.arange(num_nights):
+        if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
+            continue
+        if not include_full_moon and ephem.is_full_moon(midnight[i]):
+            continue
+        observing_night[i] = True
         mjd_grid = midnight[i] + t_centers
         dark, gray, bright = ephem.get_program(mjd_grid)
-        program[i][dark] = 1.
-        program[i][gray] = 2.
-        program[i][bright] = 3.
+        hours[0, i] = dt * np.count_nonzero(dark)
+        hours[1, i] = dt * np.count_nonzero(gray)
+        hours[2, i] = dt * np.count_nonzero(bright)
 
-    # Prepare a custom colormap.
-    colors = ['lightblue', program_color['DARK'],
-              program_color['GRAY'], program_color['BRIGHT']]
-    cmap = matplotlib.colors.ListedColormap(colors, 'programs')
-
-    # Make the plot.
+    # Initialize the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
 
-    ax.imshow(program.T, origin='lower', interpolation='none',
-              aspect='auto', cmap=cmap, vmin=-0.5, vmax=+3.5,
-              extent=[x_lo, x_hi, -window_size, +window_size])
+    if style == 'localtime':
 
-    # Display 24-hour local time on y axis.
-    ax.set_ylabel('Local Time [UTC{0:+d}]'.format(tz_offset),
+        # Loop over nights to build image data to plot.
+        program = np.zeros((num_nights, len(t_centers)))
+        for i in np.arange(num_nights):
+            if not observing_night[i]:
+                continue
+            mjd_grid = midnight[i] + t_centers
+            dark, gray, bright = ephem.get_program(mjd_grid)
+            program[i][dark] = 1.
+            program[i][gray] = 2.
+            program[i][bright] = 3.
+
+        # Prepare a custom colormap.
+        colors = [bg_color, program_color['DARK'],
+                  program_color['GRAY'], program_color['BRIGHT']]
+        cmap = matplotlib.colors.ListedColormap(colors, 'programs')
+
+        ax.imshow(program.T, origin='lower', interpolation='none',
+                  aspect='auto', cmap=cmap, vmin=-0.5, vmax=+3.5,
+                  extent=[xaxis_lo, xaxis_hi, night_start, night_stop])
+
+        # Display 24-hour local time on y axis.
+        y_lo = int(np.ceil(night_start))
+        y_hi = int(np.floor(night_stop))
+        y_ticks = np.arange(y_lo, y_hi + 1, dtype=int)
+        y_labels = ['{:02d}h'.format(hr) for hr in (24 + y_ticks) % 24]
+        config = desisurvey.config.Configuration()
+        ax.set_ylabel('Local Time [{0}]'
+                      .format(config.location.timezone()), fontsize='x-large')
+        ax.set_yticks(y_ticks)
+        ax.set_yticklabels(y_labels)
+
+    else:
+
+        x = xaxis_lo + np.arange(num_nights) + 0.5
+        y = hours if style == 'histogram' else np.cumsum(hours, axis=1)
+        size = min(15., (300./num_nights) ** 2)
+        opts = dict(linestyle='-', marker='.' if size > 1 else None,
+                    markersize=size)
+        plt.plot(x, y[0], color=program_color['DARK'], **opts)
+        plt.plot(x, y[1], color=program_color['GRAY'], **opts)
+        plt.plot(x, y[2], color=program_color['BRIGHT'], **opts)
+
+        ax.set_axis_bgcolor(bg_color)
+        plt.ylim(0, 1.07 * y.max())
+
+    # Display dates on the x axis.
+    ax.set_xlabel('Survey Date (observing {0} / {1} nights)'
+                  .format(np.count_nonzero(observing_night), num_nights),
                   fontsize='x-large')
-    ax.set_yticks(y_ticks)
-    ax.set_yticklabels(y_labels)
-
-    # Display date on x axis.
-    ax.set_xlabel('Survey Date', fontsize='x-large')
-    ax.set_xlim(tz.localize(start.datetime), tz.localize(stop.datetime))
+    ax.set_xlim(xaxis_start, xaxis_stop)
     if num_nights < 50:
         # Major ticks at month boundaries.
         ax.xaxis.set_major_locator(matplotlib.dates.MonthLocator(tz=tz))
@@ -293,14 +361,17 @@ def plot_program(ephem, start=None, stop=None, window_size=7.,
     ax.grid(b=True, which='major', color='w', linestyle=':', lw=1)
 
     # Draw program labels.
-    y = 0.025
-    opts = dict(fontsize='xx-large', fontweight='bold',
-                horizontalalignment='center',
-                xy=(0, 0), textcoords='axes fraction')
-    ax.annotate('DARK', xytext=(0.2, y), color=program_color['DARK'], **opts)
-    ax.annotate('GRAY', xytext=(0.5, y), color=program_color['GRAY'], **opts)
+    y = 0.975
+    opts = dict(fontsize='xx-large', fontweight='bold', xy=(0, 0),
+                horizontalalignment='center', verticalalignment='top',
+                xycoords='axes fraction', textcoords='axes fraction')
+    ax.annotate('DARK {0:.1f}h'.format(hours[0].sum()), xytext=(0.2, y),
+                color=program_color['DARK'], **opts)
+    ax.annotate('GRAY {0:.1f}h'.format(hours[1].sum()), xytext=(0.5, y),
+                color=program_color['GRAY'], **opts)
     ax.annotate(
-        'BRIGHT', xytext=(0.8, y), color=program_color['BRIGHT'], **opts)
+        'BRIGHT {0:.1f}h'.format(hours[2].sum()), xytext=(0.8, y),
+        color=program_color['BRIGHT'], **opts)
 
     plt.tight_layout()
     if save:
@@ -354,10 +425,10 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     # Use the exposure midpoint for calculations below.
     when = t_start + 0.5 * exptime * u.s
     when.location = where
-    night = ephem.get(when)
+    night = ephem.get_night(when)
 
     # Calculate the program during this night.
-    midnight = night['MJDstart'] + 0.5
+    midnight = night['noon'] + 0.5
     t_edges = midnight + np.linspace(
         -window_size, +window_size, 2 * window_size * 60 + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
@@ -413,7 +484,8 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     airmass = 1. / np.cos(zenith.to(u.rad).value)
 
     # Calculate position of moon.
-    moon_pos = desisurvey.ephemerides.get_moon_interpolator(night)
+    moon_pos = desisurvey.ephemerides.get_object_interpolator(
+        night, 'moon', altaz=True)
     moon_alt, moon_az = moon_pos(when.mjd)
     moon_altaz = astropy.coordinates.AltAz(
         alt=moon_alt * u.deg, az=moon_az * u.deg,

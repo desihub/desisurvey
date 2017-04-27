@@ -1,7 +1,214 @@
+"""Utility functions for survey planning and scheduling.
+"""
 from __future__ import print_function, division
+
+import datetime
+
 import numpy as np
-from astropy.time import Time
-from desisurvey.kpno import mayall
+
+import pytz
+
+import astropy.time
+import astropy.coordinates
+import astropy.units as u
+
+import desisurvey.config
+
+
+_telescope_location = None
+
+
+def get_location():
+    """Return the telescope's earth location.
+
+    The location object is cached after the first call, so there is no need
+    to cache this function's return value externally.
+
+    Returns
+    -------
+    astropy.coordinates.EarthLocation
+    """
+    global _telescope_location
+    if _telescope_location is None:
+        config = desisurvey.config.Configuration()
+        _telescope_location = astropy.coordinates.EarthLocation.from_geodetic(
+            lat=config.location.latitude(),
+            lon=config.location.longitude(),
+            height=config.location.elevation())
+    return _telescope_location
+
+
+def get_observer(when, alt=None, az=None):
+    """Return the AltAz frame for the telescope at the specified time(s).
+
+    Refraction corrections are not applied (for now).
+
+    The returned object is automatically broadcast over input arrays.
+
+    Parameters
+    ----------
+    when : astropy.time.Time
+        One or more times when the AltAz transformations should be calculated.
+    alt : astropy.units.Quantity or None
+        Local altitude angle(s)
+    az : astropy.units.Quantity or None
+        Local azimuth angle(s)
+
+    Returns
+    -------
+    astropy.coordinates.AltAz
+        AltAz frame object suitable for transforming to/from local horizon
+        (alt, az) coordinates.
+    """
+    if alt is not None and az is not None:
+        kwargs = dict(alt=alt, az=az)
+    elif alt is not None or az is not None:
+        raise ValueError('Must specify both alt and az.')
+    else:
+        kwargs = {}
+    return astropy.coordinates.AltAz(
+        location=get_location(), obstime=when, pressure=0, **kwargs)
+
+
+def is_monsoon(night):
+    """Test if this night's observing falls in the monsoon shutdown.
+
+    Uses the monsoon date range defined in the
+    :class:`desisurvey.config.Configuration`.  Based on (month, day) comparisons
+    rather than day-of-year comparisons, so the monsoon always starts on the
+    same calendar date, even in leap years.
+
+    Parameters
+    ----------
+    night : date
+        Converted to a date using :func:`desisurvey.utils.get_date`.
+
+    Returns
+    -------
+    bool
+        True if this night's observing falls during the monsoon shutdown.
+    """
+    date = get_date(night)
+
+    # Fetch our configuration.
+    config = desisurvey.config.Configuration()
+    start = config.monsoon_start()
+    stop = config.monsoon_stop()
+
+    # Not in monsoon if (day < start) or (day >= stop)
+    m, d = date.month, date.day
+    if m < start.month or (m == start.month and d < start.day):
+        return False
+    if m > stop.month or (m == stop.month and d >= stop.day):
+        return False
+
+    return True
+
+
+def local_noon_on_date(day):
+    """Convert a date to an astropy time at local noon.
+
+    Local noon is used as the separator between observing nights. The purpose
+    of this function is to standardize the boundary between observing nights
+    and the mapping of dates to times.
+
+    Parameters
+    ----------
+    day : datetime.date
+        The day to use for generating a time object.
+
+    Returns
+    -------
+    astropy.time.Time
+        A Time object with the input date and a time corresponding to
+        local noon at the telescope.
+    """
+    # Fetch our configuration.
+    config = desisurvey.config.Configuration()
+
+    # Build a datetime object at local noon.
+    tz = pytz.timezone(config.location.timezone())
+    local_noon = tz.localize(
+        datetime.datetime.combine(day, datetime.time(hour=12)))
+
+    # Convert to UTC.
+    utc_noon = local_noon.astimezone(pytz.utc)
+
+    # Return a corresponding astropy Time.
+    return astropy.time.Time(utc_noon)
+
+
+def get_date(date):
+    """Convert different date specifications into a datetime.date object.
+
+    We use strptime() to convert an input string, so leading zeros are not
+    required for strings in the format YYYY-MM-DD, e.g. 2019-8-3 is considered
+    valid.
+
+    Instead of testing the input type, we try different conversion methods:
+    ``.datetime.date()`` for an astropy time and ``datetime.date()`` for a
+    datetime.
+
+    Date specifications that include a time of day (datetime, astropy time, MJD)
+    are rounded down to the previous local noon before converting to a date.
+    This ensures that all times during a local observing night are mapped to
+    the same date, when the night started.  A "naive" (un-localized) datetime
+    is assumed to refer to UTC.
+
+    Parameters
+    ----------
+    date : astropy.time.Time, datetime.date, datetime.datetime, string or number
+        Specification of the date to return.  A string must have the format
+        YYYY-MM-DD (but leading zeros on MM and DD are optional).  A number
+        will be interpreted as a UTC MJD value.
+
+    Returns
+    -------
+    datetime.date
+    """
+    input_date = date
+    # valid types: string, number, Time, datetime, date
+    try:
+        # Convert a string of the form YYYY-MM-DD into a date.
+        # This will raise a ValueError for a badly formatted string
+        # or invalid date such as 2019-13-01.
+        date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+    except TypeError:
+        pass
+    # valid types: number, Time, datetime, date
+    try:
+        # Convert a number to an astropy time, assuming it is a UTC MJD value.
+        date = astropy.time.Time(date, format='mjd')
+    except ValueError:
+        pass
+    # valid types: Time, datetime, date
+    try:
+        # Convert an astropy time into a datetime
+        date = date.datetime
+    except AttributeError:
+        pass
+    # valid types: datetime, date
+    try:
+        # Localize a naive datetime assuming it refers to UTC.
+        date = pytz.utc.localize(date)
+    except (AttributeError, ValueError):
+        pass
+    # valid types: localized datetime, date
+    try:
+        # Convert a localized datetime into the date of the previous noon.
+        local_tz = pytz.timezone(
+            desisurvey.config.Configuration().location.timezone())
+        local_time = date.astimezone(local_tz)
+        date = local_time.date()
+        if local_time.hour < 12:
+            date -= datetime.timedelta(days=1)
+    except AttributeError:
+        pass
+    # valid types: date
+    if not isinstance(date, datetime.date):
+        raise ValueError('Invalid date specification: {0}.'.format(input_date))
+    return date
+
 
 def earthOrientation(MJD):
     """
@@ -39,10 +246,7 @@ def mjd2lst(mjd):
         lst: float (degrees)
     """
 
-    lon = str(mayall.west_lon_deg) + 'd'
-    lat = str(mayall.lat_deg) + 'd'
-
-    t = Time(mjd, format = 'mjd', location=(lon, lat))
+    t = astropy.time.Time(mjd, format = 'mjd', location=get_location())
     lst_tmp = t.copy()
 
     #try:
@@ -89,7 +293,7 @@ def radec2altaz(ra, dec, lst):
             h += 2.0*np.pi
 
     d = np.radians(dec)
-    phi = np.radians(mayall.lat_deg)
+    phi = get_location().latitude.to(u.rad).value
 
     sinAlt = np.sin(phi)*np.sin(d) + np.cos(phi)*np.cos(d)*np.cos(h)
 

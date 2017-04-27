@@ -12,6 +12,7 @@ import astropy.table
 import desimodel.io
 import desiutil.log
 
+import desisurvey.config
 from desisurvey.utils import mjd2lst
 
 
@@ -35,6 +36,7 @@ class surveyPlan:
             tilesubset: array of integer tileids to use; ignore others
         """
         self.log = desiutil.log.get_logger()
+        self.config = desisurvey.config.Configuration()
         self.ephem = ephem
 
         # Read in DESI tile data
@@ -158,14 +160,14 @@ class surveyPlan:
 
         # Assign tiles to LST bins
         planList0 = []
-        lst15evening = mjd2lst(day_stats['MJDetwi'])
-        lst15morning = mjd2lst(day_stats['MJDmtwi'])
-        lst13evening = mjd2lst(day_stats['MJDe13twi'])
-        lst13morning = mjd2lst(day_stats['MJDm13twi'])
-        LSTmoonrise = mjd2lst(day_stats['MJDmoonrise'])
-        LSTmoonset = mjd2lst(day_stats['MJDmoonset'])
-        LSTbrightstart = mjd2lst(day_stats['MJD_bright_start'])
-        LSTbrightend = mjd2lst(day_stats['MJD_bright_end'])
+        lst_dusk = mjd2lst(day_stats['dusk'])
+        lst_dawn = mjd2lst(day_stats['dawn'])
+        lst_brightdusk = mjd2lst(day_stats['brightdusk'])
+        lst_brightdawn = mjd2lst(day_stats['brightdawn'])
+        LSTmoonrise = mjd2lst(day_stats['moonrise'])
+        LSTmoonset = mjd2lst(day_stats['moonset'])
+        LSTbrightstart = mjd2lst(day_stats['brightstart'])
+        LSTbrightend = mjd2lst(day_stats['brightstop'])
 
         # Calculate LST of each tile in the range [0, 360).
         finalTileLST = finalTileList['RA'] + finalTileList['HA']
@@ -192,15 +194,15 @@ class surveyPlan:
             else:
                 return (self.LSTbins < stop) | (self.LSTbins > start)
 
-        night13 = inLSTWindow(lst13evening, lst13morning)
-        night15 = inLSTWindow(lst15evening, lst15morning)
+        bright_night = inLSTWindow(lst_brightdusk, lst_brightdawn)
+        dark_night = inLSTWindow(lst_dusk, lst_dawn)
         moon_up = inLSTWindow(LSTmoonrise, LSTmoonset)
         bright = inLSTWindow(LSTbrightstart, LSTbrightend)
-        dark =  night15 & ~moon_up
-        gray = night15 & moon_up & ~bright
+        dark =  dark_night & ~moon_up
+        gray = dark_night & moon_up & ~bright
 
-        # Add the time between 13 and 15 degree twilight to the BRIGHT program.
-        bright |= night13 & ~night15
+        # Add the bright twilight periods to the BRIGHT program.
+        bright |= bright_night & ~dark_night
 
         # Check that each bin is assigned to at most one program.
         assert np.max(dark.astype(int) + bright + gray) == 1
@@ -253,15 +255,15 @@ class surveyPlan:
         self.log.info('Afternoon plan contains {0} tiles.'
                       .format(len(planList0)))
         table = finalTileList[planList0]
-        table.meta['MOONFRAC'] = day_stats['MoonFrac']
-        filename = 'obsplan{0}.fits'.format(date_string)
+        table.meta['MOONFRAC'] = day_stats['moon_illum_frac']
+        filename = self.config.get_path('obsplan{0}.fits'.format(date_string))
         table.write(filename, overwrite=True)
 
         tilesTODO = len(planList0)
 
         return filename
 
-      
+
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #
 ####################################################################
@@ -294,25 +296,25 @@ class surveyPlan:
         # There is some repeated code from the afternoon plan
         # which should be factored out.
         for night in self.ephem._table:
-            lst15evening = mjd2lst(night['MJDetwi'])
-            lst15morning = mjd2lst(night['MJDmtwi'])
-            lst13evening = mjd2lst(night['MJDe13twi'])
-            lst13morning = mjd2lst(night['MJDm13twi'])
-            LSTmoonrise = mjd2lst(night['MJDmoonrise'])
-            LSTmoonset = mjd2lst(night['MJDmoonset'])
-            LSTbrightstart = mjd2lst(night['MJD_bright_start'])
-            LSTbrightend = mjd2lst(night['MJD_bright_end'])
+            lst_dusk = mjd2lst(night['dusk'])
+            lst_dawn = mjd2lst(night['dawn'])
+            lst_brightdusk = mjd2lst(night['brightdusk'])
+            lst_brightdawn = mjd2lst(night['brightdawn'])
+            LSTmoonrise = mjd2lst(night['moonrise'])
+            LSTmoonset = mjd2lst(night['moonset'])
+            LSTbrightstart = mjd2lst(night['brightstart'])
+            LSTbrightend = mjd2lst(night['brightstop'])
             for i in range(self.nLST):
                 if BGS:
-                    if ( (inLSTwindow(self.LSTbins[i], lst13evening, lst13morning) and
-                          not inLSTwindow(self.LSTbins[i], lst15evening, lst15morning)) or
+                    if ( (inLSTwindow(self.LSTbins[i], lst_brightdusk, lst_brightdawn) and
+                          not inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn)) or
                           inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0
                 else:
-                    if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
+                    if ( inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn) and
                          not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
                         scheduled_times[i] += 1.0
-                    if ( inLSTwindow(self.LSTbins[i], lst15evening, lst15morning) and
+                    if ( inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn) and
                          inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
                          not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
                         scheduled_times[i] += 1.0
@@ -447,7 +449,7 @@ class surveyPlan:
         # Re-initialise remaining and observed time arrays.
         surveystruct['remaining_times'] = np.copy(surveystruct['scheduled_times'])
         surveystruct['observed_times'] *= 0.0
-        
+
         num_obs = len(obs['tileid'])
         times = surveystruct['times']
         num_times = len(times)
@@ -479,13 +481,13 @@ class surveyPlan:
                               (obs['ra'] < surveystruct['ngc_end']) )
 
         # Start by filling the hardest regions with tiles, NGC then SGC
-        
+
         dec = obs['dec'][ngcplates]
         ra = obs['ra'][ngcplates]
         orig_ha = np.copy(obs['ha'][ngcplates])
         tile = obs['tileid'][ngcplates]
         #obs_bit = obs['obs_bit'][ngcplates]
-        
+
         nindices = index2-index1
         for i in range(nindices):
             ihalf = i//2
@@ -576,7 +578,7 @@ class surveyPlan:
             rank_plates = rank_plates[todo]
             tile0 = sort2arr(tile[todo],rank_plates)
             ha0 = sort2arr(ha[todo], rank_plates)
-            
+
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]

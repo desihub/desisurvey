@@ -1,0 +1,104 @@
+####################################################################
+# Configuration data for DESI survey planning and scheduling.
+####################################################################
+
+#-------------------------------------------------------------------
+# Location of the Mayall at KPNO
+#-------------------------------------------------------------------
+
+location:
+    latitude: 31.963972222 deg
+    longitude: -111.599336111 deg
+    elevation: 2120 m
+    pressure: 78318 Pa    # from 1976 standard atmosphere model
+    temperature: 5 C      # a guess at mean night-time temperature
+    timezone: US/Arizona
+
+#-------------------------------------------------------------------
+# Observing calendar.
+#-------------------------------------------------------------------
+
+# Survey nominally starts on night of this date. Format is YYYY-MM-DD.
+first_day: 2019-08-28
+
+# Survey nominally ends on morning of this date. Format is YYYY-MM-DD.
+last_day: 2024-07-13
+
+# First night of monsoon shutdown is on this date each year.
+# Format is YYYY-MM-DD but the year is ignored.
+monsoon_start: 2019-07-13
+
+# Observing resumes on night of this date each year after monsoon shutdown.
+# Format is YYYY-MM-DD but the year is ignored.
+monsoon_stop: 2019-08-27
+
+# Number of nights reserved for engineering / guest observing
+# during each full moon.
+full_moon_nights: 7
+
+#-------------------------------------------------------------------
+# Definition of the DARK / GRAY / BRIGHT nominal programs based on
+# sun and moon ephemerides.
+#-------------------------------------------------------------------
+
+programs:
+    DARK:
+        # Twilight requirement.
+        max_sun_altitude: -15 deg
+        # Moon must be below the horizon.
+    GRAY:
+        # Twilight requirement is the same as DARK.
+        # Moon must be above the horizon and pass both of these cuts:
+        max_moon_illumination: 0.6
+        max_moon_illumination_altitude_product: 30 deg
+    BRIGHT:
+        # Twilight requirement.
+        max_sun_altitude: -13 deg
+        # Any time after twilight that is neither DARK nor GRAY is BRIGHT.
+
+#-------------------------------------------------------------------
+# Definition of the first-year full-depth NGC field.
+#-------------------------------------------------------------------
+
+full_depth_field:
+    enabled: yes
+    min_declination: 15 deg
+    max_declination: 25 deg
+    first_pass_padding: 3 deg
+
+#-------------------------------------------------------------------
+# Parameters used to plan observation during a night.
+#-------------------------------------------------------------------
+
+min_altitude: 30 deg
+
+# Setup time
+focus_time: 30 s
+slew_overhead: 11.5 s
+slew_rate: 0.45 deg / s
+min_overhead: 2 min
+
+# Exposure time
+cosmic_ray_split: 20 min
+max_exposure_length: 60 min
+
+avoid_bodies:
+    moon: 50 deg
+    venus: 2 deg
+    mars: 2 deg
+    jupiter: 2 deg
+    saturn: 2 deg
+    neptune: 2 deg
+    uranus: 2 deg
+    #ceres: 2 deg  # not implemented in pyephem
+
+# Number of LST bins covering 24h=360d used for afternoon planning.
+num_lst_bins: 144
+
+#-------------------------------------------------------------------
+# Base path to pre-pended to all non-absolute paths used for writing
+# output files. The pattern {...} will be expanded using environment
+# variables.
+#-------------------------------------------------------------------
+
+output_path: '{DESISURVEY}'

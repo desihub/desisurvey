@@ -2,7 +2,9 @@ from __future__ import print_function, division
 import ephem
 from datetime import datetime
 import numpy as np
-from desisurvey.kpno import mayall
+import astropy.units as u
+import desisurvey.config
+
 
 MIN_VENUS_SEP = np.radians(2.0)
 MIN_MARS_SEP = np.radians(2.0)
@@ -33,7 +35,10 @@ def avoidObject(datetime, ra0, dec0):
 
     dt = ephem.Date(datetime.datetime)
     gatech = ephem.Observer()
-    gatech.lon, gatech.lat = np.radians(mayall.west_lon_deg), np.radians(mayall.lat_deg)
+    config = desisurvey.config.Configuration()
+    gatech.lat = config.location.latitude().to(u.rad).value
+    gatech.lon = config.location.longitude().to(u.rad).value
+    gatech.elevation = config.location.elevation().to(u.m).value
     gatech.date = dt
     gatech.epoch = dt
 
@@ -86,7 +91,10 @@ def moonLoc (datetime, ra0, dec0):
 
     dt = ephem.Date(datetime.datetime)
     gatech = ephem.Observer()
-    gatech.lon, gatech.lat = np.radians(mayall.west_lon_deg), np.radians(mayall.lat_deg)
+    config = desisurvey.config.Configuration()
+    gatech.lat = config.location.latitude().to(u.rad).value
+    gatech.lon = config.location.longitude().to(u.rad).value
+    gatech.elevation = config.location.elevation().to(u.m).value
     gatech.date = dt
     gatech.epoch = dt
 

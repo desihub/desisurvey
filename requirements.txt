@@ -1,10 +1,5 @@
+setuptools
 numpy
 astropy
-datetime
-os
-shutil
-ephem
-time
-pkg_resources
-operator
-
+pyephem
+pytz

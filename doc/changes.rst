@@ -2,10 +2,14 @@
 desisurvey change log
 =====================
 
-0.5.1 (unreleased)
+0.6.0 (unreleased)
 ------------------
 
-* No changes yet
+* Add new config yaml file and python wrapper.
+* Convert most (but not all) code to use new config machinery.
+* Cleanup and reorganization of Ephemerides class.
+* Add comparisons with independent JPL Horizons run to unit tests for
+  AltAz transforms and ephemerides calculations.
 
 0.5.0 (2017-04-13)
 ------------------

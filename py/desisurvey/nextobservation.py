@@ -37,7 +37,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     Returns:
         target: dictionnary containing the following keys:
                 'tileID', 'RA', 'DEC', 'Program', 'Ebmv', 'maxLen',
-                'MoonFrac', 'MoonDist', 'MoonAlt', 'DESsn2', 'Status',
+                'moon_illum_frac', 'MoonDist', 'MoonAlt', 'DESsn2', 'Status',
                 'Exposure', 'obsSN2', 'obsConds'
         overhead: float (seconds)
     """
@@ -130,7 +130,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
         obsSN2 = -1.0   # Idem
         target = {'tileID' : tileID, 'RA' : RA, 'DEC' : DEC, 'PASS': PASSNUM,
                   'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
-                  'MoonFrac': moonfrac, 'MoonDist': moondist, 'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
+                  'moon_illum_frac': moonfrac, 'MoonDist': moondist, 'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
                   'Exposure': exposure, 'obsSN2': obsSN2, 'obsConds': obsconds[i]}
     else:
         target = None
