@@ -77,16 +77,21 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     lst = mjd2lst(mjd)
     dt = Time(mjd, format='mjd')
     found = False
+
+    # Calculate the overhead times in seconds for each possible tile.
+    proposed = astropy.coordinates.SkyCoord(
+        ra=ra * u.deg, dec=dec * u.deg)
+    if slew:
+        previous = astropy.coordinates.SkyCoord(
+            ra=previous_ra * u.deg, dec=previous_dec * u.deg)
+    else:
+        previous = None
+    overheads = desisurvey.utils.get_overhead_time(
+        previous, proposed).to(u.s).value
+
     for i in range(len(tileID)):
-        proposed = astropy.coordinates.SkyCoord(
-            ra=ra[i] * u.deg, dec=dec[i] * u.deg)
-        if slew:
-            previous = astropy.coordinates.SkyCoord(
-                ra=previous_ra * u.deg, dec=previous_dec * u.deg)
-        else:
-            previous = proposed
-        overhead = desisurvey.utils.get_overhead_time(
-            previous, proposed).to(u.s).value
+
+        overhead = overheads[i]
 
         # Estimate the exposure midpoint LST for this tile.
         lst_midpoint = lst + overhead / 240. + 0.5 * explen[i]
