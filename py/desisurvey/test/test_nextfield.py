@@ -38,7 +38,6 @@ class TestNextField(unittest.TestCase):
             self.ephem._table[0], '20190901', tiles_observed=[])
         mjd = 2458728.708333 - 2400000.5  #- Sept 1 2019 @ 10pm in Arizona
         conditions = dict()  #- currently unused and required keys undefined
-        moon_alt, moon_az = 10.0, 20.0  #- required inputs but currently unused
 
         tilesObserved = list()
         slew = True
@@ -49,7 +48,7 @@ class TestNextField(unittest.TestCase):
         decobs = list()
         for i in range(10):
             tileinfo, overhead = nextFieldSelector(planfile, mjd, conditions,
-                tilesObserved, slew, prev_ra, prev_dec, moon_alt, moon_az)
+                tilesObserved, slew, prev_ra, prev_dec)
             tilesObserved.append(tileinfo['tileID'])
             decobs.append(tileinfo['DEC'])
             prev_ra = tileinfo['RA']
@@ -65,7 +64,7 @@ class TestNextField(unittest.TestCase):
         for i in range(10):
             mjd += 0.3/24
             tileinfo, overhead = nextFieldSelector(planfile, mjd, conditions,
-                tilesObserved, slew, prev_ra, prev_dec, moon_alt, moon_az)
+                tilesObserved, slew, prev_ra, prev_dec)
             tilesObserved.append(tileinfo['tileID'])
             prev_ra = tileinfo['RA']
             prev_dec = tileinfo['DEC']

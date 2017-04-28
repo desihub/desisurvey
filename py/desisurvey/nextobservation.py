@@ -14,9 +14,9 @@ MIN_MOON_SEP_BGS = 50.0
 
 LSTresSec = 600.0 # Also in afternoon planner and night obs.
 
+
 def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
-                      previous_ra, previous_dec, moon_alt, moon_az,
-                      use_jpl=False):
+                      previous_ra, previous_dec, use_jpl=False):
     """
     Returns the first tile for which the current time falls inside
     its assigned LST window and is far enough from the Moon and
@@ -30,8 +30,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
         slew: bool, True if a slew time needs to be taken into account
         previous_ra: float, ra of the previous observed tile (degrees)
         previous_dec: float, dec of the previous observed tile (degrees)
-        moon_alt: moon altitude angle in degrees for mjd.
-        moon_az: moon azimuth angle in degrees for mjd.
         use_jpl: bool, True if using jplephem and astropy instead of pyephem
 
     Returns:
@@ -78,11 +76,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
             dra = 360.0 - dra
         ddec = np.abs(dec[i]-previous_dec)
         overhead = setup_time(slew, dra, ddec)
-        '''
-        t1 = tmin[i] + overhead/240.0
-        t2 = tmax[i] - explen[i]
-        if ( ((t1 <= t2) and (lst > t1 and lst < t2)) or ( (t2 < t1) and ((lst > t1 and t1 <=360.0) or (lst >= 0.0 and lst < t2))) ):
-        '''
         # Estimate the exposure midpoint LST for this tile.
         lst_midpoint = lst + overhead / 240. + 0.5 * explen[i]
         if lst_midpoint >= 360:
@@ -90,23 +83,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
         # Select the first tile whose exposure midpoint falls within the
         # tile's LST window.
         if tmin[i] <= lst_midpoint and lst_midpoint <= tmax[i]:
-            '''
-            ####################################################################
-            # I plan to use this instead of calling moonLoc() since it is much
-            # faster, but they give significantly different separation angles
-            # and I don't know which (if either) is correct yet.
-            ####################################################################
-            # Calculate the tile (alt, az, airmass)
-            airmass, tile_alt, tile_az = desisurvey.exposurecalc.airMassCalculator(
-                ra[i], dec[i], lst, return_altaz=True)
-            # Calculate the angular separation between the tile and moon
-            # using https://en.wikipedia.org/wiki/Great-circle_distance
-            alt1, az1, alt2, az2 = np.radians(
-                [tile_alt, tile_az, moon_alt, moon_az])
-            moon_dist = 2 * np.degrees(np.arcsin(np.sqrt(
-                np.sin(0.5 * (alt1 - alt2)) ** 2 +
-                np.cos(alt1) * np.cos(alt2) * np.sin(0.5 * (az1 - az2)) ** 2)))
-            '''
             moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
             if (obsconds[i] & obsbits.mask('BRIGHT')) == 0:
                 min_moon_sep = MIN_MOON_SEP
@@ -136,6 +112,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
         target = None
     return target, overhead
 
+
 def setup_time(slew, dra, ddec):
     """
     Computes setup time: slew and focus (assumes readout can proceed during
@@ -160,6 +137,7 @@ def setup_time(slew, dra, ddec):
         overhead = 120.0
     return overhead
 
+
 def obsprio(priority, lst_assigned, lst):
     """Merit function for a tile given its priority and
     assigned LST.
@@ -171,4 +149,5 @@ def obsprio(priority, lst_assigned, lst):
     Returns:
         float: merit function value
     """
-    return ( float(priority) - (lst_assigned-lst)*(lst_assigned-lst)/(LSTresSec*LSTresSec) )
+    return (float(priority) -
+            (lst_assigned-lst)*(lst_assigned-lst)/(LSTresSec*LSTresSec) )
