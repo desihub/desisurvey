@@ -41,9 +41,13 @@ class TestUtils(unittest.TestCase):
         c = config.Configuration()
         p0 = astropy.coordinates.SkyCoord(ra=300 * u.deg, dec=10 * u.deg)
         # Move with no readout and no slew only has focus overhead.
+        self.assertEqual(utils.get_overhead_time(None, p0, False),
+                         c.focus_time())
         self.assertEqual(utils.get_overhead_time(p0, p0, False),
                          c.focus_time())
         # Move with readout and no slew has focus and overhead in parallel.
+        self.assertEqual(utils.get_overhead_time(None, p0, True),
+                         max(c.focus_time(), c.readout_time()))
         self.assertEqual(utils.get_overhead_time(p0, p0, True),
                          max(c.focus_time(), c.readout_time()))
         # Overhead with slew same when dRA == dDEC.
