@@ -36,6 +36,27 @@ class TestUtils(unittest.TestCase):
         for old_name, new_name in zip(self.table.colnames, names):
             self.table[old_name].name = new_name
 
+    def test_get_overhead(self):
+        """Sanity checks on overhead time calculations"""
+        c = config.Configuration()
+        p0 = astropy.coordinates.SkyCoord(ra=300 * u.deg, dec=10 * u.deg)
+        # Move with no readout and no slew only has focus overhead.
+        self.assertEqual(utils.get_overhead_time(p0, p0, False),
+                         c.focus_time())
+        # Move with readout and no slew has focus and overhead in parallel.
+        self.assertEqual(utils.get_overhead_time(p0, p0, True),
+                         max(c.focus_time(), c.readout_time()))
+        # Overhead with slew same when dRA == dDEC.
+        for delta in (1, 45, 70):
+            ra = p0.ra + [+delta, -delta, 0, 0] * u.deg
+            dec = p0.dec + [0, 0, +delta, -delta] * u.deg
+            p1 = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
+            dt = utils.get_overhead_time(p0, p1)
+            self.assertTrue(dt.shape == (4,))
+            self.assertEqual(dt[0], dt[1])
+            self.assertEqual(dt[0], dt[2])
+            self.assertEqual(dt[0], dt[3])
+
     def test_get_observer_to_sky(self):
         """Check (alt,az) -> (ra,dec) against JPL Horizons"""
         ra, dec = self.table['ra'], self.table['dec']
