@@ -112,6 +112,22 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     sort_order = np.argsort(pix_dphi)
     footprint_pixels = footprint_pixels[sort_order]
 
+    # Record per-tile info needed for planning.
+    table = astropy.table.Table()
+    table['tileid'] = tiles['TILEID']
+    # Map each tile ID to the corresponding index in our spatial arrays.
+    mapper = np.zeros(npix, int)
+    mapper[footprint_pixels] = np.arange(len(footprint_pixels))
+    table['map'] = mapper[pixels].astype(np.int16)
+    # Use a small int to identify the program.
+    table['program'] = np.zeros(len(tiles), np.int16)
+    for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
+        table['program'][tiles['PROGRAM'] == program] = i + 1
+    assert np.all(table['program'] > 0)
+    hdu = fits.table_to_hdu(table)
+    hdu.name = 'TILES'
+    hdus.append(hdu)
+
     # Average E(B-V) for all tiles falling into a pixel.
     tiles_per_pixel = np.bincount(pixels, minlength=npix)
     EBV = np.bincount(pixels, weights=tiles['EBV_MED'], minlength=npix)
