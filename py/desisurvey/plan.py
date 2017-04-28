@@ -25,7 +25,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                healpix_nside=16, output_name='planner.fits'):
     """Calculate exposure-time factors over a grid of times and pointings.
 
-    Takes about 6 minutes to run and writes a 1.3Gb output file with the
+    Takes about 9 minutes to run and writes a 1.3Gb output file with the
     default parameters.
 
     Requires that healpy is installed.
@@ -180,11 +180,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                      .format(date.strftime('%b %Y'), i, num_nights))
         # Initialize the slice of the fexp[] time index for this night.
         sl = slice(i * num_points, (i + 1) * num_points)
-        # Skip monsoon and full moon.
+        # Do we expect to observe on this night?
         calendar[i]['monsoon'] = desisurvey.utils.is_monsoon(midnight[i])
         calendar[i]['fullmoon'] = ephem.is_full_moon(midnight[i])
-        if calendar[i]['monsoon'] or calendar[i]['fullmoon']:
-            continue
         # Calculate the program during this night.
         mjd = midnight[i] + t_centers
         dark, gray, bright = ephem.get_program(mjd)
