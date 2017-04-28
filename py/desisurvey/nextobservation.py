@@ -1,11 +1,18 @@
 from __future__ import print_function, division
+
 import numpy as np
+
 import astropy.io.fits as pyfits
 from astropy.time import Time
-from desisurvey.utils import mjd2lst
+import astropy.coordinates
+import astropy.units as u
+
 from desitarget.targetmask import obsconditions as obsbits
-import desisurvey.exposurecalc
+
 import desiutil.log
+
+from desisurvey.utils import mjd2lst
+import desisurvey.exposurecalc
 
 
 MAX_AIRMASS = 2.0
@@ -71,11 +78,16 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     dt = Time(mjd, format='mjd')
     found = False
     for i in range(len(tileID)):
-        dra = np.abs(ra[i]-previous_ra)
-        if dra > 180.0:
-            dra = 360.0 - dra
-        ddec = np.abs(dec[i]-previous_dec)
-        overhead = setup_time(slew, dra, ddec)
+        proposed = astropy.coordinates.SkyCoord(
+            ra=ra[i] * u.deg, dec=dec[i] * u.deg)
+        if slew:
+            previous = astropy.coordinates.SkyCoord(
+                ra=previous_ra * u.deg, dec=previous_dec * u.deg)
+        else:
+            previous = proposed
+        overhead = desisurvey.utils.get_overhead_time(
+            previous, proposed).to(u.s).value
+
         # Estimate the exposure midpoint LST for this tile.
         lst_midpoint = lst + overhead / 240. + 0.5 * explen[i]
         if lst_midpoint >= 360:
@@ -111,31 +123,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     else:
         target = None
     return target, overhead
-
-
-def setup_time(slew, dra, ddec):
-    """
-    Computes setup time: slew and focus (assumes readout can proceed during
-    slew.
-
-    Args:
-        slew: bool, True if slew time needs to be taken into account
-        dra: float, difference in RA between previous and current tile (degrees)
-        ddec: float, difference in DEC between previous and current tile (degrees)
-
-    Returns:
-        float, total setup time (seconds)
-    """
-
-    focus_time = 30.0
-    slew_time = 0.0
-    if slew:
-        d = np.maximum(dra, ddec)
-        slew_time = 11.5 + d/0.45
-    overhead = focus_time + slew_time
-    if overhead < 120.0:
-        overhead = 120.0
-    return overhead
 
 
 def obsprio(priority, lst_assigned, lst):
