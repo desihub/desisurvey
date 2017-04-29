@@ -39,6 +39,7 @@ class Planner(object):
         self.num_nights = (self.stop_date - self.start_date).days
         self.nside = header['NSIDE']
         self.npix = 12 * self.nside ** 2
+        self.pix_area = 360. ** 2 / np.pi / self.npix
 
         self.tiles = astropy.table.Table.read(output_file, hdu='TILES')
         self.calendar = astropy.table.Table.read(output_file, hdu='CALENDAR')
@@ -52,6 +53,7 @@ class Planner(object):
         self.footprint_pixels = static['pixel'].data
         self.footprint = np.zeros(self.npix, bool)
         self.footprint[self.footprint_pixels] = True
+        self.footprint_area = len(self.footprint_pixels) * self.pix_area
         self.fdust = static['dust'].data
 
         self.fexp = hdus['DYNAMIC'].data

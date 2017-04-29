@@ -569,3 +569,145 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
 
     if save:
         plt.savefig(save)
+
+
+def plot_planner(p, where=None, when=None, night_summary='dark',
+                 dust=True, monsoon=True, fullmoon=True, cmap='magma',
+                 save=None):
+    """Plot a summary of the planner observing efficiency forecast.
+
+    Requires that the matplotlib package is installed.
+
+    Parameters
+    ----------
+    p : desisurvey.plan.Planner
+        The planner object to use.
+    where : string or None
+    when : string or None
+    night_summary : string
+    dust : bool
+        Should dust extinction be included in the observing efficiency?
+    monsoon : bool
+        Do not observe during scheduled monsoon shutdowns?
+    fullmoon : bool
+        Do not observe during scheduled full-moon breaks?
+    cmap : matplotlib colormap spec
+        Colormap to use to represent observing efficiency. Not used for a
+        time series plot.
+    save : string or None
+        Name of file where plot should be saved.  Format is inferred from
+        the extension.
+
+    Returns
+    -------
+    tuple
+        Tuple (figure, axes) returned by ``plt.subplots()``.
+    """
+    import matplotlib.pyplot as plt
+    
+    if where and when:
+        raise ValueError('Cannot specify both where and when.')
+
+    # Reshape time axis into (nights, times). This operation creates
+    # a new view with no memory copy.
+    fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
+
+    # Project out the spatial axis if requested. If dust included,
+    # we cannot avoid making a temporary copy of the large fexp array.
+    if dust and where:
+        fexp = fexp.copy() * p.fdust
+    if where == 'best':
+        # Observe the best pixel during each time slot.
+        fexp = fexp.max(axis=2)
+    elif where == 'random':
+        # Observe a random pixel during each time slot.
+        fexp = fexp.mean(axis=2)
+    elif where is not None:
+        raise ValueError('Invalid where: {0}.'.format(where))
+
+    # Summarize each night using the specified summary statistic.
+    if night_summary == 'best':
+        # Pick the best time to observe each pixel.
+        fexp = fexp.max(axis=1)
+    elif night_summary == '24hr':
+        # Average over each 24hour period.
+        fexp = fexp.mean(axis=1)
+    elif night_summary == 'dark':
+        # Average over night observing times only.
+        n_night_bins = (fexp > 0).sum(axis=1)
+        mask = n_night_bins > 0
+        fexp = fexp.sum(axis=1)
+        fexp[mask] /= n_night_bins[mask]
+    else:
+        raise ValueError('Invalid night_summary: {0}.'.format(night_summary))
+
+    # Zero out monsoon nights if requested.
+    if monsoon:
+        fexp[p.calendar['monsoon']] = 0.
+
+    # Zero out full-moon nights if requested.
+    if fullmoon:
+        fexp[p.calendar['fullmoon']] = 0.
+
+    # Project out the night axis if requested.
+    if when == 'best':
+        # Observe each pixel during its best night.
+        fexp = fexp.max(axis=0)
+    elif when == 'random':
+        # Observe each pixel during a random night scheduled for observations.
+        scheduled = np.ones(p.num_nights, bool)
+        if monsoon:
+            scheduled[p.calendar['monsoon']] = False
+        if fullmoon:
+            scheduled[p.calendar['fullmoon']] = False
+        fexp = fexp[scheduled].mean(axis=0)
+    elif when is not None:
+        raise ValueError('Invalid when: {0}.'.format(when))
+
+    # Apply dust exposure factors if requested.
+    if dust and not where:
+        fexp *= p.fdust
+
+    # Prepare plot labels.
+    date_label = 'Nights {0} to {1}'.format(p.start_date, p.stop_date)
+    sky_label = 'Sky {0:,} sq.deg. (increasing RA)'.format(
+        int(round(p.footprint_area)))
+
+    # Make the plot.
+    fig, ax = plt.subplots(figsize=(10, 5.75))
+    if when:
+        # Plot an all-sky map.
+        assert fexp.shape == (len(p.footprint_pixels),)
+        # Reconstruct a healpix map masked to our footprint.
+        m = np.zeros(p.npix)
+        m[p.footprint_pixels] = fexp
+        data = desiutil.plots.prepare_data(
+            m, mask=~p.footprint, clip_lo=0., clip_hi=1., save_limits=True)
+        # Draw the map.
+        label = 'Observing Efficiency ({0}, {1})'.format(when, night_summary)
+        desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
+    elif where:
+        # Project a time series.
+        assert fexp.shape == (p.num_nights,)
+        x = np.arange(p.num_nights)
+        ax.fill_between(x, fexp, color='r', alpha=0.5)
+        ax.plot(x, fexp, 'k-', lw=0.5)
+        ax.set_xticks([])
+        ax.set_ylim(0., 1.)
+        ax.set_xlabel(date_label, fontsize='x-large')
+        ax.set_ylabel('Observing Efficiency ({0}, {1})'
+                      .format(where, night_summary), fontsize='x-large')
+    else:
+        # Plot a 2D image.
+        assert fexp.shape == (p.num_nights, len(p.footprint_pixels))
+        ax.imshow(fexp.T, interpolation='none', aspect='auto', origin='lower',
+                  cmap=cmap)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel(date_label, fontsize='x-large')
+        ax.set_ylabel(sky_label, fontsize='x-large')
+
+    plt.tight_layout()
+    if save:
+        plt.savefig(save)
+    return fig, ax
