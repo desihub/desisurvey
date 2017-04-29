@@ -1,7 +1,7 @@
 import unittest
 
 import numpy as np
-from desisurvey.exposurecalc import expTimeEstimator, airMassCalculator, moonExposureTimeFactor
+from desisurvey.exposurecalc import expTimeEstimator, moonExposureTimeFactor
 
 class TestExpCalc(unittest.TestCase):
 
@@ -40,21 +40,6 @@ class TestExpCalc(unittest.TestCase):
         t2 = expTimeEstimator(seeing, transparency, airmass*1.2, program, ebmv, sn2,
                               moonFrac, moonDist, moonAlt)
         self.assertGreater(t2, t1)
-
-    def test_airmass(self):
-        ra, dec = 10.5, 31.9640  #- random RA, Mayall dec
-        airmass = airMassCalculator(ra, dec, lst=ra, return_altaz=False)
-        self.assertTrue(isinstance(airmass, (float, np.float)))
-        self.assertAlmostEqual(airmass, 1.0, 4)
-
-        airmass, alt, az = airMassCalculator(ra, dec, lst=ra, return_altaz=True)
-        self.assertAlmostEqual(airmass, 1.0, 4)
-        self.assertAlmostEqual(alt, 90.0, 4)
-
-        n = 30
-        airmass = airMassCalculator(ra+np.arange(n), dec, lst=ra, return_altaz=False)
-        self.assertEqual(len(airmass), n)
-        self.assertTrue(np.all(np.diff(airmass) > 0))
 
     def test_moon(self):
         #- Moon below horizon

@@ -1,9 +1,11 @@
 from __future__ import print_function, division
+
 import numpy as np
-from astropy.time import Time
+
 import astropy.units as u
+
 import specsim.simulator
-from desisurvey.utils import radec2altaz
+
 import desiutil.log
 
 
@@ -135,35 +137,3 @@ def moonExposureTimeFactor(moonFrac, moonDist, moonAlt):
     # Evaluate the linear regression model.
     X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
     return _moonCoefficients.dot(X)
-
-
-def airMassCalculator(ra, dec, lst, return_altaz=False):
-    """
-    Calculates airmass given position and LST.  Uses formula from
-    Rosenberg (1966) which is valid for small to moderate angles.
-    Defaults to value at horizon if object below the horizon.
-
-    Args:
-        ra: float (degrees)
-        dec: float (degrees)
-        lst: float (degrees)
-
-    Returns:
-        float, air mass
-    """
-
-    Alt, Az = radec2altaz(ra, dec, lst)
-    cosZ = np.cos(np.radians(90.0-Alt))
-    if isinstance(Alt, np.ndarray):
-        amass = np.full(len(Alt), 40.0, dtype='f8')
-        ii = np.where(Alt>0.0)
-        amass[ii] = 1.0/(cosZ[ii] + 0.025*np.exp(-11.0*cosZ[ii]))
-    else:
-        if Alt > 0.0:
-            amass = 1.0/(cosZ + 0.025*np.exp(-11.0*cosZ))
-        else:
-            amass = 40.0
-
-    assert( np.all((amass <= 40.0) & (amass > 0.0)) )
-
-    return (amass, Alt, Az) if return_altaz else amass
