@@ -112,6 +112,25 @@ class TestUtils(unittest.TestCase):
         with self.assertRaises(ValueError):
             utils.get_observer(50000.)
 
+    def test_get_airmass_lowest(self):
+        """The lowest airmass occurs when dec=latitude"""
+        t = astropy.time.Time('2020-01-01')
+        ra = np.arange(360) * u.deg
+        dec = utils.get_location().latitude
+        Xinv = 1 / utils.get_airmass(t, ra, dec)
+        self.assertTrue(np.max(Xinv) > 0.999)
+        dec += 30 * u.deg
+        Xinv = 1 / utils.get_airmass(t, ra, dec)
+        self.assertTrue(np.max(Xinv) < 0.9)
+
+    def test_get_airmass_always_visible(self):
+        """An object at DEC=70d is always visible"""
+        t = astropy.time.Time('2020-01-01')
+        ra = np.arange(360) * u.deg
+        dec = 70 * u.deg
+        Xinv = 1 / utils.get_airmass(t, ra, dec)
+        self.assertTrue(np.all(0.2 < Xinv) and np.all(Xinv < 0.8))
+
     def test_get_location(self):
         """Check for sensible coordinates"""
         loc = utils.get_location()

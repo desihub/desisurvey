@@ -121,6 +121,35 @@ def get_observer(when, alt=None, az=None):
         location=get_location(), obstime=when, pressure=0, **kwargs)
 
 
+def get_airmass(when, ra, dec):
+    """Return the airmass of (ra,dec) at the specified observing time.
+
+    Uses the Rosenberg 1966 formula: 1/X = cosZ + 0.025 * exp(-11*cosZ).
+
+    The value of cosZ is clipped at zero, so observations below the horizon
+    return the horizon value.
+
+    Parameters
+    ----------
+    when : astropy.time.Time
+        Observation time, which specifies the local zenith.
+    ra : astropy.units.Quantity
+        Target RA angle(s)
+    dec : astropy.units.Quantity
+        Target DEC angle(s)
+
+    Returns
+    -------
+    array or float
+        Value of the airmass for each input (ra,dec).
+    """
+    target = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
+    zenith = get_observer(when, alt=90 * u.deg, az=0 * u.deg
+                          ).transform_to(astropy.coordinates.ICRS)
+    cosZ = np.clip(np.cos(target.separation(zenith)), 0., 1.)
+    return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
+
+
 def is_monsoon(night):
     """Test if this night's observing falls in the monsoon shutdown.
 
