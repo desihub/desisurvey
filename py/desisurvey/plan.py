@@ -2,6 +2,8 @@
 """
 from __future__ import print_function, division
 
+import datetime
+
 import numpy as np
 
 import astropy.io.fits as fits
@@ -19,6 +21,113 @@ import desisurvey.ephemerides
 import desisurvey.exposurecalc
 import desisurvey.config
 import desisurvey.utils
+
+
+class Planner(object):
+    """Initialize a survey planner from a FITS file.
+
+    Parameters
+    ----------
+    name : str
+        Name of the planner file to load.  Relative paths refer to
+        our config output path.
+    """
+    def __init__(self, name='planner.fits'):
+
+        config = desisurvey.config.Configuration()
+        output_file = config.get_path(name)
+
+        hdus = astropy.io.fits.open(output_file)
+        header = hdus[0].header
+        self.start_date = desisurvey.utils.get_date(header['START'])
+        self.stop_date = desisurvey.utils.get_date(header['STOP'])
+        self.num_nights = (self.stop_date - self.start_date).days
+        self.nside = header['NSIDE']
+        self.npix = 12 * self.nside ** 2
+
+        self.tiles = astropy.table.Table.read(output_file, hdu='TILES')
+        self.calendar = astropy.table.Table.read(output_file, hdu='CALENDAR')
+        self.etable = astropy.table.Table.read(output_file, hdu='EPHEM')
+
+        self.t_edges = hdus['GRID'].data
+        self.t_centers = 0.5 * (self.t_edges[1:] + self.t_edges[:-1])
+        self.num_times = len(self.t_centers)
+
+        static = astropy.table.Table.read(output_file, hdu='STATIC')
+        self.footprint_pixels = static['pixel'].data
+        self.footprint = np.zeros(self.npix, bool)
+        self.footprint[self.footprint_pixels] = True
+        self.fdust = static['dust'].data
+
+        self.fexp = hdus['DYNAMIC'].data
+        assert self.fexp.shape == (
+            self.num_nights * self.num_times, len(self.footprint_pixels))
+
+    def index_of_time(self, when):
+        """Calculate the bin index of the specified time.
+
+        Parameters
+        ----------
+        when : astropy.time.Time
+
+        Returns
+        -------
+        int
+            Index of the time bin that ``when`` falls into.
+        """
+        # Look up the night number for this time.
+        night = desisurvey.utils.get_date(when)
+        i = (night - self.start_date).days
+        if i < 0 or i >= self.num_nights:
+            raise ValueError('Time out of range: {0} - {1}.'
+                             .format(self.start_date, self.stop_date))
+        # Find the time relative to local midnight in days.
+        dt = when.mjd - desisurvey.utils.local_noon_on_date(night).mjd - 0.5
+        # Lookup the corresponding time index offset for this night.
+        j = np.digitize(dt, self.t_edges) - 1
+        if j < 0 or j >= self.num_times:
+            raise ValueError('Time is not during the night.')
+        # Combine the night and time indices.
+        return i * self.num_times + j
+
+    def time_of_index(self, ij):
+        """Calculate the time at the center of the specified bin.
+
+        Parameters
+        ----------
+        ij : int
+            Index of a time bin.
+
+        Returns
+        -------
+        astropy.time.Time
+            Time at the center of the specified bin.
+        """
+        if ij < 0 or ij >= self.num_nights * self.num_times:
+            raise ValueError('Index out of range.')
+        i = ij // self.num_times
+        j = ij % self.num_times
+        night = self.start_date + datetime.timedelta(days=i)
+        mjd = desisurvey.utils.local_noon_on_date(night).mjd + 0.5 + self.t_centers[j]
+        return astropy.time.Time(mjd, format='mjd')
+
+    def next_tile(self, when, conditions, tiles_observed, verbose=True):
+        """Return the next tile to observe.
+
+        Parameters
+        ----------
+        when : astropy.time.Time
+            Time at which the next tile decision is being made.
+        conditions : dict
+            Dictionary of current weather conditions.
+        tiles_observed : array
+            Array of IDs for previously observed tiles.
+        """
+        ij = self.index_of_time(when)
+        # What program are we in?
+        program = self.etable[ij]['program']
+        if verbose:
+            print('program: {0}'.format(program))
 
 
 def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
