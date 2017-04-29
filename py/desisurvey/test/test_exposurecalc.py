@@ -4,12 +4,13 @@ import numpy as np
 from desisurvey.exposurecalc import expTimeEstimator, airMassCalculator, moonExposureTimeFactor
 
 class TestExpCalc(unittest.TestCase):
-    
+
     def setUp(self):
         pass
-        
+
     def test_exptime(self):
-        weather = dict(Seeing=1.1, Transparency=1.0)
+        seeing = 1.1
+        transparency = 1.0
         airmass = 1.2
         program = 'DARK'
         ebmv = 0.01
@@ -18,23 +19,28 @@ class TestExpCalc(unittest.TestCase):
         moonDist = 70
         moonAlt = 10
         for program in ['DARK', 'GRAY', 'BRIGHT']:
-            t = expTimeEstimator(weather, airmass, program, ebmv, sn2, moonFrac, moonDist, moonAlt)
+            t = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+                                 moonFrac, moonDist, moonAlt)
             self.assertGreater(t, 0.0)
 
         program = 'DARK'
-        
+
         #- Worse seeing = longer exposures
-        weather = dict(Seeing=1.0, Transparency=1.0)
-        t1 = expTimeEstimator(weather, airmass, program, ebmv, sn2, moonFrac, moonDist, moonAlt)
-        weather = dict(Seeing=1.2, Transparency=1.0)
-        t2 = expTimeEstimator(weather, airmass, program, ebmv, sn2, moonFrac, moonDist, moonAlt)
+        seeing = 1.0
+        t1 = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+                              moonFrac, moonDist, moonAlt)
+        seeing=1.2
+        t2 = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+                              moonFrac, moonDist, moonAlt)
         self.assertGreater(t2, t1)
 
         #- Worse higher airmass = longer exposures
-        t1 = expTimeEstimator(weather, airmass, program, ebmv, sn2, moonFrac, moonDist, moonAlt)
-        t2 = expTimeEstimator(weather, airmass*1.2, program, ebmv, sn2, moonFrac, moonDist, moonAlt)
+        t1 = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+                              moonFrac, moonDist, moonAlt)
+        t2 = expTimeEstimator(seeing, transparency, airmass*1.2, program, ebmv, sn2,
+                              moonFrac, moonDist, moonAlt)
         self.assertGreater(t2, t1)
-            
+
     def test_airmass(self):
         ra, dec = 10.5, 31.9640  #- random RA, Mayall dec
         airmass = airMassCalculator(ra, dec, lst=ra, return_altaz=False)
@@ -70,6 +76,6 @@ class TestExpCalc(unittest.TestCase):
         x1 = moonExposureTimeFactor(moonFrac=0.5, moonDist=60, moonAlt=30)
         x2 = moonExposureTimeFactor(moonFrac=0.5, moonDist=30, moonAlt=30)
         self.assertGreater(x2, x1)
-                
+
 if __name__ == '__main__':
     unittest.main()

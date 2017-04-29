@@ -7,13 +7,14 @@ from desisurvey.utils import radec2altaz
 import desiutil.log
 
 
-def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, moonAlt):
+def expTimeEstimator(seeing, transparency, amass, program, ebmv, sn2,
+                     moonFrac, moonDist, moonAlt):
     """
     Estimates expusure length given current conditions.
 
     Args:
-        weatherNow: dictionnary containing the following keys:
-                    'Seeing', 'Transparency', 'OpenDome', 'Clouds'
+        seeing: float, FWHM seeing in arcseconds.
+        transparency: float, 0-1.
         amass: float, air mass
         programm: string, 'DARK', 'BRIGHT' or 'GRAY'
         ebmv: float, E(B-V)
@@ -40,7 +41,6 @@ def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, 
         exp_ref = exp_ref_grey
     else:
         exp_ref = 0.0 # Replace with throwing an exception
-    seeing = weatherNow['Seeing']
     a = 4.6
     b = -1.55
     c = 1.15
@@ -48,8 +48,8 @@ def expTimeEstimator(weatherNow, amass, program, ebmv, sn2, moonFrac, moonDist, 
     # Rescale value
     f11 = (a + b*1.1 + c*1.21)/(a-0.25*b*b/c)
     f_seeing /= f11
-    if weatherNow['Transparency'] > 0.0:
-        f_transparency = 1.0 / weatherNow['Transparency']
+    if transparency > 0.0:
+        f_transparency = 1.0 / transparency
     else:
         f_transparency = 1.0e9
 

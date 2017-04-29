@@ -3,7 +3,7 @@ from __future__ import print_function, division
 import numpy as np
 
 import astropy.io.fits as pyfits
-from astropy.time import Time
+import astropy.time
 import astropy.coordinates
 import astropy.units as u
 
@@ -12,8 +12,7 @@ from desitarget.targetmask import obsconditions as obsbits
 import desiutil.log
 
 from desisurvey.avoidobject import avoidObject, moonLoc
-from desisurvey.utils import mjd2lst
-import desisurvey.exposurecalc
+import desisurvey.utils
 
 
 MAX_AIRMASS = 2.0
@@ -33,7 +32,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     Args:
         obsplan: string, FITS file containing the afternoon plan
         mjd: float, current time
-        conditions: dictionnary containing the weather info
+        conditions: current weather conditions (not being used)
         tilesObserved: list containing the tileID of all completed tiles
         slew: bool, True if a slew time needs to be taken into account
         previous_ra: float, ra of the previous observed tile (degrees)
@@ -69,8 +68,8 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     except (TypeError, KeyError, IndexError):
         pass
 
-    lst = mjd2lst(mjd)
-    dt = Time(mjd, format='mjd')
+    lst = desisurvey.utils.mjd2lst(mjd)
+    dt = astropy.time.Time(mjd, format='mjd')
     found = False
 
     # Calculate the overhead times in seconds for each possible tile.
