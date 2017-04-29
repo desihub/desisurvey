@@ -11,6 +11,7 @@ from desitarget.targetmask import obsconditions as obsbits
 
 import desiutil.log
 
+from desisurvey.avoidobject import avoidObject, moonLoc
 from desisurvey.utils import mjd2lst
 import desisurvey.exposurecalc
 
@@ -23,7 +24,7 @@ LSTresSec = 600.0 # Also in afternoon planner and night obs.
 
 
 def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
-                      previous_ra, previous_dec, use_jpl=False):
+                      previous_ra, previous_dec):
     """
     Returns the first tile for which the current time falls inside
     its assigned LST window and is far enough from the Moon and
@@ -37,7 +38,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
         slew: bool, True if a slew time needs to be taken into account
         previous_ra: float, ra of the previous observed tile (degrees)
         previous_dec: float, dec of the previous observed tile (degrees)
-        use_jpl: bool, True if using jplephem and astropy instead of pyephem
 
     Returns:
         target: dictionnary containing the following keys:
@@ -47,11 +47,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
         overhead: float (seconds)
     """
     log = desiutil.log.get_logger()
-
-    if (use_jpl):
-        from desisurvey.avoidobjectJPL import avoidObject, moonLoc
-    else:
-        from desisurvey.avoidobject import avoidObject, moonLoc
 
     hdulist = pyfits.open(obsplan)
     tiledata = hdulist[1].data
