@@ -11,14 +11,8 @@ import astropy.units as u
 import astropy.table
 import astropy.time
 
-import specsim.atmosphere
-
-import desimodel.io
-
 import desiutil.log
 
-import desisurvey.ephemerides
-import desisurvey.exposurecalc
 import desisurvey.config
 import desisurvey.utils
 
@@ -34,6 +28,7 @@ class Planner(object):
     """
     def __init__(self, name='planner.fits'):
 
+        self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         output_file = config.get_path(name)
 
@@ -127,7 +122,16 @@ class Planner(object):
         # What program are we in?
         program = self.etable[ij]['program']
         if verbose:
-            print('program: {0}'.format(program))
+            self.log.debug('program: {0}'.format(program))
+
+
+# Imports only needed by initialize() go here.
+import specsim.atmosphere
+
+import desimodel.io
+
+import desisurvey.ephemerides
+import desisurvey.exposurecalc
 
 
 def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
