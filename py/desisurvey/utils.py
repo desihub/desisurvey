@@ -146,7 +146,7 @@ def get_airmass(when, ra, dec):
     target = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
     zenith = get_observer(when, alt=90 * u.deg, az=0 * u.deg
                           ).transform_to(astropy.coordinates.ICRS)
-    cosZ = np.clip(np.cos(target.separation(zenith)), 0., 1.)
+    cosZ = np.clip(np.cos(target.separation(zenith).to(u.rad).value), 0., 1.)
     return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
 
 
