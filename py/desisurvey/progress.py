@@ -113,6 +113,11 @@ class Progress(object):
         self._table = table
 
     @property
+    def num_tiles(self):
+        """Number of tiles in DESI footprint"""
+        return len(self._table)
+
+    @property
     def max_exposures(self):
         """Maximum allowed number of exposures of a single tile."""
         return len(self._table[0]['mjd'])
@@ -192,6 +197,25 @@ class Progress(object):
         if len(row_sel) != 1:
             raise ValueError('Invalid tile_id {0}.'.format(tile_id))
         return self._table[row_sel[0]]
+
+    def get_observed(self, include_partial=True):
+        """Return a table of previously observed tiles.
+
+        The returned table is a copy of our internal data, not a view, so
+        any changes to its contents are decoupled.
+
+        Parameters
+        ----------
+        include_partial : bool
+            Include partially completed tiles (status=1) in the returned table.
+
+        Returns
+        -------
+        table view
+            Copy of our internal table with only observed rows included.
+        """
+        sel = self._table['status'] >= (1 if include_partial else 2)
+        return self._table[sel]
 
     def add_exposure(self, tile_id, mjd, exptime, snrfrac, airmass, seeing):
         """
