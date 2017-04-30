@@ -31,14 +31,83 @@ class TestProgress(unittest.TestCase):
         """Create a new table from scratch"""
         p = Progress()
         self.assertTrue(p.max_exposures == len(p._table['mjd'][0]))
-        p = p._table
-        self.assertEqual(len(np.unique(p['tileid'])), len(p))
-        self.assertTrue(np.all(np.unique(p['pass']) == np.arange(8, dtype=int)))
-        self.assertTrue(np.all(p['status'] == 0))
-        self.assertTrue(np.all((-80 < p['dec']) & (p['dec'] < 80)))
-        self.assertTrue(np.all((0 <= p['ra']) & (p['ra'] < 360)))
-        self.assertTrue(np.all(p['mjd'] == 0))
-        self.assertTrue(np.all(p['exptime'] == 0))
-        self.assertTrue(np.all(p['snrfrac'] == 0))
-        self.assertTrue(np.all(p['airmass'] == 0))
-        self.assertTrue(np.all(p['seeing'] == 0))
+        self.assertEqual(p.completed(), 0.)
+        self.assertEqual(type(p.get_tile(10)), astropy.table.Row)
+        with self.assertRaises(ValueError):
+            p.get_tile(-1)
+        t = p._table
+        self.assertEqual(len(np.unique(t['tileid'])), len(t))
+        self.assertTrue(np.all(np.unique(t['pass']) == np.arange(8, dtype=int)))
+        self.assertTrue(np.all(t['status'] == 0))
+        self.assertTrue(np.all((-80 < t['dec']) & (t['dec'] < 80)))
+        self.assertTrue(np.all((0 <= t['ra']) & (t['ra'] < 360)))
+        self.assertTrue(np.all(t['mjd'] == 0))
+        self.assertTrue(np.all(t['exptime'] == 0))
+        self.assertTrue(np.all(t['snrfrac'] == 0))
+        self.assertTrue(np.all(t['airmass'] == 0))
+        self.assertTrue(np.all(t['seeing'] == 0))
+
+    def test_add_exposures(self):
+        """Add some exposures to a new table"""
+        p = Progress()
+        t = p._table
+        tiles = t['tileid'][:10].data
+        for tile_id in tiles:
+            p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+            self.assertTrue(p.get_tile(tile_id)['snrfrac'][0] == 0.5)
+            self.assertTrue(np.all(p.get_tile(tile_id)['snrfrac'][1:] == 0.))
+        self.assertEqual(p.completed(include_partial=True), 5.)
+        self.assertEqual(p.completed(include_partial=False), 0.)
+
+    def test_save_read(self):
+        """Create, save and read a progress table"""
+        p1 = Progress()
+        tiles = p1._table['tileid'][:10].data
+        for tile_id in tiles:
+            p1.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        p1.save('p1.fits')
+        p2 = Progress('p1.fits')
+        self.assertEqual(p2.completed(include_partial=True), 5.)
+        self.assertEqual(p2.completed(include_partial=False), 0.)
+
+    def test_version_check(self):
+        """Cannot use progress with the wrong version"""
+        p = Progress()
+        p._table.meta['VERSION'] = -1
+        p.save('progress.fits')
+        with self.assertRaises(RuntimeError):
+            Progress('progress.fits')
+
+    def test_completed_truncates(self):
+        """Completion value truncates at one"""
+        p = Progress()
+        tile_id = p._table['tileid'][0]
+        p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        self.assertEqual(p.completed(include_partial=True), 1.)
+        self.assertEqual(p.completed(include_partial=False), 1.)
+
+    def test_completed_history(self):
+        """Optional before_mjd gives completion history"""
+        p = Progress()
+        n = p.max_exposures
+        tiles = p._table['tileid'][:n]
+        mjds = 58849. + np.arange(n)
+        for tile, mjd in zip(tiles, mjds):
+            p.add_exposure(tile, mjd, 100., 0.2, 1.5, 1.1)
+            p.add_exposure(tile, mjd, 100., 0.3, 1.5, 1.1)
+        self.assertEqual(p.completed(), 0.5 * n)
+        for i, mjd in enumerate(mjds):
+            self.assertEqual(p.completed(before_mjd=mjd), 0.5 * i)
+
+    def test_max_exposures(self):
+        """Cannot exceed max exposures for a single tile"""
+        p = Progress()
+        n = p.max_exposures + 1
+        tile_id = p._table['tileid'][0]
+        mjds = 58849. + np.arange(n)
+        for mjd in mjds[:-1]:
+            p.add_exposure(tile_id, mjd, 100., 0.2, 1.5, 1.1)
+        with self.assertRaises(RuntimeError):
+            p.add_exposure(tile_id, mjds[-1], 100., 0.2, 1.5, 1.1)

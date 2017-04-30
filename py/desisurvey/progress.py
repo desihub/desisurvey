@@ -9,6 +9,8 @@ import astropy.table
 
 import desimodel.io
 
+import desiutil.log
+
 import desisurvey.config
 
 # Increment this value whenever a non-backwards compatible change to the
@@ -41,6 +43,8 @@ class Progress(object):
     """
     def __init__(self, filename=None, max_exposures=16):
 
+        self.log = desiutil.log.get_logger()
+
         if filename is None:
             # Load the list of tiles to observe.
             tiles = astropy.table.Table(
@@ -48,7 +52,7 @@ class Progress(object):
             num_tiles = len(tiles)
             # Initialize a new progress table.
             meta = dict(VERSION=_version)
-            table = astropy.table.Table()
+            table = astropy.table.Table(meta=meta)
             table['tileid'] = astropy.table.Column(
                 length=num_tiles, dtype=np.int32,
                 description='DESI footprint tile ID')
@@ -96,7 +100,9 @@ class Progress(object):
 
         else:
             config = desisurvey.config.Configuration()
-            table = astropy.table.Table.read(config.get_path(filename))
+            filename = config.get_path(filename)
+            table = astropy.table.Table.read(filename)
+            self.log.info('Loaded progress from {0}.'.format(filename))
             # Check that this table has the current version.
             if table.meta['VERSION'] != _version:
                 raise RuntimeError(
@@ -111,14 +117,52 @@ class Progress(object):
         """Maximum allowed number of exposures of a single tile."""
         return len(self._table[0]['mjd'])
 
-    def save(self, filename='progress.fits', overwrite=True):
+    def completed(self, before_mjd=None, include_partial=True):
+        """Number of tiles completed.
+
+        Completion is based on the sum of ``snrfrac`` values for all exposures
+        of each tiles.  A completed tile (with ``status`` of 2) counts as one
+        towards the completion value, even if its ``snrfrac`` exceeds one.
+
+        Parameters
+        ----------
+        before_mjd : float
+            Only include exposures before the specified MJD cutoff, or use all
+            exposures when None.
+        include_partial : bool
+            Include partially completed tiles according to their sum of snfrac
+            values.
+
+        Returns
+        -------
+        float
+            Number of tiles completed. Will always be an integer (returned as
+            a float) when ``include_partial`` is False, and will generally
+            be non-integer otherwise.
+        """
+        snrfrac = self._table['snrfrac'].data
+        if before_mjd is not None:
+            mjd = self._table['mjd'].data
+            snrfrac = snrfrac.copy()
+            # Zero any SNR after the cutoff.
+            snrfrac[self._table['mjd'] >= before_mjd] = 0.
+        snrsum = snrfrac.sum(axis=1)
+        # Count fully completed tiles as 1.
+        completed = snrsum >= 1.
+        n = float(np.count_nonzero(completed))
+        if include_partial:
+            # Add partial snrtot sums.
+            n += snrsum[~completed].sum()
+        return n
+
+    def save(self, filename, overwrite=True):
         """Save the current progress to a file.
 
         The saved file can be restored from disk using our constructor.
 
         Parameters
         ----------
-        filename : str or None
+        filename : str
             Read an existing progress record from the specified file name. A
             relative path name refers to the :meth:`configuration output path
             <desisurvey.config.Configuration.get_path>`. Creates a new progress
@@ -127,17 +171,32 @@ class Progress(object):
             Silently overwrite any existing file when this is True.
         """
         config = desisurvey.config.Configuration()
-        self._table.write(config.get_path(filename), overwrite=overwrite)
+        filename = config.get_path(filename)
+        self._table.write(filename, overwrite=overwrite)
+        self.log.info('Saved progress to {0}.'.format(filename))
+
+    def get_tile(self, tile_id):
+        """Lookup the progress of a single tile.
+
+        Parameters
+        ----------
+        tile_id : integer
+            Valid DESI footprint tile ID.
+
+        Returns
+        -------
+        astropy.table.Row
+            Row of progress table for the requested tile.
+        """
+        row_sel = np.where(self._table['tileid'] == tile_id)[0]
+        if len(row_sel) != 1:
+            raise ValueError('Invalid tile_id {0}.'.format(tile_id))
+        return self._table[row_sel[0]]
 
     def add_exposure(self, tile_id, mjd, exptime, snrfrac, airmass, seeing):
         """
         """
-        # Lookup the row for this tile.
-        row_sel = np.where(self._table['tileid'] == tile_id)
-        if not row_sel:
-            raise ValueError('Invalid tile_id {0}.'.format(tile_id))
-        row = self._table[row_sel[0]]
-        assert len(row) == self.max_exposures
+        row = self.get_tile(tile_id)
 
         # Check that we have not reached the maximum allowed exposures.
         num_exp = np.count_nonzero(row['mjd'] > 0)
