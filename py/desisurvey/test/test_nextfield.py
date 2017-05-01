@@ -51,7 +51,8 @@ class TestNextField(unittest.TestCase):
         for i in range(10):
             tileinfo, overhead = nextFieldSelector(planfile, mjd, conditions,
                 progress, slew, prev_ra, prev_dec)
-            progress.add_exposure(tileinfo['tileID'], mjd, 1000., 1., 1.5, 1.1)
+            progress.add_exposure(
+                tileinfo['tileID'], mjd + 0.001 * i, 1000., 1., 1.5, 1.1)
             tilesObserved.append(tileinfo['tileID'])
             decobs.append(tileinfo['DEC'])
             prev_ra = tileinfo['RA']
