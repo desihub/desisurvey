@@ -75,9 +75,9 @@ class Progress(object):
             table['exptime'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
                 description='Exposure duration in seconds', unit='s')
-            table['snrfrac'] = astropy.table.Column(
+            table['snr2frac'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.3f',
-                description='Fraction of target S/N ratio achieved')
+                description='Fraction of target S/N**2 ratio achieved')
             table['airmass'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
                 description='Estimate airmass of observation')
@@ -94,7 +94,7 @@ class Progress(object):
             table['status'] = 0
             table['mjd'] = 0.
             table['exptime'] = 0.
-            table['snrfrac'] = 0.
+            table['snr2frac'] = 0.
             table['airmass'] = 0.
             table['seeing'] = 0.
 
@@ -131,9 +131,9 @@ class Progress(object):
     def completed(self, before_mjd=None, include_partial=True):
         """Number of tiles completed.
 
-        Completion is based on the sum of ``snrfrac`` values for all exposures
+        Completion is based on the sum of ``snr2frac`` values for all exposures
         of each tiles.  A completed tile (with ``status`` of 2) counts as one
-        towards the completion value, even if its ``snrfrac`` exceeds one.
+        towards the completion value, even if its ``snr2frac`` exceeds one.
 
         Parameters
         ----------
@@ -151,19 +151,19 @@ class Progress(object):
             a float) when ``include_partial`` is False, and will generally
             be non-integer otherwise.
         """
-        snrfrac = self._table['snrfrac'].data
+        snr2frac = self._table['snr2frac'].data
         if before_mjd is not None:
             mjd = self._table['mjd'].data
-            snrfrac = snrfrac.copy()
-            # Zero any SNR after the cutoff.
-            snrfrac[self._table['mjd'] >= before_mjd] = 0.
-        snrsum = snrfrac.sum(axis=1)
+            snr2frac = snr2frac.copy()
+            # Zero any SNR**2 after the cutoff.
+            snr2frac[self._table['mjd'] >= before_mjd] = 0.
+        snr2sum = snr2frac.sum(axis=1)
         # Count fully completed tiles as 1.
-        completed = snrsum >= 1.
+        completed = snr2sum >= 1.
         n = float(np.count_nonzero(completed))
         if include_partial:
-            # Add partial snrtot sums.
-            n += snrsum[~completed].sum()
+            # Add partial SNR**2 sums.
+            n += snr2sum[~completed].sum()
         return n
 
     def save(self, filename, overwrite=True):
@@ -229,7 +229,7 @@ class Progress(object):
         Returns a new table so any modifications are decoupled from our
         internal table.  Exposure MJD values are summarized as separate
         ``mjd_min`` and ``mjd_max`` columns, with both equal to zero for
-        un-observed tiles. The summary ``exptime`` and ``snrfrac`` columns
+        un-observed tiles. The summary ``exptime`` and ``snr2frac`` columns
         are sums of the individual exposures.  The summary ``airmass``
         and ``seeing`` columns are means.
 
@@ -238,7 +238,7 @@ class Progress(object):
         include : 'all', 'observed', or 'completed'
             Specify which tiles to include in the summary. The 'observed'
             selection will include tiles that have been observed at least
-            once but have not yet reached their SNR goal.
+            once but have not yet reached their SNR**2 goal.
         """
         min_status = dict(all=0, observed=1, completed=2)
         if include not in min_status.keys():
@@ -255,7 +255,7 @@ class Progress(object):
         summary['mjd_max'] = mjd.max(axis=1)
 
         # Sum the remaining per-exposure columns.
-        for name in ('exptime', 'snrfrac', 'airmass', 'seeing'):
+        for name in ('exptime', 'snr2frac', 'airmass', 'seeing'):
             summary[name] = self._table[name].data[sel].sum(axis=1)
 
         # Convert the airmass and seeing sums to means.  We use mean rather
@@ -267,7 +267,7 @@ class Progress(object):
 
         return summary
 
-    def add_exposure(self, tile_id, mjd, exptime, snrfrac, airmass, seeing):
+    def add_exposure(self, tile_id, mjd, exptime, snr2frac, airmass, seeing):
         """Add a single exposure to the progress.
 
         Parameters
@@ -279,8 +279,8 @@ class Progress(object):
             exposure.
         exptime : float
             Exposure open shutter time in seconds.
-        snrfrac : float
-            Fraction of the design SNR achieved during this exposure.
+        snr2frac : float
+            Fraction of the design SNR**2 achieved during this exposure.
         airmass : float
             Estimated airmass of this exposure.
         seeing : float
@@ -303,9 +303,9 @@ class Progress(object):
         # Save this exposure.
         row['mjd'][num_exp] = mjd
         row['exptime'][num_exp] = exptime
-        row['snrfrac'][num_exp] = snrfrac
+        row['snr2frac'][num_exp] = snr2frac
         row['airmass'][num_exp] = airmass
         row['seeing'][num_exp] = seeing
 
         # Update this tile's status.
-        row['status'] = 1 if row['snrfrac'].sum() < 1 else 2
+        row['status'] = 1 if row['snr2frac'].sum() < 1 else 2
