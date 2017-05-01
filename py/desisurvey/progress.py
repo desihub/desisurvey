@@ -111,11 +111,17 @@ class Progress(object):
 
         # Initialize attributes from table data.
         self._table = table
+        self._last_mjd = np.max(table['mjd'])
 
     @property
     def num_tiles(self):
         """Number of tiles in DESI footprint"""
         return len(self._table)
+
+    @property
+    def last_mjd(self):
+        """MJD of most recent exposure or 0 if no exposures have been added."""
+        return self._last_mjd
 
     @property
     def max_exposures(self):
@@ -218,7 +224,23 @@ class Progress(object):
         return self._table[sel]
 
     def add_exposure(self, tile_id, mjd, exptime, snrfrac, airmass, seeing):
-        """
+        """Add a single exposure to the progress.
+
+        Parameters
+        ----------
+        tile_id : int
+            DESI footprint tile ID
+        mjd : float
+            MJD of exposure start time.  Must be larger than any previous
+            exposure.
+        exptime : float
+            Exposure open shutter time in seconds.
+        snrfrac : float
+            Fraction of the design SNR achieved during this exposure.
+        airmass : float
+            Estimated airmass of this exposure.
+        seeing : float
+            Estimated FWHM seeing of this exposure in arcseconds.
         """
         row = self.get_tile(tile_id)
 
@@ -228,6 +250,11 @@ class Progress(object):
             raise RuntimeError(
                 'Reached maximum exposure limit ({0}) for tile_id {1}.'
                 .format(self.max_exposures, tile_id))
+
+        # Check for increasing timestamps.
+        if mjd <= self._last_mjd:
+            raise ValueError('Exposure MJD <= last MJD.')
+        self._last_mjd = mjd
 
         # Save this exposure.
         row['mjd'][num_exp] = mjd

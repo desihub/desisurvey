@@ -52,19 +52,29 @@ class TestProgress(unittest.TestCase):
         p = Progress()
         t = p._table
         tiles = t['tileid'][:10].data
-        for tile_id in tiles:
-            p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        for i, tile_id in enumerate(tiles):
+            p.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
             self.assertTrue(p.get_tile(tile_id)['snrfrac'][0] == 0.5)
             self.assertTrue(np.all(p.get_tile(tile_id)['snrfrac'][1:] == 0.))
         self.assertEqual(p.completed(include_partial=True), 5.)
         self.assertEqual(p.completed(include_partial=False), 0.)
 
+    def test_exposures_incrementing(self):
+        """Successive exposures of the same tile must be time ordered"""
+        p = Progress()
+        t = p._table
+        tile_id = t['tileid'][0]
+        p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, 58849.1, 100., 0.5, 1.5, 1.1)
+        with self.assertRaises(ValueError):
+            p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
+
     def test_save_read(self):
         """Create, save and read a progress table"""
         p1 = Progress()
         tiles = p1._table['tileid'][:10].data
-        for tile_id in tiles:
-            p1.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        for i, tile_id in enumerate(tiles):
+            p1.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
         p1.save('p1.fits')
         p2 = Progress('p1.fits')
         self.assertEqual(p2.completed(include_partial=True), 5.)
@@ -82,9 +92,9 @@ class TestProgress(unittest.TestCase):
         """Completion value truncates at one"""
         p = Progress()
         tile_id = p._table['tileid'][0]
-        p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, 58849.1, 100., 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, 58849.2, 100., 0.5, 1.5, 1.1)
         self.assertEqual(p.completed(include_partial=True), 1.)
         self.assertEqual(p.completed(include_partial=False), 1.)
 
@@ -96,7 +106,7 @@ class TestProgress(unittest.TestCase):
         mjds = 58849. + np.arange(n)
         for tile, mjd in zip(tiles, mjds):
             p.add_exposure(tile, mjd, 100., 0.2, 1.5, 1.1)
-            p.add_exposure(tile, mjd, 100., 0.3, 1.5, 1.1)
+            p.add_exposure(tile, mjd + 0.1, 100., 0.3, 1.5, 1.1)
         self.assertEqual(p.completed(), 0.5 * n)
         for i, mjd in enumerate(mjds):
             self.assertEqual(p.completed(before_mjd=mjd), 0.5 * i)
@@ -116,8 +126,8 @@ class TestProgress(unittest.TestCase):
         """Get list of observed tiles"""
         p = Progress()
         tiles = p._table['tileid'][:10].data
-        for tile_id in tiles:
-            p.add_exposure(tile_id, 58849., 100., 0.5, 1.5, 1.1)
+        for i, tile_id in enumerate(tiles):
+            p.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
         self.assertTrue(
             np.all(p.get_observed(include_partial=True)['tileid'] == tiles))
         self.assertEqual(
@@ -127,8 +137,8 @@ class TestProgress(unittest.TestCase):
         """Cannot modify internal table with get_observed() return value"""
         p = Progress()
         tiles = p._table['tileid'][:10].data
-        for tile_id in tiles:
-            p.add_exposure(tile_id, 58849., 100., 1.5, 1.5, 1.1)
+        for i, tile_id in enumerate(tiles):
+            p.add_exposure(tile_id, 58849. + i, 100., 1.5, 1.5, 1.1)
         t = p.get_observed()
         t['tileid'][:10] = -1
         for i, tile_id in enumerate(tiles):
