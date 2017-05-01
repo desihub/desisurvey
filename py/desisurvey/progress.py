@@ -223,6 +223,50 @@ class Progress(object):
         sel = self._table['status'] >= (1 if include_partial else 2)
         return self._table[sel]
 
+    def get_summary(self, include='all'):
+        """Get a per-tile summary of progress so far.
+
+        Returns a new table so any modifications are decoupled from our
+        internal table.  Exposure MJD values are summarized as separate
+        ``mjd_min`` and ``mjd_max`` columns, with both equal to zero for
+        un-observed tiles. The summary ``exptime`` and ``snrfrac`` columns
+        are sums of the individual exposures.  The summary ``airmass``
+        and ``seeing`` columns are means.
+
+        Parameters
+        ----------
+        include : 'all', 'observed', or 'completed'
+            Specify which tiles to include in the summary. The 'observed'
+            selection will include tiles that have been observed at least
+            once but have not yet reached their SNR goal.
+        """
+        min_status = dict(all=0, observed=1, completed=2)
+        if include not in min_status.keys():
+            raise ValueError('Invalid include option: pick one of {0}.'
+                             .format(', '.join(min_status.keys())))
+
+        # Start a new summary table with the selected rows.
+        sel = self._table['status'] >= min_status[include]
+        summary = self._table[sel][['tileid', 'pass', 'ra', 'dec', 'status']]
+
+        # Summarize exposure start times.
+        mjd = self._table['mjd'].data[sel]
+        summary['mjd_min'] = mjd[:, 0]
+        summary['mjd_max'] = mjd.max(axis=1)
+
+        # Sum the remaining per-exposure columns.
+        for name in ('exptime', 'snrfrac', 'airmass', 'seeing'):
+            summary[name] = self._table[name].data[sel].sum(axis=1)
+
+        # Convert the airmass and seeing sums to means.  We use mean rather
+        # than median since it is easier to calculate with a variable nexp.
+        nexp = (mjd > 0).sum(axis=1).astype(int)
+        mask = nexp > 0
+        summary['airmass'][mask] /= nexp[mask]
+        summary['seeing'][mask] /= nexp[mask]
+
+        return summary
+
     def add_exposure(self, tile_id, mjd, exptime, snrfrac, airmass, seeing):
         """Add a single exposure to the progress.
 
