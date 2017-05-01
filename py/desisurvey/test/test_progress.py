@@ -43,7 +43,7 @@ class TestProgress(unittest.TestCase):
         self.assertTrue(np.all((0 <= t['ra']) & (t['ra'] < 360)))
         self.assertTrue(np.all(t['mjd'] == 0))
         self.assertTrue(np.all(t['exptime'] == 0))
-        self.assertTrue(np.all(t['snrfrac'] == 0))
+        self.assertTrue(np.all(t['snr2frac'] == 0))
         self.assertTrue(np.all(t['airmass'] == 0))
         self.assertTrue(np.all(t['seeing'] == 0))
 
@@ -54,8 +54,8 @@ class TestProgress(unittest.TestCase):
         tiles = t['tileid'][:10].data
         for i, tile_id in enumerate(tiles):
             p.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
-            self.assertTrue(p.get_tile(tile_id)['snrfrac'][0] == 0.5)
-            self.assertTrue(np.all(p.get_tile(tile_id)['snrfrac'][1:] == 0.))
+            self.assertTrue(p.get_tile(tile_id)['snr2frac'][0] == 0.5)
+            self.assertTrue(np.all(p.get_tile(tile_id)['snr2frac'][1:] == 0.))
         self.assertEqual(p.completed(include_partial=True), 5.)
         self.assertEqual(p.completed(include_partial=False), 0.)
 
@@ -163,4 +163,4 @@ class TestProgress(unittest.TestCase):
         self.assertTrue(np.all(s['airmass'] == airmass))
         self.assertTrue(np.all(s['seeing'] == seeing))
         self.assertTrue(np.all(s['exptime'] == 2000.))
-        self.assertTrue(np.all(s['snrfrac'] == 0.5))
+        self.assertTrue(np.all(s['snr2frac'] == 0.5))
