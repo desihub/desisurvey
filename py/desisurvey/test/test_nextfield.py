@@ -6,6 +6,7 @@ import numpy as np
 from astropy.table import Table
 
 from desisurvey.ephemerides import Ephemerides
+from desisurvey.progress import Progress
 from desisurvey.afternoonplan import surveyPlan
 from desisurvey.nextobservation import nextFieldSelector
 
@@ -23,7 +24,7 @@ class TestNextField(unittest.TestCase):
         stop = datetime.date(2019, 10, 1)
         cls.ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
         cls.surveyplan = surveyPlan(
-            cls.ephem.start.mjd, cls.ephem.stop.mjd, cls.ephem, tilesubset=None)
+            cls.ephem.start.mjd, cls.ephem.stop.mjd, cls.ephem)
 
     @classmethod
     def tearDownClass(cls):
@@ -34,8 +35,9 @@ class TestNextField(unittest.TestCase):
 
     def test_nfs(self):
         #- Plan night 0; set the first 10 tiles as observed
+        progress = Progress()
         planfile = self.surveyplan.afternoonPlan(
-            self.ephem._table[0], '20190901', tiles_observed=[])
+            self.ephem._table[0], '20190901', progress)
         mjd = 2458728.708333 - 2400000.5  #- Sept 1 2019 @ 10pm in Arizona
         conditions = dict()  #- currently unused and required keys undefined
 
@@ -48,7 +50,8 @@ class TestNextField(unittest.TestCase):
         decobs = list()
         for i in range(10):
             tileinfo, overhead = nextFieldSelector(planfile, mjd, conditions,
-                tilesObserved, slew, prev_ra, prev_dec)
+                progress, slew, prev_ra, prev_dec)
+            progress.add_exposure(tileinfo['tileID'], mjd, 1000., 1., 1.5, 1.1)
             tilesObserved.append(tileinfo['tileID'])
             decobs.append(tileinfo['DEC'])
             prev_ra = tileinfo['RA']
@@ -64,7 +67,8 @@ class TestNextField(unittest.TestCase):
         for i in range(10):
             mjd += 0.3/24
             tileinfo, overhead = nextFieldSelector(planfile, mjd, conditions,
-                tilesObserved, slew, prev_ra, prev_dec)
+                progress, slew, prev_ra, prev_dec)
+            progress.add_exposure(tileinfo['tileID'], mjd, 1000., 1., 1.5, 1.1)
             tilesObserved.append(tileinfo['tileID'])
             prev_ra = tileinfo['RA']
             prev_dec = tileinfo['DEC']

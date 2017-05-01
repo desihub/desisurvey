@@ -22,7 +22,7 @@ MIN_MOON_SEP_BGS = 50.0
 LSTresSec = 600.0 # Also in afternoon planner and night obs.
 
 
-def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
+def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
                       previous_ra, previous_dec):
     """
     Returns the first tile for which the current time falls inside
@@ -33,7 +33,7 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
         obsplan: string, FITS file containing the afternoon plan
         mjd: float, current time
         conditions: current weather conditions (not being used)
-        tilesObserved: list containing the tileID of all completed tiles
+        progress: table of observations made so far
         slew: bool, True if a slew time needs to be taken into account
         previous_ra: float, ra of the previous observed tile (degrees)
         previous_dec: float, dec of the previous observed tile (degrees)
@@ -60,13 +60,6 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
     passnum = tiledata['PASS']
     program = tiledata['PROGRAM']
     obsconds = tiledata['OBSCONDITIONS']
-
-    #- support tilesObserved as list or array or Table
-    try:
-        x = tilesObserved['TILEID']
-        tilesObserved = x
-    except (TypeError, KeyError, IndexError):
-        pass
 
     lst = desisurvey.utils.mjd2lst(mjd)
     dt = astropy.time.Time(mjd, format='mjd')
@@ -100,7 +93,8 @@ def nextFieldSelector(obsplan, mjd, conditions, tilesObserved, slew,
             else:
                 min_moon_sep = MIN_MOON_SEP_BGS
             if (avoidObject(dt, ra[i], dec[i]) and moondist > min_moon_sep):
-                if ( (len(tilesObserved) > 0 and tileID[i] not in tilesObserved) or len(tilesObserved) == 0 ):
+                # Check that this tile still needs more exposure.
+                if progress.get_tile(tileID[i])['status'] < 2:
                     found = True
                     break
 

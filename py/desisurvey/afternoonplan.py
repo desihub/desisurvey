@@ -23,7 +23,7 @@ class surveyPlan:
     Main class for survey planning
     """
 
-    def __init__(self, MJDstart, MJDend, ephem, tilesubset=None, HA_assign=False):
+    def __init__(self, MJDstart, MJDend, ephem, HA_assign=False):
         """Initialises survey by reading in the file desi_tiles.fits
         and populates the class members.
 
@@ -31,9 +31,7 @@ class surveyPlan:
             MJDstart: day of the (re-)start of the survey
             MJDend: day of the end of the survey
             ephem: Ephemerides covering MJDstart - MJDend
-
-        Optional:
-            tilesubset: array of integer tileids to use; ignore others
+            HA_assign: calculate HA assignments if True, otherwise read from a file.
         """
         self.log = desiutil.log.get_logger()
         self.config = desisurvey.config.Configuration()
@@ -42,11 +40,6 @@ class surveyPlan:
         # Read in DESI tile data
         tiles = astropy.table.Table(
             desimodel.io.load_tiles(onlydesi=True, extra=False))
-
-        # Restrict to a subset of tiles if requested.
-        if tilesubset is not None:
-            tiles = tiles[tilesubset]
-
         numtiles = len(tiles)
 
         # Drop un-needed columns.
@@ -134,25 +127,26 @@ class surveyPlan:
         self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
 
-    def afternoonPlan(self, day_stats, date_string, tiles_observed):
+    def afternoonPlan(self, day_stats, date_string, progress):
         """Main decision making method
 
         Args:
             day_stats: row of tabulated ephmerides data for today
             date_string: string of the form YYYYMMDD
-            tiles_observed: table with follwing columns: tileID, status
+            progress: table with following columns: tileid, status
 
         Returns:
             string containg the filename for today's plan; it has the format
             obsplanYYYYMMDD.fits
         """
+        tiles_observed = progress.get_observed(include_partial=True)
         nto = len(tiles_observed)
 
         # Copy the STATUS for previously observed tiles.
         if nto > 0:
-            for status in set(tiles_observed['STATUS']):
-                ii = (tiles_observed['STATUS'] == status)
-                jj = np.in1d(self.tiles['TILEID'], tiles_observed['TILEID'][ii])
+            for status in set(tiles_observed['status']):
+                ii = (tiles_observed['status'] == status)
+                jj = np.in1d(self.tiles['TILEID'], tiles_observed['tileid'][ii])
                 self.tiles['STATUS'][jj] = status
 
         # Find all tiles with STATUS < 2
