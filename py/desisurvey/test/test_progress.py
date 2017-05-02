@@ -152,12 +152,15 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(len(p.get_summary('observed')), 0)
         self.assertEqual(len(p.get_summary('completed')), 0)
         self.assertEqual(len(p.get_summary('all')), p.num_tiles)
-        airmass, seeing = 1.5, 1.1
-        for i, t in enumerate(p._table['tileid'][:100]):
+        self.assertTrue(np.all(p.get_summary('all')['nexp'] == 0))
+        n, airmass, seeing = 100, 1.5, 1.1
+        for i, t in enumerate(p._table['tileid'][:n]):
             p.add_exposure(t, 58000 + i, 1000., 0.25, airmass, seeing)
             p.add_exposure(t, 58000 + i + 0.5, 1000., 0.25, airmass, seeing)
         self.assertEqual(len(p.get_summary('observed')), 100)
         self.assertEqual(len(p.get_summary('completed')), 0)
+        self.assertTrue(np.all(p.get_summary('observed')['nexp'] == 2))
+        self.assertTrue(np.all(p.get_summary('completed')['nexp'] == 0))
         self.assertEqual(len(p.get_summary('all')), p.num_tiles)
         s = p.get_summary('observed')
         self.assertTrue(np.all(s['mjd_max'] > s['mjd_min']))
@@ -165,6 +168,8 @@ class TestProgress(unittest.TestCase):
         self.assertTrue(np.all(s['seeing'] == seeing))
         self.assertTrue(np.all(s['exptime'] == 2000.))
         self.assertTrue(np.all(s['snr2frac'] == 0.5))
+        self.assertTrue(np.all(s['nexp'][:n] == 2))
+        self.assertTrue(np.all(s['nexp'][n:] == 0))
 
     def test_copy_bad(self):
         """Copy with no range selects everything"""

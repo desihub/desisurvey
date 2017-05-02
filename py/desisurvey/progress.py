@@ -242,7 +242,8 @@ class Progress(object):
         ``mjd_min`` and ``mjd_max`` columns, with both equal to zero for
         un-observed tiles. The summary ``exptime`` and ``snr2frac`` columns
         are sums of the individual exposures.  The summary ``airmass``
-        and ``seeing`` columns are means.
+        and ``seeing`` columns are means. A ``nexp`` column counts the number
+        of exposures for each tile.
 
         Can be combined with :meth:`copy_range` to summarize observations during
         a range of dates.
@@ -278,6 +279,9 @@ class Progress(object):
         mask = nexp > 0
         summary['airmass'][mask] /= nexp[mask]
         summary['seeing'][mask] /= nexp[mask]
+
+        # Record the number of exposures in a new column.
+        summary['nexp'] = nexp
 
         return summary
 
