@@ -31,6 +31,8 @@ class TestProgress(unittest.TestCase):
         """Create a new table from scratch"""
         p = Progress()
         self.assertTrue(p.max_exposures == len(p._table['mjd'][0]))
+        self.assertEqual(p.first_mjd, 0.)
+        self.assertEqual(p.last_mjd, 0.)
         self.assertEqual(p.completed(), 0.)
         self.assertEqual(type(p.get_tile(10)), astropy.table.Row)
         with self.assertRaises(ValueError):
@@ -66,6 +68,8 @@ class TestProgress(unittest.TestCase):
         tile_id = t['tileid'][0]
         p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
         p.add_exposure(tile_id, 58849.1, 100., 0.5, 1.5, 1.1)
+        self.assertEqual(p.first_mjd, 58849.0)
+        self.assertEqual(p.last_mjd, 58849.1)
         with self.assertRaises(ValueError):
             p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
 

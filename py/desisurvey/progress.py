@@ -119,12 +119,18 @@ class Progress(object):
 
         # Initialize attributes from table data.
         self._table = table
+        self._first_mjd = np.min(table['mjd'])
         self._last_mjd = np.max(table['mjd'])
 
     @property
     def num_tiles(self):
         """Number of tiles in DESI footprint"""
         return len(self._table)
+
+    @property
+    def first_mjd(self):
+        """MJD of most recent exposure or 0 if no exposures have been added."""
+        return self._first_mjd
 
     @property
     def last_mjd(self):
@@ -346,6 +352,10 @@ class Progress(object):
         if mjd <= self._last_mjd:
             raise ValueError('Exposure MJD <= last MJD.')
         self._last_mjd = mjd
+
+        # Remember the first exposure's timestamp.
+        if self._first_mjd == 0:
+            self._first_mjd = mjd
 
         # Save this exposure.
         row['mjd'][num_exp] = mjd
