@@ -20,7 +20,7 @@ _version = 1
 class Progress(object):
     """Initialize a progress tracking object.
 
-    The tracker can either be loaded from a file or created from scratch.
+    Progress can either be restored from a file or created from scratch.
 
     The progress table is designed to minmize duplication of static tile data
     that is already tabulated in the footprint definition table, except for
@@ -31,21 +31,22 @@ class Progress(object):
 
     Parameters
     ----------
-    filename : str or None
-        Read an existing progress record from the specified file name. A
-        relative path name refers to the :meth:`configuration output path
+    restore : str or astropy.table.Table or None
+        Read an existing progress record from the specified file name or
+        an exsiting table. A relative path name refers to the
+        :meth:`configuration output path
         <desisurvey.config.Configuration.get_path>`. Creates a new progress
         record from sratch when None.
     max_exposures : int
         Maximum number of exposures of a single tile that a newly created
-        table will allocate space for.  Ignored when a previous file name
-        is being read.
+        table will allocate space for.  Ignored when restoring a previous
+        progress record.
     """
-    def __init__(self, filename=None, max_exposures=16):
+    def __init__(self, restore=None, max_exposures=16):
 
         self.log = desiutil.log.get_logger()
 
-        if filename is None:
+        if restore is None:
             # Load the list of tiles to observe.
             tiles = astropy.table.Table(
                 desimodel.io.load_tiles(onlydesi=True, extra=False))
@@ -99,15 +100,22 @@ class Progress(object):
             table['seeing'] = 0.
 
         else:
-            config = desisurvey.config.Configuration()
-            filename = config.get_path(filename)
-            table = astropy.table.Table.read(filename)
-            self.log.info('Loaded progress from {0}.'.format(filename))
+            if isinstance(restore, astropy.table.Table):
+                table = restore
+            else:
+                config = desisurvey.config.Configuration()
+                filename = config.get_path(restore)
+                table = astropy.table.Table.read(filename)
+                self.log.info('Loaded progress from {0}.'.format(filename))
             # Check that this table has the current version.
             if table.meta['VERSION'] != _version:
                 raise RuntimeError(
                     'Progress table has incompatible version {0}.'
                     .format(table.meta['VERSION']))
+            # We could check that the status column matches the exposure
+            # data here, and that exposure timestamps are ordered, etc,
+            # but this isn't necessary unless the table has been modified
+            # outside of this class.
 
         # Initialize attributes from table data.
         self._table = table
@@ -210,6 +218,9 @@ class Progress(object):
         The returned table is a copy of our internal data, not a view, so
         any changes to its contents are decoupled.
 
+        Can be combined with :meth:`get_range` to select observations within a
+        range of dates.
+
         Parameters
         ----------
         include_partial : bool
@@ -232,6 +243,9 @@ class Progress(object):
         un-observed tiles. The summary ``exptime`` and ``snr2frac`` columns
         are sums of the individual exposures.  The summary ``airmass``
         and ``seeing`` columns are means.
+
+        Can be combined with :meth:`get_range` to summarize observations during
+        a range of dates.
 
         Parameters
         ----------
@@ -266,6 +280,45 @@ class Progress(object):
         summary['seeing'][mask] /= nexp[mask]
 
         return summary
+
+    def copy_range(self, mjd_min=None, mjd_max=None):
+        """Return a copy of progress during a date range.
+
+        Parameters
+        ----------
+        mjd_min : float or None
+            Only include exposures with mjd >= mjd_min.
+        mjd_max : float
+            Only include exposures with mjd < mjd_max.
+
+        Returns
+        -------
+        Progress
+            New object with any exposures outside the specified MJD range
+            zeroed out and ``status`` values updated accordingly.
+        """
+        if mjd_min and mjd_max and mjd_min >= mjd_max:
+            raise ValueError('Expected mjd_min < mjd_max.')
+        # Identify which exposures to drop.
+        mjd = self._table['mjd'].data
+        drop = (mjd == 0)
+        if mjd_min is not None:
+            drop |= (mjd < mjd_min)
+        if mjd_max is not None:
+            drop |= (mjd >= mjd_max)
+        # Copy our table.
+        table = self._table.copy()
+        # Zero dropped exposures.
+        for name in ('mjd', 'exptime', 'snr2frac', 'airmass', 'seeing'):
+            table[name][drop] = 0.
+        # Recompute the status column.
+        snr2sum = table['snr2frac'].data.sum(axis=1)
+        assert np.all(snr2sum >= 0)
+        table['status'] = 1
+        table['status'][snr2sum == 0] = 0
+        table['status'][snr2sum >= 1] = 2
+        # Return a new progress object with this table.
+        return Progress(restore=table)
 
     def add_exposure(self, tile_id, mjd, exptime, snr2frac, airmass, seeing):
         """Add a single exposure to the progress.

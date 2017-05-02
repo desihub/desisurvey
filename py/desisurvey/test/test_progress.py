@@ -80,6 +80,16 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p2.completed(include_partial=True), 5.)
         self.assertEqual(p2.completed(include_partial=False), 0.)
 
+    def test_table_ctor(self):
+        """Construct progress from a table"""
+        p1 = Progress()
+        tiles = p1._table['tileid'][:10].data
+        for i, tile_id in enumerate(tiles):
+            p1.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
+        p2 = Progress(p1._table)
+        self.assertEqual(p2.completed(include_partial=True), 5.)
+        self.assertEqual(p2.completed(include_partial=False), 0.)
+
     def test_version_check(self):
         """Cannot use progress with the wrong version"""
         p = Progress()
@@ -164,3 +174,51 @@ class TestProgress(unittest.TestCase):
         self.assertTrue(np.all(s['seeing'] == seeing))
         self.assertTrue(np.all(s['exptime'] == 2000.))
         self.assertTrue(np.all(s['snr2frac'] == 0.5))
+
+    def test_copy_bad(self):
+        """Copy with no range selects everything"""
+        p1 = Progress()
+        with self.assertRaises(ValueError):
+            p1.copy_range(58849, 58849 - 1)
+
+    def test_copy_all(self):
+        """Copy with no range selects everything"""
+        p1 = Progress()
+        tiles = p1._table['tileid'][:10].data
+        for i, tile_id in enumerate(tiles):
+            p1.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
+        p2 = p1.copy_range()
+        self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
+
+    def test_copy_some(self):
+        """Copy with range selects subset"""
+        p1 = Progress()
+        n = 10
+        mjds = 58849. + np.arange(n)
+        tiles = p1._table['tileid'][:n].data
+        for mjd, tile_id in zip(mjds, tiles):
+            p1.add_exposure(tile_id, mjd, 100., 0.5, 1.5, 1.1)
+        for mjd, tile_id in zip(mjds, tiles):
+            p1.add_exposure(tile_id, mjd + 100, 100., 0.5, 1.5, 1.1)
+        self.assertEqual(p1.completed(), n)
+        # Selects everything.
+        p2 = p1.copy_range(mjds[0], mjds[0] + 200)
+        self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
+        p2 = p1.copy_range(mjds[0], None)
+        self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
+        p2 = p1.copy_range(None, mjds[0] + 200)
+        self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
+        # Selects half of the exposures.
+        p2 = p1.copy_range(None, mjds[0] + 100)
+        self.assertEqual(p2.completed(), 0.5 * n)
+        p2 = p1.copy_range(mjds[0], mjds[0] + 100)
+        self.assertEqual(p2.completed(), 0.5 * n)
+        p2 = p1.copy_range(mjds[0] + 100, mjds[0] + 200)
+        self.assertEqual(p2.completed(), 0.5 * n)
+        p2 = p1.copy_range(mjds[0] + 100, None)
+        self.assertEqual(p2.completed(), 0.5 * n)
+        # Selects none of the exposures.
+        p2 = p1.copy_range(None, mjds[0])
+        self.assertEqual(p2.completed(), 0.)
+        p2 = p1.copy_range(mjds[0] + 200, None)
+        self.assertEqual(p2.completed(), 0.)
