@@ -108,19 +108,6 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p.completed(include_partial=True), 1.)
         self.assertEqual(p.completed(include_partial=False), 1.)
 
-    def test_completed_history(self):
-        """Optional before_mjd gives completion history"""
-        p = Progress()
-        n = p.max_exposures
-        tiles = p._table['tileid'][:n]
-        mjds = 58849. + np.arange(n)
-        for tile, mjd in zip(tiles, mjds):
-            p.add_exposure(tile, mjd, 100., 0.2, 1.5, 1.1)
-            p.add_exposure(tile, mjd + 0.1, 100., 0.3, 1.5, 1.1)
-        self.assertEqual(p.completed(), 0.5 * n)
-        for i, mjd in enumerate(mjds):
-            self.assertEqual(p.completed(before_mjd=mjd), 0.5 * i)
-
     def test_max_exposures(self):
         """Cannot exceed max exposures for a single tile"""
         p = Progress()

@@ -136,18 +136,18 @@ class Progress(object):
         """Maximum allowed number of exposures of a single tile."""
         return len(self._table[0]['mjd'])
 
-    def completed(self, before_mjd=None, include_partial=True):
+    def completed(self, include_partial=True):
         """Number of tiles completed.
 
         Completion is based on the sum of ``snr2frac`` values for all exposures
         of each tiles.  A completed tile (with ``status`` of 2) counts as one
         towards the completion value, even if its ``snr2frac`` exceeds one.
 
+        Can be combined with :meth:`copy_range` to reconstruct the number of
+        completed observations over an arbitrary date range.
+
         Parameters
         ----------
-        before_mjd : float
-            Only include exposures before the specified MJD cutoff, or use all
-            exposures when None.
         include_partial : bool
             Include partially completed tiles according to their sum of snfrac
             values.
@@ -159,13 +159,7 @@ class Progress(object):
             a float) when ``include_partial`` is False, and will generally
             be non-integer otherwise.
         """
-        snr2frac = self._table['snr2frac'].data
-        if before_mjd is not None:
-            mjd = self._table['mjd'].data
-            snr2frac = snr2frac.copy()
-            # Zero any SNR**2 after the cutoff.
-            snr2frac[self._table['mjd'] >= before_mjd] = 0.
-        snr2sum = snr2frac.sum(axis=1)
+        snr2sum = self._table['snr2frac'].data.sum(axis=1)
         # Count fully completed tiles as 1.
         completed = snr2sum >= 1.
         n = float(np.count_nonzero(completed))
@@ -218,7 +212,7 @@ class Progress(object):
         The returned table is a copy of our internal data, not a view, so
         any changes to its contents are decoupled.
 
-        Can be combined with :meth:`get_range` to select observations within a
+        Can be combined with :meth:`copy_range` to select observations within a
         range of dates.
 
         Parameters
@@ -244,7 +238,7 @@ class Progress(object):
         are sums of the individual exposures.  The summary ``airmass``
         and ``seeing`` columns are means.
 
-        Can be combined with :meth:`get_range` to summarize observations during
+        Can be combined with :meth:`copy_range` to summarize observations during
         a range of dates.
 
         Parameters
