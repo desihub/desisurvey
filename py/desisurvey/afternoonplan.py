@@ -139,7 +139,7 @@ class surveyPlan:
             string containg the filename for today's plan; it has the format
             obsplanYYYYMMDD.fits
         """
-        tiles_observed = progress.get_observed(include_partial=True)
+        tiles_observed = progress.get_summary('observed')
         nto = len(tiles_observed)
 
         # Copy the STATUS for previously observed tiles.
