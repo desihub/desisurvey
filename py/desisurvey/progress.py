@@ -253,7 +253,7 @@ class Progress(object):
         sel = self._table['status'] >= (1 if include_partial else 2)
         return self._table[sel]
 
-    def get_summary(self, include='all'):
+    def get_summary(self, include='observed'):
         """Get a per-tile summary of progress so far.
 
         Returns a new table so any modifications are decoupled from our
@@ -284,13 +284,22 @@ class Progress(object):
         summary = self._table[sel][['tileid', 'pass', 'ra', 'dec', 'status']]
 
         # Summarize exposure start times.
-        mjd = self._table['mjd'].data[sel]
-        summary['mjd_min'] = mjd[:, 0]
-        summary['mjd_max'] = mjd.max(axis=1)
+        col = self._table['mjd']
+        mjd = col.data[sel]
+        print(col.unit, col.format, col.description)
+        summary['mjd_min'] = astropy.table.Column(
+            mjd[:, 0], unit=col.unit, format=col.format,
+            description='First exposure start MJD')
+        summary['mjd_max'] = astropy.table.Column(
+            mjd.max(axis=1), unit=col.unit, format=col.format,
+            description='Last exposure start MJD')
 
         # Sum the remaining per-exposure columns.
         for name in ('exptime', 'snr2frac', 'airmass', 'seeing'):
-            summary[name] = self._table[name].data[sel].sum(axis=1)
+            col = self._table[name]
+            summary[name] = astropy.table.Column(
+                col.data[sel].sum(axis=1), unit=col.unit, format=col.format,
+                description=col.description)
 
         # Convert the airmass and seeing sums to means.  We use mean rather
         # than median since it is easier to calculate with a variable nexp.

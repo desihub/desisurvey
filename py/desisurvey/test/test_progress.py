@@ -146,29 +146,6 @@ class TestProgress(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             p.add_exposure(tile_id, mjds[-1], 100., 0.2, 1.5, 1.1)
 
-    def test_get_observed(self):
-        """Get list of observed tiles"""
-        p = Progress()
-        tiles = p._table['tileid'][:10].data
-        for i, tile_id in enumerate(tiles):
-            p.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
-        self.assertTrue(
-            np.all(p.get_observed(include_partial=True)['tileid'] == tiles))
-        self.assertEqual(
-            len(p.get_observed(include_partial=False)['tileid']), 0)
-
-    def test_get_observed_copy(self):
-        """Cannot modify internal table with get_observed() return value"""
-        p = Progress()
-        tiles = p._table['tileid'][:10].data
-        for i, tile_id in enumerate(tiles):
-            p.add_exposure(tile_id, 58849. + i, 100., 1.5, 1.5, 1.1)
-        t = p.get_observed()
-        t['tileid'][:10] = -1
-        for i, tile_id in enumerate(tiles):
-            self.assertEqual(t['tileid'][i], -1)
-            self.assertEqual(p._table['tileid'][i], tile_id)
-
     def test_summary(self):
         """Summary contains one row per tile"""
         p = desisurvey.progress.Progress()
