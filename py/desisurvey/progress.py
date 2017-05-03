@@ -142,7 +142,7 @@ class Progress(object):
         """Maximum allowed number of exposures of a single tile."""
         return len(self._table[0]['mjd'])
 
-    def completed(self, include_partial=True):
+    def completed(self, include_partial=True, only_passes=None):
         """Number of tiles completed.
 
         Completion is based on the sum of ``snr2frac`` values for all exposures
@@ -157,6 +157,9 @@ class Progress(object):
         include_partial : bool
             Include partially completed tiles according to their sum of snfrac
             values.
+        only_passes : tuple or int or None
+            Only include tiles in the specified pass or passes.  All passes
+            are included when None.
 
         Returns
         -------
@@ -165,7 +168,14 @@ class Progress(object):
             a float) when ``include_partial`` is False, and will generally
             be non-integer otherwise.
         """
-        snr2sum = self._table['snr2frac'].data.sum(axis=1)
+        # Restrict to the specified pass(es) if requested.
+        if only_passes:
+            sel = np.in1d(self._table['pass'].data, tuple(only_passes))
+            table = self._table[sel]
+        else:
+            table = self._table
+        # Calculate the total SNR**2 for each tile.
+        snr2sum = table['snr2frac'].data.sum(axis=1)
         # Count fully completed tiles as 1.
         completed = snr2sum >= 1.
         n = float(np.count_nonzero(completed))

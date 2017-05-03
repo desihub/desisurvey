@@ -112,6 +112,24 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p.completed(include_partial=True), 1.)
         self.assertEqual(p.completed(include_partial=False), 1.)
 
+    def test_completed_only_passes(self):
+        """Test only_passes option to completed()"""
+        p = Progress()
+        self.assertEqual(p.completed(only_passes=range(9)), 0.)
+        self.assertEqual(p.completed(only_passes=(7, 1)), 0.)
+        pass1 = np.where(p._table['pass'] == 1)[0]
+        pass7 = np.where(p._table['pass'] == 7)[0]
+        n, mjd = 10, 58849.
+        tiles = p._table['tileid'][list(pass1[:n]) + list(pass7[:n])]
+        for tile_id in tiles:
+            p.add_exposure(tile_id, mjd, 100., 1.5, 1.5, 1.1)
+            mjd += 0.1
+        self.assertEqual(p.completed(only_passes=(7, 1)), 2 * n)
+        self.assertEqual(p.completed(only_passes=(7,)), n)
+        self.assertEqual(p.completed(only_passes=(1,)), n)
+        self.assertEqual(p.completed(only_passes=(1, 2, 3)), n)
+        self.assertEqual(p.completed(only_passes=(2, 3)), 0)
+
     def test_max_exposures(self):
         """Cannot exceed max exposures for a single tile"""
         p = Progress()
