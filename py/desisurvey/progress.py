@@ -169,8 +169,12 @@ class Progress(object):
             be non-integer otherwise.
         """
         # Restrict to the specified pass(es) if requested.
-        if only_passes:
-            sel = np.in1d(self._table['pass'].data, tuple(only_passes))
+        if only_passes is not None:
+            try:
+                only_passes = tuple(only_passes)
+            except TypeError:
+                only_passes = only_passes,
+            sel = np.in1d(self._table['pass'].data, only_passes)
             table = self._table[sel]
         else:
             table = self._table

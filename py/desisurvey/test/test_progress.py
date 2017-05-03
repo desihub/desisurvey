@@ -117,6 +117,7 @@ class TestProgress(unittest.TestCase):
         p = Progress()
         self.assertEqual(p.completed(only_passes=range(9)), 0.)
         self.assertEqual(p.completed(only_passes=(7, 1)), 0.)
+        self.assertEqual(p.completed(only_passes=1), 0.)
         pass1 = np.where(p._table['pass'] == 1)[0]
         pass7 = np.where(p._table['pass'] == 7)[0]
         n, mjd = 10, 58849.
@@ -125,7 +126,7 @@ class TestProgress(unittest.TestCase):
             p.add_exposure(tile_id, mjd, 100., 1.5, 1.5, 1.1)
             mjd += 0.1
         self.assertEqual(p.completed(only_passes=(7, 1)), 2 * n)
-        self.assertEqual(p.completed(only_passes=(7,)), n)
+        self.assertEqual(p.completed(only_passes=7), n)
         self.assertEqual(p.completed(only_passes=(1,)), n)
         self.assertEqual(p.completed(only_passes=(1, 2, 3)), n)
         self.assertEqual(p.completed(only_passes=(2, 3)), 0)
