@@ -119,8 +119,13 @@ class Progress(object):
 
         # Initialize attributes from table data.
         self._table = table
-        self._first_mjd = np.min(table['mjd'])
-        self._last_mjd = np.max(table['mjd'])
+        mjd = table['mjd'].data
+        observed = mjd > 0
+        if np.any(observed):
+            self._first_mjd = np.min(mjd[observed])
+            self._last_mjd = np.max(mjd[observed])
+        else:
+            self._first_mjd = self._last_mjd = 0.
 
     @property
     def num_tiles(self):

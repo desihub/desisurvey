@@ -60,6 +60,8 @@ class TestProgress(unittest.TestCase):
             self.assertTrue(np.all(p.get_tile(tile_id)['snr2frac'][1:] == 0.))
         self.assertEqual(p.completed(include_partial=True), 5.)
         self.assertEqual(p.completed(include_partial=False), 0.)
+        self.assertTrue(p.first_mjd > 0)
+        self.assertTrue(p.last_mjd > p.first_mjd)
 
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""
@@ -83,6 +85,8 @@ class TestProgress(unittest.TestCase):
         p2 = Progress('p1.fits')
         self.assertEqual(p2.completed(include_partial=True), 5.)
         self.assertEqual(p2.completed(include_partial=False), 0.)
+        self.assertTrue(p2.first_mjd > 0)
+        self.assertTrue(p2.last_mjd > p2.first_mjd)
 
     def test_table_ctor(self):
         """Construct progress from a table"""
