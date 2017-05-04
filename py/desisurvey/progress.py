@@ -196,7 +196,9 @@ class Progress(object):
     def save(self, filename, overwrite=True):
         """Save the current progress to a file.
 
-        The saved file can be restored from disk using our constructor.
+        The saved file can be restored from disk using our constructor,
+        although column descriptions will be lost since they are not
+        propagated when writing a table to a FITS file.
 
         Parameters
         ----------
@@ -231,28 +233,6 @@ class Progress(object):
             raise ValueError('Invalid tile_id {0}.'.format(tile_id))
         return self._table[row_sel[0]]
 
-    def get_observed(self, include_partial=True):
-        """Return a table of previously observed tiles.
-
-        The returned table is a copy of our internal data, not a view, so
-        any changes to its contents are decoupled.
-
-        Can be combined with :meth:`copy_range` to select observations within a
-        range of dates.
-
-        Parameters
-        ----------
-        include_partial : bool
-            Include partially completed tiles (status=1) in the returned table.
-
-        Returns
-        -------
-        table view
-            Copy of our internal table with only observed rows included.
-        """
-        sel = self._table['status'] >= (1 if include_partial else 2)
-        return self._table[sel]
-
     def get_summary(self, include='observed'):
         """Get a per-tile summary of progress so far.
 
@@ -286,7 +266,6 @@ class Progress(object):
         # Summarize exposure start times.
         col = self._table['mjd']
         mjd = col.data[sel]
-        print(col.unit, col.format, col.description)
         summary['mjd_min'] = astropy.table.Column(
             mjd[:, 0], unit=col.unit, format=col.format,
             description='First exposure start MJD')
@@ -371,6 +350,10 @@ class Progress(object):
         seeing : float
             Estimated FWHM seeing of this exposure in arcseconds.
         """
+        self.log.info(
+            'Adding {0:.1f}s exposure of {1} at {2} (MJD {3:.5f}).'
+            .format(exptime, tile_id,
+                    astropy.time.Time(mjd, format='mjd').datetime, mjd))
         row = self.get_tile(tile_id)
 
         # Check that we have not reached the maximum allowed exposures.
@@ -382,7 +365,8 @@ class Progress(object):
 
         # Check for increasing timestamps.
         if mjd <= self._last_mjd:
-            raise ValueError('Exposure MJD <= last MJD.')
+            raise ValueError('Exposure MJD {0:.5f} <= last MJD {1:.5f}.'
+                             .format(mjd, self._last_mjd))
         self._last_mjd = mjd
 
         # Remember the first exposure's timestamp.
