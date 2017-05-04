@@ -127,12 +127,11 @@ class surveyPlan:
         self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
 
-    def afternoonPlan(self, day_stats, date_string, progress):
+    def afternoonPlan(self, day_stats, progress):
         """Main decision making method
 
         Args:
             day_stats: row of tabulated ephmerides data for today
-            date_string: string of the form YYYYMMDD
             progress: table with following columns: tileid, status
 
         Returns:
@@ -248,14 +247,15 @@ class surveyPlan:
             finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
             planList0.extend(scheduled)
 
-        self.log.info('Afternoon plan contains {0} tiles.'
-                      .format(len(planList0)))
+        date = desisurvey.utils.get_date(day_stats['noon'] + 0.5)
+        self.log.info('Afternoon plan for {0} contains {1} tiles.'
+                      .format(date, len(planList0)))
+
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['moon_illum_frac']
-        filename = self.config.get_path('obsplan{0}.fits'.format(date_string))
+        filename = self.config.get_path(
+            'obsplan{0}.fits'.format(date.strftime('%Y%m%d')))
         table.write(filename, overwrite=True)
-
-        tilesTODO = len(planList0)
 
         return filename
 

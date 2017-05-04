@@ -36,8 +36,7 @@ class TestNextField(unittest.TestCase):
     def test_nfs(self):
         #- Plan night 0; set the first 10 tiles as observed
         progress = Progress()
-        planfile = self.surveyplan.afternoonPlan(
-            self.ephem._table[0], '20190901', progress)
+        planfile = self.surveyplan.afternoonPlan(self.ephem._table[0], progress)
         mjd = 2458728.708333 - 2400000.5  #- Sept 1 2019 @ 10pm in Arizona
         conditions = dict()  #- currently unused and required keys undefined
 

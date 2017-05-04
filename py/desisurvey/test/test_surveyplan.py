@@ -47,14 +47,14 @@ class TestSurveyPlan(unittest.TestCase):
         #- Plan night 0; set the first 10 tiles as observed
         progress = Progress()
         day0 = ephem.get_row(0)
-        planfile0 = sp.afternoonPlan(day0, '20190901', progress)
+        planfile0 = sp.afternoonPlan(day0, progress)
         tiles = progress._table['tileid'][:10]
         for i, tile_id in enumerate(tiles):
             progress.add_exposure(tile_id, 58849. + i, 1000., 1., 1.5, 1.1)
 
         #- Plan night 1
         day1 = ephem.get_row(1)
-        planfile1 = sp.afternoonPlan(day1, '20190902', progress)
+        planfile1 = sp.afternoonPlan(day1, progress)
         plan1 = Table.read(planfile1)
 
         #- Tiles observed on night 0 shouldn't appear in night 1 plan
