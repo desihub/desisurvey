@@ -164,8 +164,9 @@ def plot_observed(progress, include='observed', start_date=None, stop_date=None,
     if print_summary:
         print('Observing summary for {0}:'.format(date_label))
         for pass_num in range(8):
-            print('Completed {0:5.1f} tiles for pass {1}.'
-                  .format(progress.completed(only_passes=pass_num), pass_num))
+            stats = progress.completed(only_passes=pass_num, as_tuple=True)
+            print('Completed {0:6.1f} / {1:4d} ({2:5.1f}%) tiles for pass {p}.'
+                  .format(*stats, p=pass_num))
 
     label = '{0} ({1})'.format(what, date_label)
     return desisurvey.plots.plot_sky_passes(

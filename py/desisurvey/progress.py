@@ -147,7 +147,7 @@ class Progress(object):
         """Maximum allowed number of exposures of a single tile."""
         return len(self._table[0]['mjd'])
 
-    def completed(self, include_partial=True, only_passes=None):
+    def completed(self, include_partial=True, only_passes=None, as_tuple=False):
         """Number of tiles completed.
 
         Completion is based on the sum of ``snr2frac`` values for all exposures
@@ -165,13 +165,17 @@ class Progress(object):
         only_passes : tuple or int or None
             Only include tiles in the specified pass or passes.  All passes
             are included when None.
+        as_tuple : bool
+            Return (num_complete, num_total, percent_complete) as a tuple
+            instead of just num_complete.
 
         Returns
         -------
-        float
-            Number of tiles completed. Will always be an integer (returned as
-            a float) when ``include_partial`` is False, and will generally
-            be non-integer otherwise.
+        float or tuple
+            Either num_complete or (num_complete, num_total, percent_complete)
+            depending on ``as_tuple``.  The number of tiles completed will
+            always be an integer (returned as a float) when ``include_partial``
+            is False, and will generally be non-integer otherwise.
         """
         # Restrict to the specified pass(es) if requested.
         if only_passes is not None:
@@ -187,11 +191,16 @@ class Progress(object):
         snr2sum = table['snr2frac'].data.sum(axis=1)
         # Count fully completed tiles as 1.
         completed = snr2sum >= 1.
-        n = float(np.count_nonzero(completed))
+        num_complete = float(np.count_nonzero(completed))
         if include_partial:
             # Add partial SNR**2 sums.
-            n += snr2sum[~completed].sum()
-        return n
+            num_complete += snr2sum[~completed].sum()
+        if as_tuple:
+            num_total = len(table)
+            percent_complete = 100. * num_complete / num_total
+            return num_complete, num_total, percent_complete
+        else:
+            return num_complete
 
     def save(self, filename, overwrite=True):
         """Save the current progress to a file.
