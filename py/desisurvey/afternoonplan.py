@@ -139,7 +139,9 @@ class surveyPlan:
             string containg the filename for today's plan; it has the format
             obsplanYYYYMMDD.fits
         """
-        tiles_observed = progress.get_summary('observed')
+        # Should change 'completed' to 'observed' when this is able to
+        # handle reobservations of incomplete tiles.
+        tiles_observed = progress.get_summary('completed')
         nto = len(tiles_observed)
 
         # Copy the STATUS for previously observed tiles.
