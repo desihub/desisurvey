@@ -350,7 +350,7 @@ class Progress(object):
         seeing : float
             Estimated FWHM seeing of this exposure in arcseconds.
         """
-        self.log.info(
+        self.log.debug(
             'Adding {0:.1f}s exposure of {1} at {2} (MJD {3:.5f}).'
             .format(exptime, tile_id,
                     astropy.time.Time(mjd, format='mjd').datetime, mjd))
