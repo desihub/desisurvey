@@ -150,8 +150,10 @@ class surveyPlan:
                 jj = np.in1d(self.tiles['TILEID'], tiles_observed['tileid'][ii])
                 self.tiles['STATUS'][jj] = status
 
-        # Find all tiles with STATUS < 2
-        finalTileList = self.tiles[self.tiles['STATUS'] < 2]
+        # Find all tiles that have never been observed. We eventually want
+        # to also schedule re-observations of partial tiles, but this is not
+        # working yet.
+        finalTileList = self.tiles[self.tiles['STATUS'] < 1]
 
         # Assign tiles to LST bins
         planList0 = []
