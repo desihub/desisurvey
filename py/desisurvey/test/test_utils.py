@@ -75,7 +75,7 @@ class TestUtils(unittest.TestCase):
         t = astropy.time.Time('2020-01-01')
         with self.assertRaises(TypeError):
             utils.get_observer(t, alt=1, az=1)
-        with self.assertRaises(TypeError):
+        with self.assertRaises(u.UnitsError):
             utils.get_observer(t, alt=1 * u.m, az=1 * u.m)
 
     def test_get_observer_time(self):
