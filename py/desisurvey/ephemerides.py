@@ -502,7 +502,7 @@ def get_grid(step_size = 1 * u.min,
         Numpy array of dimensionless offsets relative to local midnight
         in units of days.
     """
-    num_points = int(round(((night_stop - night_start) / step_size).to(1)))
+    num_points = int(round(((night_stop - night_start) / step_size).to(1).value))
     night_stop = night_start + num_points * step_size
     return (night_start.to(u.day).value +
             step_size.to(u.day).value * np.arange(num_points + 1))
