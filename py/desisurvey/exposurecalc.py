@@ -216,31 +216,23 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
 
     Returns
     -------
-    float
-        Estimated exposure time in seconds.
+    astropy.unit.Quantity
+        Estimated exposure time(s) with time units.
     """
-    exp_ref_dark = 1000.0   # Reference exposure time in seconds
-    exp_ref_bright = 300.0  # Idem but for bright time programme
-    exp_ref_grey = exp_ref_dark
+    # Lookup the nominal exposure time for this program.
+    config = desisurvey.config.Configuration()
+    nominal_time = getattr(config.nominal_exposure_time, program)()
 
-    if program == "DARK":
-        exp_ref = exp_ref_dark
-    elif program == "BRIGHT":
-        exp_ref = exp_ref_bright
-    elif program == "GRAY":
-        exp_ref = exp_ref_grey
-    else:
-        exp_ref = 0.0 # Replace with throwing an exception
-
+    # Calculate actual / nominal factors.
     f_seeing = seeing_exposure_factor(seeing)
     f_transparency = transparency_exposure_factor(transparency)
     f_dust = dust_exposure_factor(EBV)
     f_airmass = airmass_exposure_factor(airmass)
     f_moon = moon_exposure_factor(moon_frac, moon_sep, moon_alt)
 
-    f = f_seeing * f_transparency * f_dust * f_airmass * f_moon
-    if f >= 0.0:
-        value = exp_ref * f
-    else:
-        value = exp_ref
-    return value
+    # Calculate the exposure time required at the specified condtions.
+    actual_time = nominal_time * (
+        f_seeing * f_transparency * f_dust * f_airmass * f_moon)
+    assert actual_time > 0 * u.s
+
+    return actual_time

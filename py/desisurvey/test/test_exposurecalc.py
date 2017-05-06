@@ -2,6 +2,8 @@ import unittest
 
 import numpy as np
 
+import astropy.units as u
+
 from desisurvey.exposurecalc import exposure_time, moon_exposure_factor
 
 
@@ -21,8 +23,8 @@ class TestExpCalc(unittest.TestCase):
         moon_alt = 10
         for program in ['DARK', 'GRAY', 'BRIGHT']:
             t = exposure_time(program, seeing, transparency, airmass, EBV,
-                                 moon_frac, moon_sep, moon_alt)
-            self.assertGreater(t, 0.0)
+                              moon_frac, moon_sep, moon_alt)
+            self.assertGreater(t, 0.0 * u.s)
 
         program = 'DARK'
 

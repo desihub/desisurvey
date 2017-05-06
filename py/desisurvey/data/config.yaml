@@ -90,6 +90,7 @@ nominal_exposure_time:
     GRAY: 1000 s
     BRIGHT: 300 s
 nominal_conditions:
+    # Moon below the horizon
     seeing: 1.1 arcsec
     airmass: 1.0
     transparency: 1.0
