@@ -13,66 +13,100 @@ import desiutil.log
 import desisurvey.config
 
 
-def expTimeEstimator(seeing, transparency, amass, program, ebmv,
-                     moonFrac, moonDist, moonAlt):
-    """Calculate the nominal exposure time for specified observing conditions.
+def seeing_exposure_factor(seeing):
+    """Scaling of exposure time with seeing, relative to nominal seeing.
 
-    Args:
-        seeing: float, FWHM seeing in arcseconds.
-        transparency: float, 0-1.
-        amass: float, air mass
-        programm: string, 'DARK', 'BRIGHT' or 'GRAY'
-        ebmv: float, E(B-V)
-        moonFrac: float, Moon illumination fraction, between 0 (new) and 1 (full).
-        moonDist: float, separation angle between field center and moon in degrees.
-        moonAlt: float, moon altitude angle in degrees.
+    The model is based on SDSS imaging data.
 
-    Returns:
-        float, estimated exposure time
+    Parameters
+    ----------
+    seeing : float or array
+        FWHM seeing value(s) in arcseconds.
+
+    Returns
+    -------
+    float
+        Multiplicative factor(s) that exposure time should be adjusted based
+        on the actual vs nominal seeing.
     """
+    seeing = np.asarray(seeing)
+    a, b, c = 4.6, -1.55, 1.15
+    # Could drop the denominator since it cancels in the ratio.
+    denom = (a - 0.25 * b * b / c)
+    f_seeing =  (a + b * seeing + c * seeing ** 2) / denom
+    config = desisurvey.config.Configuration()
+    nominal = config.nominal_conditions.seeing().to(u.arcsec).value
+    f_nominal = (a + b * nominal + c * nominal ** 2) / denom
+    return f_seeing / f_nominal
 
-    seeing_ref = 1.1 # Seeing value to which actual seeing is normalised
-    exp_ref_dark = 1000.0   # Reference exposure time in seconds
-    exp_ref_bright = 300.0  # Idem but for bright time programme
-    exp_ref_grey = exp_ref_dark
 
-    if program == "DARK":
-        exp_ref = exp_ref_dark
-    elif program == "BRIGHT":
-        exp_ref = exp_ref_bright
-    elif program == "GRAY":
-        exp_ref = exp_ref_grey
-    else:
-        exp_ref = 0.0 # Replace with throwing an exception
-    a = 4.6
-    b = -1.55
-    c = 1.15
-    f_seeing =  (a+b*seeing+c*seeing*seeing) / (a-0.25*b*b/c)
-    # Rescale value
-    f11 = (a + b*1.1 + c*1.21)/(a-0.25*b*b/c)
-    f_seeing /= f11
-    if transparency > 0.0:
-        f_transparency = 1.0 / transparency
-    else:
-        f_transparency = 1.0e9
+def transparency_exposure_factor(transparency):
+    """Scaling of exposure time with transparency relative to nominal.
 
-    #Ag=3.303*ebv[i]
-    #Ai=1.698*ebv[i]
-    #i_increase[i]=(10^(Ai/2.5))^2
-    #g_increase[i]=(10^(Ag/2.5))^2
+    The model is that exposure time scales with 1 / transparency.
 
-    Ag = 3.303*ebmv # Use g-band
-    f_ebmv = np.power( 10.0, (2.0*Ag/2.5) )
-    f_am = np.power(amass, 1.25)
+    Parameters
+    ----------
+    transparency : float or array
+        Dimensionless transparency value(s) in the range [0-1].
 
-    f_moon = moonExposureTimeFactor(moonFrac, moonDist, moonAlt)
-    #print (f_am, f_seeing, f_transparency, f_ebmv, f_moon)
-    f = f_am * f_seeing * f_transparency * f_ebmv * f_moon
-    if f >= 0.0:
-        value = exp_ref * f
-    else:
-        value = exp_ref
-    return value
+    Returns
+    -------
+    float
+        Multiplicative factor(s) that exposure time should be adjusted based
+        on the actual vs nominal transparency.
+    """
+    transparency = np.asarray(transparency)
+    if np.any(transparency <= 1e-9):
+        raise ValueError('Got unlikely transparency value < 1e-9.')
+    config = desisurvey.config.Configuration()
+    nominal = config.nominal_conditions.transparency()
+    return nominal / transparency
+
+
+def dust_exposure_factor(EBV):
+    """Scaling of exposure time with median E(B-V) relative to nominal.
+
+    The model assumes SDSS g band. Where does this model come from?
+
+    Parameters
+    ----------
+    EBV : float or array
+        Median dust extinction value(s) E(B-V) for the tile area.
+
+    Returns
+    -------
+    float
+        Multiplicative factor(s) that exposure time should be adjusted based
+        on the actual vs nominal dust extinction.
+    """
+    EBV = np.asarray(EBV)
+    config = desisurvey.config.Configuration()
+    EBV0 = config.nominal_conditions.EBV()
+    Ag = 3.303 * (EBV - EBV0) # Use g-band
+    return np.power(10.0, (2.0 * Ag / 2.5))
+
+
+def airmass_exposure_factor(airmass):
+    """Scaling of exposure time with airmass relative to nominal.
+
+    Is this model based on SDSS or HETDEX data?
+
+    Parameters
+    ----------
+    airmass : float or array
+        Airmass value(s)
+
+    Returns
+    -------
+    float
+        Multiplicative factor(s) that exposure time should be adjusted based
+        on the actual vs nominal airmass.
+    """
+    X = np.asarray(airmass)
+    config = desisurvey.config.Configuration()
+    X0 = config.nominal_conditions.airmass()
+    return np.power((X / X0), 1.25)
 
 
 # A specsim moon model that will be created once, then cached here.
@@ -84,7 +118,7 @@ _moonCoefficients = np.array([
     -8.83964463188, -7372368.5041596508, 775.17763895781638,
     -20185.959363990656, 174143.69095766739])
 
-def moonExposureTimeFactor(moonFrac, moonDist, moonAlt):
+def moon_exposure_factor(moonFrac, moonDist, moonAlt):
     """Calculate exposure time factor due to scattered moonlight.
 
     This factor is based on a study of SNR for ELG targets and designed to
@@ -138,3 +172,47 @@ def moonExposureTimeFactor(moonFrac, moonDist, moonAlt):
     # Evaluate the linear regression model.
     X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
     return _moonCoefficients.dot(X)
+
+
+def expTimeEstimator(seeing, transparency, airmass, program, ebmv,
+                     moonFrac, moonDist, moonAlt):
+    """Calculate the nominal exposure time for specified observing conditions.
+
+    Args:
+        seeing: float, FWHM seeing in arcseconds.
+        transparency: float, 0-1.
+        airmass: float, air mass
+        programm: string, 'DARK', 'BRIGHT' or 'GRAY'
+        ebmv: float, E(B-V)
+        moonFrac: float, Moon illumination fraction, between 0 (new) and 1 (full).
+        moonDist: float, separation angle between field center and moon in degrees.
+        moonAlt: float, moon altitude angle in degrees.
+
+    Returns:
+        float, estimated exposure time
+    """
+    exp_ref_dark = 1000.0   # Reference exposure time in seconds
+    exp_ref_bright = 300.0  # Idem but for bright time programme
+    exp_ref_grey = exp_ref_dark
+
+    if program == "DARK":
+        exp_ref = exp_ref_dark
+    elif program == "BRIGHT":
+        exp_ref = exp_ref_bright
+    elif program == "GRAY":
+        exp_ref = exp_ref_grey
+    else:
+        exp_ref = 0.0 # Replace with throwing an exception
+
+    f_seeing = seeing_exposure_factor(seeing)
+    f_transparency = transparency_exposure_factor(transparency)
+    f_dust = dust_exposure_factor(ebmv)
+    f_airmass = airmass_exposure_factor(airmass)
+    f_moon = moon_exposure_factor(moonFrac, moonDist, moonAlt)
+
+    f = f_seeing * f_transparency * f_dust * f_airmass * f_moon
+    if f >= 0.0:
+        value = exp_ref * f
+    else:
+        value = exp_ref
+    return value

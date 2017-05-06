@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from desisurvey.exposurecalc import expTimeEstimator, moonExposureTimeFactor
+from desisurvey.exposurecalc import expTimeEstimator, moon_exposure_factor
 
 
 class TestExpCalc(unittest.TestCase):
@@ -44,23 +44,23 @@ class TestExpCalc(unittest.TestCase):
 
     def test_moon(self):
         #- Moon below horizon
-        x = moonExposureTimeFactor(moonFrac=0.5, moonDist=60, moonAlt=-30)
+        x = moon_exposure_factor(moonFrac=0.5, moonDist=60, moonAlt=-30)
         self.assertAlmostEqual(x, 1.0, 4)
 
         #- New moon above horizon still has some impact
-        x = moonExposureTimeFactor(moonFrac=0.0, moonDist=60, moonAlt=30)
+        x = moon_exposure_factor(moonFrac=0.0, moonDist=60, moonAlt=30)
         self.assertGreater(x, 1.0)
         self.assertLess(x, 1.1)
 
         #- Partial moon takes more time
-        x1 = moonExposureTimeFactor(moonFrac=0.1, moonDist=60, moonAlt=30)
-        x2 = moonExposureTimeFactor(moonFrac=0.2, moonDist=60, moonAlt=30)
+        x1 = moon_exposure_factor(moonFrac=0.1, moonDist=60, moonAlt=30)
+        x2 = moon_exposure_factor(moonFrac=0.2, moonDist=60, moonAlt=30)
         self.assertGreater(x1, 1.0)
         self.assertGreater(x2, x1)
 
         #- Closer moon takes more time
-        x1 = moonExposureTimeFactor(moonFrac=0.5, moonDist=60, moonAlt=30)
-        x2 = moonExposureTimeFactor(moonFrac=0.5, moonDist=30, moonAlt=30)
+        x1 = moon_exposure_factor(moonFrac=0.5, moonDist=60, moonAlt=30)
+        x2 = moon_exposure_factor(moonFrac=0.5, moonDist=30, moonAlt=30)
         self.assertGreater(x2, x1)
 
 
