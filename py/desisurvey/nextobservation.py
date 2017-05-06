@@ -9,8 +9,6 @@ import astropy.time
 import astropy.coordinates
 import astropy.units as u
 
-import desitarget.targetmask
-
 import desiutil.log
 
 import desisurvey.avoidobject
@@ -18,27 +16,37 @@ import desisurvey.utils
 import desisurvey.config
 
 
-def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
-                      previous_ra, previous_dec):
-    """
+def nextFieldSelector(obsplan, mjd, progress, slew, previous_ra, previous_dec):
+    """Select the next tile to observe during a night.
+
     Returns the first tile for which the current time falls inside
     its assigned LST window and is far enough from the Moon and
     planets.
 
-    Args:
-        obsplan: string, FITS file containing the afternoon plan
-        mjd: float, current time
-        conditions: current weather conditions (not being used)
-        progress: table of observations made so far
-        slew: bool, True if a slew time needs to be taken into account
-        previous_ra: float, ra of the previous observed tile (degrees)
-        previous_dec: float, dec of the previous observed tile (degrees)
+    Parameters
+    ----------
+    obsplan : string
+        Name of FITS file containing the afternoon plan
+    mjd : float
+        Current MJD for selecting the next tile to observe.
+    progress : desisurvey.progress.Progress
+        Record of observations made so far.
+    slew : bool
+        True if a slew time needs to be taken into account.
+    previous_ra : float
+        RA of the previous observed tile (degrees)
+    previous_dec : float
+        DEC of the previous observed tile (degrees)
 
-    Returns:
-        target: dictionnary containing the following keys:
-                'tileID', 'RA', 'DEC', 'Program', 'Ebmv',
-                'moon_illum_frac', 'MoonDist', 'MoonAlt'
-        overhead: float (seconds)
+    Returns
+    -------
+    dict
+        Dictionary describing the next tile to observe or None if no
+        suitable target is available.  The dictionary will contain the
+        following keys: tileID, RA, DEC, Program, Ebmv, moon_illum_frac,
+        MoonDist, MoonAlt and overhead.  Overhead is the delay (with time
+        units) before the shutter can be opened due to slewing and reading out
+        any previous exposure.
     """
     log = desiutil.log.get_logger()
 
@@ -124,8 +132,9 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         target = {'tileID' : tile['TILEID'], 'RA' : tile['RA'],
                   'DEC' : tile['DEC'], 'Program': tile['PROGRAM'],
                   'Ebmv' : tile['EBV_MED'], 'moon_illum_frac': moonfrac,
-                  'MoonDist': moondist, 'MoonAlt': moonalt }
+                  'MoonDist': moondist, 'MoonAlt': moonalt,
+                  'overhead': overhead}
     else:
         target = None
 
-    return target, overhead
+    return target
