@@ -71,7 +71,7 @@ class surveyPlan:
             (tiles['GAL_CAP'] < 0) | (dec < dec_min) | (dec > dec_max)] += 8
 
         # Initialize the LST bins we will use for scheduling each night.
-        self.nLST = 144
+        self.nLST = self.config.num_lst_bins()
         self.LSTedges = np.linspace(0.0, 360.0, self.nLST + 1)
         self.LSTbins = 0.5 * (self.LSTedges[1:] + self.LSTedges[:-1])
         self.LSTres = self.LSTedges[1]

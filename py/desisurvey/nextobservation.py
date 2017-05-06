@@ -1,25 +1,21 @@
+"""Select the next tile to observe during a night.
+"""
 from __future__ import print_function, division
 
 import numpy as np
 
-import astropy.io.fits as pyfits
+import astropy.io.fits
 import astropy.time
 import astropy.coordinates
 import astropy.units as u
 
-from desitarget.targetmask import obsconditions as obsbits
+import desitarget.targetmask
 
 import desiutil.log
 
-from desisurvey.avoidobject import avoidObject, moonLoc
+import desisurvey.avoidobject
 import desisurvey.utils
-
-
-MAX_AIRMASS = 2.0
-MIN_MOON_SEP = 50.0
-MIN_MOON_SEP_BGS = 50.0
-
-LSTresSec = 600.0 # Also in afternoon planner and night obs.
+import desisurvey.config
 
 
 def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
@@ -46,20 +42,23 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         overhead: float (seconds)
     """
     log = desiutil.log.get_logger()
+    config = desisurvey.config.Configuration()
 
-    hdulist = pyfits.open(obsplan)
+    hdulist = astropy.io.fits.open(obsplan)
     tiledata = hdulist[1].data
     moonfrac = hdulist[1].header['MOONFRAC']
     tileID = tiledata['TILEID']
     # Convert LST values from hours to degrees.
     tmin = tiledata['LSTMIN'] * 15
     tmax = tiledata['LSTMAX'] * 15
-    explen = tiledata['EXPLEN']/240.0 # Need to call exposure time estimator instead
+    # Need to call exposure time estimator instead
+    explen = tiledata['EXPLEN']/240.0
     ra = tiledata['RA']
     dec = tiledata['DEC']
     passnum = tiledata['PASS']
     program = tiledata['PROGRAM']
     obsconds = tiledata['OBSCONDITIONS']
+    bright_mask = desitarget.targetmask.obsconditions.mask('BRIGHT')
 
     lst = desisurvey.utils.mjd2lst(mjd)
     dt = astropy.time.Time(mjd, format='mjd')
@@ -87,12 +86,14 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         # Select the first tile whose exposure midpoint falls within the
         # tile's LST window.
         if tmin[i] <= lst_midpoint and lst_midpoint <= tmax[i]:
-            moondist, moonalt, moonaz = moonLoc(dt, ra[i], dec[i])
-            if (obsconds[i] & obsbits.mask('BRIGHT')) == 0:
-                min_moon_sep = MIN_MOON_SEP
-            else:
-                min_moon_sep = MIN_MOON_SEP_BGS
-            if (avoidObject(dt, ra[i], dec[i]) and moondist > min_moon_sep):
+            # Calculate the moon separation and altitude angles.
+            moondist, moonalt, _ = desisurvey.avoidobject.moonLoc(
+                dt, ra[i], dec[i])
+            # Check that this observation is not too close to the moon
+            # or any planets. Should we skip the moon separation
+            # test when the moon is below the horizon?
+            if (desisurvey.avoidobject.avoidObject(dt, ra[i], dec[i]) and
+                moondist > config.avoid_bodies.moon().to(u.deg).value):
                 # Check that this tile still needs more exposure.
                 if progress.get_tile(tileID[i])['status'] < 2:
                     found = True
@@ -111,23 +112,10 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         obsSN2 = -1.0   # Idem
         target = {'tileID' : tileID, 'RA' : RA, 'DEC' : DEC, 'PASS': PASSNUM,
                   'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
-                  'moon_illum_frac': moonfrac, 'MoonDist': moondist, 'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
-                  'Exposure': exposure, 'obsSN2': obsSN2, 'obsConds': obsconds[i]}
+                  'moon_illum_frac': moonfrac, 'MoonDist': moondist,
+                  'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
+                  'Exposure': exposure, 'obsSN2': obsSN2,
+                  'obsConds': obsconds[i]}
     else:
         target = None
     return target, overhead
-
-
-def obsprio(priority, lst_assigned, lst):
-    """Merit function for a tile given its priority and
-    assigned LST.
-
-    Args:
-        priority (integer): priority (0-10) assigned by afternoon planner.
-        lst_assigned (float): LST assigned by afternoon planner.
-        lst (float): current LST
-    Returns:
-        float: merit function value
-    """
-    return (float(priority) -
-            (lst_assigned-lst)*(lst_assigned-lst)/(LSTresSec*LSTresSec) )
