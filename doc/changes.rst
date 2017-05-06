@@ -6,10 +6,15 @@ desisurvey change log
 ------------------
 
 * Add new config yaml file and python wrapper.
-* Convert most (but not all) code to use new config machinery.
-* Cleanup and reorganization of Ephemerides class.
+* Convert all code to use new config machinery.
+* Add new class Plan for future use in scheduling.
+* Unify different output files with overlapping contents into single output
+  managed by desisurvey.progress.
+* Cleanup and reorganize the Ephemerides class.
 * Add comparisons with independent JPL Horizons run to unit tests for
   AltAz transforms and ephemerides calculations.
+* Update docstrings and imports, and remove unused code.
+* Add new plot utilities for Progress and Plan objects.
 
 0.5.0 (2017-04-13)
 ------------------

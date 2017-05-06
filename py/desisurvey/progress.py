@@ -212,10 +212,9 @@ class Progress(object):
         Parameters
         ----------
         filename : str
-            Read an existing progress record from the specified file name. A
+            Name of the file where the progress record should be saved. A
             relative path name refers to the :meth:`configuration output path
-            <desisurvey.config.Configuration.get_path>`. Creates a new progress
-            record from sratch when None.
+            <desisurvey.config.Configuration.get_path>`.
         overwrite : bool
             Silently overwrite any existing file when this is True.
         """
