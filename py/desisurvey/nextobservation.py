@@ -42,7 +42,10 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         overhead: float (seconds)
     """
     log = desiutil.log.get_logger()
+
     config = desisurvey.config.Configuration()
+    max_moondist = config.avoid_bodies.moon().to(u.deg).value
+    max_zenith_angle = 90 * u.deg - config.min_altitude()
 
     hdulist = astropy.io.fits.open(obsplan)
     tiledata = hdulist[1].data
@@ -53,21 +56,26 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
     tmax = tiledata['LSTMAX'] * 15
     # Need to call exposure time estimator instead
     explen = tiledata['EXPLEN']/240.0
-    ra = tiledata['RA']
-    dec = tiledata['DEC']
     passnum = tiledata['PASS']
     program = tiledata['PROGRAM']
     obsconds = tiledata['OBSCONDITIONS']
     bright_mask = desitarget.targetmask.obsconditions.mask('BRIGHT')
-    max_moondist = config.avoid_bodies.moon().to(u.deg).value
 
+    # Convert the current MJD to LST and an astropy time.
     lst = desisurvey.utils.mjd2lst(mjd)
     dt = astropy.time.Time(mjd, format='mjd')
-    found = False
+
+    # Initialize pointings for each possible tile.
+    ra = tiledata['RA']
+    dec = tiledata['DEC']
+    proposed = astropy.coordinates.SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+
+    # Calculate current zenith angle for each possible tile.
+    zenith = desisurvey.utils.get_observer(
+        dt, alt=90 * u.deg, az=0 * u.deg).transform_to(astropy.coordinates.ICRS)
+    zenith_angles = proposed.separation(zenith)
 
     # Calculate the overhead times in seconds for each possible tile.
-    proposed = astropy.coordinates.SkyCoord(
-        ra=ra * u.deg, dec=dec * u.deg)
     if slew:
         previous = astropy.coordinates.SkyCoord(
             ra=previous_ra * u.deg, dec=previous_dec * u.deg)
@@ -76,6 +84,7 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
     overheads = desisurvey.utils.get_overhead_time(
         previous, proposed).to(u.s).value
 
+    found = False
     for i in range(len(tileID)):
         # Estimate this tile's exposure midpoint LST in the range [0,360] deg.
         overhead = overheads[i]
@@ -84,6 +93,12 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
             lst_midpoint -= 360
         # Skip tiles whose exposure midpoint falls outside their LST window.
         if lst_midpoint < tmin[i] or lst_midpoint > tmax[i]:
+            continue
+        # Skip a tile that is currently too close to the horizon.
+        if zenith_angles[i] > max_zenith_angle:
+            log.info(
+                'Tile {0} is too close to the horizon ({1:.f})'
+                .format(tileID[i], 90 * u.deg - zenith_angles[i]))
             continue
         # Calculate the moon separation and altitude angles.
         moondist, moonalt, _ = desisurvey.avoidobject.moonLoc(dt, ra[i], dec[i])
