@@ -1,8 +1,7 @@
+"""Plan an observing night during the previous afternoon.
+"""
 from __future__ import print_function, division
 
-import copy
-import os
-import sys
 import pkg_resources
 
 import numpy as np
@@ -16,23 +15,24 @@ import desisurvey.config
 from desisurvey.utils import mjd2lst
 
 
-SURVEY_NOMINAL_LENGTH = 5.0 * 365.25 #Survey duration
-
 class surveyPlan:
-    """
-    Main class for survey planning
-    """
+    """Plan an observing night during the previous afternoon.
 
+    Initialises survey by reading in the file desi_tiles.fits and populates the
+    class members.
+
+    Parameters
+    ----------
+    MJDstart : float
+        Day of the (re-)start of the survey
+    MJDend : float
+        Day of the end of the survey
+    ephem : desisurvey.ephemerides.Ephemerides
+        Tabulated ephemerides covering MJDstart - MJDend.
+    HA_assign : bool
+        Calculate HA assignments if True, otherwise read from a file.
+    """
     def __init__(self, MJDstart, MJDend, ephem, HA_assign=False):
-        """Initialises survey by reading in the file desi_tiles.fits
-        and populates the class members.
-
-        Arguments:
-            MJDstart: day of the (re-)start of the survey
-            MJDend: day of the end of the survey
-            ephem: Ephemerides covering MJDstart - MJDend
-            HA_assign: calculate HA assignments if True, otherwise read from a file.
-        """
         self.log = desiutil.log.get_logger()
         self.config = desisurvey.config.Configuration()
         self.ephem = ephem
@@ -43,7 +43,8 @@ class surveyPlan:
         numtiles = len(tiles)
 
         # Drop un-needed columns.
-        tiles.remove_columns(['IN_DESI', 'AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC'])
+        tiles.remove_columns([
+            'IN_DESI', 'AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC'])
 
         # Add some new columns (more will be added later).
         for name, dtype in (('GAL_CAP', np.int8), ('SUBLIST', np.int8),
@@ -83,29 +84,34 @@ class surveyPlan:
 
         self.tiles.sort(('SUBLIST', 'DEC'))
 
-
     def assignHA(self, MJDstart, MJDend, compute=False):
-        """Assigns optimal hour angles for the DESI tiles;
-        can be re-run at any point during the survey to
+        """Assign optimal hour angles for the DESI tiles.
+
+        Can be re-run at any point during the survey to
         reoptimise the schedule.
 
-        Args:
-            MJDstart: float, time at which the assignment starts, this is the same input as
-                      for surveySim.
-            MJDend: float, time by which the _survey_ is expected to be completed, i.e. it should
-                    be the MJDstart + time remaining in survey.
-
-        Optional:
-            compute: bool, False reads a pre-computed table; for development purposes only.
+        Parameters
+        ----------
+        MJDstart : float
+            Time at which the assignment starts.
+        MJDend : float
+            Time by which the survey is expected to be completed.
+        compute : bool
+            False reads a pre-computed table; for development purposes only.
         """
-
         if compute:
             obs_dark = self.plan_ha(MJDstart, MJDend, False)
             obs_bright = self.plan_ha(MJDstart, MJDend, True)
-            obs1 = astropy.table.Table([obs_dark['tileid'], obs_dark['beginobs'], obs_dark['endobs'], obs_dark['obstime'], obs_dark['ha']],
-                                       names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'), dtype=('i4','f8','f8','f8','f8'))
-            obs2 = astropy.table.Table([obs_bright['tileid'], obs_bright['beginobs'], obs_bright['endobs'], obs_bright['obstime'], obs_bright['ha']],
-                                       names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'), dtype=('i4','f8','f8','f8','f8'))
+            obs1 = astropy.table.Table(
+                [obs_dark['tileid'], obs_dark['beginobs'], obs_dark['endobs'],
+                 obs_dark['obstime'], obs_dark['ha']],
+                names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'),
+                dtype=('i4','f8','f8','f8','f8'))
+            obs2 = astropy.table.Table(
+                [obs_bright['tileid'], obs_bright['beginobs'],
+                 obs_bright['endobs'], obs_bright['obstime'], obs_bright['ha']],
+                names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'),
+                dtype=('i4','f8','f8','f8','f8'))
             info = astropy.table.vstack([obs1, obs2], join_type="exact")
             #info.write("ha_check.dat", format="ascii")
         else:
@@ -126,16 +132,20 @@ class surveyPlan:
         self.tiles.rename_column('ENDOBS', 'LSTMAX')
         self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
-
     def afternoonPlan(self, day_stats, progress):
-        """Main decision making method
+        """Main decision making method.
 
-        Args:
-            day_stats: row of tabulated ephmerides data for today
-            progress: table with following columns: tileid, status
+        Parameters
+        ----------
+        day_stats : astropy.table.Row
+            Row of tabulated ephmerides data for tonight's observing.
+        progress : desisurvey.progress.Progress
+            Record of observations made so far.
 
-        Returns:
-            string containg the filename for today's plan; it has the format
+        Returns
+        -------
+        string
+            The filename for today's plan; it has the format
             obsplanYYYYMMDD.fits
         """
         # Get a list of previously observed tiles, including those which
@@ -214,7 +224,8 @@ class surveyPlan:
                                  (finalTileList['STATUS'] < 2))[0]
                 # Schedule the first 5.
                 scheduled.extend(found[:5])
-                # If fewer than 5 dark tiles fall within this window, pad with grey
+                # If fewer than 5 dark tiles fall within this window,
+                # pad with grey
                 if len(scheduled) < 5:
                     found = np.where(gray_tile & (finalTileLSTbin == i) &
                                      (finalTileList['STATUS'] < 2))[0]
@@ -260,7 +271,6 @@ class surveyPlan:
         table.write(filename, overwrite=True)
 
         return filename
-
 
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #
