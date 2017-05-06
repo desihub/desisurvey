@@ -70,18 +70,32 @@ full_depth_field:
 # Parameters used to plan observation during a night.
 #-------------------------------------------------------------------
 
+# Never observe below this limit.
 min_altitude: 30 deg
 
-# Setup time
+# Exposure overhead parameters
 focus_time: 30 s
 slew_overhead: 11.5 s
 slew_rate: 0.45 deg / s
 readout_time: 2 min
 
-# Exposure time
+# Exposure time policy parameters
 cosmic_ray_split: 20 min
 max_exposure_length: 60 min
 
+# The target SNR**2 for each program is specified as the total exposure time
+# required at nominal observing conditions.
+nominal_exposure_time:
+    DARK: 1000 s
+    GRAY: 1000 s
+    BRIGHT: 300 s
+nominal_conditions:
+    seeing: 1.1 arcsec
+    airmass: 1.0
+    transparency: 1.0
+    EBV: 0.0
+
+# List of bodies to avoid when scheduling tiles.
 avoid_bodies:
     moon: 50 deg
     venus: 2 deg
@@ -90,7 +104,7 @@ avoid_bodies:
     saturn: 2 deg
     neptune: 2 deg
     uranus: 2 deg
-    #ceres: 2 deg  # not implemented in pyephem
+    #ceres: 2 deg  # not implemented in pyephem: do we need it?
 
 # Number of LST bins covering 24h=360d used for afternoon planning.
 num_lst_bins: 144
