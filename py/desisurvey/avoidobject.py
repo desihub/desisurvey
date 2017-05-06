@@ -46,6 +46,9 @@ def avoidObject(when, ra0, dec0):
     # Loop over bodies named in our configuration.
     config = desisurvey.config.Configuration()
     for name in config.avoid_bodies.keys:
+        # The moon is handled separately.
+        if name == 'moon':
+            continue
         # Lookup the minimum sparation from this object and convert to radians.
         min_separation = getattr(config.avoid_bodies, name)().to(u.rad).value
         # Initialize and compute the model for this body.

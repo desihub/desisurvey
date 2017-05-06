@@ -59,6 +59,7 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
     program = tiledata['PROGRAM']
     obsconds = tiledata['OBSCONDITIONS']
     bright_mask = desitarget.targetmask.obsconditions.mask('BRIGHT')
+    max_moondist = config.avoid_bodies.moon().to(u.deg).value
 
     lst = desisurvey.utils.mjd2lst(mjd)
     dt = astropy.time.Time(mjd, format='mjd')
@@ -76,31 +77,33 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         previous, proposed).to(u.s).value
 
     for i in range(len(tileID)):
-
+        # Estimate this tile's exposure midpoint LST in the range [0,360] deg.
         overhead = overheads[i]
-
-        # Estimate the exposure midpoint LST for this tile.
         lst_midpoint = lst + overhead / 240. + 0.5 * explen[i]
         if lst_midpoint >= 360:
             lst_midpoint -= 360
-        # Select the first tile whose exposure midpoint falls within the
-        # tile's LST window.
-        if tmin[i] <= lst_midpoint and lst_midpoint <= tmax[i]:
-            # Calculate the moon separation and altitude angles.
-            moondist, moonalt, _ = desisurvey.avoidobject.moonLoc(
-                dt, ra[i], dec[i])
-            # Check that this observation is not too close to the moon
-            # or any planets. Should we skip the moon separation
-            # test when the moon is below the horizon?
-            if (desisurvey.avoidobject.avoidObject(dt, ra[i], dec[i]) and
-                moondist > config.avoid_bodies.moon().to(u.deg).value):
-                # Check that this tile still needs more exposure.
-                if progress.get_tile(tileID[i])['status'] < 2:
-                    found = True
-                    break
+        # Skip tiles whose exposure midpoint falls outside their LST window.
+        if lst_midpoint < tmin[i] or lst_midpoint > tmax[i]:
+            continue
+        # Calculate the moon separation and altitude angles.
+        moondist, moonalt, _ = desisurvey.avoidobject.moonLoc(dt, ra[i], dec[i])
+        # Skip a tile that is currently too close to a moon above the horizon.
+        if moonalt > 0 and moondist <= max_moondist:
+            log.info(
+                'Tile {0} is too close to moon with alt={1:.1f}, sep={2:.1f}.'
+                .format(tileID[i], moonalt, moondist))
+            continue
+        # Skip a tile that is currently too close to any planets.
+        if not desisurvey.avoidobject.avoidObject(dt, ra[i], dec[i]):
+            log.info('Tile {0} is too close to a planet.'.format(tileID[i]))
+            continue
+        # Does this tile still needs more exposure?
+        if progress.get_tile(tileID[i])['status'] < 2:
+            found = True
+            break
 
-    if found == True:
-        tileID = tiledata['TILEID'][i]
+    if found:
+        TILEID = tileID[i]
         RA = ra[i]
         DEC = dec[i]
         PASSNUM = passnum[i]
@@ -110,7 +113,7 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         status = tiledata['STATUS'][i]
         exposure = -1.0 # Updated after observation
         obsSN2 = -1.0   # Idem
-        target = {'tileID' : tileID, 'RA' : RA, 'DEC' : DEC, 'PASS': PASSNUM,
+        target = {'tileID' : TILEID, 'RA' : RA, 'DEC' : DEC, 'PASS': PASSNUM,
                   'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
                   'moon_illum_frac': moonfrac, 'MoonDist': moondist,
                   'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
@@ -118,4 +121,5 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
                   'obsConds': obsconds[i]}
     else:
         target = None
+
     return target, overhead
