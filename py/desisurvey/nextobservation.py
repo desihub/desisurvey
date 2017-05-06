@@ -36,34 +36,33 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
 
     Returns:
         target: dictionnary containing the following keys:
-                'tileID', 'RA', 'DEC', 'Program', 'Ebmv', 'maxLen',
-                'moon_illum_frac', 'MoonDist', 'MoonAlt', 'DESsn2', 'Status',
-                'Exposure', 'obsSN2', 'obsConds'
+                'tileID', 'RA', 'DEC', 'Program', 'Ebmv',
+                'moon_illum_frac', 'MoonDist', 'MoonAlt'
         overhead: float (seconds)
     """
     log = desiutil.log.get_logger()
 
+    # Look up configuration parameters.
     config = desisurvey.config.Configuration()
     max_moondist = config.avoid_bodies.moon().to(u.deg).value
     max_zenith_angle = 90 * u.deg - config.min_altitude()
 
+    # Read the afternoon plan.
     hdulist = astropy.io.fits.open(obsplan)
     tiledata = hdulist[1].data
+    num_tiles = len(tiledata)
     moonfrac = hdulist[1].header['MOONFRAC']
-    tileID = tiledata['TILEID']
-    # Convert LST values from hours to degrees.
+
+    # Convert the LST ranges for each tile from hours to degrees.
     tmin = tiledata['LSTMIN'] * 15
     tmax = tiledata['LSTMAX'] * 15
-    # Need to call exposure time estimator instead
-    explen = tiledata['EXPLEN']/240.0
-    passnum = tiledata['PASS']
-    program = tiledata['PROGRAM']
-    obsconds = tiledata['OBSCONDITIONS']
-    bright_mask = desitarget.targetmask.obsconditions.mask('BRIGHT')
+
+    # Look up the plan exposure time and convert to degrees.
+    explen = tiledata['EXPLEN'] / 240.0
 
     # Convert the current MJD to LST and an astropy time.
     lst = desisurvey.utils.mjd2lst(mjd)
-    dt = astropy.time.Time(mjd, format='mjd')
+    when = astropy.time.Time(mjd, format='mjd')
 
     # Initialize pointings for each possible tile.
     ra = tiledata['RA']
@@ -71,8 +70,8 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
     proposed = astropy.coordinates.SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
 
     # Calculate current zenith angle for each possible tile.
-    zenith = desisurvey.utils.get_observer(
-        dt, alt=90 * u.deg, az=0 * u.deg).transform_to(astropy.coordinates.ICRS)
+    obs = desisurvey.utils.get_observer(when, alt=90 * u.deg, az=0 * u.deg)
+    zenith = obs.transform_to(astropy.coordinates.ICRS)
     zenith_angles = proposed.separation(zenith)
 
     # Calculate the overhead times in seconds for each possible tile.
@@ -85,7 +84,8 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         previous, proposed).to(u.s).value
 
     found = False
-    for i in range(len(tileID)):
+    for i in range(num_tiles):
+        tileID = tiledata['TILEID'][i]
         # Estimate this tile's exposure midpoint LST in the range [0,360] deg.
         overhead = overheads[i]
         lst_midpoint = lst + overhead / 240. + 0.5 * explen[i]
@@ -98,42 +98,33 @@ def nextFieldSelector(obsplan, mjd, conditions, progress, slew,
         if zenith_angles[i] > max_zenith_angle:
             log.info(
                 'Tile {0} is too close to the horizon ({1:.f})'
-                .format(tileID[i], 90 * u.deg - zenith_angles[i]))
+                .format(tileID, 90 * u.deg - zenith_angles[i]))
             continue
         # Calculate the moon separation and altitude angles.
-        moondist, moonalt, _ = desisurvey.avoidobject.moonLoc(dt, ra[i], dec[i])
+        moondist, moonalt, _ = desisurvey.avoidobject.moonLoc(
+            when, ra[i], dec[i])
         # Skip a tile that is currently too close to a moon above the horizon.
         if moonalt > 0 and moondist <= max_moondist:
             log.info(
                 'Tile {0} is too close to moon with alt={1:.1f}, sep={2:.1f}.'
-                .format(tileID[i], moonalt, moondist))
+                .format(tileID, moonalt, moondist))
             continue
         # Skip a tile that is currently too close to any planets.
-        if not desisurvey.avoidobject.avoidObject(dt, ra[i], dec[i]):
-            log.info('Tile {0} is too close to a planet.'.format(tileID[i]))
+        if not desisurvey.avoidobject.avoidObject(when, ra[i], dec[i]):
+            log.info('Tile {0} is too close to a planet.'.format(tileID))
             continue
         # Does this tile still needs more exposure?
-        if progress.get_tile(tileID[i])['status'] < 2:
+        if progress.get_tile(tileID)['status'] < 2:
             found = True
             break
 
     if found:
-        TILEID = tileID[i]
-        RA = ra[i]
-        DEC = dec[i]
-        PASSNUM = passnum[i]
-        Ebmv = tiledata['EBV_MED'][i]
-        maxLen = 2.0*tiledata['EXPLEN'][i]
-        DESsn2 = 100.0 # Some made-up number -> has to be the same as the reference in exposurecalc.py
-        status = tiledata['STATUS'][i]
-        exposure = -1.0 # Updated after observation
-        obsSN2 = -1.0   # Idem
-        target = {'tileID' : TILEID, 'RA' : RA, 'DEC' : DEC, 'PASS': PASSNUM,
-                  'Program': program[i], 'Ebmv' : Ebmv, 'maxLen': maxLen,
-                  'moon_illum_frac': moonfrac, 'MoonDist': moondist,
-                  'MoonAlt': moonalt, 'DESsn2': DESsn2, 'Status': status,
-                  'Exposure': exposure, 'obsSN2': obsSN2,
-                  'obsConds': obsconds[i]}
+        # Return a dictionary of parameters needed to observe this tile.
+        tile = tiledata[i]
+        target = {'tileID' : tile['TILEID'], 'RA' : tile['RA'],
+                  'DEC' : tile['DEC'], 'Program': tile['PROGRAM'],
+                  'Ebmv' : tile['EBV_MED'], 'moon_illum_frac': moonfrac,
+                  'MoonDist': moondist, 'MoonAlt': moonalt }
     else:
         target = None
 
