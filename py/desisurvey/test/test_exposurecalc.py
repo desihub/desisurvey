@@ -1,7 +1,9 @@
 import unittest
 
 import numpy as np
+
 from desisurvey.exposurecalc import expTimeEstimator, moonExposureTimeFactor
+
 
 class TestExpCalc(unittest.TestCase):
 
@@ -14,12 +16,11 @@ class TestExpCalc(unittest.TestCase):
         airmass = 1.2
         program = 'DARK'
         ebmv = 0.01
-        sn2 = 10
         moonFrac = 0.05
         moonDist = 70
         moonAlt = 10
         for program in ['DARK', 'GRAY', 'BRIGHT']:
-            t = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+            t = expTimeEstimator(seeing, transparency, airmass, program, ebmv,
                                  moonFrac, moonDist, moonAlt)
             self.assertGreater(t, 0.0)
 
@@ -27,17 +28,17 @@ class TestExpCalc(unittest.TestCase):
 
         #- Worse seeing = longer exposures
         seeing = 1.0
-        t1 = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+        t1 = expTimeEstimator(seeing, transparency, airmass, program, ebmv,
                               moonFrac, moonDist, moonAlt)
         seeing=1.2
-        t2 = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+        t2 = expTimeEstimator(seeing, transparency, airmass, program, ebmv,
                               moonFrac, moonDist, moonAlt)
         self.assertGreater(t2, t1)
 
         #- Worse higher airmass = longer exposures
-        t1 = expTimeEstimator(seeing, transparency, airmass, program, ebmv, sn2,
+        t1 = expTimeEstimator(seeing, transparency, airmass, program, ebmv,
                               moonFrac, moonDist, moonAlt)
-        t2 = expTimeEstimator(seeing, transparency, airmass*1.2, program, ebmv, sn2,
+        t2 = expTimeEstimator(seeing, transparency, airmass*1.2, program, ebmv,
                               moonFrac, moonDist, moonAlt)
         self.assertGreater(t2, t1)
 
@@ -61,6 +62,7 @@ class TestExpCalc(unittest.TestCase):
         x1 = moonExposureTimeFactor(moonFrac=0.5, moonDist=60, moonAlt=30)
         x2 = moonExposureTimeFactor(moonFrac=0.5, moonDist=30, moonAlt=30)
         self.assertGreater(x2, x1)
+
 
 if __name__ == '__main__':
     unittest.main()

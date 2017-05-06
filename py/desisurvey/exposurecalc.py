@@ -1,3 +1,5 @@
+"""Calculate the nominal exposure time for specified observing conditions.
+"""
 from __future__ import print_function, division
 
 import numpy as np
@@ -8,11 +10,12 @@ import specsim.simulator
 
 import desiutil.log
 
+import desisurvey.config
 
-def expTimeEstimator(seeing, transparency, amass, program, ebmv, sn2,
+
+def expTimeEstimator(seeing, transparency, amass, program, ebmv,
                      moonFrac, moonDist, moonAlt):
-    """
-    Estimates expusure length given current conditions.
+    """Calculate the nominal exposure time for specified observing conditions.
 
     Args:
         seeing: float, FWHM seeing in arcseconds.
@@ -20,7 +23,6 @@ def expTimeEstimator(seeing, transparency, amass, program, ebmv, sn2,
         amass: float, air mass
         programm: string, 'DARK', 'BRIGHT' or 'GRAY'
         ebmv: float, E(B-V)
-        sn2: float, desired (S/N)^2
         moonFrac: float, Moon illumination fraction, between 0 (new) and 1 (full).
         moonDist: float, separation angle between field center and moon in degrees.
         moonAlt: float, moon altitude angle in degrees.
@@ -33,7 +35,6 @@ def expTimeEstimator(seeing, transparency, amass, program, ebmv, sn2,
     exp_ref_dark = 1000.0   # Reference exposure time in seconds
     exp_ref_bright = 300.0  # Idem but for bright time programme
     exp_ref_grey = exp_ref_dark
-    sn2_nom = 100.0 # Nominal sign-to-noise: again, made-up number
 
     if program == "DARK":
         exp_ref = exp_ref_dark
