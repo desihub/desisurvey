@@ -296,6 +296,8 @@ def earthOrientation(MJD):
     is not long enough for the duration of the survey.
     All formulae are from the Naval Observatory.
 
+    Used by mjd2lst (below). Not unit tested.
+
     Args:
         MJD: float
 
@@ -315,9 +317,13 @@ def earthOrientation(MJD):
     UT1_UTC = -0.3259 - 0.00138*(MJD - 57689.0) - (UT2_UT1)
     return x, y, UT1_UTC
 
+
 def mjd2lst(mjd):
     """
     Converts decimal MJD to LST in decimal degrees
+
+    Used in afternoonplan and nextobservation.
+    Not unit tested.
 
     Args:
         mjd: float
@@ -352,90 +358,13 @@ def mjd2lst(mjd):
     lst *= 15.0 # Convert from hours to degrees
     return lst
 
-def radec2altaz(ra, dec, lst):
-    """
-    Converts from ecliptic to horizontal coordinate systems.
-
-    Args:
-        ra: float, observed right ascension (degrees)
-        dec: float, observed declination (degrees)
-        lst: float, local sidereal time (degrees)
-
-    Returns:
-        alt: float, altitude i.e. elevation (degrees)
-        az: float, azimuth (degrees)
-    """
-    h = np.radians(lst - ra)
-    if isinstance(h, np.ndarray):
-        h[np.where(h<0.0)] += 2.0*np.pi
-    else:
-        if h < 0.0:
-            h += 2.0*np.pi
-
-    d = np.radians(dec)
-    phi = get_location().latitude.to(u.rad).value
-
-    sinAlt = np.sin(phi)*np.sin(d) + np.cos(phi)*np.cos(d)*np.cos(h)
-
-    if isinstance(sinAlt, np.ndarray):
-        sinAlt[np.where(sinAlt>1.0)] = 1.0
-        sinAlt[np.where(sinAlt<-1.0)] = -1.0
-    else:
-        if sinAlt > 1.0:
-            sinAlt = 1.0
-        if sinAlt < -1.0:
-            sinAlt = -1.0
-    cosAlt = np.sqrt(1.0-sinAlt*sinAlt)
-    cosAz = ( np.sin(d) - sinAlt*np.sin(phi) ) / ( cosAlt*np.cos(phi) )
-    if isinstance(cosAz, np.ndarray):
-        cosAz[np.where(cosAz>1.0)] = 1.0
-        cosAz[np.where(cosAz<-1.0)] = -1.0
-    else:
-        if cosAz > 1.0:
-            cosAz = 1.0
-        if cosAz < -1.0:
-            cosAz = -1.0
-
-    Alt = np.degrees(np.arcsin(sinAlt))
-    Az = np.degrees(np.arccos(cosAz))
-    if isinstance(h, np.ndarray):
-        ii = np.where(np.sin(h)>0.0)
-        Az[ii] = 360.0 - Az[ii]
-    else:
-        if np.sin(h) > 0.0:
-            Az = 360.0 - Az
-
-    return Alt, Az
-
-def angsep(ra1, dec1, ra2, dec2):
-    """
-    Calculates the angular separation between two objects.
-
-    Args:
-        ra1: float (degrees)
-        dec1: float (degrees)
-        ra2: float (degrees)
-        dec2: float (degrees)
-
-    Returns:
-        delta: float (degrees)
-
-    Notes: fast but not accurate at very small angles; useful for survey
-        planning but not detailed work like fiber assignment
-    """
-
-    deltaRA = np.radians(ra1-ra2)
-    DEC1 = np.radians(dec1)
-    DEC2 = np.radians(dec2)
-    cosDelta = np.sin(DEC1)*np.sin(DEC2) + np.cos(DEC1)*np.cos(DEC2)*np.cos(deltaRA)
-    return np.degrees(np.arccos(cosDelta))
 
 def equ2gal_J2000(ra_deg, dec_deg):
     """Input and output in degrees.
        Matrix elements obtained from
        https://casper.berkeley.edu/astrobaki/index.php/Coordinates
+       Used in afternoonplan (but commented out)
     """
-
     ra = np.radians(ra_deg)
     dec = np.radians(dec_deg)
 
@@ -460,19 +389,22 @@ def equ2gal_J2000(ra_deg, dec_deg):
 
     return l_deg, b_deg
 
+
 def sort2arr(a, b):
     """Sorts array a according to the values of array b
+    Used in afternoonplan.
     """
-
     if len(a) != len(b):
         raise ValueError("error: a and b are not of the same length.")
 
     a = np.asarray(a)
     return a[np.argsort(b)]
 
+
 def inLSTwindow(lst, begin, end):
     """Determines if LST is within the given window.
        Assumes that all values are between 0 and 360.
+       Used in afternoonplan.
     """
     answer = False
     if begin == end:
