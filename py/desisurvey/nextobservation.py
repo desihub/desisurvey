@@ -66,7 +66,7 @@ def nextFieldSelector(obsplan, mjd, progress, slew, previous_ra, previous_dec):
     tmax = tiledata['LSTMAX'] * 15
 
     # Look up the plan exposure time and convert to degrees.
-    explen = tiledata['EXPLEN'] / 240.0
+    lst_explen = tiledata['EXPLEN'] / 240.0
 
     # Convert the current MJD to LST and an astropy time.
     lst = desisurvey.utils.mjd2lst(mjd)
@@ -88,15 +88,15 @@ def nextFieldSelector(obsplan, mjd, progress, slew, previous_ra, previous_dec):
             ra=previous_ra * u.deg, dec=previous_dec * u.deg)
     else:
         previous = None
-    overheads = desisurvey.utils.get_overhead_time(
-        previous, proposed).to(u.s).value
+    overheads = desisurvey.utils.get_overhead_time(previous, proposed)
+    # Convert to degrees.
+    lst_overheads = overheads.to(u.s).value / 240
 
     found = False
     for i in range(num_tiles):
         tileID = tiledata['TILEID'][i]
         # Estimate this tile's exposure midpoint LST in the range [0,360] deg.
-        overhead = overheads[i]
-        lst_midpoint = lst + overhead / 240. + 0.5 * explen[i]
+        lst_midpoint = lst + lst_overheads[i] + 0.5 * lst_explen[i]
         if lst_midpoint >= 360:
             lst_midpoint -= 360
         # Skip tiles whose exposure midpoint falls outside their LST window.
@@ -133,7 +133,7 @@ def nextFieldSelector(obsplan, mjd, progress, slew, previous_ra, previous_dec):
                   'DEC' : tile['DEC'], 'Program': tile['PROGRAM'],
                   'Ebmv' : tile['EBV_MED'], 'moon_illum_frac': moonfrac,
                   'MoonDist': moondist, 'MoonAlt': moonalt,
-                  'overhead': overhead}
+                  'overhead': overheads[i]}
     else:
         target = None
 
