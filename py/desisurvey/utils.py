@@ -18,12 +18,15 @@ import desisurvey.config
 _telescope_location = None
 
 
-def get_overhead_time(current_pointing, new_pointing, readout=True):
+def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
     """
     Compute the instrument overhead time between exposures.
 
     Use a model of the time required to slew and focus, in parallel with
     reading out the previous exposure.
+
+    With no slew or readout required, the minimum overhead is set by the
+    time needed to focus the new exposure.
 
     The calculation will be automatically broadcast over an array of new
     pointings and return an array of overhead times.
@@ -35,8 +38,10 @@ def get_overhead_time(current_pointing, new_pointing, readout=True):
         when None.
     new_pointing : astropy.coordinates.SkyCoord
         New pointing(s) of the telescope.
-    readout : bool
-        Include parallel readout time of previous exposure in overhead.
+    deadtime : astropy.units.Quantity
+        Amount of deadtime elapsed since end of any previous exposure.
+        Used to ensure that the overhead time is sufficient to finish
+        reading out the previous exposure.
 
     Returns
     -------
@@ -63,9 +68,9 @@ def get_overhead_time(current_pointing, new_pointing, readout=True):
         overhead = np.zeros(new_pointing.shape) * u.s
     # Add the constant focus time.
     overhead += config.focus_time()
-    if readout:
-        # Overhead must be at least the readout time.
-        overhead = np.maximum(overhead, config.readout_time())
+    # Overhead is at least the remaining readout time for the last exposure.
+    overhead = np.maximum(overhead, config.readout_time() - deadtime)
+
     return overhead
 
 

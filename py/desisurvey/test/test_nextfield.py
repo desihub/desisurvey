@@ -40,15 +40,12 @@ class TestNextField(unittest.TestCase):
         mjd = 2458728.708333 - 2400000.5  #- Sept 1 2019 @ 10pm in Arizona
 
         tilesObserved = list()
-        slew = True
-        prev_ra, prev_dec = 0.0, 30.0
 
         #- Observe 10 exp in a row at same MJD to ensure we don't keep picking
         #- the same tile and we increase in dec
         decobs = list()
         for i in range(10):
-            tileinfo = nextFieldSelector(
-                planfile, mjd, progress, slew, prev_ra, prev_dec)
+            tileinfo = nextFieldSelector(planfile, mjd, progress)
             progress.add_exposure(
                 tileinfo['tileID'], mjd + 0.001 * i, 1000., 1., 1.5, 1.1)
             tilesObserved.append(tileinfo['tileID'])
@@ -65,8 +62,7 @@ class TestNextField(unittest.TestCase):
         raobs = list()
         for i in range(10):
             mjd += 0.3/24
-            tileinfo = nextFieldSelector(
-                planfile, mjd, progress, slew, prev_ra, prev_dec)
+            tileinfo = nextFieldSelector(planfile, mjd, progress)
             progress.add_exposure(tileinfo['tileID'], mjd, 1000., 1., 1.5, 1.1)
             tilesObserved.append(tileinfo['tileID'])
             prev_ra = tileinfo['RA']

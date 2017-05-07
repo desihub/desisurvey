@@ -16,7 +16,7 @@ import desisurvey.utils
 import desisurvey.config
 
 
-def nextFieldSelector(obsplan, mjd, progress, slew, previous_ra, previous_dec):
+def nextFieldSelector(obsplan, mjd, progress):
     """Select the next tile to observe during a night.
 
     Returns the first tile for which the current time falls inside
@@ -30,13 +30,8 @@ def nextFieldSelector(obsplan, mjd, progress, slew, previous_ra, previous_dec):
     mjd : float
         Current MJD for selecting the next tile to observe.
     progress : desisurvey.progress.Progress
-        Record of observations made so far.
-    slew : bool
-        True if a slew time needs to be taken into account.
-    previous_ra : float
-        RA of the previous observed tile (degrees)
-    previous_dec : float
-        DEC of the previous observed tile (degrees)
+        Record of observations made so far.  Will not be modified by
+        calling this function.
 
     Returns
     -------
@@ -82,13 +77,24 @@ def nextFieldSelector(obsplan, mjd, progress, slew, previous_ra, previous_dec):
     zenith = obs.transform_to(astropy.coordinates.ICRS)
     zenith_angles = proposed.separation(zenith)
 
-    # Calculate the overhead times in seconds for each possible tile.
-    if slew:
-        previous = astropy.coordinates.SkyCoord(
-            ra=previous_ra * u.deg, dec=previous_dec * u.deg)
-    else:
+    # Determine the previous pointing if we need to include slew time
+    # in the overhead calcluations.
+    if progress.last_tile is None:
+        # No slew needed for next exposure.
         previous = None
-    overheads = desisurvey.utils.get_overhead_time(previous, proposed)
+        # No readout time needed for previous exposure.
+        deadtime = config.readout_time()
+    else:
+        last = progress.last_tile
+        # Where was the telescope last pointing?
+        previous = astropy.coordinates.SkyCoord(
+            ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
+        # How much time has elapsed since the last exposure ended?
+        last_end = (last['mjd'] + last['exptime'] / 86400.).max()
+        deadtime = (mjd - last_end) * u.day
+
+    # Calculate the overhead times in seconds for each possible tile.
+    overheads = desisurvey.utils.get_overhead_time(previous, proposed, deadtime)
     # Convert to degrees.
     lst_overheads = overheads.to(u.s).value / 240
 
