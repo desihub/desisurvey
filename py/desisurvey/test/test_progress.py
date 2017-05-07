@@ -33,6 +33,7 @@ class TestProgress(unittest.TestCase):
         self.assertTrue(p.max_exposures == len(p._table['mjd'][0]))
         self.assertEqual(p.first_mjd, 0.)
         self.assertEqual(p.last_mjd, 0.)
+        self.assertEqual(p.last_tile, None)
         self.assertEqual(p.completed(), 0.)
         self.assertEqual(type(p.get_tile(10)), astropy.table.Row)
         with self.assertRaises(ValueError):
@@ -57,7 +58,9 @@ class TestProgress(unittest.TestCase):
         for i, tile_id in enumerate(tiles):
             p.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
             self.assertTrue(p.get_tile(tile_id)['snr2frac'][0] == 0.5)
-            self.assertTrue(np.all(p.get_tile(tile_id)['snr2frac'][1:] == 0.))
+            last_tile = p.get_tile(tile_id)
+            self.assertTrue(np.array_equal(last_tile.data, p.last_tile.data))
+            self.assertTrue(np.all(last_tile['snr2frac'][1:] == 0.))
         self.assertEqual(p.completed(include_partial=True), 5.)
         self.assertEqual(p.completed(include_partial=False), 0.)
         self.assertTrue(p.first_mjd > 0)
@@ -87,6 +90,7 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p2.completed(include_partial=False), 0.)
         self.assertTrue(p2.first_mjd > 0)
         self.assertTrue(p2.last_mjd > p2.first_mjd)
+        self.assertEqual(p2.last_tile['tileid'], tiles[-1])
 
     def test_table_ctor(self):
         """Construct progress from a table"""

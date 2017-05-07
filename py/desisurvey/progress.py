@@ -124,8 +124,11 @@ class Progress(object):
         if np.any(observed):
             self._first_mjd = np.min(mjd[observed])
             self._last_mjd = np.max(mjd[observed])
+            last = np.argmax(mjd.max(axis=1))
+            self._last_tile = self._table[last]
         else:
             self._first_mjd = self._last_mjd = 0.
+            self._last_tile = None
 
     @property
     def num_tiles(self):
@@ -141,6 +144,11 @@ class Progress(object):
     def last_mjd(self):
         """MJD of most recent exposure or 0 if no exposures have been added."""
         return self._last_mjd
+
+    @property
+    def last_tile(self):
+        """Row corresponding to the last observed tile, or None."""
+        return self._last_tile
 
     @property
     def max_exposures(self):
@@ -375,7 +383,10 @@ class Progress(object):
         if mjd <= self._last_mjd:
             raise ValueError('Exposure MJD {0:.5f} <= last MJD {1:.5f}.'
                              .format(mjd, self._last_mjd))
+
+        # Remember the most recent exposure.
         self._last_mjd = mjd
+        self._last_tile = row
 
         # Remember the first exposure's timestamp.
         if self._first_mjd == 0:
