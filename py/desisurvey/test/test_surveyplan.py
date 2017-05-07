@@ -49,8 +49,10 @@ class TestSurveyPlan(unittest.TestCase):
         day0 = ephem.get_row(0)
         planfile0 = sp.afternoonPlan(day0, progress)
         tiles = progress._table['tileid'][:10]
+        t0 = Time(58849., format='mjd')
         for i, tile_id in enumerate(tiles):
-            progress.add_exposure(tile_id, 58849. + i, 1000., 1., 1.5, 1.1)
+            progress.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 1., 1.5, 1.1)
 
         #- Plan night 1
         day1 = ephem.get_row(1)

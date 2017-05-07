@@ -4,6 +4,8 @@ import datetime
 
 import numpy as np
 from astropy.table import Table
+import astropy.time
+import astropy.units as u
 
 from desisurvey.ephemerides import Ephemerides
 from desisurvey.progress import Progress
@@ -38,6 +40,7 @@ class TestNextField(unittest.TestCase):
         progress = Progress()
         planfile = self.surveyplan.afternoonPlan(self.ephem._table[0], progress)
         mjd = 2458728.708333 - 2400000.5  #- Sept 1 2019 @ 10pm in Arizona
+        t0 = astropy.time.Time(mjd, format='mjd')
 
         tilesObserved = list()
 
@@ -47,7 +50,7 @@ class TestNextField(unittest.TestCase):
         for i in range(10):
             tileinfo = nextFieldSelector(planfile, mjd, progress)
             progress.add_exposure(
-                tileinfo['tileID'], mjd + 0.001 * i, 1000., 1., 1.5, 1.1)
+                tileinfo['tileID'], t0 + i * u.min, 30 * u.s, 1., 1.5, 1.1)
             tilesObserved.append(tileinfo['tileID'])
             decobs.append(tileinfo['DEC'])
             prev_ra = tileinfo['RA']
@@ -61,9 +64,10 @@ class TestNextField(unittest.TestCase):
         #- Observe 10 exp at different MJDs to make sure we walk through RA
         raobs = list()
         for i in range(10):
-            mjd += 0.3/24
-            tileinfo = nextFieldSelector(planfile, mjd, progress)
-            progress.add_exposure(tileinfo['tileID'], mjd, 1000., 1., 1.5, 1.1)
+            t0 += 0.3 * u.hour
+            tileinfo = nextFieldSelector(planfile, t0.mjd, progress)
+            progress.add_exposure(
+                tileinfo['tileID'], t0, 1e3 * u.s, 1., 1.5, 1.1)
             tilesObserved.append(tileinfo['tileID'])
             prev_ra = tileinfo['RA']
             prev_dec = tileinfo['DEC']
