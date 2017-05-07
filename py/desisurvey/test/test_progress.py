@@ -5,6 +5,8 @@ import os
 
 import numpy as np
 
+import astropy.units as u
+
 import desisurvey.config
 
 from ..progress import *
@@ -55,8 +57,9 @@ class TestProgress(unittest.TestCase):
         p = Progress()
         t = p._table
         tiles = t['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
+            p.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
             self.assertTrue(p.get_tile(tile_id)['snr2frac'][0] == 0.5)
             last_tile = p.get_tile(tile_id)
             self.assertTrue(np.array_equal(last_tile.data, p.last_tile.data))
@@ -71,19 +74,22 @@ class TestProgress(unittest.TestCase):
         p = Progress()
         t = p._table
         tile_id = t['tileid'][0]
-        p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, 58849.1, 100., 0.5, 1.5, 1.1)
-        self.assertEqual(p.first_mjd, 58849.0)
-        self.assertEqual(p.last_mjd, 58849.1)
+        t0 = astropy.time.Time('2020-01-01 07:00')
+        t1 = t0 + 1 * u.hour
+        p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, t1, 1e3 * u.s, 0.5, 1.5, 1.1)
+        self.assertEqual(p.first_mjd, t0.mjd)
+        self.assertEqual(p.last_mjd, t1.mjd)
         with self.assertRaises(ValueError):
-            p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
+            p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1)
 
     def test_save_read(self):
         """Create, save and read a progress table"""
         p1 = Progress()
         tiles = p1._table['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p1.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
+            p1.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
         p1.save('p1.fits')
         p2 = Progress('p1.fits')
         self.assertEqual(p2.completed(include_partial=True), 5.)
@@ -96,8 +102,9 @@ class TestProgress(unittest.TestCase):
         """Construct progress from a table"""
         p1 = Progress()
         tiles = p1._table['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p1.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
+            p1.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
         p2 = Progress(p1._table)
         self.assertEqual(p2.completed(include_partial=True), 5.)
         self.assertEqual(p2.completed(include_partial=False), 0.)
@@ -114,9 +121,10 @@ class TestProgress(unittest.TestCase):
         """Completion value truncates at one"""
         p = Progress()
         tile_id = p._table['tileid'][0]
-        p.add_exposure(tile_id, 58849.0, 100., 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, 58849.1, 100., 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, 58849.2, 100., 0.5, 1.5, 1.1)
+        t0 = astropy.time.Time('2020-01-01 07:00')
+        p.add_exposure(tile_id, t0 + 1 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, t0 + 2 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, t0 + 3 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
         self.assertEqual(p.completed(include_partial=True), 1.)
         self.assertEqual(p.completed(include_partial=False), 1.)
 
@@ -133,11 +141,12 @@ class TestProgress(unittest.TestCase):
                          (0., n1, 0.))
         self.assertEqual(p.completed(only_passes=(7, 1), as_tuple=True),
                          (0., n1 + n7, 0.))
-        n, mjd = 10, 58849.
+        n = 10
         tiles = p._table['tileid'][list(pass1[:n]) + list(pass7[:n])]
+        t0 = astropy.time.Time('2020-01-01 07:00')
         for tile_id in tiles:
-            p.add_exposure(tile_id, mjd, 100., 1.5, 1.5, 1.1)
-            mjd += 0.1
+            p.add_exposure(tile_id, t0, 1e3 * u.s, 1.5, 1.5, 1.1)
+            t0 += 0.1 * u.day
         self.assertEqual(p.completed(only_passes=(7, 1)), 2 * n)
         self.assertEqual(p.completed(only_passes=7), n)
         self.assertEqual(p.completed(only_passes=(1,)), n)
@@ -154,10 +163,11 @@ class TestProgress(unittest.TestCase):
         n = p.max_exposures + 1
         tile_id = p._table['tileid'][0]
         mjds = 58849. + np.arange(n)
-        for mjd in mjds[:-1]:
-            p.add_exposure(tile_id, mjd, 100., 0.2, 1.5, 1.1)
+        tt = astropy.time.Time('2020-01-01 07:00') + np.arange(n) * u.hour
+        for t in tt[:-1]:
+            p.add_exposure(tile_id, t, 1e3 * u.s, 0.2, 1.5, 1.1)
         with self.assertRaises(RuntimeError):
-            p.add_exposure(tile_id, mjds[-1], 100., 0.2, 1.5, 1.1)
+            p.add_exposure(tile_id, tt[-1], 1e3 * u.s, 0.2, 1.5, 1.1)
 
     def test_summary(self):
         """Summary contains one row per tile"""
@@ -167,9 +177,11 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(len(p.get_summary('all')), p.num_tiles)
         self.assertTrue(np.all(p.get_summary('all')['nexp'] == 0))
         n, airmass, seeing = 100, 1.5, 1.1
+        t0 = astropy.time.Time('2020-01-01 07:00')
         for i, t in enumerate(p._table['tileid'][:n]):
-            p.add_exposure(t, 58000 + i, 1000., 0.25, airmass, seeing)
-            p.add_exposure(t, 58000 + i + 0.5, 1000., 0.25, airmass, seeing)
+            p.add_exposure(t, t0 + i * u.hour, 1e3 * u.s, 0.25, airmass, seeing)
+            p.add_exposure(t, t0 + (i + 0.5) * u.hour, 1e3 * u.s, 0.25,
+                           airmass, seeing)
         self.assertEqual(len(p.get_summary('observed')), 100)
         self.assertEqual(len(p.get_summary('completed')), 0)
         self.assertTrue(np.all(p.get_summary('observed')['nexp'] == 2))
@@ -194,8 +206,9 @@ class TestProgress(unittest.TestCase):
         """Copy with no range selects everything"""
         p1 = Progress()
         tiles = p1._table['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p1.add_exposure(tile_id, 58849. + i, 100., 0.5, 1.5, 1.1)
+            p1.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
         p2 = p1.copy_range()
         self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
 
@@ -203,31 +216,32 @@ class TestProgress(unittest.TestCase):
         """Copy with range selects subset"""
         p1 = Progress()
         n = 10
-        mjds = 58849. + np.arange(n)
         tiles = p1._table['tileid'][:n].data
-        for mjd, tile_id in zip(mjds, tiles):
-            p1.add_exposure(tile_id, mjd, 100., 0.5, 1.5, 1.1)
-        for mjd, tile_id in zip(mjds, tiles):
-            p1.add_exposure(tile_id, mjd + 100, 100., 0.5, 1.5, 1.1)
+        tt = astropy.time.Time('2020-01-01 07:00') + np.arange(n) * u.hour
+        for t, tile_id in zip(tt, tiles):
+            p1.add_exposure(tile_id, t, 1e3 * u.s, 0.5, 1.5, 1.1)
+        for t, tile_id in zip(tt, tiles):
+            p1.add_exposure(tile_id, t + 100 * u.day, 1e3 * u.s, 0.5, 1.5, 1.1)
         self.assertEqual(p1.completed(), n)
         # Selects everything.
-        p2 = p1.copy_range(mjds[0], mjds[0] + 200)
+        mjd0 = tt[0].mjd
+        p2 = p1.copy_range(mjd0, mjd0 + 200)
         self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
-        p2 = p1.copy_range(mjds[0], None)
+        p2 = p1.copy_range(mjd0, None)
         self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
-        p2 = p1.copy_range(None, mjds[0] + 200)
+        p2 = p1.copy_range(None, mjd0 + 200)
         self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
         # Selects half of the exposures.
-        p2 = p1.copy_range(None, mjds[0] + 100)
+        p2 = p1.copy_range(None, mjd0 + 100)
         self.assertEqual(p2.completed(), 0.5 * n)
-        p2 = p1.copy_range(mjds[0], mjds[0] + 100)
+        p2 = p1.copy_range(mjd0, mjd0 + 100)
         self.assertEqual(p2.completed(), 0.5 * n)
-        p2 = p1.copy_range(mjds[0] + 100, mjds[0] + 200)
+        p2 = p1.copy_range(mjd0 + 100, mjd0 + 200)
         self.assertEqual(p2.completed(), 0.5 * n)
-        p2 = p1.copy_range(mjds[0] + 100, None)
+        p2 = p1.copy_range(mjd0 + 100, None)
         self.assertEqual(p2.completed(), 0.5 * n)
         # Selects none of the exposures.
-        p2 = p1.copy_range(None, mjds[0])
+        p2 = p1.copy_range(None, mjd0)
         self.assertEqual(p2.completed(), 0.)
-        p2 = p1.copy_range(mjds[0] + 200, None)
+        p2 = p1.copy_range(mjd0 + 200, None)
         self.assertEqual(p2.completed(), 0.)

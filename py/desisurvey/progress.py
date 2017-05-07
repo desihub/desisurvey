@@ -6,6 +6,7 @@ from __future__ import print_function, division
 import numpy as np
 
 import astropy.table
+import astropy.units as u
 
 import desimodel.io
 
@@ -347,18 +348,17 @@ class Progress(object):
         # Return a new progress object with this table.
         return Progress(restore=table)
 
-    def add_exposure(self, tile_id, mjd, exptime, snr2frac, airmass, seeing):
+    def add_exposure(self, tile_id, start, exptime, snr2frac, airmass, seeing):
         """Add a single exposure to the progress.
 
         Parameters
         ----------
         tile_id : int
             DESI footprint tile ID
-        mjd : float
-            MJD of exposure start time.  Must be larger than any previous
-            exposure.
-        exptime : float
-            Exposure open shutter time in seconds.
+        start : astropy.time.Time
+            Exposure start time.  Must be after any previous exposure.
+        exptime : astropy.units.Quantity
+            Exposure open shutter time with units.
         snr2frac : float
             Fraction of the design SNR**2 achieved during this exposure.
         airmass : float
@@ -366,10 +366,10 @@ class Progress(object):
         seeing : float
             Estimated FWHM seeing of this exposure in arcseconds.
         """
+        mjd = start.mjd
         self.log.debug(
             'Adding {0:.1f}s exposure of {1} at {2} (MJD {3:.5f}).'
-            .format(exptime, tile_id,
-                    astropy.time.Time(mjd, format='mjd').datetime, mjd))
+            .format(exptime, tile_id, start.datetime, mjd))
         row = self.get_tile(tile_id)
 
         # Check that we have not reached the maximum allowed exposures.
@@ -394,7 +394,7 @@ class Progress(object):
 
         # Save this exposure.
         row['mjd'][num_exp] = mjd
-        row['exptime'][num_exp] = exptime
+        row['exptime'][num_exp] = exptime.to(u.s).value
         row['snr2frac'][num_exp] = snr2frac
         row['airmass'][num_exp] = airmass
         row['seeing'][num_exp] = seeing
