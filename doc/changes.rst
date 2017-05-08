@@ -15,6 +15,7 @@ desisurvey change log
   AltAz transforms and ephemerides calculations.
 * Add new plot utilities for Progress and Plan objects.
 * Document and handle astropy IERS warnings about future times.
+* Rename exposurecalc module to etc (exposure-time calculator).
 * Update docstrings and imports, and remove unused code.
 
 0.5.0 (2017-04-13)

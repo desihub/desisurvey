@@ -4,7 +4,7 @@ import numpy as np
 
 import astropy.units as u
 
-from desisurvey.exposurecalc import exposure_time, moon_exposure_factor
+from desisurvey.etc import exposure_time, moon_exposure_factor
 
 
 class TestExpCalc(unittest.TestCase):

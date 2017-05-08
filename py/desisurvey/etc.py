@@ -3,6 +3,10 @@
 Use :func:`exposure_time` to combine all effects into an exposure time in
 seconds, or call functions to calculate the individual exposure-time factors
 associated with each effect.
+
+The following effects are included: seeing, transparency, galactic dust
+extinction, airmass, scattered moonlight.  The following effects are not yet
+implemented: twilight sky brightness, clouds, variable OH sky brightness.
 """
 from __future__ import print_function, division
 

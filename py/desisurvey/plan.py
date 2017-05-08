@@ -135,7 +135,7 @@ import specsim.atmosphere
 import desimodel.io
 
 import desisurvey.ephemerides
-import desisurvey.exposurecalc
+import desisurvey.etc
 
 
 def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
@@ -355,7 +355,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                     moon_phase, vband_extinction).value
                 # Estimate the exposure time factor from V.
                 X = np.dstack((one, np.exp(-V), 1/V, 1/V**2, 1/V**3))
-                T = X.dot(desisurvey.exposurecalc._moonCoefficients)
+                T = X.dot(desisurvey.etc._moonCoefficients)
                 # No penalty when the moon is below the horizon.
                 T[moon_alt < 0, :] = 1.
                 fexp[sl] *= 1. / T
