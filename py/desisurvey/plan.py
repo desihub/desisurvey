@@ -17,6 +17,7 @@ import desiutil.log
 
 import desisurvey.config
 import desisurvey.utils
+import desisurvey.etc
 
 
 class Planner(object):
@@ -254,8 +255,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     EBV[footprint] /= tiles_per_pixel[footprint]
 
     # Calculate dust extinction exposure-time factor.
-    Ag = 3.303 * EBV # Use g-band
-    f_EBV = 10.0 ** (-2.0 * Ag / 2.5)
+    f_EBV = 1. / desisurvey.etc.dust_exposure_factor(EBV)
 
     # Save HDU with the footprint and static dust exposure map.
     table = astropy.table.Table()
@@ -322,9 +322,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         # Zero the exposure factor for pixels below the horizon.
         visible = pix_sep < 90 * u.deg
         fexp[sl][~visible] = 0.
-        # Calculate the airmass exposure-time penalty
-        # as 1/X**1.25 with X = 1/cos(pix_sep).
-        fexp[sl][visible] *= np.cos(pix_sep[visible]) ** 1.25
+        # Calculate the airmass exposure-time penalty with X = 1/cos(pix_sep).
+        X = 1. / np.cos(pix_sep[visible])
+        fexp[sl][visible] /= desisurvey.etc.airmass_exposure_factor(X)
         # Loop over objects we need to avoid.
         for name in config.avoid_bodies.keys:
             f_obj = desisurvey.ephemerides.get_object_interpolator(night, name)
@@ -391,8 +391,8 @@ if __name__ == '__main__':
     # so they can be debugged or explicitly ignored.
     warnings.simplefilter('error')
 
-    #stop = desisurvey.utils.get_date('2019-10-03')
+    stop = desisurvey.utils.get_date('2019-10-03')
     #stop = desisurvey.utils.get_date('2020-07-13')
-    stop = None
+    #stop = None
     ephem = desisurvey.ephemerides.Ephemerides(stop_date=stop)
     initialize(ephem, stop_date=stop)
