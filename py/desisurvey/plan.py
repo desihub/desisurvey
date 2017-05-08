@@ -313,8 +313,11 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         fexp[sl] = (dark | gray | bright)[:, np.newaxis]
         # Transform the local zenith to (ra,dec).
         times = astropy.time.Time(mjd, format='mjd')
-        zenith = desisurvey.utils.get_observer(
-            times, alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
+        with warnings.catch_warnings():
+            warnings.simplefilter(
+                'ignore', astropy.utils.exceptions.AstropyUserWarning)
+            zenith = desisurvey.utils.get_observer(
+                times, alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
         etable['zenith_ra'][sl] = zenith.ra.to(u.deg).value
         etable['zenith_dec'][sl] = zenith.dec.to(u.deg).value
         # Calculate zenith angles to each pixel in the footprint.
@@ -322,8 +325,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         # Zero the exposure factor for pixels below the horizon.
         visible = pix_sep < 90 * u.deg
         fexp[sl][~visible] = 0.
-        # Calculate the airmass exposure-time penalty with X = 1/cos(pix_sep).
-        X = 1. / np.cos(pix_sep[visible])
+        # Calculate the airmass exposure-time penalty.
+        X = desisurvey.utils.zenith_angle_to_airmass(pix_sep[visible])
         fexp[sl][visible] /= desisurvey.etc.airmass_exposure_factor(X)
         # Loop over objects we need to avoid.
         for name in config.avoid_bodies.keys:
@@ -391,8 +394,8 @@ if __name__ == '__main__':
     # so they can be debugged or explicitly ignored.
     warnings.simplefilter('error')
 
-    stop = desisurvey.utils.get_date('2019-10-03')
+    #stop = desisurvey.utils.get_date('2019-10-03')
     #stop = desisurvey.utils.get_date('2020-07-13')
-    #stop = None
+    stop = None
     ephem = desisurvey.ephemerides.Ephemerides(stop_date=stop)
     initialize(ephem, stop_date=stop)

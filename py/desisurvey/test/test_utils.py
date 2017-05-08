@@ -113,6 +113,32 @@ class TestUtils(unittest.TestCase):
         with self.assertRaises(ValueError):
             utils.get_observer(50000.)
 
+    def test_zenith_airmass(self):
+        """Airmass values monotically increase with zenith angle"""
+        Z = np.arange(90) * np.pi / 180.
+        X = utils.zenith_angle_to_airmass(Z)
+        self.assertEqual(Z.shape, X.shape)
+        self.assertTrue(np.all(np.diff(X) > 0))
+
+    def test_zenith_airmass(self):
+        """Zenith angles can have units"""
+        Z1 = np.arange(90) * u.deg
+        Z2 = Z1.to(u.rad)
+        X1 = utils.zenith_angle_to_airmass(Z1)
+        X2 = utils.zenith_angle_to_airmass(Z2)
+        self.assertTrue(np.allclose(X1, X2))
+
+    def test_airmass_scalar(self):
+        """Scalar input returns scalar output"""
+        X = utils.zenith_angle_to_airmass(0.)
+        self.assertEqual(X.shape, ())
+
+    def test_airmass_clip(self):
+        """Zenith angles > 90 deg are clipped"""
+        self.assertAlmostEqual(
+            utils.zenith_angle_to_airmass(90 * u.deg),
+            utils.zenith_angle_to_airmass(100 * u.deg))
+
     def test_get_airmass_lowest(self):
         """The lowest airmass occurs when dec=latitude"""
         t = astropy.time.Time('2020-01-01')

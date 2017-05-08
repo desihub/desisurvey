@@ -126,13 +126,43 @@ def get_observer(when, alt=None, az=None):
         location=get_location(), obstime=when, pressure=0, **kwargs)
 
 
+def zenith_angle_to_airmass(zenith_angle):
+    """Convert a zenith angle to an airmass.
+
+    Uses the Rozenberg 1966 interpolative formula, which gives reasonable
+    results for high zenith angles, with a horizon air mass of 40.
+
+    https://en.wikipedia.org/wiki/Air_mass_(astronomy)#Interpolative_formulas
+
+    Rozenberg, G. V. 1966. "Twilight: A Study in Atmospheric Optics."
+    New York: Plenum Press, 160.
+
+    The value of cosZ is clipped at zero, so observations below the horizon
+    return the horizon value (~40).
+
+    Parameters
+    ----------
+    zenith_angle : float or array or astropy.units.Quantity
+        Angle(s) to convert.  Assumed to be in radians unless units are
+        specified.
+
+    Returns
+    -------
+    float or array
+        Airmass value(s)
+    """
+    try:
+        Z = zenith_angle.to(u.rad).value
+    except (AttributeError, u.UnitConversionError):
+        Z = np.asarray(zenith_angle)
+    cosZ = np.clip(np.cos(Z), 0., 1.)
+    return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
+
+
 def get_airmass(when, ra, dec):
     """Return the airmass of (ra,dec) at the specified observing time.
 
-    Uses the Rosenberg 1966 formula: 1/X = cosZ + 0.025 * exp(-11*cosZ).
-
-    The value of cosZ is clipped at zero, so observations below the horizon
-    return the horizon value.
+    Uses :func:`zenith_angle_to_airmass`.
 
     Parameters
     ----------
@@ -151,8 +181,10 @@ def get_airmass(when, ra, dec):
     target = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
     zenith = get_observer(when, alt=90 * u.deg, az=0 * u.deg
                           ).transform_to(astropy.coordinates.ICRS)
-    cosZ = np.clip(np.cos(target.separation(zenith).to(u.rad).value), 0., 1.)
-    return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
+    # Calculate zenith angle in degrees.
+    zenith_angle = target.separation(zenith)
+    # Convert to airmass.
+    return zenith_angle_to_airmass(zenith_angle)
 
 
 def is_monsoon(night):
