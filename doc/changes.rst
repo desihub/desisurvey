@@ -13,8 +13,9 @@ desisurvey change log
 * Cleanup and reorganize the Ephemerides class.
 * Add comparisons with independent JPL Horizons run to unit tests for
   AltAz transforms and ephemerides calculations.
-* Update docstrings and imports, and remove unused code.
 * Add new plot utilities for Progress and Plan objects.
+* Document and handle astropy IERS warnings about future times.
+* Update docstrings and imports, and remove unused code.
 
 0.5.0 (2017-04-13)
 ------------------

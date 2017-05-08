@@ -2,11 +2,14 @@
 """
 from __future__ import print_function, division
 
+import warnings
+
 import numpy as np
 
 import astropy.io.fits
 import astropy.time
 import astropy.coordinates
+import astropy.utils.exceptions
 import astropy.units as u
 
 import desiutil.log
@@ -74,7 +77,9 @@ def nextFieldSelector(obsplan, mjd, progress):
 
     # Calculate current zenith angle for each possible tile.
     obs = desisurvey.utils.get_observer(when, alt=90 * u.deg, az=0 * u.deg)
-    zenith = obs.transform_to(astropy.coordinates.ICRS)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', astropy.utils.exceptions.AstropyWarning)
+        zenith = obs.transform_to(astropy.coordinates.ICRS)
     zenith_angles = proposed.separation(zenith)
 
     # Determine the previous pointing if we need to include slew time
@@ -119,7 +124,7 @@ def nextFieldSelector(obsplan, mjd, progress):
             when, ra[i], dec[i])
         # Skip a tile that is currently too close to a moon above the horizon.
         if moonalt > 0 and moondist <= max_moondist:
-            log.info(
+            log.debug(
                 'Tile {0} is too close to moon with alt={1:.1f}, sep={2:.1f}.'
                 .format(tileID, moonalt, moondist))
             continue

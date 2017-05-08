@@ -3,10 +3,12 @@
 from __future__ import print_function, division
 
 import pkg_resources
+import warnings
 
 import numpy as np
 
 import astropy.table
+import astropy.utils.exceptions
 
 import desimodel.io
 import desiutil.log
@@ -167,14 +169,17 @@ class surveyPlan:
 
         # Assign tiles to LST bins
         planList0 = []
-        lst_dusk = mjd2lst(day_stats['dusk'])
-        lst_dawn = mjd2lst(day_stats['dawn'])
-        lst_brightdusk = mjd2lst(day_stats['brightdusk'])
-        lst_brightdawn = mjd2lst(day_stats['brightdawn'])
-        LSTmoonrise = mjd2lst(day_stats['moonrise'])
-        LSTmoonset = mjd2lst(day_stats['moonset'])
-        LSTbrightstart = mjd2lst(day_stats['brightstart'])
-        LSTbrightend = mjd2lst(day_stats['brightstop'])
+        with warnings.catch_warnings():
+            warnings.simplefilter(
+                'ignore', astropy.utils.exceptions.AstropyUserWarning)
+            lst_dusk = mjd2lst(day_stats['dusk'])
+            lst_dawn = mjd2lst(day_stats['dawn'])
+            lst_brightdusk = mjd2lst(day_stats['brightdusk'])
+            lst_brightdawn = mjd2lst(day_stats['brightdawn'])
+            LSTmoonrise = mjd2lst(day_stats['moonrise'])
+            LSTmoonset = mjd2lst(day_stats['moonset'])
+            LSTbrightstart = mjd2lst(day_stats['brightstart'])
+            LSTbrightend = mjd2lst(day_stats['brightstop'])
 
         # Calculate LST of each tile in the range [0, 360).
         finalTileLST = finalTileList['RA'] + finalTileList['HA']

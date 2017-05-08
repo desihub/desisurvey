@@ -3,13 +3,15 @@
 from __future__ import print_function, division
 
 import datetime
+import warnings
 
 import numpy as np
 
-import astropy.io.fits as fits
-import astropy.units as u
+import astropy.io.fits
 import astropy.table
 import astropy.time
+import astropy.utils.exceptions
+import astropy.units as u
 
 import desiutil.log
 
@@ -175,8 +177,11 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     config = desisurvey.config.Configuration()
     output_name = config.get_path(output_name)
 
-    start_date = desisurvey.utils.get_date(start_date or ephem.start)
-    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    with warnings.catch_warnings():
+        warnings.simplefilter(
+            'ignore', astropy.utils.exceptions.AstropyUserWarning)
+        start_date = desisurvey.utils.get_date(start_date or ephem.start)
+        stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
     mjd = ephem._table['noon']
@@ -192,17 +197,17 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     num_points = len(t_centers)
 
     # Create an empty HDU0 with header info.
-    header = fits.Header()
+    header = astropy.io.fits.Header()
     header['START'] = str(start_date)
     header['STOP'] = str(stop_date)
     header['NSIDE'] = healpix_nside
     header['NPOINTS'] = num_points
     header['STEP'] = step_size.to(u.min).value
-    hdus = fits.HDUList()
-    hdus.append(fits.ImageHDU(header=header))
+    hdus = astropy.io.fits.HDUList()
+    hdus.append(astropy.io.fits.ImageHDU(header=header))
 
     # Save time grid.
-    hdus.append(fits.ImageHDU(name='GRID', data=t_edges))
+    hdus.append(astropy.io.fits.ImageHDU(name='GRID', data=t_edges))
 
     # Load the list of tiles to observe.
     tiles = astropy.table.Table(
@@ -239,7 +244,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
         table['program'][tiles['PROGRAM'] == program] = i + 1
     assert np.all(table['program'] > 0)
-    hdu = fits.table_to_hdu(table)
+    hdu = astropy.io.fits.table_to_hdu(table)
     hdu.name = 'TILES'
     hdus.append(hdu)
 
@@ -256,7 +261,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     table = astropy.table.Table()
     table['pixel'] = footprint_pixels
     table['dust'] = f_EBV[footprint_pixels]
-    hdu = fits.table_to_hdu(table)
+    hdu = astropy.io.fits.table_to_hdu(table)
     hdu.name = 'STATIC'
     hdus.append(hdu)
 
@@ -363,17 +368,17 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 fexp[sl] *= penalty
 
     # Save calendar table.
-    hdu = fits.table_to_hdu(calendar)
+    hdu = astropy.io.fits.table_to_hdu(calendar)
     hdu.name = 'CALENDAR'
     hdus.append(hdu)
 
     # Save ephemerides table.
-    hdu = fits.table_to_hdu(etable)
+    hdu = astropy.io.fits.table_to_hdu(etable)
     hdu.name = 'EPHEM'
     hdus.append(hdu)
 
     # Save dynamic exposure-time factors.
-    hdus.append(fits.ImageHDU(name='DYNAMIC', data=fexp))
+    hdus.append(astropy.io.fits.ImageHDU(name='DYNAMIC', data=fexp))
 
     # Finalize the output file.
     hdus.writeto(output_name, overwrite=True)
@@ -381,6 +386,10 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 
 
 if __name__ == '__main__':
+
+    # Raise an exception for any warnings (most likely from astropy)
+    # so they can be debugged or explicitly ignored.
+    warnings.simplefilter('error')
 
     #stop = desisurvey.utils.get_date('2019-10-03')
     #stop = desisurvey.utils.get_date('2020-07-13')

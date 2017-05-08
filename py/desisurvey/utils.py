@@ -197,6 +197,8 @@ def local_noon_on_date(day):
     of this function is to standardize the boundary between observing nights
     and the mapping of dates to times.
 
+    Generates astropy ErfaWarnings for times in the future.
+
     Parameters
     ----------
     day : datetime.date
@@ -239,6 +241,8 @@ def get_date(date):
     This ensures that all times during a local observing night are mapped to
     the same date, when the night started.  A "naive" (un-localized) datetime
     is assumed to refer to UTC.
+
+    Generates astropy ERFA warnings for future dates.
 
     Parameters
     ----------
@@ -329,6 +333,8 @@ def mjd2lst(mjd):
 
     Used in afternoonplan and nextobservation.
     Not unit tested.
+
+    Generates astropy ErfaWarnings for times in the future.
 
     Args:
         mjd: float
