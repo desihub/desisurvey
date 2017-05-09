@@ -10,7 +10,7 @@ import desisurvey.config
 from ..plan import *
 
 
-class TestEphemerides(unittest.TestCase):
+class TestPlan(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
