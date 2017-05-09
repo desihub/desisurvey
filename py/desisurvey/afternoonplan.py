@@ -1,13 +1,14 @@
+"""Plan an observing night during the previous afternoon.
+"""
 from __future__ import print_function, division
 
-import copy
-import os
-import sys
 import pkg_resources
+import warnings
 
 import numpy as np
 
 import astropy.table
+import astropy.utils.exceptions
 
 import desimodel.io
 import desiutil.log
@@ -16,25 +17,24 @@ import desisurvey.config
 from desisurvey.utils import mjd2lst
 
 
-SURVEY_NOMINAL_LENGTH = 5.0 * 365.25 #Survey duration
-
 class surveyPlan:
+    """Plan an observing night during the previous afternoon.
+
+    Initialises survey by reading in the file desi_tiles.fits and populates the
+    class members.
+
+    Parameters
+    ----------
+    MJDstart : float
+        Day of the (re-)start of the survey
+    MJDend : float
+        Day of the end of the survey
+    ephem : desisurvey.ephemerides.Ephemerides
+        Tabulated ephemerides covering MJDstart - MJDend.
+    HA_assign : bool
+        Calculate HA assignments if True, otherwise read from a file.
     """
-    Main class for survey planning
-    """
-
-    def __init__(self, MJDstart, MJDend, ephem, tilesubset=None, HA_assign=False):
-        """Initialises survey by reading in the file desi_tiles.fits
-        and populates the class members.
-
-        Arguments:
-            MJDstart: day of the (re-)start of the survey
-            MJDend: day of the end of the survey
-            ephem: Ephemerides covering MJDstart - MJDend
-
-        Optional:
-            tilesubset: array of integer tileids to use; ignore others
-        """
+    def __init__(self, MJDstart, MJDend, ephem, HA_assign=False):
         self.log = desiutil.log.get_logger()
         self.config = desisurvey.config.Configuration()
         self.ephem = ephem
@@ -42,15 +42,11 @@ class surveyPlan:
         # Read in DESI tile data
         tiles = astropy.table.Table(
             desimodel.io.load_tiles(onlydesi=True, extra=False))
-
-        # Restrict to a subset of tiles if requested.
-        if tilesubset is not None:
-            tiles = tiles[tilesubset]
-
         numtiles = len(tiles)
 
         # Drop un-needed columns.
-        tiles.remove_columns(['IN_DESI', 'AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC'])
+        tiles.remove_columns([
+            'IN_DESI', 'AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC'])
 
         # Add some new columns (more will be added later).
         for name, dtype in (('GAL_CAP', np.int8), ('SUBLIST', np.int8),
@@ -77,7 +73,7 @@ class surveyPlan:
             (tiles['GAL_CAP'] < 0) | (dec < dec_min) | (dec > dec_max)] += 8
 
         # Initialize the LST bins we will use for scheduling each night.
-        self.nLST = 144
+        self.nLST = self.config.num_lst_bins()
         self.LSTedges = np.linspace(0.0, 360.0, self.nLST + 1)
         self.LSTbins = 0.5 * (self.LSTedges[1:] + self.LSTedges[:-1])
         self.LSTres = self.LSTedges[1]
@@ -90,29 +86,34 @@ class surveyPlan:
 
         self.tiles.sort(('SUBLIST', 'DEC'))
 
-
     def assignHA(self, MJDstart, MJDend, compute=False):
-        """Assigns optimal hour angles for the DESI tiles;
-        can be re-run at any point during the survey to
+        """Assign optimal hour angles for the DESI tiles.
+
+        Can be re-run at any point during the survey to
         reoptimise the schedule.
 
-        Args:
-            MJDstart: float, time at which the assignment starts, this is the same input as
-                      for surveySim.
-            MJDend: float, time by which the _survey_ is expected to be completed, i.e. it should
-                    be the MJDstart + time remaining in survey.
-
-        Optional:
-            compute: bool, False reads a pre-computed table; for development purposes only.
+        Parameters
+        ----------
+        MJDstart : float
+            Time at which the assignment starts.
+        MJDend : float
+            Time by which the survey is expected to be completed.
+        compute : bool
+            False reads a pre-computed table; for development purposes only.
         """
-
         if compute:
             obs_dark = self.plan_ha(MJDstart, MJDend, False)
             obs_bright = self.plan_ha(MJDstart, MJDend, True)
-            obs1 = astropy.table.Table([obs_dark['tileid'], obs_dark['beginobs'], obs_dark['endobs'], obs_dark['obstime'], obs_dark['ha']],
-                                       names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'), dtype=('i4','f8','f8','f8','f8'))
-            obs2 = astropy.table.Table([obs_bright['tileid'], obs_bright['beginobs'], obs_bright['endobs'], obs_bright['obstime'], obs_bright['ha']],
-                                       names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'), dtype=('i4','f8','f8','f8','f8'))
+            obs1 = astropy.table.Table(
+                [obs_dark['tileid'], obs_dark['beginobs'], obs_dark['endobs'],
+                 obs_dark['obstime'], obs_dark['ha']],
+                names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'),
+                dtype=('i4','f8','f8','f8','f8'))
+            obs2 = astropy.table.Table(
+                [obs_bright['tileid'], obs_bright['beginobs'],
+                 obs_bright['endobs'], obs_bright['obstime'], obs_bright['ha']],
+                names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'),
+                dtype=('i4','f8','f8','f8','f8'))
             info = astropy.table.vstack([obs1, obs2], join_type="exact")
             #info.write("ha_check.dat", format="ascii")
         else:
@@ -133,41 +134,52 @@ class surveyPlan:
         self.tiles.rename_column('ENDOBS', 'LSTMAX')
         self.tiles.rename_column('OBSTIME', 'EXPLEN')
 
+    def afternoonPlan(self, day_stats, progress):
+        """Main decision making method.
 
-    def afternoonPlan(self, day_stats, date_string, tiles_observed):
-        """Main decision making method
+        Parameters
+        ----------
+        day_stats : astropy.table.Row
+            Row of tabulated ephmerides data for tonight's observing.
+        progress : desisurvey.progress.Progress
+            Record of observations made so far.
 
-        Args:
-            day_stats: row of tabulated ephmerides data for today
-            date_string: string of the form YYYYMMDD
-            tiles_observed: table with follwing columns: tileID, status
-
-        Returns:
-            string containg the filename for today's plan; it has the format
+        Returns
+        -------
+        string
+            The filename for today's plan; it has the format
             obsplanYYYYMMDD.fits
         """
+        # Get a list of previously observed tiles, including those which
+        # have not yet reached their SNR**2 target (with status == 1).
+        tiles_observed = progress.get_summary('observed')
         nto = len(tiles_observed)
 
         # Copy the STATUS for previously observed tiles.
         if nto > 0:
-            for status in set(tiles_observed['STATUS']):
-                ii = (tiles_observed['STATUS'] == status)
-                jj = np.in1d(self.tiles['TILEID'], tiles_observed['TILEID'][ii])
+            for status in set(tiles_observed['status']):
+                ii = (tiles_observed['status'] == status)
+                jj = np.in1d(self.tiles['TILEID'], tiles_observed['tileid'][ii])
                 self.tiles['STATUS'][jj] = status
 
-        # Find all tiles with STATUS < 2
-        finalTileList = self.tiles[self.tiles['STATUS'] < 2]
+        # Find all tiles that have never been observed. We eventually want
+        # to also schedule re-observations of partial tiles, but this is not
+        # working yet.
+        finalTileList = self.tiles[self.tiles['STATUS'] < 1]
 
         # Assign tiles to LST bins
         planList0 = []
-        lst_dusk = mjd2lst(day_stats['dusk'])
-        lst_dawn = mjd2lst(day_stats['dawn'])
-        lst_brightdusk = mjd2lst(day_stats['brightdusk'])
-        lst_brightdawn = mjd2lst(day_stats['brightdawn'])
-        LSTmoonrise = mjd2lst(day_stats['moonrise'])
-        LSTmoonset = mjd2lst(day_stats['moonset'])
-        LSTbrightstart = mjd2lst(day_stats['brightstart'])
-        LSTbrightend = mjd2lst(day_stats['brightstop'])
+        with warnings.catch_warnings():
+            warnings.simplefilter(
+                'ignore', astropy.utils.exceptions.AstropyUserWarning)
+            lst_dusk = mjd2lst(day_stats['dusk'])
+            lst_dawn = mjd2lst(day_stats['dawn'])
+            lst_brightdusk = mjd2lst(day_stats['brightdusk'])
+            lst_brightdawn = mjd2lst(day_stats['brightdawn'])
+            LSTmoonrise = mjd2lst(day_stats['moonrise'])
+            LSTmoonset = mjd2lst(day_stats['moonset'])
+            LSTbrightstart = mjd2lst(day_stats['brightstart'])
+            LSTbrightend = mjd2lst(day_stats['brightstop'])
 
         # Calculate LST of each tile in the range [0, 360).
         finalTileLST = finalTileList['RA'] + finalTileList['HA']
@@ -217,7 +229,8 @@ class surveyPlan:
                                  (finalTileList['STATUS'] < 2))[0]
                 # Schedule the first 5.
                 scheduled.extend(found[:5])
-                # If fewer than 5 dark tiles fall within this window, pad with grey
+                # If fewer than 5 dark tiles fall within this window,
+                # pad with grey
                 if len(scheduled) < 5:
                     found = np.where(gray_tile & (finalTileLSTbin == i) &
                                      (finalTileList['STATUS'] < 2))[0]
@@ -252,17 +265,17 @@ class surveyPlan:
             finalTileList['PRIORITY'][scheduled] = 3 + np.arange(len(scheduled))
             planList0.extend(scheduled)
 
-        self.log.info('Afternoon plan contains {0} tiles.'
-                      .format(len(planList0)))
+        date = desisurvey.utils.get_date(day_stats['noon'] + 0.5)
+        self.log.info('Afternoon plan for {0} contains {1} tiles.'
+                      .format(date, len(planList0)))
+
         table = finalTileList[planList0]
         table.meta['MOONFRAC'] = day_stats['moon_illum_frac']
-        filename = self.config.get_path('obsplan{0}.fits'.format(date_string))
+        filename = self.config.get_path(
+            'obsplan{0}.fits'.format(date.strftime('%Y%m%d')))
         table.write(filename, overwrite=True)
 
-        tilesTODO = len(planList0)
-
         return filename
-
 
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #

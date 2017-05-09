@@ -14,20 +14,22 @@ from ..config import *
 
 class TestConfig(unittest.TestCase):
 
-    def setUp(self):
+    @classmethod
+    def setUpClass(cls):
         # Create a temporary directory.
-        self.tmpdir = tempfile.mkdtemp()
+        cls.tmpdir = tempfile.mkdtemp()
         # Write a simple valid configuration to this directory.
-        self.simple = os.path.join(self.tmpdir, 'simple.yaml')
-        with open(self.simple, 'w') as f:
+        cls.simple = os.path.join(cls.tmpdir, 'simple.yaml')
+        with open(cls.simple, 'w') as f:
             f.write('const:\n')
             f.write('  gravity: 9.8 m/s\n')
             f.write('  pi: 3.141\n')
             f.write('output_path: .\n')
 
-    def tearDown(self):
+    @classmethod
+    def tearDownClass(cls):
         # Remove the directory after the test.
-        shutil.rmtree(self.tmpdir)
+        shutil.rmtree(cls.tmpdir)
         # Reset configuration for other unit test classes.
         Configuration.reset()
 

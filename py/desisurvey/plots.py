@@ -101,15 +101,21 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     return fig, ax
 
 
-def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
-                      filename='obslist_all.fits', verbose=False, save=None):
+def plot_observed(progress, include='observed', start_date=None, stop_date=None,
+                  what='exptime', print_summary=False, save=None):
     """Plot a summary of observed tiles.
 
-    Reads the file ``obsall_list.fits`` and uses :func:`plot_sky_passes` to
-    display a summary of observed tiles in each pass.
+    Reports progress tracked by :class:`desisurvey.progress.Progress.` using
+    :func:`plot_sky_passes` to display a summary of observed tiles in each pass.
 
     Parameters
     ----------
+    progress : desisurvey.progress.Progress
+        Progress tracker to use.
+    include : 'all', 'observed', or 'completed'
+        Specify which tiles to include in the summary. The 'observed'
+        selection will include tiles that have been observed at least
+        once but have not yet reached their SNR**2 goal.
     start_date : date or None
         Plot observations starting on the night of this date, or starting
         with the first observation if None. Must be convertible to a
@@ -120,14 +126,9 @@ def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
         :func:`desisurvey.utils.get_date`.
     what : string
         What quantity to plot for each planned tile. Must be a
-        column name in the obsall_list FITS file.  Useful values include
-        EXPTIME, OBSSN2, AIRMASS, SEEING.
-    filename : string
-        Name of the output file listing all the observations. Unless an
-        absolute path is provided, the filename is relative to the
-        :meth:`configuration output path
-        <desisurvey.config.Configuration.set_output_path>`.
-    verbose : bool
+        column name in the summary table returned by
+        :meth:`desisurvey.progress.Progress.get_summary`.
+    print_summary : bool
         Print a summary of observed tiles.
     save : string or None
         Name of file where plot should be saved.
@@ -137,43 +138,39 @@ def plot_observations(start_date=None, stop_date=None, what='EXPTIME',
     tuple
         Tuple (figure, axes) returned by ``plt.subplots()``.
     """
-    config = desisurvey.config.Configuration()
-    t = astropy.table.Table.read(config.get_path(filename))
-    if what not in t.colnames:
-        raise ValueError('Valid names are: {0}'
-                         .format(','.join(t.colnames)))
-
-    start_date = desisurvey.utils.get_date(start_date or t['MJD'][0])
-    stop_date = desisurvey.utils.get_date(stop_date or (t['MJD'][-1] + 1.0))
-    if start_date >= stop_date:
-        raise ValueError('Expected start_date < stop_date.')
+    if start_date:
+        start_date = desisurvey.utils.get_date(start_date)
+        mjd_min = desisurvey.local_noon_on_date(start_date).mjd
+    else:
+        start_date = desisurvey.utils.get_date(progress.first_mjd)
+        mjd_min = None
+    if stop_date:
+        stop_date = desisurvey.utils.get_date(stop_date)
+        mjd_max = desisurvey.local_noon_on_date(stop_date).mjd
+    else:
+        stop_date = desisurvey.utils.get_date(progress.last_mjd)
+        mjd_max = None
     date_label = '{0} to {1}'.format(start_date, stop_date)
 
-    # Convert date range to MJDs at local noon.
-    start_mjd = desisurvey.utils.local_noon_on_date(start_date).mjd
-    stop_mjd = desisurvey.utils.local_noon_on_date(stop_date).mjd
+    if mjd_min or mjd_max:
+        # Copy progress within these MJD limits.
+        progress = progress.copy_range(mjd_min, mjd_max)
 
-    # Trim table to requested observations.
-    sel = (t['STATUS'] > 0) & (t['MJD'] >= start_mjd) & (t['MJD'] < stop_mjd)
-    t = t[sel]
+    # Create the summary table to use.
+    t = progress.get_summary(include)
+    if what not in t.colnames:
+        raise ValueError('Valid names are: {0}'.format(','.join(t.colnames)))
 
-    if verbose:
+    if print_summary:
         print('Observing summary for {0}:'.format(date_label))
         for pass_num in range(8):
-            sel_pass = t['PASS'] == pass_num
-            n_exps = np.count_nonzero(sel_pass)
-            n_tiles = len(np.unique(t['TILEID'][sel_pass]))
-            print('Observed {0:7d} tiles with {1:5d} repeats from PASS {2}'
-                  .format(n_tiles, n_exps - n_tiles, pass_num))
-        n_exps = len(t)
-        n_tiles = len(np.unique(t['TILEID']))
-        print('Observed {0:7d} tiles with {1:5d} repeats total.'
-              .format(n_tiles, n_exps - n_tiles))
+            stats = progress.completed(only_passes=pass_num, as_tuple=True)
+            print('Completed {0:6.1f} / {1:4d} ({2:5.1f}%) tiles for pass {p}.'
+                  .format(*stats, p=pass_num))
 
     label = '{0} ({1})'.format(what, date_label)
     return desisurvey.plots.plot_sky_passes(
-        t['RA'], t['DEC'], t['PASS'], t[what],
-        label=label, save=save)
+        t['ra'], t['dec'], t['pass'], t[what], label=label, save=save)
 
 
 def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
@@ -569,3 +566,145 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
 
     if save:
         plt.savefig(save)
+
+
+def plot_planner(p, where=None, when=None, night_summary='dark',
+                 dust=True, monsoon=True, fullmoon=True, cmap='magma',
+                 save=None):
+    """Plot a summary of the planner observing efficiency forecast.
+
+    Requires that the matplotlib package is installed.
+
+    Parameters
+    ----------
+    p : desisurvey.plan.Planner
+        The planner object to use.
+    where : string or None
+    when : string or None
+    night_summary : string
+    dust : bool
+        Should dust extinction be included in the observing efficiency?
+    monsoon : bool
+        Do not observe during scheduled monsoon shutdowns?
+    fullmoon : bool
+        Do not observe during scheduled full-moon breaks?
+    cmap : matplotlib colormap spec
+        Colormap to use to represent observing efficiency. Not used for a
+        time series plot.
+    save : string or None
+        Name of file where plot should be saved.  Format is inferred from
+        the extension.
+
+    Returns
+    -------
+    tuple
+        Tuple (figure, axes) returned by ``plt.subplots()``.
+    """
+    import matplotlib.pyplot as plt
+
+    if where and when:
+        raise ValueError('Cannot specify both where and when.')
+
+    # Reshape time axis into (nights, times). This operation creates
+    # a new view with no memory copy.
+    fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
+
+    # Project out the spatial axis if requested. If dust included,
+    # we cannot avoid making a temporary copy of the large fexp array.
+    if dust and where:
+        fexp = fexp.copy() * p.fdust
+    if where == 'best':
+        # Observe the best pixel during each time slot.
+        fexp = fexp.max(axis=2)
+    elif where == 'random':
+        # Observe a random pixel during each time slot.
+        fexp = fexp.mean(axis=2)
+    elif where is not None:
+        raise ValueError('Invalid where: {0}.'.format(where))
+
+    # Summarize each night using the specified summary statistic.
+    if night_summary == 'best':
+        # Pick the best time to observe each pixel.
+        fexp = fexp.max(axis=1)
+    elif night_summary == '24hr':
+        # Average over each 24hour period.
+        fexp = fexp.mean(axis=1)
+    elif night_summary == 'dark':
+        # Average over night observing times only.
+        n_night_bins = (fexp > 0).sum(axis=1)
+        mask = n_night_bins > 0
+        fexp = fexp.sum(axis=1)
+        fexp[mask] /= n_night_bins[mask]
+    else:
+        raise ValueError('Invalid night_summary: {0}.'.format(night_summary))
+
+    # Zero out monsoon nights if requested.
+    if monsoon:
+        fexp[p.calendar['monsoon']] = 0.
+
+    # Zero out full-moon nights if requested.
+    if fullmoon:
+        fexp[p.calendar['fullmoon']] = 0.
+
+    # Project out the night axis if requested.
+    if when == 'best':
+        # Observe each pixel during its best night.
+        fexp = fexp.max(axis=0)
+    elif when == 'random':
+        # Observe each pixel during a random night scheduled for observations.
+        scheduled = np.ones(p.num_nights, bool)
+        if monsoon:
+            scheduled[p.calendar['monsoon']] = False
+        if fullmoon:
+            scheduled[p.calendar['fullmoon']] = False
+        fexp = fexp[scheduled].mean(axis=0)
+    elif when is not None:
+        raise ValueError('Invalid when: {0}.'.format(when))
+
+    # Apply dust exposure factors if requested.
+    if dust and not where:
+        fexp *= p.fdust
+
+    # Prepare plot labels.
+    date_label = 'Nights {0} to {1}'.format(p.start_date, p.stop_date)
+    sky_label = 'Sky {0:,} sq.deg. (increasing RA)'.format(
+        int(round(p.footprint_area)))
+
+    # Make the plot.
+    fig, ax = plt.subplots(figsize=(10, 5.75))
+    if when:
+        # Plot an all-sky map.
+        assert fexp.shape == (len(p.footprint_pixels),)
+        # Reconstruct a healpix map masked to our footprint.
+        m = np.zeros(p.npix)
+        m[p.footprint_pixels] = fexp
+        data = desiutil.plots.prepare_data(
+            m, mask=~p.footprint, clip_lo=0., clip_hi=1., save_limits=True)
+        # Draw the map.
+        label = 'Observing Efficiency ({0}, {1})'.format(when, night_summary)
+        desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
+    elif where:
+        # Project a time series.
+        assert fexp.shape == (p.num_nights,)
+        x = np.arange(p.num_nights)
+        ax.fill_between(x, fexp, color='r', alpha=0.5)
+        ax.plot(x, fexp, 'k-', lw=0.5)
+        ax.set_xticks([])
+        ax.set_ylim(0., 1.)
+        ax.set_xlabel(date_label, fontsize='x-large')
+        ax.set_ylabel('Observing Efficiency ({0}, {1})'
+                      .format(where, night_summary), fontsize='x-large')
+    else:
+        # Plot a 2D image.
+        assert fexp.shape == (p.num_nights, len(p.footprint_pixels))
+        ax.imshow(fexp.T, interpolation='none', aspect='auto', origin='lower',
+                  cmap=cmap)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel(date_label, fontsize='x-large')
+        ax.set_ylabel(sky_label, fontsize='x-large')
+
+    plt.tight_layout()
+    if save:
+        plt.savefig(save)
+    return fig, ax

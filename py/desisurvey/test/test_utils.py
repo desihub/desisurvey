@@ -36,6 +36,32 @@ class TestUtils(unittest.TestCase):
         for old_name, new_name in zip(self.table.colnames, names):
             self.table[old_name].name = new_name
 
+    def test_get_overhead(self):
+        """Sanity checks on overhead time calculations"""
+        c = config.Configuration()
+        tro = c.readout_time()
+        p0 = astropy.coordinates.SkyCoord(ra=300 * u.deg, dec=10 * u.deg)
+        # Move with no readout and no slew only has focus overhead.
+        self.assertEqual(utils.get_overhead_time(None, p0, tro),
+                         c.focus_time())
+        self.assertEqual(utils.get_overhead_time(p0, p0, 2 * tro),
+                         c.focus_time())
+        # Move with readout and no slew has focus and overhead in parallel.
+        self.assertEqual(utils.get_overhead_time(None, p0),
+                         max(c.focus_time(), c.readout_time()))
+        self.assertEqual(utils.get_overhead_time(p0, p0, 0.2 * tro),
+                         max(c.focus_time(), 0.8 * c.readout_time()))
+        # Overhead with slew same when dRA == dDEC.
+        for delta in (1, 45, 70):
+            ra = p0.ra + [+delta, -delta, 0, 0] * u.deg
+            dec = p0.dec + [0, 0, +delta, -delta] * u.deg
+            p1 = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
+            dt = utils.get_overhead_time(p0, p1)
+            self.assertTrue(dt.shape == (4,))
+            self.assertEqual(dt[0], dt[1])
+            self.assertEqual(dt[0], dt[2])
+            self.assertEqual(dt[0], dt[3])
+
     def test_get_observer_to_sky(self):
         """Check (alt,az) -> (ra,dec) against JPL Horizons"""
         ra, dec = self.table['ra'], self.table['dec']
@@ -86,6 +112,51 @@ class TestUtils(unittest.TestCase):
             utils.get_observer(datetime.date(2020, 1, 1))
         with self.assertRaises(ValueError):
             utils.get_observer(50000.)
+
+    def test_zenith_airmass(self):
+        """Airmass values monotically increase with zenith angle"""
+        Z = np.arange(90) * np.pi / 180.
+        X = utils.zenith_angle_to_airmass(Z)
+        self.assertEqual(Z.shape, X.shape)
+        self.assertTrue(np.all(np.diff(X) > 0))
+
+    def test_zenith_airmass(self):
+        """Zenith angles can have units"""
+        Z1 = np.arange(90) * u.deg
+        Z2 = Z1.to(u.rad)
+        X1 = utils.zenith_angle_to_airmass(Z1)
+        X2 = utils.zenith_angle_to_airmass(Z2)
+        self.assertTrue(np.allclose(X1, X2))
+
+    def test_airmass_scalar(self):
+        """Scalar input returns scalar output"""
+        X = utils.zenith_angle_to_airmass(0.)
+        self.assertEqual(X.shape, ())
+
+    def test_airmass_clip(self):
+        """Zenith angles > 90 deg are clipped"""
+        self.assertAlmostEqual(
+            utils.zenith_angle_to_airmass(90 * u.deg),
+            utils.zenith_angle_to_airmass(100 * u.deg))
+
+    def test_get_airmass_lowest(self):
+        """The lowest airmass occurs when dec=latitude"""
+        t = astropy.time.Time('2020-01-01')
+        ra = np.arange(360) * u.deg
+        dec = utils.get_location().latitude
+        Xinv = 1 / utils.get_airmass(t, ra, dec)
+        self.assertTrue(np.max(Xinv) > 0.999)
+        dec = dec + 30 * u.deg
+        Xinv = 1 / utils.get_airmass(t, ra, dec)
+        self.assertTrue(np.max(Xinv) < 0.9)
+
+    def test_get_airmass_always_visible(self):
+        """An object at DEC=70d is always visible"""
+        t = astropy.time.Time('2020-01-01')
+        ra = np.arange(360) * u.deg
+        dec = 70 * u.deg
+        Xinv = 1 / utils.get_airmass(t, ra, dec)
+        self.assertTrue(np.all(0.2 < Xinv) and np.all(Xinv < 0.8))
 
     def test_get_location(self):
         """Check for sensible coordinates"""
@@ -167,31 +238,6 @@ class TestUtils(unittest.TestCase):
         l, b = utils.equ2gal_J2000(ra, dec)
         self.assertAlmostEqual(l, 125.67487462, 4)
         self.assertAlmostEqual(b, -42.82614243, 4)
-
-    def test_angsep(self):
-        self.assertAlmostEqual(utils.angsep(0,0,10,0), 10.0)
-        self.assertAlmostEqual(utils.angsep(0,0,0,10), 10.0)
-        self.assertAlmostEqual(utils.angsep(20,0,10,0), 10.0)
-        self.assertAlmostEqual(utils.angsep(0,20,0,10), 10.0)
-        self.assertAlmostEqual(utils.angsep(60,70,60,50), 20.0)
-
-    def test_radec2altaz(self):
-
-        LST = 168.86210588900758  # 2000-01-01 12:00:00 at KPNO according to astropy.time
-        ra, dec, lst = LST, 60, LST
-        alt, az = utils.radec2altaz(ra, dec, lst)
-        self.assertAlmostEqual(alt, 61.96710605261274, 2) # Values from Astropy SkyCoords
-        self.assertAlmostEqual(az, 0.0011510242215743817, 2)
-
-        # Value close to zenith
-        ra, dec, lst = LST, 31.965, LST
-        alt_z, az_z = utils.radec2altaz(ra, dec, lst)
-        alt_plus, az_minus = utils.radec2altaz(ra, dec+5.0, lst)
-        alt_minus, az_minus = utils.radec2altaz(ra, dec-5.0, lst)
-        self.assertAlmostEqual(alt_plus, alt_minus, 2)
-        alt_plus, az_minus = utils.radec2altaz(ra+5.0, dec, lst)
-        alt_minus, az_minus = utils.radec2altaz(ra-5.0, dec, lst)
-        self.assertAlmostEqual(alt_plus, alt_minus)
 
 
 if __name__ == '__main__':
