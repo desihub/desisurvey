@@ -384,7 +384,11 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     hdus.append(astropy.io.fits.ImageHDU(name='DYNAMIC', data=fexp))
 
     # Finalize the output file.
-    hdus.writeto(output_name, overwrite=True)
+    try:
+        hdus.writeto(output_name, overwrite=True)
+    except TypeError:
+        # astropy < 1.3 uses the now deprecated clobber.
+        hdus.writeto(output_name, clobber=True)
     log.info('Plan initialization saved to {0}'.format(output_name))
 
 
