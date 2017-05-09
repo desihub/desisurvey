@@ -146,7 +146,7 @@ class TestUtils(unittest.TestCase):
         dec = utils.get_location().latitude
         Xinv = 1 / utils.get_airmass(t, ra, dec)
         self.assertTrue(np.max(Xinv) > 0.999)
-        dec += 30 * u.deg
+        dec = dec + 30 * u.deg
         Xinv = 1 / utils.get_airmass(t, ra, dec)
         self.assertTrue(np.max(Xinv) < 0.9)
 
