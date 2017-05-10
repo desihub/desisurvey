@@ -42,6 +42,8 @@ class TestUtils(unittest.TestCase):
         """Test updating the IERS table.  Requires a network connection."""
         save_name = os.path.join(self.tmpdir, 'iers.ecsv')
         utils.update_iers(save_name)
+        # Second write should overwrite original file.
+        utils.update_iers(save_name)
         utils.freeze_iers(save_name)
 
     def test_freeze_iers(self):
