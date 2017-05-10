@@ -173,6 +173,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 
     log = desiutil.log.get_logger()
 
+    # Freeze IERS table for consistent results.
+    desisurvey.utils.freeze_iers()
+
     config = desisurvey.config.Configuration()
     output_name = config.get_path(output_name)
 
@@ -387,9 +390,6 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 if __name__ == '__main__':
     """This should eventually be made into a first-class script entry point.
     """
-    # Freeze IERS table for consistent results.
-    desisurvey.utils.freeze_iers()
-
     #stop = desisurvey.utils.get_date('2019-10-03')
     #stop = desisurvey.utils.get_date('2020-07-13')
     stop = None

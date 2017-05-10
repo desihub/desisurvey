@@ -29,6 +29,9 @@ class TestUtils(unittest.TestCase):
         # Remove the directory after the test.
         shutil.rmtree(cls.tmpdir)
 
+    def tearDown(self):
+        utils._iers_is_frozen = False
+
     def test_update_iers_bad_ext(self):
         """Test save_name extension check"""
         save_name = os.path.join(self.tmpdir, 'iers.fits')

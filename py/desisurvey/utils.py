@@ -23,6 +23,7 @@ import desisurvey.config
 
 
 _telescope_location = None
+_iers_is_frozen = False
 
 
 def freeze_iers(name='iers_frozen.ecsv', ignore_erfa_warnings=True):
@@ -40,9 +41,10 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_erfa_warnings=True):
 
     See `http://docs.astropy.org/en/stable/utils/iers.html`_ for details.
 
-    This function does not keep track of whether is has been called
-    previously.  Although this shouldn't do any harm, it is only intended
-    to be called from top-level scripts.
+    This function returns immediately after the first time it is called,
+    so it it safe to insert anywhere that consistent IERS models are
+    required, and subsequent calls with different args will have no
+    effect.
 
     Parameters
     ----------
@@ -56,6 +58,8 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_erfa_warnings=True):
         string "dubious year" are filtered out.
     """
     log = desiutil.log.get_logger()
+    if desisurvey.utils._iers_is_frozen:
+        log.debug('IERS table already frozen.')
     log.info('Freezing IERS table used by astropy time, coordinates.')
 
     # Validate the save_name extension.
@@ -92,6 +96,9 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_erfa_warnings=True):
         warnings.filterwarnings(
             'ignore', category=astropy._erfa.core.ErfaWarning, message=
             r'ERFA function \"[a-z0-9_]+\" yielded [0-9]+ of \"dubious year')
+
+    # Shortcircuit any subsequent calls to this function.
+    desisurvey.utils._iers_is_frozen = True
 
 
 def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
