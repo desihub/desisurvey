@@ -46,6 +46,9 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_erfa_warnings=True):
     required, and subsequent calls with different args will have no
     effect.
 
+    The :func:`desisurvey.utils.plot_iers` function is useful for inspecting
+    IERS tables and how they are extrapolated to DESI survey dates.
+
     Parameters
     ----------
     name : str
@@ -114,6 +117,9 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
 
     Requires a network connection in order to download the current IERS-A table.
     Prints information about the update process.
+
+    The :func:`desisurvey.utils.plot_iers` function is useful for inspecting
+    IERS tables and how they are extrapolated to DESI survey dates.
 
     Parameters
     ----------
