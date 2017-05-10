@@ -77,9 +77,7 @@ def nextFieldSelector(obsplan, mjd, progress):
 
     # Calculate current zenith angle for each possible tile.
     obs = desisurvey.utils.get_observer(when, alt=90 * u.deg, az=0 * u.deg)
-    with warnings.catch_warnings():
-        warnings.simplefilter('ignore', astropy.utils.exceptions.AstropyWarning)
-        zenith = obs.transform_to(astropy.coordinates.ICRS)
+    zenith = obs.transform_to(astropy.coordinates.ICRS)
     zenith_angles = proposed.separation(zenith)
 
     # Determine the previous pointing if we need to include slew time

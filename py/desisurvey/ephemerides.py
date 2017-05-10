@@ -57,6 +57,9 @@ class Ephemerides(object):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
 
+        # Freeze IERS table for consistent results.
+        desisurvey.utils.freeze_iers()
+
         # Use our config to set any unspecified dates.
         if start_date is None:
             start_date = config.first_day()
@@ -70,11 +73,8 @@ class Ephemerides(object):
         self.num_nights = num_nights
 
         # Convert to astropy times at local noon.
-        with warnings.catch_warnings():
-            warnings.simplefilter(
-                'ignore', astropy.utils.exceptions.AstropyUserWarning)
-            self.start = desisurvey.utils.local_noon_on_date(start_date)
-            self.stop = desisurvey.utils.local_noon_on_date(stop_date)
+        self.start = desisurvey.utils.local_noon_on_date(start_date)
+        self.stop = desisurvey.utils.local_noon_on_date(stop_date)
 
         # Moon illumination fraction interpolator will be initialized the
         # first time it is used.
@@ -171,11 +171,8 @@ class Ephemerides(object):
 
         # Calculate ephmerides for each night.
         for day_offset in range(num_nights):
-            with warnings.catch_warnings():
-                warnings.simplefilter(
-                    'ignore', astropy.utils.exceptions.AstropyUserWarning)
-                day = self.start + day_offset * u.day
-                mayall.date = day.datetime
+            day = self.start + day_offset * u.day
+            mayall.date = day.datetime
             row = self._table[day_offset]
             # Store local noon for this day.
             row['noon'] = day.mjd
@@ -343,11 +340,7 @@ class Ephemerides(object):
             raise ValueError('MJD values span more than one night.')
 
         # Calculate the moon (ra, dec) in degrees at each grid time.
-        # Ignore warnings about missing polar motion model for future times.
-        with warnings.catch_warnings():
-            warnings.simplefilter(
-                'ignore', astropy.utils.exceptions.AstropyWarning)
-            interpolator = get_object_interpolator(night, 'moon', altaz=True)
+        interpolator = get_object_interpolator(night, 'moon', altaz=True)
         moon_alt, _ = interpolator(mjd)
 
         # Lookup the moon illuminated fraction at each time.
@@ -422,9 +415,6 @@ def get_object_interpolator(row, object_name, altaz=False):
     Wrap around in RA is handled correctly and we assume that the object never
     wraps around in DEC.  The interpolated unit vectors should be within
     0.3 degrees of the true unit vectors in both (dec,ra) and (alt,az).
-
-    Generates astropy IERS warnings for times in the future, where a polar
-    motion model is not available.
 
     Parameters
     ----------
