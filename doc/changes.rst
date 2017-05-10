@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.6.0 (unreleased)
+0.6.1 (unreleased)
+------------------
+
+* Freeze IERS table used by astropy time, coordinates.
+
+0.6.0 (2017-05-10)
 ------------------
 
 * Add new config yaml file and python wrapper.
