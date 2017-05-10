@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+import shutil
 import datetime
 import os
 
@@ -16,6 +18,27 @@ from desisurvey import utils, config
 
 
 class TestUtils(unittest.TestCase):
+
+    @classmethod
+    def setUpClass(cls):
+        # Create a temporary directory.
+        cls.tmpdir = tempfile.mkdtemp()
+
+    @classmethod
+    def tearDownClass(cls):
+        # Remove the directory after the test.
+        shutil.rmtree(cls.tmpdir)
+
+    def test_update_iers(self):
+        """Test updating the IERS table.  Requires a network connection."""
+        save_name = os.path.join(self.tmpdir, 'iers.ecsv')
+        utils.update_iers(save_name)
+
+    def test_update_iers_bad_ext(self):
+        """Test save_name extension check"""
+        save_name = os.path.join(self.tmpdir, 'iers.fits')
+        with self.assertRaises(ValueError):
+            utils.update_iers(save_name)
 
     def setUp(self):
         # Configure a CSV reader for the Horizons output format.

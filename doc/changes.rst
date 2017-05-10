@@ -5,7 +5,7 @@ desisurvey change log
 0.6.1 (unreleased)
 ------------------
 
-* No changes yet.
+* Freeze IERS table used by astropy time, coordinates.
 
 0.6.0 (2017-05-10)
 ------------------
