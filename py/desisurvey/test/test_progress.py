@@ -9,7 +9,7 @@ import astropy.units as u
 
 import desisurvey.config
 
-from ..progress import *
+from desisurvey.progress import *
 
 
 class TestProgress(unittest.TestCase):
@@ -62,7 +62,8 @@ class TestProgress(unittest.TestCase):
             p.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
             self.assertTrue(p.get_tile(tile_id)['snr2frac'][0] == 0.5)
             last_tile = p.get_tile(tile_id)
-            self.assertTrue(np.array_equal(last_tile.data, p.last_tile.data))
+            self.assertTrue(np.array_equal(
+                last_tile.as_void(), p.last_tile.as_void()))
             self.assertTrue(np.all(last_tile['snr2frac'][1:] == 0.))
         self.assertEqual(p.completed(include_partial=True), 5.)
         self.assertEqual(p.completed(include_partial=False), 0.)
@@ -245,3 +246,7 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p2.completed(), 0.)
         p2 = p1.copy_range(mjd0 + 200, None)
         self.assertEqual(p2.completed(), 0.)
+
+
+if __name__ == '__main__':
+    unittest.main()
