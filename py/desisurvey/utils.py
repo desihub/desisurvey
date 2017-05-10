@@ -12,6 +12,7 @@ import pytz
 import astropy.time
 import astropy.coordinates
 import astropy.utils.iers
+import astropy.utils.data
 import astropy.units as u
 
 import desiutil.log
@@ -20,6 +21,62 @@ import desisurvey.config
 
 
 _telescope_location = None
+
+
+def freeze_iers(name='iers_frozen.ecsv'):
+    """Use a frozen IERS table saved with this package.
+
+    This should be called at the beginning of a script that calls
+    astropy time and coordinates functions which refer to the UT1-UTC
+    and polar motions tabulated by IERS.  The purpose is to ensure
+    identical results across systems and astropy releases, to avoid a
+    potential network download, and to eliminate annoying astropy
+    ERFA warnings.
+
+    After this call, the loaded table will be returned by
+    :func:`astropy.utils.iers.IERS_Auto.open()` and treated like a
+    a normal IERS-B table by all astropy code.
+
+    See `http://docs.astropy.org/en/stable/utils/iers.html`_ for details.
+
+    Parameters
+    ----------
+    name : str
+        Name of the file to load the frozen IERS table from. Should normally
+        be relative and then refers to this package's data/ directory.
+        Must end with the .ecsv extension.
+    """
+    log = desiutil.log.get_logger()
+
+    # Validate the save_name extension.
+    _, ext = os.path.splitext(name)
+    if ext != '.ecsv':
+        raise ValueError('Expected .ecsv extension for {0}.'.format(name))
+
+    # Locate the file in our package data/ directory.
+    if not os.path.isabs(name):
+        name = astropy.utils.data._find_pkg_data_path(
+            os.path.join('data', name))
+    if not os.path.exists(name):
+        raise ValueError('No such IERS file: {0}.'.format(name))
+
+    # Clear any current IERS table.
+    astropy.utils.iers.IERS.close()
+    # Initialize the global IERS table. We load the table by
+    # hand since the IERS open() method hardcodes format='cds'.
+    try:
+        table = astropy.table.Table.read(name, format='ascii.ecsv').filled()
+    except IOError:
+        raise RuntimeError('Unable to load IERS table from {0}.'.format(name))
+    iers = astropy.utils.iers.IERS(table)
+    astropy.utils.iers.IERS.iers_table = iers
+    # Prevent any attempts to automatically download updated IERS-A tables.
+    astropy.utils.iers.conf.auto_download = False
+    astropy.utils.iers.conf.auto_max_age = None
+    astropy.utils.iers.conf.iers_auto_url = 'frozen'
+    # Sanity check.
+    if not (astropy.utils.iers.IERS_Auto.open() is iers):
+        raise RuntimeError('Frozen IERS is not installed as the default.')
 
 
 def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
@@ -46,8 +103,6 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
         use for calculating UT1-UTC offsets and polar motion at times
         beyond the table.
     """
-    log = desiutil.log.get_logger()
-
     # Validate the save_name extension.
     _, ext = os.path.splitext(save_name)
     if ext != '.ecsv':

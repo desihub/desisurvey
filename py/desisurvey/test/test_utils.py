@@ -29,16 +29,36 @@ class TestUtils(unittest.TestCase):
         # Remove the directory after the test.
         shutil.rmtree(cls.tmpdir)
 
-    def test_update_iers(self):
-        """Test updating the IERS table.  Requires a network connection."""
-        save_name = os.path.join(self.tmpdir, 'iers.ecsv')
-        utils.update_iers(save_name)
-
     def test_update_iers_bad_ext(self):
         """Test save_name extension check"""
         save_name = os.path.join(self.tmpdir, 'iers.fits')
         with self.assertRaises(ValueError):
             utils.update_iers(save_name)
+
+    def test_update_iers(self):
+        """Test updating the IERS table.  Requires a network connection."""
+        save_name = os.path.join(self.tmpdir, 'iers.ecsv')
+        utils.update_iers(save_name)
+        utils.freeze_iers(save_name)
+
+    def test_freeze_iers(self):
+        """Test freezing from package data/"""
+        utils.freeze_iers()
+
+    def test_freeze_iers_bad_ext(self):
+        """Test freezing from package data/"""
+        with self.assertRaises(ValueError):
+            utils.freeze_iers('_non_existent_.fits')
+
+    def test_freeze_iers_bad_name(self):
+        """Test freezing from package data/"""
+        with self.assertRaises(ValueError):
+            utils.freeze_iers('_non_existent_.ecsv')
+
+    def test_freeze_iers_bad_format(self):
+        """Test freezing from valid file with wrong format"""
+        with self.assertRaises(ValueError):
+            utils.freeze_iers('config.yaml')
 
     def setUp(self):
         # Configure a CSV reader for the Horizons output format.
