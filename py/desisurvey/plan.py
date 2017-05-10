@@ -3,14 +3,12 @@
 from __future__ import print_function, division
 
 import datetime
-import warnings
 
 import numpy as np
 
 import astropy.io.fits
 import astropy.table
 import astropy.time
-import astropy.utils.exceptions
 import astropy.units as u
 
 import desiutil.log
@@ -178,11 +176,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     config = desisurvey.config.Configuration()
     output_name = config.get_path(output_name)
 
-    with warnings.catch_warnings():
-        warnings.simplefilter(
-            'ignore', astropy.utils.exceptions.AstropyUserWarning)
-        start_date = desisurvey.utils.get_date(start_date or ephem.start)
-        stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    start_date = desisurvey.utils.get_date(start_date or ephem.start)
+    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
     mjd = ephem._table['noon']
@@ -313,11 +308,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         fexp[sl] = (dark | gray | bright)[:, np.newaxis]
         # Transform the local zenith to (ra,dec).
         times = astropy.time.Time(mjd, format='mjd')
-        with warnings.catch_warnings():
-            warnings.simplefilter(
-                'ignore', astropy.utils.exceptions.AstropyUserWarning)
-            zenith = desisurvey.utils.get_observer(
-                times, alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
+        zenith = desisurvey.utils.get_observer(
+            times, alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
         etable['zenith_ra'][sl] = zenith.ra.to(u.deg).value
         etable['zenith_dec'][sl] = zenith.dec.to(u.deg).value
         # Calculate zenith angles to each pixel in the footprint.
@@ -393,10 +385,10 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 
 
 if __name__ == '__main__':
-
-    # Raise an exception for any warnings (most likely from astropy)
-    # so they can be debugged or explicitly ignored.
-    warnings.simplefilter('error')
+    """This should eventually be made into a first-class script entry point.
+    """
+    # Freeze IERS table for consistent results.
+    desisurvey.utils.freeze_iers()
 
     #stop = desisurvey.utils.get_date('2019-10-03')
     #stop = desisurvey.utils.get_date('2020-07-13')
