@@ -317,12 +317,16 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         size = min(15., (300./num_nights) ** 2)
         opts = dict(linestyle='-', marker='.' if size > 1 else None,
                     markersize=size)
-        plt.plot(x, y[0], color=program_color['DARK'], **opts)
-        plt.plot(x, y[1], color=program_color['GRAY'], **opts)
-        plt.plot(x, y[2], color=program_color['BRIGHT'], **opts)
+        ax.plot(x, y[0], color=program_color['DARK'], **opts)
+        ax.plot(x, y[1], color=program_color['GRAY'], **opts)
+        ax.plot(x, y[2], color=program_color['BRIGHT'], **opts)
 
         ax.set_axis_bgcolor(bg_color)
-        plt.ylim(0, 1.07 * y.max())
+        ax.set_ylim(0, 1.07 * y.max())
+        if style == 'histogram':
+            ax.set_ylabel('Hours / Night')
+        else:
+            ax.set_ylabel('Cumulative Hours')
 
     # Display dates on the x axis.
     ax.set_xlabel('Survey Date (observing {0} / {1} nights)'
@@ -579,9 +583,18 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     ----------
     p : desisurvey.plan.Planner
         The planner object to use.
-    where : string or None
-    when : string or None
-    night_summary : string
+    where : 'best', 'random' or None
+        Plot a time series of observing efficiency each night for either the
+        best location or else averaging over randomly chosen locations. Cannot
+        be combined with the ``when`` option.
+    when : 'best', 'random' or None
+        Plot an all-sky map of observing efficiency for either each location's
+        best night or else averaging over randomly chosen nights. Cannot be
+        combined with the ``where`` option.
+    night_summary : 'best', '24hr' or 'dark'
+        Summarize the observing efficiency during each night picking either the
+        best time slot, or else averaging over 24 hours or the actual length
+        of the night.
     dust : bool
         Should dust extinction be included in the observing efficiency?
     monsoon : bool
@@ -609,7 +622,7 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     # a new view with no memory copy.
     fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
 
-    # Project out the spatial axis if requested. If dust included,
+    # Project out the spatial axis if requested. If dust is included,
     # we cannot avoid making a temporary copy of the large fexp array.
     if dust and where:
         fexp = fexp.copy() * p.fdust
