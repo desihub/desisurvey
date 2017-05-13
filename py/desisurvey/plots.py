@@ -583,10 +583,11 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     ----------
     p : desisurvey.plan.Planner
         The planner object to use.
-    where : 'best', 'random' or None
-        Plot a time series of observing efficiency each night for either the
-        best location or else averaging over randomly chosen locations. Cannot
-        be combined with the ``when`` option.
+    where : int, 'best', 'random', iterable or None
+        Plot a time series of observing efficiency each night for a specified
+        tile ID, the best location or averaging over randomly chosen locations.
+        An iterable of int, 'best', 'random' is also allowed. Cannot be
+        combined with the ``when`` option.
     when : 'best', 'random' or None
         Plot an all-sky map of observing efficiency for either each location's
         best night or else averaging over randomly chosen nights. Cannot be
@@ -618,6 +619,28 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     if where and when:
         raise ValueError('Cannot specify both where and when.')
 
+    # Preprocess the where arg to be a list whose elements are either valid
+    # tile IDs or the strings 'best', 'random'.
+    where_orig = where
+    if where is not None:
+        # Look for an iterable of valid elements.
+        try:
+            for w in where:
+                if w in ('best', 'random'):
+                    continue
+                p.index_of_tile(w)
+        except (TypeError, ValueError):
+            # Look for a single string.
+            if where in ('best', 'random'):
+                where = [where]
+            else:
+                # Look for a single integer.
+                try:
+                    p.index_of_tile(where)
+                    where = [where]
+                except (TypeError, ValueError):
+                    raise ValueError('Invalid where: {0}.'.format(where_orig))
+
     # Reshape time axis into (nights, times). This operation creates
     # a new view with no memory copy.
     fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
@@ -626,14 +649,20 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     # we cannot avoid making a temporary copy of the large fexp array.
     if dust and where:
         fexp = fexp.copy() * p.fdust
-    if where == 'best':
-        # Observe the best pixel during each time slot.
-        fexp = fexp.max(axis=2)
-    elif where == 'random':
-        # Observe a random pixel during each time slot.
-        fexp = fexp.mean(axis=2)
-    elif where is not None:
-        raise ValueError('Invalid where: {0}.'.format(where))
+    if where is not None:
+        # Replace the spatial axis with an index into where.
+        new_fexp = np.empty((p.num_nights, p.num_times, len(where)))
+        # Generate a time series for each element of where.
+        for i, w in enumerate(where):
+            if w == 'best':
+                # Observe the best pixel during each time slot.
+                new_fexp[:, :, i] = fexp.max(axis=2)
+            elif w == 'random':
+                # Observe a random pixel during each time slot.
+                new_fexp[:, :, i] = fexp.mean(axis=2)
+            else:
+                new_fexp[:, :, i] = fexp[:, :, p.index_of_tile(w)]
+        fexp = new_fexp
 
     # Summarize each night using the specified summary statistic.
     if night_summary == 'best':
@@ -675,7 +704,7 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
         raise ValueError('Invalid when: {0}.'.format(when))
 
     # Apply dust exposure factors if requested.
-    if dust and not where:
+    if dust and where is None:
         fexp *= p.fdust
 
     # Prepare plot labels.
@@ -697,16 +726,18 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
         label = 'Observing Efficiency ({0}, {1})'.format(when, night_summary)
         desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
     elif where:
-        # Project a time series.
-        assert fexp.shape == (p.num_nights,)
+        # Project a time series for each element of where.
+        assert fexp.shape == (p.num_nights, len(where))
         x = np.arange(p.num_nights)
-        ax.fill_between(x, fexp, color='r', alpha=0.5)
-        ax.plot(x, fexp, 'k-', lw=0.5)
+        for i, w in enumerate(where):
+            ax.fill_between(x, fexp[:, i], alpha=0.5)
+            ax.plot(x, fexp[:, i], '-', lw=0.5, label=w)
+        ax.legend(ncol=min(5, len(where)))
         ax.set_xticks([])
         ax.set_ylim(0., 1.)
         ax.set_xlabel(date_label, fontsize='x-large')
-        ax.set_ylabel('Observing Efficiency ({0}, {1})'
-                      .format(where, night_summary), fontsize='x-large')
+        ax.set_ylabel('Observing Efficiency ({0})'
+                      .format(night_summary), fontsize='x-large')
     else:
         # Plot a 2D image.
         assert fexp.shape == (p.num_nights, len(p.footprint_pixels))
