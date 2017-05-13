@@ -7,7 +7,7 @@ import numpy as np
 
 import desisurvey.config
 
-from ..plan import *
+from desisurvey.plan import *
 
 
 class TestPlan(unittest.TestCase):
@@ -28,7 +28,7 @@ class TestPlan(unittest.TestCase):
         desisurvey.config.Configuration.reset()
 
     def test_initialize(self):
-        """Create a temporary planner init file for the first 2 days in 2020"""
+        """Create a temporary planner (requires healpy)"""
         start = desisurvey.utils.get_date('2020-01-01')
         stop = desisurvey.utils.get_date('2020-01-03')
         ephem = desisurvey.ephemerides.Ephemerides(start, stop)
@@ -40,3 +40,15 @@ class TestPlan(unittest.TestCase):
         for i in range(p.num_nights * p.num_times):
             t = p.time_of_index(i)
             self.assertEqual(i, p.index_of_time(t))
+
+    def test_spatial_index_conversion(self):
+        """Test tile_id -> index"""
+        p = Planner(os.path.join(self.tmpdir, 'planner.fits'))
+        for i in range(len(p.tiles)):
+            tid = p.tiles['tileid'][i]
+            pix = p.tiles['map'][i]
+            self.assertEqual(p.index_of_tile(tid), pix)
+
+
+if __name__ == '__main__':
+    unittest.main()

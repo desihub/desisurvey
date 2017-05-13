@@ -62,7 +62,7 @@ class Planner(object):
             self.num_nights * self.num_times, len(self.footprint_pixels))
 
     def index_of_time(self, when):
-        """Calculate the bin index of the specified time.
+        """Calculate the temporal bin index of the specified time.
 
         Parameters
         ----------
@@ -71,7 +71,7 @@ class Planner(object):
         Returns
         -------
         int
-            Index of the time bin that ``when`` falls into.
+            Index of the temporal bin that ``when`` falls into.
         """
         # Look up the night number for this time.
         night = desisurvey.utils.get_date(when)
@@ -89,17 +89,17 @@ class Planner(object):
         return i * self.num_times + j
 
     def time_of_index(self, ij):
-        """Calculate the time at the center of the specified bin.
+        """Calculate the time at the center of the specified temporal bin.
 
         Parameters
         ----------
         ij : int
-            Index of a time bin.
+            Index of a temporal bin.
 
         Returns
         -------
         astropy.time.Time
-            Time at the center of the specified bin.
+            Time at the center of the specified temporal bin.
         """
         if ij < 0 or ij >= self.num_nights * self.num_times:
             raise ValueError('Index out of range.')
@@ -108,6 +108,25 @@ class Planner(object):
         night = self.start_date + datetime.timedelta(days=i)
         mjd = desisurvey.utils.local_noon_on_date(night).mjd + 0.5 + self.t_centers[j]
         return astropy.time.Time(mjd, format='mjd')
+
+    def index_of_tile(self, tile_id):
+        """Calculate the spatial bin index of the specified tile.
+
+        Parameters
+        ----------
+        tile_id : int
+            Tile identifier in the DESI footprint.
+
+        Returns
+        -------
+        int
+            Index of the spatial bin that ``tile_id`` falls into.
+        """
+        sel = np.where(self.tiles['tileid'] == tile_id)[0]
+        if len(sel) == 0:
+            raise ValueError('Invalid tile_id: {0}.'.format(tile_id))
+        assert len(sel) == 1
+        return self.tiles['map'][sel[0]]
 
     def next_tile(self, when, conditions, tiles_observed, verbose=True):
         """Return the next tile to observe.
