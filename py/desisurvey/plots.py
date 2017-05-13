@@ -186,11 +186,11 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     ephem : :class:`desisurvey.ephemerides.Ephemerides`
         Tabulated ephemerides data to use for determining the program.
     start_date : date or None
-        First night to include in the plot or use the start of the
+        First night to include in the plot or use the first date of the
         calculated ephemerides.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     stop_date : date or None
-        First night to include in the plot or use the start of the
+        First night to include in the plot or use the last date of the
         calculated ephemerides.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     style : string
@@ -572,9 +572,9 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
         plt.savefig(save)
 
 
-def plot_planner(p, where=None, when=None, night_summary='dark',
-                 dust=True, monsoon=True, fullmoon=True, cmap='magma',
-                 save=None):
+def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
+                 night_summary='dark', dust=True, monsoon=True, fullmoon=True,
+                 cmap='magma', save=None):
     """Plot a summary of the planner observing efficiency forecast.
 
     Requires that the matplotlib package is installed.
@@ -583,6 +583,12 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     ----------
     p : desisurvey.plan.Planner
         The planner object to use.
+    start_date : date or None
+        First night to include in the plot or use the first planner date.  Must
+        be convertible to a date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
+        First night to include in the plot or use the last planner date.  Must
+        be convertible to a date using :func:`desisurvey.utils.get_date`.
     where : int, 'best', 'random', iterable or None
         Plot a time series of observing efficiency each night for a specified
         tile ID, the best location or averaging over randomly chosen locations.
@@ -619,6 +625,12 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     if where and when:
         raise ValueError('Cannot specify both where and when.')
 
+    # Determine plot date range.
+    start_date = desisurvey.utils.get_date(start_date or p.start_date)
+    stop_date = desisurvey.utils.get_date(stop_date or p.stop_date)
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
+
     # Preprocess the where arg to be a list whose elements are either valid
     # tile IDs or the strings 'best', 'random'.
     where_orig = where
@@ -645,13 +657,19 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     # a new view with no memory copy.
     fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
 
+    # Restrict to the requested dates.
+    lo = (start_date - p.start_date).days
+    hi = (stop_date - p.start_date).days
+    fexp = fexp[lo:hi]
+    num_nights = hi - lo
+
     # Project out the spatial axis if requested. If dust is included,
     # we cannot avoid making a temporary copy of the large fexp array.
     if dust and where:
         fexp = fexp.copy() * p.fdust
     if where is not None:
         # Replace the spatial axis with an index into where.
-        new_fexp = np.empty((p.num_nights, p.num_times, len(where)))
+        new_fexp = np.empty((num_nights, p.num_times, len(where)))
         # Generate a time series for each element of where.
         for i, w in enumerate(where):
             if w == 'best':
@@ -694,7 +712,7 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
         fexp = fexp.max(axis=0)
     elif when == 'random':
         # Observe each pixel during a random night scheduled for observations.
-        scheduled = np.ones(p.num_nights, bool)
+        scheduled = np.ones(num_nights, bool)
         if monsoon:
             scheduled[p.calendar['monsoon']] = False
         if fullmoon:
@@ -708,7 +726,7 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
         fexp *= p.fdust
 
     # Prepare plot labels.
-    date_label = 'Nights {0} to {1}'.format(p.start_date, p.stop_date)
+    date_label = 'Nights {0} to {1}'.format(start_date, stop_date)
     sky_label = 'Sky {0:,} sq.deg. (increasing RA)'.format(
         int(round(p.footprint_area)))
 
@@ -727,20 +745,21 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
         desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
     elif where:
         # Project a time series for each element of where.
-        assert fexp.shape == (p.num_nights, len(where))
-        x = np.arange(p.num_nights)
+        assert fexp.shape == (num_nights, len(where))
+        x = np.arange(num_nights)
         for i, w in enumerate(where):
             ax.fill_between(x, fexp[:, i], alpha=0.5)
             ax.plot(x, fexp[:, i], '-', lw=0.5, label=w)
         ax.legend(ncol=min(5, len(where)))
         ax.set_xticks([])
+        ax.set_xlim(x[0] - 0.5, x[-1] + 0.5)
         ax.set_ylim(0., 1.)
         ax.set_xlabel(date_label, fontsize='x-large')
         ax.set_ylabel('Observing Efficiency ({0})'
                       .format(night_summary), fontsize='x-large')
     else:
         # Plot a 2D image.
-        assert fexp.shape == (p.num_nights, len(p.footprint_pixels))
+        assert fexp.shape == (num_nights, len(p.footprint_pixels))
         ax.imshow(fexp.T, interpolation='none', aspect='auto', origin='lower',
                   cmap=cmap)
         ax.set_xticks([])
