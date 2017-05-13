@@ -39,8 +39,9 @@ class Planner(object):
         self.stop_date = desisurvey.utils.get_date(header['STOP'])
         self.num_nights = (self.stop_date - self.start_date).days
         self.nside = header['NSIDE']
+        self.step_size = header['STEP'] * u.min
         self.npix = 12 * self.nside ** 2
-        self.pix_area = 360. ** 2 / np.pi / self.npix
+        self.pix_area = 360. ** 2 / np.pi / self.npix * u.deg ** 2
 
         self.tiles = astropy.table.Table.read(output_file, hdu='TILES')
         self.calendar = astropy.table.Table.read(output_file, hdu='CALENDAR')
@@ -56,6 +57,8 @@ class Planner(object):
         self.footprint[self.footprint_pixels] = True
         self.footprint_area = len(self.footprint_pixels) * self.pix_area
         self.fdust = static['dust'].data
+        self.pixel_ra = static['ra'].data
+        self.pixel_dec = static['dec'].data
 
         self.fexp = hdus['DYNAMIC'].data
         assert self.fexp.shape == (
@@ -250,6 +253,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     pix_dphi = np.fmod(pix_phi + np.pi / 3, 2 * np.pi)
     sort_order = np.argsort(pix_dphi)
     footprint_pixels = footprint_pixels[sort_order]
+    # Calculate sorted pixel (ra,dec).
+    pix_theta, pix_phi = healpy.pix2ang(healpix_nside, footprint_pixels)
+    pix_ra, pix_dec = np.degrees(pix_phi), 90 - np.degrees(pix_theta)
 
     # Record per-tile info needed for planning.
     table = astropy.table.Table()
@@ -279,6 +285,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     table = astropy.table.Table()
     table['pixel'] = footprint_pixels
     table['dust'] = f_EBV[footprint_pixels]
+    table['ra'] = pix_ra
+    table['dec'] = pix_dec
     hdu = astropy.io.fits.table_to_hdu(table)
     hdu.name = 'STATIC'
     hdus.append(hdu)
