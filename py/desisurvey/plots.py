@@ -586,28 +586,33 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
     start_date : date or None
         First night to include in the plot or use the first planner date.  Must
         be convertible to a date using :func:`desisurvey.utils.get_date`.
+        Ignored if ``when`` specifies a time.
     stop_date : date or None
         First night to include in the plot or use the last planner date.  Must
         be convertible to a date using :func:`desisurvey.utils.get_date`.
+        Ignored if ``when`` specifies a time.
     where : int, 'best', 'random', iterable or None
         Plot a time series of observing efficiency each night for a specified
         tile ID, the best location or averaging over randomly chosen locations.
         An iterable of int, 'best', 'random' is also allowed. Cannot be
         combined with the ``when`` option.
-    when : 'best', 'random' or None
-        Plot an all-sky map of observing efficiency for either each location's
-        best night or else averaging over randomly chosen nights. Cannot be
-        combined with the ``where`` option.
+    when : astropy.time.Time, int, 'best', 'random' or None
+        Plot an all-sky map of observing efficiency for a specified time, each
+        location's best night or else averaging over randomly chosen nights.
+        A time can be specified with a timestamp or a temporal index.
+        Cannot be combined with the ``where`` option.
     night_summary : 'best', '24hr' or 'dark'
         Summarize the observing efficiency during each night picking either the
         best time slot, or else averaging over 24 hours or the actual length
-        of the night.
+        of the night. Ignored if ``when`` specifies a time.
     dust : bool
         Should dust extinction be included in the observing efficiency?
     monsoon : bool
         Do not observe during scheduled monsoon shutdowns?
+        Ignored if ``when`` specifies a time.
     fullmoon : bool
         Do not observe during scheduled full-moon breaks?
+        Ignored if ``when`` specifies a time.
     cmap : matplotlib colormap spec
         Colormap to use to represent observing efficiency. Not used for a
         time series plot.
@@ -653,73 +658,96 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
                 except (TypeError, ValueError):
                     raise ValueError('Invalid where: {0}.'.format(where_orig))
 
-    # Reshape time axis into (nights, times). This operation creates
-    # a new view with no memory copy.
-    fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
-
-    # Restrict to the requested dates.
-    lo = (start_date - p.start_date).days
-    hi = (stop_date - p.start_date).days
-    fexp = fexp[lo:hi]
-    num_nights = hi - lo
-
-    # Project out the spatial axis if requested. If dust is included,
-    # we cannot avoid making a temporary copy of the large fexp array.
-    if dust and where:
-        fexp = fexp.copy() * p.fdust
-    if where is not None:
-        # Replace the spatial axis with an index into where.
-        new_fexp = np.empty((num_nights, p.num_times, len(where)))
-        # Generate a time series for each element of where.
-        for i, w in enumerate(where):
-            if w == 'best':
-                # Observe the best pixel during each time slot.
-                new_fexp[:, :, i] = fexp.max(axis=2)
-            elif w == 'random':
-                # Observe a random pixel during each time slot.
-                new_fexp[:, :, i] = fexp.mean(axis=2)
-            else:
-                new_fexp[:, :, i] = fexp[:, :, p.index_of_tile(w)]
-        fexp = new_fexp
-
-    # Summarize each night using the specified summary statistic.
-    if night_summary == 'best':
-        # Pick the best time to observe each pixel.
-        fexp = fexp.max(axis=1)
-    elif night_summary == '24hr':
-        # Average over each 24hour period.
-        fexp = fexp.mean(axis=1)
-    elif night_summary == 'dark':
-        # Average over night observing times only.
-        n_night_bins = (fexp > 0).sum(axis=1)
-        mask = n_night_bins > 0
-        fexp = fexp.sum(axis=1)
-        fexp[mask] /= n_night_bins[mask]
+    # Test if the when arg is a valid timestamp or temporal index.
+    try:
+        timestamp = astropy.time.Time(when)
+    except ValueError:
+        timestamp = None
+    if timestamp:
+        time_index = p.index_of_time(timestamp)
     else:
-        raise ValueError('Invalid night_summary: {0}.'.format(night_summary))
-
-    # Zero out monsoon nights if requested.
-    if monsoon:
-        fexp[p.calendar['monsoon']] = 0.
-
-    # Zero out full-moon nights if requested.
-    if fullmoon:
-        fexp[p.calendar['fullmoon']] = 0.
-
-    # Project out the night axis if requested.
-    if when == 'best':
-        # Observe each pixel during its best night.
-        fexp = fexp.max(axis=0)
-    elif when == 'random':
-        # Observe each pixel during a random night scheduled for observations.
-        scheduled = np.ones(num_nights, bool)
-        if monsoon:
-            scheduled[p.calendar['monsoon']] = False
-        if fullmoon:
-            scheduled[p.calendar['fullmoon']] = False
-        fexp = fexp[scheduled].mean(axis=0)
-    elif when is not None:
+        try:
+            time_index = int(when)
+            if time_index < 0 or time_index >= len(p.fexp):
+                raise ValueError('Time index out of range: {0}.'
+                                 .format(time_index))
+            timestamp = p.time_of_index(time_index)
+        except (ValueError, TypeError):
+            time_index = None
+    if timestamp is None and when not in (None, 'best', 'random'):
         raise ValueError('Invalid when: {0}.'.format(when))
+
+    if time_index is not None:
+        # Select the specied time slice.
+        fexp = p.fexp[time_index]
+    else:
+        # Reshape time axis into (nights, times). This operation creates
+        # a new view with no memory copy.
+        fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
+
+        # Restrict to the requested dates.
+        lo = (start_date - p.start_date).days
+        hi = (stop_date - p.start_date).days
+        fexp = fexp[lo:hi]
+        num_nights = hi - lo
+
+        # Project out the spatial axis if requested. If dust is included,
+        # we cannot avoid making a temporary copy of the large fexp array.
+        if dust and where:
+            fexp = fexp.copy() * p.fdust
+        if where is not None:
+            # Replace the spatial axis with an index into where.
+            new_fexp = np.empty((num_nights, p.num_times, len(where)))
+            # Generate a time series for each element of where.
+            for i, w in enumerate(where):
+                if w == 'best':
+                    # Observe the best pixel during each time slot.
+                    new_fexp[:, :, i] = fexp.max(axis=2)
+                elif w == 'random':
+                    # Observe a random pixel during each time slot.
+                    new_fexp[:, :, i] = fexp.mean(axis=2)
+                else:
+                    new_fexp[:, :, i] = fexp[:, :, p.index_of_tile(w)]
+            fexp = new_fexp
+
+        # Summarize each night using the specified summary statistic.
+        if night_summary == 'best':
+            # Pick the best time to observe each pixel.
+            fexp = fexp.max(axis=1)
+        elif night_summary == '24hr':
+            # Average over each 24hour period.
+            fexp = fexp.mean(axis=1)
+        elif night_summary == 'dark':
+            # Average over night observing times only.
+            n_night_bins = (fexp > 0).sum(axis=1)
+            mask = n_night_bins > 0
+            fexp = fexp.sum(axis=1)
+            fexp[mask] /= n_night_bins[mask]
+        else:
+            raise ValueError(
+                'Invalid night_summary: {0}.'.format(night_summary))
+
+        # Zero out monsoon nights if requested.
+        if monsoon:
+            fexp[p.calendar['monsoon']] = 0.
+
+        # Zero out full-moon nights if requested.
+        if fullmoon:
+            fexp[p.calendar['fullmoon']] = 0.
+
+        # Project out the night axis if requested.
+        if when == 'best':
+            # Observe each pixel during its best night.
+            fexp = fexp.max(axis=0)
+        elif when == 'random':
+            # Observe each pixel during a random night scheduled for
+            # observations.
+            scheduled = np.ones(num_nights, bool)
+            if monsoon:
+                scheduled[p.calendar['monsoon']] = False
+            if fullmoon:
+                scheduled[p.calendar['fullmoon']] = False
+            fexp = fexp[scheduled].mean(axis=0)
 
     # Apply dust exposure factors if requested.
     if dust and where is None:
@@ -732,7 +760,7 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
 
     # Make the plot.
     fig, ax = plt.subplots(figsize=(10, 5.75))
-    if when:
+    if when is not None:
         # Plot an all-sky map.
         assert fexp.shape == (len(p.footprint_pixels),)
         # Reconstruct a healpix map masked to our footprint.
@@ -741,15 +769,21 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
         data = desiutil.plots.prepare_data(
             m, mask=~p.footprint, clip_lo=0., clip_hi=1., save_limits=True)
         # Draw the map.
-        label = 'Observing Efficiency ({0}, {1})'.format(when, night_summary)
+        if time_index:
+            label = 'Observing Efficiency {0}'.format(timestamp.datetime)
+        else:
+            label = ('Observing Efficiency ({0}, {1})'
+                     .format(when, night_summary))
         desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
-    elif where:
+    elif where is not None:
         # Project a time series for each element of where.
         assert fexp.shape == (num_nights, len(where))
+        colors = ('r', 'g', 'b', 'y', 'magenta')
+        nc = len(colors)
         x = np.arange(num_nights)
         for i, w in enumerate(where):
-            ax.fill_between(x, fexp[:, i], alpha=0.5)
-            ax.plot(x, fexp[:, i], '-', lw=0.5, label=w)
+            ax.fill_between(x, fexp[:, i], color=colors[i % nc], alpha=0.4)
+            ax.plot(x, fexp[:, i], '-', c=colors[i % nc], lw=0.5, label=w)
         ax.legend(ncol=min(5, len(where)))
         ax.set_xticks([])
         ax.set_xlim(x[0] - 0.5, x[-1] + 0.5)

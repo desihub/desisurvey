@@ -102,11 +102,12 @@ class Planner(object):
             Time at the center of the specified temporal bin.
         """
         if ij < 0 or ij >= self.num_nights * self.num_times:
-            raise ValueError('Index out of range.')
+            raise ValueError('Time index out of range.')
         i = ij // self.num_times
         j = ij % self.num_times
         night = self.start_date + datetime.timedelta(days=i)
-        mjd = desisurvey.utils.local_noon_on_date(night).mjd + 0.5 + self.t_centers[j]
+        mjd = desisurvey.utils.local_noon_on_date(
+            night).mjd + 0.5 + self.t_centers[j]
         return astropy.time.Time(mjd, format='mjd')
 
     def index_of_tile(self, tile_id):
