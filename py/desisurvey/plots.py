@@ -80,7 +80,8 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
             ra_center=ra[sel], dec_center=dec[sel], data=z_sel,
             colorbar=True, basemap=basemap, edgecolor='none', label=label)
         # Plot the histogram of values for this pass.
-        counts, _, _ = ax[0, 2].hist(z[sel], color=color, **hopts)
+        hist_sel = (passnum == p) & (z > vmin) & (z < vmax)
+        counts, _, _ = ax[0, 2].hist(z[hist_sel], color=color, **hopts)
         max_count = max(counts.max(), max_count)
 
     # Decorate the histogram subplot.
