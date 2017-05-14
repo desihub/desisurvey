@@ -141,13 +141,13 @@ def plot_observed(progress, include='observed', start_date=None, stop_date=None,
     """
     if start_date:
         start_date = desisurvey.utils.get_date(start_date)
-        mjd_min = desisurvey.local_noon_on_date(start_date).mjd
+        mjd_min = desisurvey.utils.local_noon_on_date(start_date).mjd
     else:
         start_date = desisurvey.utils.get_date(progress.first_mjd)
         mjd_min = None
     if stop_date:
         stop_date = desisurvey.utils.get_date(stop_date)
-        mjd_max = desisurvey.local_noon_on_date(stop_date).mjd
+        mjd_max = desisurvey.utils.local_noon_on_date(stop_date).mjd
     else:
         stop_date = desisurvey.utils.get_date(progress.last_mjd)
         mjd_max = None
