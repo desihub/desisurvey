@@ -9,6 +9,7 @@ import numpy as np
 import astropy.io.fits
 import astropy.table
 import astropy.time
+import astropy.coordinates
 import astropy.units as u
 
 import desiutil.log
@@ -132,6 +133,91 @@ class Planner(object):
         assert len(sel) == 1
         return self.tiles['map'][sel[0]]
 
+    def instantaneous_efficiency(self, when, seeing, transparency, progress):
+        """Calculate the instantaneous efficiency of all tiles.
+
+        Calculated as ``texp / (texp + toh) * eff`` where the exposure time
+        ``texp`` accounts for the tile's remaining SNR**2 and the current
+        exposure-time factors, and the ovhead time ``toh`` accounts for
+        readout, slew, focus and cosmic splits.
+
+        Parameters
+        ----------
+        when : astropy.time.Time
+            Time for which the efficiency should be calculated.
+        seeing : float or array
+            FWHM seeing value in arcseconds.
+        transparency : float or array
+            Dimensionless transparency value in the range [0-1].
+        progress : desisurvey.progress.Progress
+            Record of observations made so far.  Will not be modified by
+            calling this method.
+
+        Returns
+        -------
+        array
+            Array of instantaneous efficiences for each tile.
+        """
+        config = desisurvey.config.Configuration()
+
+        # Select the time slice to use.
+        fexp = self.fexp[self.index_of_time(when)]
+
+        # Initialize pointings for each possible tile.
+        proposed = astropy.coordinates.SkyCoord(
+            ra=self.tiles['ra'] * u.deg, dec=self.tiles['dec'] * u.deg)
+
+        # Determine the previous pointing if we need to include slew time
+        # in the overhead calcluations.
+        if progress.last_tile is None:
+            # No slew needed for next exposure.
+            previous = None
+            # No readout time needed for previous exposure.
+            deadtime = config.readout_time()
+        else:
+            last = progress.last_tile
+            # Where was the telescope last pointing?
+            previous = astropy.coordinates.SkyCoord(
+                ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
+            # How much time has elapsed since the last exposure ended?
+            last_end = (last['mjd'] + last['exptime'] / 86400.).max()
+            deadtime = (when.mjd - last_end) * u.day
+
+        # Calculate the overhead times in seconds for each possible tile.
+        toh = desisurvey.utils.get_overhead_time(previous, proposed, deadtime)
+
+        # Calculate the exposure efficiency at the current time and
+        # with the current conditions.
+        eff = fexp[self.tiles['map']]
+        eff /= desisurvey.etc.seeing_exposure_factor(seeing)
+        eff /= desisurvey.etc.transparency_exposure_factor(transparency)
+
+        # Calculate target exposure time of each tile at nominal conditions.
+        tnom = np.empty(len(toh)) * u.s
+        for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
+            sel = self.tiles['program'] == i + 1
+            tnom[sel] = getattr(config.nominal_exposure_time, program)()
+
+        # Scale target exposure time for remaining SNR**2.
+        summary = progress.get_summary('all')
+        tnom *= np.maximum(0., 1. - summary['snr2frac'])
+
+        # Estimate the required exposure time.
+        mask = eff > 0
+        texp = np.zeros(len(toh)) * u.s
+        texp[mask] = tnom[mask] / eff[mask]
+
+        # Add overhead for any cosmic-ray splits.
+        nsplit = np.zeros(len(toh), dtype=int)
+        nsplit[mask] = np.floor(
+            (texp[mask] / config.cosmic_ray_split()).to(1).value)
+        toh[mask] += nsplit[mask] * config.readout_time()
+
+        # Calculate the instantaneous efficiency.
+        ieff = np.zeros_like(eff)
+        ieff[mask] = (tnom[mask] / (toh[mask] + texp[mask])).to(1).value
+        return ieff
+
     def next_tile(self, when, conditions, tiles_observed, verbose=True):
         """Return the next tile to observe.
 
@@ -157,7 +243,6 @@ import specsim.atmosphere
 import desimodel.io
 
 import desisurvey.ephemerides
-import desisurvey.etc
 
 
 def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
@@ -260,6 +345,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     # Record per-tile info needed for planning.
     table = astropy.table.Table()
     table['tileid'] = tiles['TILEID']
+    table['ra'] = tiles['RA']
+    table['dec'] = tiles['DEC']
+    table['pass'] = tiles['PASS'].astype(np.int16)
     # Map each tile ID to the corresponding index in our spatial arrays.
     mapper = np.zeros(npix, int)
     mapper[footprint_pixels] = np.arange(len(footprint_pixels))
