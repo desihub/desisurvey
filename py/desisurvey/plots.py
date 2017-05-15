@@ -680,7 +680,7 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
 
     if time_index is not None:
         # Select the specied time slice.
-        fexp = p.fexp[time_index]
+        fexp = p.fexp[time_index].copy()
     else:
         # Reshape time axis into (nights, times). This operation creates
         # a new view with no memory copy.
@@ -757,7 +757,7 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
     # Prepare plot labels.
     date_label = 'Nights {0} to {1}'.format(start_date, stop_date)
     sky_label = 'Sky {0:,} sq.deg. (increasing RA)'.format(
-        int(round(p.footprint_area)))
+        int(round(p.footprint_area.to(u.deg ** 2).value)))
 
     # Make the plot.
     fig, ax = plt.subplots(figsize=(10, 5.75))
