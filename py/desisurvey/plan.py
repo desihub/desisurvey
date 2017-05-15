@@ -133,7 +133,8 @@ class Planner(object):
         assert len(sel) == 1
         return self.tiles['map'][sel[0]]
 
-    def instantaneous_efficiency(self, when, seeing, transparency, progress):
+    def instantaneous_efficiency(self, when, seeing, transparency, progress,
+                                 mask=None):
         """Calculate the instantaneous efficiency of all tiles.
 
         Calculated as ``texp / (texp + toh) * eff`` where the exposure time
@@ -152,20 +153,60 @@ class Planner(object):
         progress : desisurvey.progress.Progress
             Record of observations made so far.  Will not be modified by
             calling this method.
+        mask : array or None
+            Boolean mask array specifying which tiles to consider. Use all
+            tiles if None.
 
         Returns
         -------
-        array
-            Array of instantaneous efficiences for each tile.
+        tuple
+            Tuple of arrays (ieff, toh) where ieff are the instantaneous
+            efficiences for each tile and toh are the corresponding initial
+            overheads (without any cosmic splits).
         """
         config = desisurvey.config.Configuration()
 
         # Select the time slice to use.
-        fexp = self.fexp[self.index_of_time(when)]
+        fexp = self.fexp[self.index_of_time(when)].copy()
 
-        # Initialize pointings for each possible tile.
+        # Apply dust extinction.
+        fexp *= self.fdust
+
+        # Allocate arrays.
+        ntiles = len(self.tiles)
+        tnom = np.empty(ntiles) * u.s
+        texp = np.zeros(ntiles) * u.s
+        toh_initial = np.zeros(ntiles) * u.s
+        nsplit = np.zeros(ntiles, int)
+        ieff = np.zeros(ntiles)
+        if mask is None:
+            mask = np.ones(ntiles, bool)
+
+        # Calculate the exposure efficiency of each tile at the current time
+        # and with the current conditions.
+        eff = fexp[self.tiles['map']]
+        eff /= desisurvey.etc.seeing_exposure_factor(seeing)
+        eff /= desisurvey.etc.transparency_exposure_factor(transparency)
+
+        # Ignore tiles with no efficiency, i.e., not visible now.
+        mask = mask & (eff > 0)
+
+        # Calculate target exposure time of each tile at nominal conditions.
+        for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
+            sel = self.tiles['program'] == i + 1
+            tnom[sel] = getattr(config.nominal_exposure_time, program)()
+
+        # Scale target exposure time for remaining SNR**2.
+        summary = progress.get_summary('all')
+        tnom *= np.maximum(0., 1. - summary['snr2frac'])
+
+        # Estimate the required exposure time.
+        texp[mask] = tnom[mask] / eff[mask]
+
+        # Initialize pointings for each candidate tile.
         proposed = astropy.coordinates.SkyCoord(
-            ra=self.tiles['ra'] * u.deg, dec=self.tiles['dec'] * u.deg)
+            ra=self.tiles['ra'][mask] * u.deg,
+            dec=self.tiles['dec'][mask] * u.deg)
 
         # Determine the previous pointing if we need to include slew time
         # in the overhead calcluations.
@@ -183,58 +224,93 @@ class Planner(object):
             last_end = (last['mjd'] + last['exptime'] / 86400.).max()
             deadtime = (when.mjd - last_end) * u.day
 
-        # Calculate the overhead times in seconds for each possible tile.
-        toh = desisurvey.utils.get_overhead_time(previous, proposed, deadtime)
-
-        # Calculate the exposure efficiency at the current time and
-        # with the current conditions.
-        eff = fexp[self.tiles['map']]
-        eff /= desisurvey.etc.seeing_exposure_factor(seeing)
-        eff /= desisurvey.etc.transparency_exposure_factor(transparency)
-
-        # Calculate target exposure time of each tile at nominal conditions.
-        tnom = np.empty(len(toh)) * u.s
-        for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
-            sel = self.tiles['program'] == i + 1
-            tnom[sel] = getattr(config.nominal_exposure_time, program)()
-
-        # Scale target exposure time for remaining SNR**2.
-        summary = progress.get_summary('all')
-        tnom *= np.maximum(0., 1. - summary['snr2frac'])
-
-        # Estimate the required exposure time.
-        mask = eff > 0
-        texp = np.zeros(len(toh)) * u.s
-        texp[mask] = tnom[mask] / eff[mask]
+        # Calculate the initial overhead times for each possible tile.
+        toh_initial[mask] = desisurvey.utils.get_overhead_time(
+            previous, proposed, deadtime)
 
         # Add overhead for any cosmic-ray splits.
-        nsplit = np.zeros(len(toh), dtype=int)
         nsplit[mask] = np.floor(
             (texp[mask] / config.cosmic_ray_split()).to(1).value)
-        toh[mask] += nsplit[mask] * config.readout_time()
+        toh = toh_initial + nsplit * config.readout_time()
 
         # Calculate the instantaneous efficiency.
-        ieff = np.zeros_like(eff)
         ieff[mask] = (tnom[mask] / (toh[mask] + texp[mask])).to(1).value
-        return ieff
+        return ieff, toh_initial
 
-    def next_tile(self, when, conditions, tiles_observed, verbose=True):
+    def next_tile(self, when, seeing, transparency, progress, strategy,
+                  weights):
         """Return the next tile to observe.
 
         Parameters
         ----------
         when : astropy.time.Time
             Time at which the next tile decision is being made.
-        conditions : dict
-            Dictionary of current weather conditions.
-        tiles_observed : array
-            Array of IDs for previously observed tiles.
+        seeing : float or array
+            FWHM seeing value in arcseconds.
+        transparency : float or array
+            Dimensionless transparency value in the range [0-1].
+        progress : desisurvey.progress.Progress
+            Record of observations made so far.  Will not be modified by
+            calling this method.
+        strategy : str
+            Strategy to use for scheduling tiles during each night.
+        weights : array or None
+            Array of per-tile weights that multiply the scores used to select
+            the best tile.  All weights assumed to be one when None.
+
+        Returns
+        -------
+        dict
+            Dictionary describing the next tile to observe or None if no
+            suitable target is available.  The dictionary will contain the
+            following keys: tileID, RA, DEC, Program, Ebmv, moon_illum_frac,
+            MoonDist, MoonAlt and overhead.  Overhead is the delay (with time
+            units) before the shutter can be opened due to slewing and reading
+            out any previous exposure.
         """
+        # Locate the current time slice.
         ij = self.index_of_time(when)
+        # Only consider tiles with a non-zero weight.
+        if weights is None:
+            weights = np.ones(len(self.tiles), float)
+        mask = (weights > 0)
+        # Calculate instantaneous efficiencies and initial overhead times.
+        ieff, toh = self.instantaneous_efficiency(
+            when, seeing, transparency, progress, mask)
+        # Scale efficiencies by weights.
+        score = ieff * weights
+        if np.max(score) <= 0:
+            self.log.info('Max score < 0 ({0}) at {1}.'
+                          .format(np.max(score), when.datetime))
+            return None
         # What program are we in?
-        program = self.etable[ij]['program']
-        if verbose:
-            self.log.debug('program: {0}'.format(program))
+        ephem = self.etable[ij]
+        program = ephem['program']
+        if program == 0:
+            self.log.info('Program 0 at {0}'.format(when.datetime))
+            return None
+        # Consider only tiles in this program.
+        sel = self.tiles['program'] == program
+        tiles = self.tiles[sel]
+        score = score[sel]
+        toh = toh[sel]
+        # Pick the first tile in this program with the maximum score.
+        best = np.argmax(score)
+        tile = tiles[best]
+        # Calculate separation angle in degrees between the selected tile
+        # and the moon.
+        pointing = astropy.coordinates.SkyCoord(
+            ra=tile['ra'] * u.deg, dec=tile['dec'] * u.deg)
+        moon = astropy.coordinates.SkyCoord(
+            ra=ephem['moon_ra'] * u.deg, dec=ephem['moon_dec'] * u.deg)
+        moon_sep = pointing.separation(moon).to(u.deg).value
+        # Prepare the dictionary to return.
+        target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
+                      Program=('DARK', 'GRAY', 'BRIGHT')[program - 1],
+                      Ebmv=tile['EBV'], moon_illum_frac=ephem['moon_frac'],
+                      MoonDist=moon_sep, MoonAlt=ephem['moon_alt'],
+                      overhead=toh[best])
+        return target
 
 
 # Imports only needed by initialize() go here.
@@ -344,9 +420,10 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 
     # Record per-tile info needed for planning.
     table = astropy.table.Table()
-    table['tileid'] = tiles['TILEID']
-    table['ra'] = tiles['RA']
-    table['dec'] = tiles['DEC']
+    table['tileid'] = tiles['TILEID'].astype(np.int32)
+    table['ra'] = tiles['RA'].astype(np.float32)
+    table['dec'] = tiles['DEC'].astype(np.float32)
+    table['EBV'] = tiles['EBV_MED'].astype(np.float32)
     table['pass'] = tiles['PASS'].astype(np.int16)
     # Map each tile ID to the corresponding index in our spatial arrays.
     mapper = np.zeros(npix, int)
@@ -391,6 +468,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     etable['moon_frac'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['moon_ra'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['moon_dec'] = np.zeros(num_nights * num_points, dtype=np.float32)
+    etable['moon_alt'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['zenith_ra'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['zenith_dec'] = np.zeros(num_nights * num_points, dtype=np.float32)
 
@@ -455,6 +533,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 # Calculate moon altitude during the night.
                 moon_alt, _ = desisurvey.ephemerides.get_object_interpolator(
                     night, 'moon', altaz=True)(times.mjd)
+                etable['moon_alt'][sl] = moon_alt
                 moon_zenith = (90 - moon_alt[:,np.newaxis]) * u.deg
                 moon_up = moon_alt > 0
                 assert np.all(moon_alt[gray] > 0)
