@@ -6,6 +6,7 @@ desisurvey change log
 ------------------
 
 * Freeze IERS table used by astropy time, coordinates.
+* Implement alternate greedy scheduler with optional policy weights.
 
 0.6.0 (2017-05-10)
 ------------------
