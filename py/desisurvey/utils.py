@@ -65,6 +65,7 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
     log = desiutil.log.get_logger()
     if desisurvey.utils._iers_is_frozen:
         log.debug('IERS table already frozen.')
+        return
     log.info('Freezing IERS table used by astropy time, coordinates.')
 
     # Validate the save_name extension.

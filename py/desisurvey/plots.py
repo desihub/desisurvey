@@ -80,7 +80,8 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
             ra_center=ra[sel], dec_center=dec[sel], data=z_sel,
             colorbar=True, basemap=basemap, edgecolor='none', label=label)
         # Plot the histogram of values for this pass.
-        counts, _, _ = ax[0, 2].hist(z[sel], color=color, **hopts)
+        hist_sel = (passnum == p) & (z > vmin) & (z < vmax)
+        counts, _, _ = ax[0, 2].hist(z[hist_sel], color=color, **hopts)
         max_count = max(counts.max(), max_count)
 
     # Decorate the histogram subplot.
@@ -140,13 +141,13 @@ def plot_observed(progress, include='observed', start_date=None, stop_date=None,
     """
     if start_date:
         start_date = desisurvey.utils.get_date(start_date)
-        mjd_min = desisurvey.local_noon_on_date(start_date).mjd
+        mjd_min = desisurvey.utils.local_noon_on_date(start_date).mjd
     else:
         start_date = desisurvey.utils.get_date(progress.first_mjd)
         mjd_min = None
     if stop_date:
         stop_date = desisurvey.utils.get_date(stop_date)
-        mjd_max = desisurvey.local_noon_on_date(stop_date).mjd
+        mjd_max = desisurvey.utils.local_noon_on_date(stop_date).mjd
     else:
         stop_date = desisurvey.utils.get_date(progress.last_mjd)
         mjd_max = None
@@ -186,11 +187,11 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     ephem : :class:`desisurvey.ephemerides.Ephemerides`
         Tabulated ephemerides data to use for determining the program.
     start_date : date or None
-        First night to include in the plot or use the start of the
+        First night to include in the plot or use the first date of the
         calculated ephemerides.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     stop_date : date or None
-        First night to include in the plot or use the start of the
+        First night to include in the plot or use the last date of the
         calculated ephemerides.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     style : string
@@ -317,12 +318,16 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         size = min(15., (300./num_nights) ** 2)
         opts = dict(linestyle='-', marker='.' if size > 1 else None,
                     markersize=size)
-        plt.plot(x, y[0], color=program_color['DARK'], **opts)
-        plt.plot(x, y[1], color=program_color['GRAY'], **opts)
-        plt.plot(x, y[2], color=program_color['BRIGHT'], **opts)
+        ax.plot(x, y[0], color=program_color['DARK'], **opts)
+        ax.plot(x, y[1], color=program_color['GRAY'], **opts)
+        ax.plot(x, y[2], color=program_color['BRIGHT'], **opts)
 
         ax.set_axis_bgcolor(bg_color)
-        plt.ylim(0, 1.07 * y.max())
+        ax.set_ylim(0, 1.07 * y.max())
+        if style == 'histogram':
+            ax.set_ylabel('Hours / Night')
+        else:
+            ax.set_ylabel('Cumulative Hours')
 
     # Display dates on the x axis.
     ax.set_xlabel('Survey Date (observing {0} / {1} nights)'
@@ -568,9 +573,9 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
         plt.savefig(save)
 
 
-def plot_planner(p, where=None, when=None, night_summary='dark',
-                 dust=True, monsoon=True, fullmoon=True, cmap='magma',
-                 save=None):
+def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
+                 night_summary='dark', dust=True, monsoon=True, fullmoon=True,
+                 cmap='magma', save=None):
     """Plot a summary of the planner observing efficiency forecast.
 
     Requires that the matplotlib package is installed.
@@ -579,15 +584,36 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     ----------
     p : desisurvey.plan.Planner
         The planner object to use.
-    where : string or None
-    when : string or None
-    night_summary : string
+    start_date : date or None
+        First night to include in the plot or use the first planner date.  Must
+        be convertible to a date using :func:`desisurvey.utils.get_date`.
+        Ignored if ``when`` specifies a time.
+    stop_date : date or None
+        First night to include in the plot or use the last planner date.  Must
+        be convertible to a date using :func:`desisurvey.utils.get_date`.
+        Ignored if ``when`` specifies a time.
+    where : int, 'best', 'random', iterable or None
+        Plot a time series of observing efficiency each night for a specified
+        tile ID, the best location or averaging over randomly chosen locations.
+        An iterable of int, 'best', 'random' is also allowed. Cannot be
+        combined with the ``when`` option.
+    when : astropy.time.Time, int, 'best', 'random' or None
+        Plot an all-sky map of observing efficiency for a specified time, each
+        location's best night or else averaging over randomly chosen nights.
+        A time can be specified with a timestamp or a temporal index.
+        Cannot be combined with the ``where`` option.
+    night_summary : 'best', '24hr' or 'dark'
+        Summarize the observing efficiency during each night picking either the
+        best time slot, or else averaging over 24 hours or the actual length
+        of the night. Ignored if ``when`` specifies a time.
     dust : bool
         Should dust extinction be included in the observing efficiency?
     monsoon : bool
         Do not observe during scheduled monsoon shutdowns?
+        Ignored if ``when`` specifies a time.
     fullmoon : bool
         Do not observe during scheduled full-moon breaks?
+        Ignored if ``when`` specifies a time.
     cmap : matplotlib colormap spec
         Colormap to use to represent observing efficiency. Not used for a
         time series plot.
@@ -605,74 +631,137 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
     if where and when:
         raise ValueError('Cannot specify both where and when.')
 
-    # Reshape time axis into (nights, times). This operation creates
-    # a new view with no memory copy.
-    fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
+    # Determine plot date range.
+    start_date = desisurvey.utils.get_date(start_date or p.start_date)
+    stop_date = desisurvey.utils.get_date(stop_date or p.stop_date)
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
 
-    # Project out the spatial axis if requested. If dust included,
-    # we cannot avoid making a temporary copy of the large fexp array.
-    if dust and where:
-        fexp = fexp.copy() * p.fdust
-    if where == 'best':
-        # Observe the best pixel during each time slot.
-        fexp = fexp.max(axis=2)
-    elif where == 'random':
-        # Observe a random pixel during each time slot.
-        fexp = fexp.mean(axis=2)
-    elif where is not None:
-        raise ValueError('Invalid where: {0}.'.format(where))
+    # Preprocess the where arg to be a list whose elements are either valid
+    # tile IDs or the strings 'best', 'random'.
+    where_orig = where
+    if where is not None:
+        # Look for an iterable of valid elements.
+        try:
+            for w in where:
+                if w in ('best', 'random'):
+                    continue
+                p.index_of_tile(w)
+        except (TypeError, ValueError):
+            # Look for a single string.
+            if where in ('best', 'random'):
+                where = [where]
+            else:
+                # Look for a single integer.
+                try:
+                    p.index_of_tile(where)
+                    where = [where]
+                except (TypeError, ValueError):
+                    raise ValueError('Invalid where: {0}.'.format(where_orig))
 
-    # Summarize each night using the specified summary statistic.
-    if night_summary == 'best':
-        # Pick the best time to observe each pixel.
-        fexp = fexp.max(axis=1)
-    elif night_summary == '24hr':
-        # Average over each 24hour period.
-        fexp = fexp.mean(axis=1)
-    elif night_summary == 'dark':
-        # Average over night observing times only.
-        n_night_bins = (fexp > 0).sum(axis=1)
-        mask = n_night_bins > 0
-        fexp = fexp.sum(axis=1)
-        fexp[mask] /= n_night_bins[mask]
+    # Test if the when arg is a valid timestamp or temporal index.
+    try:
+        timestamp = astropy.time.Time(when)
+    except ValueError:
+        timestamp = None
+    if timestamp:
+        time_index = p.index_of_time(timestamp)
     else:
-        raise ValueError('Invalid night_summary: {0}.'.format(night_summary))
-
-    # Zero out monsoon nights if requested.
-    if monsoon:
-        fexp[p.calendar['monsoon']] = 0.
-
-    # Zero out full-moon nights if requested.
-    if fullmoon:
-        fexp[p.calendar['fullmoon']] = 0.
-
-    # Project out the night axis if requested.
-    if when == 'best':
-        # Observe each pixel during its best night.
-        fexp = fexp.max(axis=0)
-    elif when == 'random':
-        # Observe each pixel during a random night scheduled for observations.
-        scheduled = np.ones(p.num_nights, bool)
-        if monsoon:
-            scheduled[p.calendar['monsoon']] = False
-        if fullmoon:
-            scheduled[p.calendar['fullmoon']] = False
-        fexp = fexp[scheduled].mean(axis=0)
-    elif when is not None:
+        try:
+            time_index = int(when)
+            if time_index < 0 or time_index >= len(p.fexp):
+                raise ValueError('Time index out of range: {0}.'
+                                 .format(time_index))
+            timestamp = p.time_of_index(time_index)
+        except (ValueError, TypeError):
+            time_index = None
+    if timestamp is None and when not in (None, 'best', 'random'):
         raise ValueError('Invalid when: {0}.'.format(when))
 
+    if time_index is not None:
+        # Select the specied time slice.
+        fexp = p.fexp[time_index].copy()
+    else:
+        # Reshape time axis into (nights, times). This operation creates
+        # a new view with no memory copy.
+        fexp = p.fexp.reshape(p.num_nights, p.num_times, -1)
+
+        # Restrict to the requested dates.
+        lo = (start_date - p.start_date).days
+        hi = (stop_date - p.start_date).days
+        fexp = fexp[lo:hi]
+        num_nights = hi - lo
+
+        # Project out the spatial axis if requested. If dust is included,
+        # we cannot avoid making a temporary copy of the large fexp array.
+        if dust and where:
+            fexp = fexp.copy() * p.fdust
+        if where is not None:
+            # Replace the spatial axis with an index into where.
+            new_fexp = np.empty((num_nights, p.num_times, len(where)))
+            # Generate a time series for each element of where.
+            for i, w in enumerate(where):
+                if w == 'best':
+                    # Observe the best pixel during each time slot.
+                    new_fexp[:, :, i] = fexp.max(axis=2)
+                elif w == 'random':
+                    # Observe a random pixel during each time slot.
+                    new_fexp[:, :, i] = fexp.mean(axis=2)
+                else:
+                    new_fexp[:, :, i] = fexp[:, :, p.index_of_tile(w)]
+            fexp = new_fexp
+
+        # Summarize each night using the specified summary statistic.
+        if night_summary == 'best':
+            # Pick the best time to observe each pixel.
+            fexp = fexp.max(axis=1)
+        elif night_summary == '24hr':
+            # Average over each 24hour period.
+            fexp = fexp.mean(axis=1)
+        elif night_summary == 'dark':
+            # Average over night observing times only.
+            n_night_bins = (fexp > 0).sum(axis=1)
+            mask = n_night_bins > 0
+            fexp = fexp.sum(axis=1)
+            fexp[mask] /= n_night_bins[mask]
+        else:
+            raise ValueError(
+                'Invalid night_summary: {0}.'.format(night_summary))
+
+        # Zero out monsoon nights if requested.
+        if monsoon:
+            fexp[p.calendar['monsoon'][lo:hi]] = 0.
+
+        # Zero out full-moon nights if requested.
+        if fullmoon:
+            fexp[p.calendar['fullmoon'][lo:hi]] = 0.
+
+        # Project out the night axis if requested.
+        if when == 'best':
+            # Observe each pixel during its best night.
+            fexp = fexp.max(axis=0)
+        elif when == 'random':
+            # Observe each pixel during a random night scheduled for
+            # observations.
+            scheduled = np.ones(num_nights, bool)
+            if monsoon:
+                scheduled[p.calendar['monsoon'][lo:hi]] = False
+            if fullmoon:
+                scheduled[p.calendar['fullmoon'][lo:hi]] = False
+            fexp = fexp[scheduled].mean(axis=0)
+
     # Apply dust exposure factors if requested.
-    if dust and not where:
+    if dust and where is None:
         fexp *= p.fdust
 
     # Prepare plot labels.
-    date_label = 'Nights {0} to {1}'.format(p.start_date, p.stop_date)
+    date_label = 'Nights {0} to {1}'.format(start_date, stop_date)
     sky_label = 'Sky {0:,} sq.deg. (increasing RA)'.format(
-        int(round(p.footprint_area)))
+        int(round(p.footprint_area.to(u.deg ** 2).value)))
 
     # Make the plot.
     fig, ax = plt.subplots(figsize=(10, 5.75))
-    if when:
+    if when is not None:
         # Plot an all-sky map.
         assert fexp.shape == (len(p.footprint_pixels),)
         # Reconstruct a healpix map masked to our footprint.
@@ -681,22 +770,40 @@ def plot_planner(p, where=None, when=None, night_summary='dark',
         data = desiutil.plots.prepare_data(
             m, mask=~p.footprint, clip_lo=0., clip_hi=1., save_limits=True)
         # Draw the map.
-        label = 'Observing Efficiency ({0}, {1})'.format(when, night_summary)
-        desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
-    elif where:
-        # Project a time series.
-        assert fexp.shape == (p.num_nights,)
-        x = np.arange(p.num_nights)
-        ax.fill_between(x, fexp, color='r', alpha=0.5)
-        ax.plot(x, fexp, 'k-', lw=0.5)
+        if time_index:
+            label = 'Observing Efficiency {0}'.format(timestamp.datetime)
+        else:
+            label = ('Observing Efficiency ({0}, {1})'
+                     .format(when, night_summary))
+        bm = desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
+        if time_index is not None:
+            ephem = p.etable[time_index]
+            # Draw current zenith (ra,dec).
+            bm.scatter(ephem['zenith_ra'], ephem['zenith_dec'],
+                       marker='x', s=150, color='w', lw=2, latlon=True)
+            # Draw current moon (ra,dec).
+            bm.scatter(ephem['moon_ra'], ephem['moon_dec'], facecolor='gray',
+                       marker='o', s=150, edgecolor='r', latlon=True)
+            print('program', ephem['program'], 'moon frac', ephem['moon_frac'])
+    elif where is not None:
+        # Project a time series for each element of where.
+        assert fexp.shape == (num_nights, len(where))
+        colors = ('r', 'g', 'b', 'y', 'magenta')
+        nc = len(colors)
+        x = np.arange(num_nights)
+        for i, w in enumerate(where):
+            ax.fill_between(x, fexp[:, i], color=colors[i % nc], alpha=0.4)
+            ax.plot(x, fexp[:, i], '-', c=colors[i % nc], lw=0.5, label=w)
+        ax.legend(ncol=min(5, len(where)))
         ax.set_xticks([])
+        ax.set_xlim(x[0] - 0.5, x[-1] + 0.5)
         ax.set_ylim(0., 1.)
         ax.set_xlabel(date_label, fontsize='x-large')
-        ax.set_ylabel('Observing Efficiency ({0}, {1})'
-                      .format(where, night_summary), fontsize='x-large')
+        ax.set_ylabel('Observing Efficiency ({0})'
+                      .format(night_summary), fontsize='x-large')
     else:
         # Plot a 2D image.
-        assert fexp.shape == (p.num_nights, len(p.footprint_pixels))
+        assert fexp.shape == (num_nights, len(p.footprint_pixels))
         ax.imshow(fexp.T, interpolation='none', aspect='auto', origin='lower',
                   cmap=cmap)
         ax.set_xticks([])
