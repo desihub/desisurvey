@@ -730,11 +730,11 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
 
         # Zero out monsoon nights if requested.
         if monsoon:
-            fexp[p.calendar['monsoon']] = 0.
+            fexp[p.calendar['monsoon'][lo:hi]] = 0.
 
         # Zero out full-moon nights if requested.
         if fullmoon:
-            fexp[p.calendar['fullmoon']] = 0.
+            fexp[p.calendar['fullmoon'][lo:hi]] = 0.
 
         # Project out the night axis if requested.
         if when == 'best':
@@ -745,9 +745,9 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
             # observations.
             scheduled = np.ones(num_nights, bool)
             if monsoon:
-                scheduled[p.calendar['monsoon']] = False
+                scheduled[p.calendar['monsoon'][lo:hi]] = False
             if fullmoon:
-                scheduled[p.calendar['fullmoon']] = False
+                scheduled[p.calendar['fullmoon'][lo:hi]] = False
             fexp = fexp[scheduled].mean(axis=0)
 
     # Apply dust exposure factors if requested.
