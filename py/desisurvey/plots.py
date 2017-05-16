@@ -775,7 +775,16 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
         else:
             label = ('Observing Efficiency ({0}, {1})'
                      .format(when, night_summary))
-        desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
+        bm = desiutil.plots.plot_healpix_map(data, label=label, cmap=cmap)
+        if time_index is not None:
+            ephem = p.etable[time_index]
+            # Draw current zenith (ra,dec).
+            bm.scatter(ephem['zenith_ra'], ephem['zenith_dec'],
+                       marker='x', s=150, color='w', lw=2, latlon=True)
+            # Draw current moon (ra,dec).
+            bm.scatter(ephem['moon_ra'], ephem['moon_dec'], facecolor='gray',
+                       marker='o', s=150, edgecolor='r', latlon=True)
+            print('program', ephem['program'], 'moon frac', ephem['moon_frac'])
     elif where is not None:
         # Project a time series for each element of where.
         assert fexp.shape == (num_nights, len(where))
