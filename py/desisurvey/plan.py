@@ -45,6 +45,9 @@ class Planner(object):
         self.pix_area = 360. ** 2 / np.pi / self.npix * u.deg ** 2
 
         self.tiles = astropy.table.Table.read(output_file, hdu='TILES')
+        self.tile_coords = astropy.coordinates.ICRS(
+            ra=self.tiles['ra'] * u.deg, dec=self.tiles['dec'] * u.deg)
+
         self.calendar = astropy.table.Table.read(output_file, hdu='CALENDAR')
         self.etable = astropy.table.Table.read(output_file, hdu='EPHEM')
 
@@ -199,16 +202,11 @@ class Planner(object):
                 config.nominal_exposure_time, program)().to(u.s).value
 
         # Scale target exposure time for remaining SNR**2.
-        summary = progress.get_summary('all')
-        tnom *= np.maximum(0., 1. - summary['snr2frac'])
+        snr2frac = progress._table['snr2frac'].data.sum(axis=1)
+        tnom *= np.maximum(0., 1. - snr2frac)
 
         # Estimate the required exposure time.
         texp[mask] = tnom[mask] / eff[mask]
-
-        # Initialize pointings for each candidate tile.
-        proposed = astropy.coordinates.SkyCoord(
-            ra=self.tiles['ra'][mask] * u.deg,
-            dec=self.tiles['dec'][mask] * u.deg)
 
         # Determine the previous pointing if we need to include slew time
         # in the overhead calcluations.
@@ -220,7 +218,7 @@ class Planner(object):
         else:
             last = progress.last_tile
             # Where was the telescope last pointing?
-            previous = astropy.coordinates.SkyCoord(
+            previous = astropy.coordinates.ICRS(
                 ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
             # How much time has elapsed since the last exposure ended?
             last_end = (last['mjd'] + last['exptime'] / 86400.).max()
@@ -228,7 +226,7 @@ class Planner(object):
 
         # Calculate the initial overhead times for each possible tile.
         toh_initial[mask] = desisurvey.utils.get_overhead_time(
-            previous, proposed, deadtime).to(u.s).value
+            previous, self.tile_coords[mask], deadtime).to(u.s).value
 
         # Add overhead for any cosmic-ray splits.
         nsplit[mask] = np.floor(
