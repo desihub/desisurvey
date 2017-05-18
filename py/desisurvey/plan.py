@@ -524,6 +524,15 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     etable['zenith_ra'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['zenith_dec'] = np.zeros(num_nights * num_points, dtype=np.float32)
 
+    # Tabulate MJD and apparent LST values for each time step. We don't save
+    # MJD values since they are cheap to reconstruct from the index, but
+    # do use them below.
+    mjd0 = desisurvey.utils.local_noon_on_date(start_date).mjd + 0.5
+    mjd = mjd0 + np.arange(num_nights)[:, np.newaxis] + t_centers
+    times = astropy.time.Time(
+        mjd, format='mjd', location=desisurvey.utils.get_location())
+    etable['lst'] = times.sidereal_time('apparent').flatten().to(u.deg).value
+
     # Build sky coordinates for each pixel in the footprint.
     pix_theta, pix_phi = healpy.pix2ang(healpix_nside, footprint_pixels)
     pix_ra, pix_dec = np.degrees(pix_phi), 90 - np.degrees(pix_theta)
@@ -556,9 +565,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         # Zero the exposure factor whenever we are not oberving.
         fexp[sl] = (dark | gray | bright)[:, np.newaxis]
         # Transform the local zenith to (ra,dec).
-        times = astropy.time.Time(mjd, format='mjd')
         zenith = desisurvey.utils.get_observer(
-            times, alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
+            times[i], alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
         etable['zenith_ra'][sl] = zenith.ra.to(u.deg).value
         etable['zenith_dec'][sl] = zenith.dec.to(u.deg).value
         # Calculate zenith angles to each pixel in the footprint.
@@ -573,7 +581,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         for name in config.avoid_bodies.keys:
             f_obj = desisurvey.ephemerides.get_object_interpolator(night, name)
             # Calculate this object's (dec,ra) path during the night.
-            obj_dec, obj_ra = f_obj(times.mjd)
+            obj_dec, obj_ra = f_obj(mjd)
             sky_obj = astropy.coordinates.ICRS(
                 ra=obj_ra[:, np.newaxis] * u.deg,
                 dec=obj_dec[:, np.newaxis] * u.deg)
@@ -584,13 +592,13 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 etable['moon_dec'][sl] = obj_dec
                 # Calculate moon altitude during the night.
                 moon_alt, _ = desisurvey.ephemerides.get_object_interpolator(
-                    night, 'moon', altaz=True)(times.mjd)
+                    night, 'moon', altaz=True)(mjd)
                 etable['moon_alt'][sl] = moon_alt
                 moon_zenith = (90 - moon_alt[:,np.newaxis]) * u.deg
                 moon_up = moon_alt > 0
                 assert np.all(moon_alt[gray] > 0)
                 # Calculate the moon illuminated fraction during the night.
-                moon_frac = ephem.get_moon_illuminated_fraction(times.mjd)
+                moon_frac = ephem.get_moon_illuminated_fraction(mjd)
                 etable['moon_frac'][sl] = moon_frac
                 # Convert to temporal moon phase.
                 moon_phase = np.arccos(2 * moon_frac[:,np.newaxis] - 1) / np.pi
