@@ -349,11 +349,9 @@ class Planner(object):
         tile = self.tiles[best]
         # Calculate separation angle in degrees between the selected tile
         # and the moon.
-        pointing = astropy.coordinates.SkyCoord(
-            ra=tile['ra'] * u.deg, dec=tile['dec'] * u.deg)
-        moon = astropy.coordinates.SkyCoord(
+        moon = astropy.coordinates.ICRS(
             ra=ephem['moon_ra'] * u.deg, dec=ephem['moon_dec'] * u.deg)
-        moon_sep = pointing.separation(moon).to(u.deg).value
+        moon_sep = self.tile_coords[best].separation(moon).to(u.deg).value
         # Prepare the dictionary to return.
         target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
                       Program=('DARK', 'GRAY', 'BRIGHT')[program - 1],

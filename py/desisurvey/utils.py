@@ -341,7 +341,7 @@ def get_airmass(when, ra, dec):
     array or float
         Value of the airmass for each input (ra,dec).
     """
-    target = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
+    target = astropy.coordinates.ICRS(ra=ra, dec=dec)
     zenith = get_observer(when, alt=90 * u.deg, az=0 * u.deg
                           ).transform_to(astropy.coordinates.ICRS)
     # Calculate zenith angle in degrees.

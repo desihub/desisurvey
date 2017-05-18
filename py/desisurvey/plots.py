@@ -472,7 +472,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     # Place a SkyCoord at the center of each bin.
     ra = 0.5 * (ra_edges[1:] + ra_edges[:-1])
     dec = 0.5 * (dec_edges[1:] + dec_edges[:-1])[:, np.newaxis]
-    radec_grid = astropy.coordinates.SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+    radec_grid = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
 
     # Ignore atmospheric refraction and restrict to small airmass, for speed.
     altaz_frame = astropy.coordinates.AltAz(

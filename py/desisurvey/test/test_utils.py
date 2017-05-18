@@ -90,7 +90,7 @@ class TestUtils(unittest.TestCase):
         """Sanity checks on overhead time calculations"""
         c = config.Configuration()
         tro = c.readout_time()
-        p0 = astropy.coordinates.SkyCoord(ra=300 * u.deg, dec=10 * u.deg)
+        p0 = astropy.coordinates.ICRS(ra=300 * u.deg, dec=10 * u.deg)
         # Move with no readout and no slew only has focus overhead.
         self.assertEqual(utils.get_overhead_time(None, p0, tro),
                          c.focus_time())
@@ -105,7 +105,7 @@ class TestUtils(unittest.TestCase):
         for delta in (1, 45, 70):
             ra = p0.ra + [+delta, -delta, 0, 0] * u.deg
             dec = p0.dec + [0, 0, +delta, -delta] * u.deg
-            p1 = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
+            p1 = astropy.coordinates.ICRS(ra=ra, dec=dec)
             dt = utils.get_overhead_time(p0, p1)
             self.assertTrue(dt.shape == (4,))
             self.assertEqual(dt[0], dt[1])
