@@ -29,6 +29,25 @@ class TestUtils(unittest.TestCase):
         # Remove the directory after the test.
         shutil.rmtree(cls.tmpdir)
 
+    def setUp(self):
+        # Configure a CSV reader for the Horizons output format.
+        csv_reader = astropy.io.ascii.Csv()
+        csv_reader.header.comment = r'[^ ]'
+        csv_reader.data.start_line = 35
+        csv_reader.data.end_line = 203
+        # Read moon ephemerides for the first week of 2020.
+        path = astropy.utils.data._find_pkg_data_path(
+            os.path.join('data', 'horizons_2020_week1_moon.csv'),
+            package='desisurvey')
+        self.table = csv_reader.read(path)
+        # Horizons CSV file has a trailing comma on each line.
+        self.table.remove_column('col10')
+        # Use more convenient column names.
+        names = ('date', 'jd', 'sun', 'moon', 'ra', 'dec',
+                 'az', 'alt', 'lst', 'frac')
+        for old_name, new_name in zip(self.table.colnames, names):
+            self.table[old_name].name = new_name
+
     def tearDown(self):
         utils._iers_is_frozen = False
 
@@ -49,6 +68,8 @@ class TestUtils(unittest.TestCase):
     def test_freeze_iers(self):
         """Test freezing from package data/"""
         utils.freeze_iers()
+        future = astropy.time.Time('2024-01-01', location=utils.get_location())
+        lst = future.sidereal_time('apparent')
 
     def test_freeze_iers_bad_ext(self):
         """Test freezing from package data/"""
@@ -64,25 +85,6 @@ class TestUtils(unittest.TestCase):
         """Test freezing from valid file with wrong format"""
         with self.assertRaises(ValueError):
             utils.freeze_iers('config.yaml')
-
-    def setUp(self):
-        # Configure a CSV reader for the Horizons output format.
-        csv_reader = astropy.io.ascii.Csv()
-        csv_reader.header.comment = r'[^ ]'
-        csv_reader.data.start_line = 35
-        csv_reader.data.end_line = 203
-        # Read moon ephemerides for the first week of 2020.
-        path = astropy.utils.data._find_pkg_data_path(
-            os.path.join('data', 'horizons_2020_week1_moon.csv'),
-            package='desisurvey')
-        self.table = csv_reader.read(path)
-        # Horizons CSV file has a trailing comma on each line.
-        self.table.remove_column('col10')
-        # Use more convenient column names.
-        names = ('date', 'jd', 'sun', 'moon', 'ra', 'dec',
-                 'az', 'alt', 'lst', 'frac')
-        for old_name, new_name in zip(self.table.colnames, names):
-            self.table[old_name].name = new_name
 
     def test_get_overhead(self):
         """Sanity checks on overhead time calculations"""

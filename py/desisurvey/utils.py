@@ -38,7 +38,11 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
 
     After this call, the loaded table will be returned by
     :func:`astropy.utils.iers.IERS_Auto.open()` and treated like a
-    a normal IERS-B table by all astropy code.
+    a normal IERS table by all astropy code.  Specifically, this method
+    registers an instance of a custom IERS_Frozen class that inherits from
+    IERS_B and overrides
+    :meth:`astropy.utils.iers.IERS._check_interpolate_indices` to prevent
+    any IERSRangeError being raised.
 
     See `http://docs.astropy.org/en/stable/utils/iers.html`_ for details.
 
@@ -88,7 +92,15 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
         table = astropy.table.Table.read(name, format='ascii.ecsv').filled()
     except IOError:
         raise RuntimeError('Unable to load IERS table from {0}.'.format(name))
-    iers = astropy.utils.iers.IERS(table)
+
+    # Define a subclass of IERS_B that overrides _check_interpolate_indices
+    # to prevent any IERSRangeError being raised.
+    class IERS_Frozen(astropy.utils.iers.IERS_B):
+        def _check_interpolate_indices(self, indices_orig, indices_clipped,
+                                       max_input_mjd): pass
+
+    # Create and register an instance of this class from the table.
+    iers = IERS_Frozen(table)
     astropy.utils.iers.IERS.iers_table = iers
     # Prevent any attempts to automatically download updated IERS-A tables.
     astropy.utils.iers.conf.auto_download = False
