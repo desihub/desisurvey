@@ -211,6 +211,7 @@ def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
     astropy.units.Quantity
         Overhead time(s) for each new_pointing.
     """
+    assert deadtime.to(u.s).value >= 0
     config = desisurvey.config.Configuration()
     if current_pointing is not None:
         # Calculate the amount that each axis needs to move in degrees.

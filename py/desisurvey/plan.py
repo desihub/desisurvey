@@ -222,7 +222,7 @@ class Planner(object):
                 ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
             # How much time has elapsed since the last exposure ended?
             last_end = (last['mjd'] + last['exptime'] / 86400.).max()
-            deadtime = (when.mjd - last_end) * u.day
+            deadtime = max(0., when.mjd - last_end) * u.day
 
         # Calculate the initial overhead times for each possible tile.
         toh_initial[mask] = desisurvey.utils.get_overhead_time(
