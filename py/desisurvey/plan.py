@@ -165,7 +165,7 @@ class Planner(object):
         tuple
             Tuple of arrays (ieff, toh) where ieff are the instantaneous
             efficiences for each tile and toh are the corresponding initial
-            overheads (without any cosmic splits).
+            overhead times, without any cosmic-ray splits.
         """
         config = desisurvey.config.Configuration()
 

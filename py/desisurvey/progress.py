@@ -368,7 +368,7 @@ class Progress(object):
         """
         mjd = start.mjd
         self.log.debug(
-            'Adding {0:.1f}s exposure of {1} at {2} (MJD {3:.5f}).'
+            'Adding {0:.1f} exposure of {1} at {2} (MJD {3:.5f}).'
             .format(exptime, tile_id, start.datetime, mjd))
         row = self.get_tile(tile_id)
 
