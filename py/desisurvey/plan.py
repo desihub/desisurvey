@@ -136,8 +136,8 @@ class Planner(object):
         assert len(sel) == 1
         return self.tiles['map'][sel[0]]
 
-    def instantaneous_efficiency(self, when, seeing, transparency, progress,
-                                 mask=None):
+    def instantaneous_efficiency(self, when, cutoff, seeing, transparency,
+                                 progress, mask=None):
         """Calculate the instantaneous efficiency of all tiles.
 
         Calculated as ``texp / (texp + toh) * eff`` where the exposure time
@@ -149,6 +149,10 @@ class Planner(object):
         ----------
         when : astropy.time.Time
             Time for which the efficiency should be calculated.
+        cutoff : astropy.time.Time
+            Time by which observing must stop tonight.  Any exposure expected
+            to last beyond this cutoff will be assigned an instantaneous
+            efficiency of zero.
         seeing : float or array
             FWHM seeing value in arcseconds.
         transparency : float or array
@@ -233,6 +237,12 @@ class Planner(object):
             (texp[mask] / config.cosmic_ray_split().to(u.s).value))
         toh = toh_initial + nsplit * config.readout_time().to(u.s).value
 
+        # Zero the efficiency of any tiles whose exposures cannot be completed
+        # before the cutoff.  (Could soften to include tiles whose first
+        # exposure is expected to complete before the cutoff.)
+        beyond_cutoff = toh + texp > (cutoff - when).to(u.s).value
+        mask[beyond_cutoff] = False
+
         # Calculate the instantaneous efficiency.
         ieff[mask] = tnom[mask] / (toh[mask] + texp[mask])
         return ieff, toh_initial
@@ -277,7 +287,7 @@ class Planner(object):
         ratio = self.fexp[ij] / fexp_max
         return ratio
 
-    def next_tile(self, when, seeing, transparency, progress, strategy,
+    def next_tile(self, when, cutoff, seeing, transparency, progress, strategy,
                   weights=None):
         """Return the next tile to observe.
 
@@ -285,6 +295,8 @@ class Planner(object):
         ----------
         when : astropy.time.Time
             Time at which the next tile decision is being made.
+        cutoff : astropy.time.Time
+            Time by which observing must stop tonight.
         seeing : float or array
             FWHM seeing value in arcseconds.
         transparency : float or array
@@ -327,7 +339,7 @@ class Planner(object):
         ##mask[~sel] = False
         # Calculate instantaneous efficiencies and initial overhead times.
         ieff, toh = self.instantaneous_efficiency(
-            when, seeing, transparency, progress, mask)
+            when, cutoff, seeing, transparency, progress, mask)
         # Calculate each tile's score using the requested strategy.
         score = np.ones(len(self.tiles))
         strategy = strategy.split('+')
