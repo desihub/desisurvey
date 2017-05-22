@@ -310,22 +310,21 @@ class Planner(object):
         """
         # Locate the current time slice.
         ij = self.index_of_time(when)
+        # What program are we in? (1=DARK, 2=GRAY, 3=BRIGHT). Since this is
+        # based on the slice midpoint, it could be zero in the first and last
+        # slices, which we change to 3 (BRIGHT).
+        ephem = self.etable[ij]
+        program = ephem['program'] or 3
         # Only consider tiles with a non-zero weight.
         if weights is None:
             weights = np.ones(len(self.tiles), float)
         mask = (weights > 0)
-        # What program are we in?
-        ephem = self.etable[ij]
-        program = ephem['program']
-        if program == 0:
-            self.log.info('Program 0 at {0}'.format(when.datetime))
+        if not np.any(mask):
+            self.log.warn('No tiles available at {0}.'.format(when.datetime))
             return None
         # Only consider tiles in the current program (for now).
-        sel = self.tiles['program'] == program
-        mask[~sel] = False
-        if not np.any(mask):
-            self.log.info('No tiles selected at {0}.'.format(when.datetime))
-            return None
+        ##sel = self.tiles['program'] == program
+        ##mask[~sel] = False
         # Calculate instantaneous efficiencies and initial overhead times.
         ieff, toh = self.instantaneous_efficiency(
             when, seeing, transparency, progress, mask)
@@ -341,10 +340,20 @@ class Planner(object):
         # Scale the final scores by the policy weights.
         score *= weights
         if np.max(score) <= 0:
-            self.log.info('Max score <= 0 ({0}) at {1}.'
+            self.log.warn('Found max score {0} at {1}.'
                           .format(np.max(score), when.datetime))
             return None
-        # Pick the first tile with the maximum score.
+        # Find the best tile in each program.
+        '''
+        best_in_program = {}
+        for p, name in enumerate(('DARK', 'GRAY', 'BRIGHT')):
+            in_program = self.tiles['program'] == p + 1
+            best = np.argmax(score[in_program])
+            tile = self.tiles[best]
+            best_in_program[name] = dict(
+                tileid=tile['tileid'], score=score[best])
+        '''
+        # Pick the best tile in any program.
         best = np.argmax(score)
         tile = self.tiles[best]
         # Calculate separation angle in degrees between the selected tile
@@ -354,7 +363,9 @@ class Planner(object):
         moon_sep = self.tile_coords[best].separation(moon).to(u.deg).value
         # Prepare the dictionary to return.
         target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
-                      Program=('DARK', 'GRAY', 'BRIGHT')[program - 1],
+                      #CurrentProgram=('DARK', 'GRAY', 'BRIGHT')[program - 1],
+                      Program=('DARK', 'GRAY', 'BRIGHT')[tile['program'] - 1],
+                      #BestInProgram=best_in_program,
                       Ebmv=tile['EBV'], moon_illum_frac=ephem['moon_frac'],
                       MoonDist=moon_sep, MoonAlt=ephem['moon_alt'],
                       overhead=toh[best] * u.s)

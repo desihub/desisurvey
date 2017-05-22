@@ -138,7 +138,7 @@ class Progress(object):
 
     @property
     def first_mjd(self):
-        """MJD of most recent exposure or 0 if no exposures have been added."""
+        """MJD of first exposure or 0 if no exposures have been added."""
         return self._first_mjd
 
     @property
