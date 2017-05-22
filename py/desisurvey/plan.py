@@ -221,12 +221,18 @@ class Planner(object):
             deadtime = config.readout_time()
         else:
             last = progress.last_tile
-            # Where was the telescope last pointing?
-            previous = astropy.coordinates.ICRS(
-                ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
             # How much time has elapsed since the last exposure ended?
             last_end = (last['mjd'] + last['exptime'] / 86400.).max()
             deadtime = max(0., when.mjd - last_end) * u.day
+            # Is this the first exposure of the night?
+            today = desisurvey.utils.get_date(when)
+            if desisurvey.utils.get_date(last_end) < today:
+                # No slew necessary.
+                previous = None
+            else:
+                # Where are we slewing from?
+                previous = astropy.coordinates.ICRS(
+                    ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
 
         # Calculate the initial overhead times for each possible tile.
         toh_initial[mask] = desisurvey.utils.get_overhead_time(
