@@ -43,7 +43,7 @@ class Progress(object):
         table will allocate space for.  Ignored when restoring a previous
         progress record.
     """
-    def __init__(self, restore=None, max_exposures=16):
+    def __init__(self, restore=None, max_exposures=32):
 
         self.log = desiutil.log.get_logger()
 
