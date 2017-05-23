@@ -73,7 +73,7 @@ def nextFieldSelector(obsplan, mjd, progress):
     # Initialize pointings for each possible tile.
     ra = tiledata['RA']
     dec = tiledata['DEC']
-    proposed = astropy.coordinates.SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+    proposed = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
 
     # Calculate current zenith angle for each possible tile.
     obs = desisurvey.utils.get_observer(when, alt=90 * u.deg, az=0 * u.deg)
@@ -90,11 +90,11 @@ def nextFieldSelector(obsplan, mjd, progress):
     else:
         last = progress.last_tile
         # Where was the telescope last pointing?
-        previous = astropy.coordinates.SkyCoord(
+        previous = astropy.coordinates.ICRS(
             ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
         # How much time has elapsed since the last exposure ended?
         last_end = (last['mjd'] + last['exptime'] / 86400.).max()
-        deadtime = (mjd - last_end) * u.day
+        deadtime = max(0., mjd - last_end) * u.day
 
     # Calculate the overhead times in seconds for each possible tile.
     overheads = desisurvey.utils.get_overhead_time(previous, proposed, deadtime)
