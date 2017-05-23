@@ -25,6 +25,27 @@ import desisurvey.config
 
 _telescope_location = None
 _iers_is_frozen = False
+_dome_closed_probabilities = None
+
+
+def dome_closed_probabilities():
+    """Return an array of monthly dome-closed probabilities.
+
+    Returns
+    -------
+    array
+        Array of 12 probabilities in the range 0-1.
+    """
+    global _dome_closed_probabilities
+    if _dome_closed_probabilities is None:
+        config = desisurvey.config.Configuration()
+        _dome_closed_probabilities = np.empty(12)
+        for i, month in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun',
+                                   'jul', 'aug', 'sep', 'oct', 'nov', 'dec')):
+            _dome_closed_probabilities[i] = (
+                # Convert from percentage to fraction.
+                getattr(config.dome_closed_probability, month)() / 100.)
+    return _dome_closed_probabilities
 
 
 def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
@@ -204,14 +225,15 @@ def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
     deadtime : astropy.units.Quantity
         Amount of deadtime elapsed since end of any previous exposure.
         Used to ensure that the overhead time is sufficient to finish
-        reading out the previous exposure.
+        reading out the previous exposure. Must be >= 0.
 
     Returns
     -------
     astropy.units.Quantity
         Overhead time(s) for each new_pointing.
     """
-    assert deadtime.to(u.s).value >= 0
+    if deadtime.to(u.s).value < 0:
+        raise ValueError('Expected deadtime >= 0 (got {0}).'.format(deadtime))
     config = desisurvey.config.Configuration()
     if current_pointing is not None:
         # Calculate the amount that each axis needs to move in degrees.
