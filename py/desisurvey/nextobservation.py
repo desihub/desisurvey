@@ -16,6 +16,7 @@ import desiutil.log
 
 import desisurvey.avoidobject
 import desisurvey.utils
+from desisurvey.utils import inLSTwindow
 import desisurvey.config
 
 
@@ -109,7 +110,7 @@ def nextFieldSelector(obsplan, mjd, progress):
         if lst_midpoint >= 360:
             lst_midpoint -= 360
         # Skip tiles whose exposure midpoint falls outside their LST window.
-        if lst_midpoint < tmin[i] or lst_midpoint > tmax[i]:
+        if not inLSTwindow(lst_midpoint, tmin[i], tmax[i]):
             continue
         # Skip a tile that is currently too close to the horizon.
         if zenith_angles[i] > max_zenith_angle:
