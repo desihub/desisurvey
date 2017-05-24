@@ -24,7 +24,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
                     label='label', save=None):
     """Plot sky maps for each pass of a per-tile scalar quantity.
 
-    The matplotlib package must be installed to use this function.
+    The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
@@ -180,7 +180,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
                  bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
-    The matplotlib package must be installed to use this function.
+    The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
@@ -387,7 +387,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
                     save=None):
     """Plot diagnostics for the next field selector.
 
-    The matplotlib package must be installed to use this function.
+    The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
@@ -578,7 +578,7 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
                  cmap='magma', save=None):
     """Plot a summary of the planner observing efficiency forecast.
 
-    Requires that the matplotlib package is installed.
+    Requires that the matplotlib and basemap packages are installed.
 
     Parameters
     ----------
@@ -828,7 +828,7 @@ def plot_iers(which='auto', num_points=500, save=None):
     This function is primarily intended to document and debug the
     :func:`desisurvey.utils.update_iers` and :func:`desisurvey.utils.freeze_iers` functions.
 
-    Requires that the matplotlib package is installed.
+    Requires that the matplotlib and basemap packages are installed.
 
     Parameters
     ----------
