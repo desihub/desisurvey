@@ -538,6 +538,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     calendar['midnight'] = midnight
     calendar['monsoon'] = np.zeros(num_nights, bool)
     calendar['fullmoon'] = np.zeros(num_nights, bool)
+    calendar['weather'] = np.zeros(num_nights, np.float32)
+    weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
 
     # Prepare a table of ephemeris data.
     etable = astropy.table.Table()
@@ -581,6 +583,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         # Do we expect to observe on this night?
         calendar[i]['monsoon'] = desisurvey.utils.is_monsoon(midnight[i])
         calendar[i]['fullmoon'] = ephem.is_full_moon(midnight[i])
+        # Look up expected dome-open fraction due to weather.
+        calendar[i]['weather'] = weather_weights[date.month - 1]
         # Calculate the program during this night.
         mjd = midnight[i] + t_centers
         dark, gray, bright = ephem.get_program(mjd)
@@ -637,6 +641,14 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 # No penalty when the moon is below the horizon.
                 T[moon_alt < 0, :] = 1.
                 fexp[sl] *= 1. / T
+                # Veto pointings within avoidance size when the moon is
+                # above the horizon. Apply Gaussian smoothing to the veto edge.
+                veto = np.ones_like(T)
+                dsep = (obj_sep - config.avoid_bodies.moon()).to(u.deg).value
+                veto[dsep <= 0] = 0.
+                veto[dsep > 0] = 1 - np.exp(-0.5 * (dsep[dsep > 0] / 3) ** 2)
+                veto[moon_alt < 0] = 1.
+                fexp[sl] *= veto
             else:
                 # Lookup the avoidance size for this object.
                 size = getattr(config.avoid_bodies, name)()

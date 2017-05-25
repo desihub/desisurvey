@@ -588,7 +588,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
 
 def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
                  night_summary='dark', dust=True, monsoon=True, fullmoon=True,
-                 cmap='magma', save=None):
+                 weather=False, cmap='magma', save=None):
     """Plot a summary of the planner observing efficiency forecast.
 
     Requires that the matplotlib and basemap packages are installed.
@@ -626,6 +626,9 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
         Ignored if ``when`` specifies a time.
     fullmoon : bool
         Do not observe during scheduled full-moon breaks?
+        Ignored if ``when`` specifies a time.
+    weather : bool
+        Reweight exposure factors by expected dome-open fraction each month.
         Ignored if ``when`` specifies a time.
     cmap : matplotlib colormap spec
         Colormap to use to represent observing efficiency. Not used for a
@@ -748,6 +751,10 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
         # Zero out full-moon nights if requested.
         if fullmoon:
             fexp[p.calendar['fullmoon'][lo:hi]] = 0.
+
+        # Apply weather factors if requested.
+        if weather:
+            fexp *= p.calendar['weather'][lo:hi, np.newaxis]
 
         # Project out the night axis if requested.
         if when == 'best':
