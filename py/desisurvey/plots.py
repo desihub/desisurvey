@@ -176,8 +176,8 @@ def plot_observed(progress, include='observed', start_date=None, stop_date=None,
 
 def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
                  include_monsoon=False, include_full_moon=False,
-                 night_start=-6.5, night_stop=7.5, num_points=500,
-                 bg_color='lightblue', save=None):
+                 apply_weather=False, night_start=-6.5, night_stop=7.5,
+                 num_points=500, bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
     The matplotlib and basemap packages must be installed to use this function.
@@ -199,6 +199,13 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         relative to local midnight, "histogram" shows elapsed time for
         each program during each night, and "cumulative" shows the
         cummulative time for each program since ``start_date``.
+    include_monsoon : bool
+        Include nights during the annual monsoon shutdowns.
+    include_fullmoon : bool
+        Include nights during the monthly full-moon breaks.
+    apply_weather : bool
+        Weight each night according to its monthly average dome-open fraction.
+        Only affects the printed totals with the "localtime" style.
     night_start : float
         Start of night in hours relative to local midnight used to set
         y-axis minimum for 'localtime' style and tabulate nightly program.
@@ -229,6 +236,9 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     styles = ('localtime', 'histogram', 'cumulative')
     if style not in styles:
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
+
+    if apply_weather:
+        weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
 
     if night_start >= night_stop:
         raise ValueError('Expected night_start < night_stop.')
@@ -274,6 +284,9 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         hours[0, i] = dt * np.count_nonzero(dark)
         hours[1, i] = dt * np.count_nonzero(gray)
         hours[2, i] = dt * np.count_nonzero(bright)
+        if apply_weather:
+            date = desisurvey.utils.get_date(midnight[i])
+            hours[:, i] *= weather_weights[date.month - 1]
 
     # Initialize the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
