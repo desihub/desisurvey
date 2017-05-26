@@ -188,6 +188,21 @@ class TestUtils(unittest.TestCase):
         X2 = utils.zenith_angle_to_airmass(Z2)
         self.assertTrue(np.allclose(X1, X2))
 
+    def test_cosz_range(self):
+        """cos(z) must be between -1 and +1"""
+        ha = np.arange(-100, +400) * u.deg
+        for dec in [-10, 20, 40] * u.deg:
+            cosz = utils.cos_zenith(ha, dec)
+            self.assertTrue(np.all(cosz >= -1))
+            self.assertTrue(np.all(cosz <= +1))
+
+    def test_cosz_one(self):
+        """cos(z) == 1 when ha=0 and dec=lat"""
+        ha = 0 * u.hourangle
+        for dec in [-10, 20, 40] * u.deg:
+            cosz = utils.cos_zenith(ha, dec, latitude=dec)
+            self.assertTrue(np.allclose(cosz, 1.))
+
     def test_airmass_scalar(self):
         """Scalar input returns scalar output"""
         X = utils.zenith_angle_to_airmass(0.)

@@ -373,6 +373,34 @@ def get_airmass(when, ra, dec):
     return zenith_angle_to_airmass(zenith_angle)
 
 
+def cos_zenith(ha, dec, latitude=None):
+    """Calculate cos(zenith) for specified hour angle, DEC and latitude.
+
+    Parameters
+    ----------
+    ha : astropy.units.Quantity
+        Hour angle(s) to use, with units convertible to angle.
+    dec : astropy.units.Quantity
+        Declination angle(s) to use, with units convertible to angle.
+    latitude : astropy.units.Quantity or None
+        Latitude angle to use, with units convertible to angle.
+        Defaults to the latitude of :func:`get_location` if None.
+
+    Returns
+    -------
+    numpy array
+        cosine of zenith angle(s) corresponding to the inputs.
+    """
+    if latitude is None:
+        # Use the observatory latitude by default.
+        latitude = desisurvey.config.Configuration().location.latitude()
+    # Calculate sin(altitude) = cos(zenith).
+    cosZ = (np.sin(dec) * np.sin(latitude) +
+            np.cos(dec) * np.cos(latitude) * np.cos(ha))
+    # Return a plain array (instead of a unitless Quantity).
+    return cosZ.value
+
+
 def is_monsoon(night):
     """Test if this night's observing falls in the monsoon shutdown.
 
