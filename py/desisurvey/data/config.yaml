@@ -41,7 +41,7 @@ full_moon_nights: 7
 #-------------------------------------------------------------------
 
 # Percentage probability that the dome is closed during dark time
-# due to weather.
+# due to weather. TODO: find doc-db reference for these (#1658,730,735,993?)
 dome_closed_probability:
     jan: 35.24
     feb: 44.14
