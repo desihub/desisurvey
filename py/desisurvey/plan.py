@@ -604,7 +604,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         visible = pix_sep < 90 * u.deg
         fexp[sl][~visible] = 0.
         # Calculate the airmass exposure-time penalty.
-        X = desisurvey.utils.zenith_angle_to_airmass(pix_sep[visible])
+        X = desisurvey.utils.cos_zenith_to_airmass(np.cos(pix_sep[visible]))
         fexp[sl][visible] /= desisurvey.etc.airmass_exposure_factor(X)
         # Loop over objects we need to avoid.
         for name in config.avoid_bodies.keys:

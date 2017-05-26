@@ -176,17 +176,10 @@ class TestUtils(unittest.TestCase):
     def test_zenith_airmass(self):
         """Airmass values monotically increase with zenith angle"""
         Z = np.arange(90) * np.pi / 180.
-        X = utils.zenith_angle_to_airmass(Z)
+        cosZ = np.cos(Z)
+        X = utils.cos_zenith_to_airmass(cosZ)
         self.assertEqual(Z.shape, X.shape)
         self.assertTrue(np.all(np.diff(X) > 0))
-
-    def test_zenith_airmass(self):
-        """Zenith angles can have units"""
-        Z1 = np.arange(90) * u.deg
-        Z2 = Z1.to(u.rad)
-        X1 = utils.zenith_angle_to_airmass(Z1)
-        X2 = utils.zenith_angle_to_airmass(Z2)
-        self.assertTrue(np.allclose(X1, X2))
 
     def test_cosz_range(self):
         """cos(z) must be between -1 and +1"""
@@ -205,14 +198,14 @@ class TestUtils(unittest.TestCase):
 
     def test_airmass_scalar(self):
         """Scalar input returns scalar output"""
-        X = utils.zenith_angle_to_airmass(0.)
+        X = utils.cos_zenith_to_airmass(1.)
         self.assertEqual(X.shape, ())
 
     def test_airmass_clip(self):
-        """Zenith angles > 90 deg are clipped"""
+        """cosZ values < 0 are clipped"""
         self.assertAlmostEqual(
-            utils.zenith_angle_to_airmass(90 * u.deg),
-            utils.zenith_angle_to_airmass(100 * u.deg))
+            utils.cos_zenith_to_airmass(0),
+            utils.cos_zenith_to_airmass(-1))
 
     def test_get_airmass_lowest(self):
         """The lowest airmass occurs when dec=latitude"""

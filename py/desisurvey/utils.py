@@ -312,10 +312,10 @@ def get_observer(when, alt=None, az=None):
         location=get_location(), obstime=when, pressure=0, **kwargs)
 
 
-def zenith_angle_to_airmass(zenith_angle):
+def cos_zenith_to_airmass(cosZ):
     """Convert a zenith angle to an airmass.
 
-    Uses the Rozenberg 1966 interpolative formula, which gives reasonable
+    Uses the Rozenberg 1966 interpolation formula, which gives reasonable
     results for high zenith angles, with a horizon air mass of 40.
 
     https://en.wikipedia.org/wiki/Air_mass_(astronomy)#Interpolative_formulas
@@ -323,32 +323,27 @@ def zenith_angle_to_airmass(zenith_angle):
     Rozenberg, G. V. 1966. "Twilight: A Study in Atmospheric Optics."
     New York: Plenum Press, 160.
 
-    The value of cosZ is clipped at zero, so observations below the horizon
+    The value of cosZ is clipped to [0,1], so observations below the horizon
     return the horizon value (~40).
 
     Parameters
     ----------
-    zenith_angle : float or array or astropy.units.Quantity
-        Angle(s) to convert.  Assumed to be in radians unless units are
-        specified.
+    cosZ : float or array
+        Cosine of angle(s) to convert.
 
     Returns
     -------
     float or array
         Airmass value(s)
     """
-    try:
-        Z = zenith_angle.to(u.rad).value
-    except (AttributeError, u.UnitConversionError):
-        Z = np.asarray(zenith_angle)
-    cosZ = np.clip(np.cos(Z), 0., 1.)
+    cosZ = np.clip(np.asarray(cosZ), 0., 1.)
     return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
 
 
 def get_airmass(when, ra, dec):
     """Return the airmass of (ra,dec) at the specified observing time.
 
-    Uses :func:`zenith_angle_to_airmass`.
+    Uses :func:`cos_zenith_to_airmass`.
 
     Parameters
     ----------
@@ -370,11 +365,13 @@ def get_airmass(when, ra, dec):
     # Calculate zenith angle in degrees.
     zenith_angle = target.separation(zenith)
     # Convert to airmass.
-    return zenith_angle_to_airmass(zenith_angle)
+    return cos_zenith_to_airmass(np.cos(zenith_angle))
 
 
 def cos_zenith(ha, dec, latitude=None):
     """Calculate cos(zenith) for specified hour angle, DEC and latitude.
+
+    Combine with :func:`cos_zenith_to_airmass` to calculate airmass.
 
     Parameters
     ----------
