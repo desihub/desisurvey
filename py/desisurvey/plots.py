@@ -3,6 +3,7 @@
 from __future__ import print_function, division
 
 import datetime
+import calendar
 
 import numpy as np
 
@@ -835,6 +836,112 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
     if save:
         plt.savefig(save)
     return fig, ax
+
+
+def plot_monthly(p, program='DARK', monsoon=False, fullmoon=True,
+                 cmap='viridis', save=None):
+    """Plot average nightly visibility by month.
+
+    Parameters
+    ----------
+    p : desisurvey.plan.Planner
+        The planner object to use.
+    program : 'DARK', 'GRAY', 'BRIGHT' or 'ANY'
+        Name of the program to display visibility for.
+    monsoon : bool
+        Do not observe during scheduled monsoon shutdowns?
+        Ignored if ``when`` specifies a time.
+    fullmoon : bool
+        Do not observe during scheduled full-moon breaks?
+        Ignored if ``when`` specifies a time.
+    cmap : matplotlib colormap spec
+        Colormap to use to represent observing efficiency. Not used for a
+        time series plot.
+    save : string or None
+        Name of file where plot should be saved.  Format is inferred from
+        the extension.
+
+    Returns
+    -------
+    tuple
+        Tuple (figure, axes) returned by ``plt.subplots()``.
+
+    Visibility does not include dust extinction or monthly weather factors.
+
+    The nightly moon is displayed except for the DARK program, with an area
+    proportional to the illuminated fraction and the nightly program time.
+
+    Requires that the matplotlib and basemap packages are installed.
+    """
+    import matplotlib.pyplot as plt
+
+    # Tabulate month index for each night.
+    month = np.empty_like(p.calendar, np.int16)
+    weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
+    for m in range(12):
+        sel = np.in1d(p.calendar['weather'], [weather_weights[m],])
+        month[sel] = m
+
+    # Restrict to the specified program.
+    if program == 'ANY':
+        sel = p.etable['program'] > 0
+    else:
+        pcode = dict(DARK=1, GRAY=2, BRIGHT=3)[program]
+        sel = p.etable['program'] == pcode
+
+    # Restrict to scheduled observing nights.
+    sel = sel.reshape(p.num_nights, p.num_times)
+    if fullmoon:
+        sel[p.calendar['fullmoon']] = False
+    if monsoon:
+        sel[p.calendar['monsoon']] = False
+    livetime = sel.sum(axis=1) / float(p.num_times)
+
+    # Get visibility of each pixel during each month in units of
+    # equivalent hours of nominal observing per night.
+    fexp = p.fexp.copy()
+    fexp = fexp.reshape(p.num_nights, p.num_times, -1)
+    fexp[~sel] = 0.
+    visibility = np.zeros((12, len(p.footprint_pixels)))
+    for m in range(12):
+        visibility[m] = fexp[month == m].sum(axis=1).mean(axis=0)
+    visibility *= p.step_size.to(u.hour).value
+
+    # Lookup moon parameters at midnight.
+    midnight = slice(p.num_times // 2, None, p.num_times)
+    moon_ra = p.etable['moon_ra'].data[midnight]
+    moon_dec = p.etable['moon_dec'].data[midnight]
+    moon_wgt = p.etable['moon_frac'].data[midnight] * livetime
+
+    # Plot grid of results.
+    v = np.zeros(p.npix)
+    vmax = np.max(visibility)
+    nrow, ncol = 4, 3
+    fig, axes = plt.subplots(
+        nrow, ncol, sharex=True, sharey=True, figsize=(14, 12))
+    for m, ax in enumerate(axes.flat):
+        v[p.footprint_pixels] = visibility[m]
+        data = desiutil.plots.prepare_data(
+            v, mask=~p.footprint, clip_lo=0.01, clip_hi=vmax, save_limits=True)
+        bm = desiutil.plots.init_sky(ax=ax, ra_labels=None, dec_labels=None)
+        label = '{0} {1} Visibility [nom. hours/night]'.format(
+            calendar.month_name[m + 1], program)
+        desiutil.plots.plot_healpix_map(
+            data, label=label, cmap=cmap, basemap=bm)
+        if program != 'DARK':
+            # Show the moon positions during this month.
+            msel = (month == m) & (moon_wgt > 0)
+            # Basemap scatter with arrays not working for some reason.
+            for ra, dec, frac in zip(
+                moon_ra[msel], moon_dec[msel], moon_wgt[msel]):
+                #print m, ra, dec, frac
+                bm.scatter(ra, dec, latlon=True, c='white',
+                           s=200 * frac, zorder=100)
+
+    plt.subplots_adjust(wspace=0.05, hspace=0.05)
+    if save:
+        plt.savefig(save)
+    return fig, axes
 
 
 def plot_iers(which='auto', num_points=500, save=None):
