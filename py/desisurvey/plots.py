@@ -22,7 +22,7 @@ program_color = {'DARK': 'black', 'GRAY': 'gray', 'BRIGHT': 'orange'}
 
 
 def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
-                    label='label', save=None):
+                    label='label', cmap='viridis', save=None):
     """Plot sky maps for each pass of a per-tile scalar quantity.
 
     The matplotlib and basemap packages must be installed to use this function.
@@ -43,6 +43,8 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
         See :meth:`desiutil.plot.prepare_data`
     label : string
         Brief description of per-tile value ``z`` to use for axis labels.
+    cmap : colormap name or object
+        Matplotlib colormap to use for mapping data values to colors.
     save : string or None
         Name of file where plot should be saved.  Format is inferred from
         the extension.
@@ -78,7 +80,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
             z[sel], clip_lo=vmin, clip_hi=vmax, save_limits=True)
         # Plot the sky map for this pass.
         desiutil.plots.plot_sky_circles(
-            ra_center=ra[sel], dec_center=dec[sel], data=z_sel,
+            ra_center=ra[sel], dec_center=dec[sel], data=z_sel, cmap=cmap,
             colorbar=True, basemap=basemap, edgecolor='none', label=label)
         # Plot the histogram of values for this pass.
         hist_sel = (passnum == p) & (z > vmin) & (z < vmax)
