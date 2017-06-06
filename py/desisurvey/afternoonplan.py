@@ -16,7 +16,7 @@ import desimodel.io
 import desiutil.log
 
 import desisurvey.config
-from desisurvey.utils import mjd2lst, inLSTwindow, zenith_angle_to_airmass, zrad, sort2arr
+from desisurvey.utils import mjd2lst, inLSTwindow, zenith_angle_to_airmass, zrad, sort2arr, is_monsoon
 
 
 class surveyPlan:
@@ -327,27 +327,28 @@ class surveyPlan:
         # There is some repeated code from the afternoon plan
         # which should be factored out.
         for night in self.ephem._table:
-            lst_dusk = mjd2lst(night['dusk'])
-            lst_dawn = mjd2lst(night['dawn'])
-            lst_brightdusk = mjd2lst(night['brightdusk'])
-            lst_brightdawn = mjd2lst(night['brightdawn'])
-            LSTmoonrise = mjd2lst(night['moonrise'])
-            LSTmoonset = mjd2lst(night['moonset'])
-            LSTbrightstart = mjd2lst(night['brightstart'])
-            LSTbrightend = mjd2lst(night['brightstop'])
-            if program=="BRIGHT":
-                scheduled_times[(inLSTwindow(self.LSTbins, lst_brightdusk, lst_brightdawn) &
-                                ~inLSTwindow(self.LSTbins, lst_dusk, lst_dawn)) |
-                                inLSTwindow(self.LSTbins, LSTbrightstart, LSTbrightend)] += 1.0
-            elif program=="DARK":
-                scheduled_times[inLSTwindow(self.LSTbins, lst_dusk, lst_dawn) &
-                                ~inLSTwindow(self.LSTbins, LSTmoonrise, LSTmoonset)] += 1.0
-            elif program=="GRAY":
-                scheduled_times[inLSTwindow(self.LSTbins, lst_dusk, lst_dawn) &
-                                inLSTwindow(self.LSTbins, LSTmoonrise, LSTmoonset) &
-                                ~inLSTwindow(self.LSTbins, LSTbrightstart, LSTbrightend)] += 1.0
-            else:
-                print("ERROR[desisurvey.afternoonplan.plan_ha]: Unknown program.\n")
+            if not is_monsoon(night['noon']) and not self.ephem.is_full_moon(night['noon']):
+                lst_dusk = mjd2lst(night['dusk'])
+                lst_dawn = mjd2lst(night['dawn'])
+                lst_brightdusk = mjd2lst(night['brightdusk'])
+                lst_brightdawn = mjd2lst(night['brightdawn'])
+                LSTmoonrise = mjd2lst(night['moonrise'])
+                LSTmoonset = mjd2lst(night['moonset'])
+                LSTbrightstart = mjd2lst(night['brightstart'])
+                LSTbrightend = mjd2lst(night['brightstop'])
+                if program=="BRIGHT":
+                    scheduled_times[(inLSTwindow(self.LSTbins, lst_brightdusk, lst_brightdawn) &
+                                    ~inLSTwindow(self.LSTbins, lst_dusk, lst_dawn)) |
+                                    inLSTwindow(self.LSTbins, LSTbrightstart, LSTbrightend)] += 1.0
+                elif program=="DARK":
+                    scheduled_times[inLSTwindow(self.LSTbins, lst_dusk, lst_dawn) &
+                                    ~inLSTwindow(self.LSTbins, LSTmoonrise, LSTmoonset)] += 1.0
+                elif program=="GRAY":
+                    scheduled_times[inLSTwindow(self.LSTbins, lst_dusk, lst_dawn) &
+                                    inLSTwindow(self.LSTbins, LSTmoonrise, LSTmoonset) &
+                                    ~inLSTwindow(self.LSTbins, LSTbrightstart, LSTbrightend)] += 1.0
+                else:
+                    print("ERROR[desisurvey.afternoonplan.plan_ha]: Unknown program.\n")
         print("Scheduled times: ", np.sum(scheduled_times))
         scheduled_times *= weather*self.LSTres
         remaining_times = np.copy(scheduled_times)
