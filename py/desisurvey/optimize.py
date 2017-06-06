@@ -90,6 +90,11 @@ class Optimizer(object):
         self.scale_history = []
         self.MSE_history = []
 
+        # Initialize improve() counters.
+        self.nslow = 0
+        self.nstuck = 0
+        self.nimprove = 0
+
         # Initialize HA assignments for each tile.
         if init == 'zero':
             self.ha = np.zeros(self.ntiles)
@@ -236,60 +241,72 @@ class Optimizer(object):
     def improve(self, frac=1., clip=50., verbose=False):
         """
         """
-        # Select which bin to move a tile from and in which direction.
-        ibin, dha_sign = self.next_bin()
-        # Find tiles using more time in this LST bin than in the adjcent bin they
-        # would be moving away from.
-        ibin_from = (ibin - dha_sign + self.nbins) % self.nbins
-        ##sel = (self.plan_tiles[:, ibin] > 0) & (
-        ##    self.plan_tiles[:, ibin] >= self.plan_tiles[:, ibin_from])
-        sel = (self.plan_tiles[:, ibin] > 0)
-        nsel = np.count_nonzero(sel)
-        if nsel == 0:
-            print('No tiles to adjust in LST bin {0}.'.format(ibin))
-            self.use_plan()
-            return
-        # How many times have these tiles already been adjusted?
-        nadj = self.num_adjustments[sel]
-        if np.min(nadj) < np.max(nadj):
-            # Do not adjust a tile that already has received the max
-            # number of adjustments.  This has the effect of smoothing
-            # the spatial distribution of HA adjustments.
-            sel = sel & (self.num_adjustments < np.max(nadj))
+        # Randomly perturb the size of the HA adjustment.  This adds some
+        # noise but also makes it possible to get out of dead ends.
+        frac = np.minimum(2., self.gen.rayleigh(
+            scale=np.sqrt(2 / np.pi) * frac))
+        # Calculate the initial MSE.
+        initial_MSE = self.MSE(self.plan_hist)
+        # Try a fast method first, then fall back to a slower method.
+        for method in 'next_bin', 'any_bin':
+            if method == 'next_bin':
+                # Select which bin to move a tile from and in which direction.
+                ibin, dha_sign = self.next_bin()
+                # Find tiles using more time in this LST bin than in the
+                # adjacent bin they would be moving away from.
+                ibin_from = (ibin - dha_sign + self.nbins) % self.nbins
+                sel = (self.plan_tiles[:, ibin] > 0) & (
+                    self.plan_tiles[:, ibin] >= self.plan_tiles[:, ibin_from])
+            else:
+                # Try a 20% random subset of all tiles.
+                self.nslow += 1
+                sel = self.gen.permutation(self.ntiles) < (self.ntiles // 5)
+                # Randomly select a direction to shift the next tile.
+                dha_sign = +1 if self.gen.uniform() > 0.5 else -1
+
             nsel = np.count_nonzero(sel)
-        subset = np.where(sel)[0]
-        # Randomly perturb the size of the HA adjustment.  This adds some noise
-        # but also makes it possible to get out of dead ends.
-        frac = np.minimum(2., self.gen.rayleigh(scale=np.sqrt(2 / np.pi) * frac))
-        dha = 360. / self.nbins * frac * dha_sign
-        # Calculate how the plan would change by moving each selected tile.
-        scenario_os = self.get_plan(self.ha[subset] + dha, subset)
-        scenario = scenario_os.reshape(
-            nsel, self.nbins, self.oversampling).mean(axis=-1)
-        MSE = self.MSE(self.plan_hist)
-        new_MSE = np.zeros(nsel)
-        for i, itile in enumerate(subset):
-            # Calculate the (downsampled) plan when this tile is moved.
-            new_plan_hist = self.plan_hist - self.plan_tiles[itile] + scenario[i]
-            new_MSE[i]= self.MSE(new_plan_hist)
-        i = np.argmin(new_MSE)
-        if new_MSE[i] > MSE:
-            # Randomly accept with prob proportional to exp(-dMSE/MSE).
-            accept_prob = np.exp((MSE - new_MSE[i]) / MSE)
-            assert accept_prob > 0 and accept_prob < 1
-            if self.gen.uniform() > accept_prob:
-                # Reject this adjustment which makes MSE worse.
-                self.use_plan()
-                return
-        itile = subset[i]
-        self.num_adjustments[itile] += 1
-        if verbose:
-            print('Moving tile {0} in bin {1} by dHA = {2:.3f}h'
-                  .format(self.tid[itile], ibin, dha))
-        # Update the plan.
-        self.ha[itile] = np.clip(self.ha[itile] + dha, -clip, +clip)
-        self.plan_tiles_os[itile] = scenario_os[i]
+            if nsel == 0:
+                print('No tiles available for {0} method.'.format(method))
+                continue
+            # How many times have these tiles already been adjusted?
+            nadj = self.num_adjustments[sel]
+            if np.min(nadj) < np.max(nadj):
+                # Do not adjust a tile that already has received the max
+                # number of adjustments.  This has the effect of smoothing
+                # the spatial distribution of HA adjustments.
+                sel = sel & (self.num_adjustments < np.max(nadj))
+                nsel = np.count_nonzero(sel)
+            subset = np.where(sel)[0]
+            dha = 360. / self.nbins * frac * dha_sign
+            # Calculate how the plan changes by moving each selected tile.
+            scenario_os = self.get_plan(self.ha[subset] + dha, subset)
+            scenario = scenario_os.reshape(
+                nsel, self.nbins, self.oversampling).mean(axis=-1)
+            new_MSE = np.zeros(nsel)
+            for i, itile in enumerate(subset):
+                # Calculate the (downsampled) plan when this tile is moved.
+                new_plan_hist = (
+                    self.plan_hist - self.plan_tiles[itile] + scenario[i])
+                new_MSE[i]= self.MSE(new_plan_hist)
+            i = np.argmin(new_MSE)
+            if new_MSE[i] > initial_MSE:
+                # All candidate adjustments give a worse MSE.
+                continue
+            # Accept the tile that gives the smallest MSE.
+            itile = subset[i]
+            self.num_adjustments[itile] += 1
+            if verbose:
+                print('Moving tile {0} in bin {1} by dHA = {2:.3f}h'
+                      .format(self.tid[itile], ibin, dha))
+            # Update the plan.
+            self.ha[itile] = np.clip(self.ha[itile] + dha, -clip, +clip)
+            self.plan_tiles_os[itile] = scenario_os[i]
+            # No need to try additional methods.
+            break
         self.use_plan()
+        if self.MSE_history[-1] >= initial_MSE:
+            self.nstuck += 1
+        self.nimprove += 1
 
     def plot(self, save=None):
         import matplotlib.pyplot as plt
