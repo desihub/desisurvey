@@ -59,9 +59,9 @@ def nextFieldSelector(obsplan, mjd, progress):
     num_tiles = len(tiledata)
     moonfrac = hdulist[1].header['MOONFRAC']
 
-    # Convert the LST ranges for each tile from hours to degrees.
-    tmin = tiledata['LSTMIN'] * 15
-    tmax = tiledata['LSTMAX'] * 15
+    # LST ranges already in degrees
+    tmin = tiledata['LSTMIN']
+    tmax = tiledata['LSTMAX']
 
     # Look up the plan exposure time and convert to degrees.
     lst_explen = tiledata['EXPLEN'] / 240.0
@@ -114,7 +114,7 @@ def nextFieldSelector(obsplan, mjd, progress):
         # Skip a tile that is currently too close to the horizon.
         if zenith_angles[i] > max_zenith_angle:
             log.info(
-                'Tile {0} is too close to the horizon ({1:.f})'
+                'Tile {0} is too close to the horizon ({1:.1f})'
                 .format(tileID, 90 * u.deg - zenith_angles[i]))
             continue
         # Calculate the moon separation and altitude angles.

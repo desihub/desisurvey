@@ -4,3 +4,5 @@ scipy
 astropy
 pyephem
 pytz
+matplotlib
+basemap
