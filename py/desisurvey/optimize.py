@@ -22,9 +22,9 @@ def wrap(angle, offset):
 class Optimizer(object):
     """
     """
-    def __init__(self, p, program='GRAY', nbins=90, init='info',
-                 origin=-60, center=220,
-                 seed=123, oversampling=32, weights=[0.5, 0.3, 0.2]):
+    def __init__(self, p, program='GRAY', subset=None, nbins=90, init='info',
+                 origin=-60, center=220, seed=123, oversampling=32,
+                 weights=[5, 4, 3, 2, 1]):
         """
         """
         config = desisurvey.config.Configuration()
@@ -44,7 +44,7 @@ class Optimizer(object):
         wgt = dt * np.ones((p.num_nights, p.num_times))
         # Weight nights for weather availability.
         lst = wrap(e['lst'][sel.flat], origin)
-        wgt *= planner.calendar['weather'][:, np.newaxis]
+        wgt *= p.calendar['weather'][:, np.newaxis]
         wgt = wgt[sel].flat
         self.lst_hist, self.lst_edges = np.histogram(
             lst, bins=nbins, range=(origin, origin + 360), weights=wgt)
@@ -58,6 +58,13 @@ class Optimizer(object):
 
         # Load the tiles for this program.
         p_tiles = p.tiles[p.tiles['program'] == p_index]
+        # Restrict to a subset of tiles in this program, if requested.
+        if subset is not None:
+            idx = np.searchsorted(p_tiles['tileid'], subset)
+            if not np.all(p_tiles['tileid'][idx] == subset):
+                raise ValueError(
+                    'Invalid subset for {0} program.'.format(program))
+            p_tiles = p_tiles[idx]
 
         self.ra = wrap(p_tiles['ra'].data, origin)
         self.dec = p_tiles['dec'].data
@@ -76,7 +83,8 @@ class Optimizer(object):
         self.B = np.cos(np.radians(self.dec)) * np.cos(latitude)
 
         # Initialize oversampled schedule planning calculations.
-        lst_edges_os = np.linspace(origin, origin + 360, self.nbins * oversampling + 1)
+        lst_edges_os = np.linspace(
+            origin, origin + 360, self.nbins * oversampling + 1)
         self.lst_centers_os = 0.5 * (lst_edges_os[1:] + lst_edges_os[:-1])
         self.oversampling = oversampling
         self.scale_history = []
@@ -120,6 +128,7 @@ class Optimizer(object):
                     MSE_min = self.MSE_history[-1]
                     center_best = center
             if len(centers) > 1:
+                import matplotlib.pyplot as plt
                 plt.plot(centers, self.scale_history, 'r-')
                 plt.xlabel('Central RA [deg]')
                 plt.ylabel('Efficiency')
@@ -128,6 +137,7 @@ class Optimizer(object):
                 rhs.plot(centers, self.MSE_history, 'bx')
                 rhs.set_ylabel('MSE')
                 plt.xlim(0, 360)
+                plt.show()
             self.scale_history = []
             self.MSE_history = []
         else:
@@ -164,11 +174,14 @@ class Optimizer(object):
         lst_min = lst_mid - 0.5 * exptime
         lst_max = lst_mid + 0.5 * exptime
         # Sample each tile's exposure on the oversampled LST grid.
-        dlo = np.fmod(self.lst_centers_os - lst_min[:, np.newaxis] + 540, 360) - 180
-        dhi = np.fmod(self.lst_centers_os - lst_max[:, np.newaxis] + 540, 360) - 180
+        dlo = np.fmod(
+            self.lst_centers_os - lst_min[:, np.newaxis] + 540, 360) - 180
+        dhi = np.fmod(
+            self.lst_centers_os - lst_max[:, np.newaxis] + 540, 360) - 180
         # Normalize to hours per LST bin. Factor of 2 sharpens the erf() edges.
         return 24. / self.nbins * np.maximum(
-            0, 0.5 * (scipy.special.erf(2.0 * dlo) - scipy.special.erf(2.0 * dhi)))
+            0, 0.5 * (scipy.special.erf(2.0 * dlo) -
+                      scipy.special.erf(2.0 * dhi)))
 
     def MSE(self, plan_hist):
         # Rescale the available LST total time to the plan total time.
@@ -228,8 +241,9 @@ class Optimizer(object):
         # Find tiles using more time in this LST bin than in the adjcent bin they
         # would be moving away from.
         ibin_from = (ibin - dha_sign + self.nbins) % self.nbins
-        sel = (self.plan_tiles[:, ibin] > 0) & (
-            self.plan_tiles[:, ibin] >= self.plan_tiles[:, ibin_from])
+        ##sel = (self.plan_tiles[:, ibin] > 0) & (
+        ##    self.plan_tiles[:, ibin] >= self.plan_tiles[:, ibin_from])
+        sel = (self.plan_tiles[:, ibin] > 0)
         nsel = np.count_nonzero(sel)
         if nsel == 0:
             print('No tiles to adjust in LST bin {0}.'.format(ibin))
@@ -258,7 +272,6 @@ class Optimizer(object):
             # Calculate the (downsampled) plan when this tile is moved.
             new_plan_hist = self.plan_hist - self.plan_tiles[itile] + scenario[i]
             new_MSE[i]= self.MSE(new_plan_hist)
-            #print('Try moving [{0}] #{1} {2}'.format(i, self.tid[itile], new_MSE[i] - MSE))
         i = np.argmin(new_MSE)
         if new_MSE[i] > MSE:
             # Randomly accept with prob proportional to exp(-dMSE/MSE).
@@ -278,16 +291,21 @@ class Optimizer(object):
         self.plan_tiles_os[itile] = scenario_os[i]
         self.use_plan()
 
-    def plot(self):
+    def plot(self, save=None):
+        import matplotlib.pyplot as plt
         fig, ax = plt.subplots(2, 2, figsize=(12, 8))
         ax = ax.flatten()
         scale = self.scale_history[-1]
-        ##x = np.fmod(self.lst_centers + 360 + wrap, 360) - wrap
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
-                 weights=self.lst_hist * scale, histtype='stepfilled', fc=(1,0,0,0.25), ec='r')
+                 weights=self.lst_hist * scale, histtype='stepfilled',
+                 fc=(1,0,0,0.25), ec='r')
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
                  weights=self.plan_hist, histtype='stepfilled',
                  fc=(0.7,0.7,1), ec='b')
+        MSE_scale = self.plan_hist.sum() / self.lst_hist.sum()
+        ax[0].hist(self.lst_centers, bins=self.lst_edges,
+                 weights=self.lst_hist * MSE_scale, histtype='step',
+                 fc=(1,0,0,0.25), ec='r', ls='--')
         # Superimpose the high-resolution plan.
         plan_os = self.plan_tiles_os.sum(axis=0)
         ax[0].plot(self.lst_centers_os, plan_os, 'b-', alpha=0.5, lw=1)
@@ -321,6 +339,9 @@ class Optimizer(object):
         ax[3].set_ylim(-20, 80)
         plt.colorbar(s, ax=ax[3], orientation='horizontal', pad=0.01)
         plt.tight_layout()
+        if save:
+            plt.savefig(save)
+        plt.show()
 
 
 if __name__ == '__main__':
