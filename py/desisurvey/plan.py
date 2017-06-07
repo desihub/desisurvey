@@ -251,7 +251,28 @@ class Planner(object):
 
         # Calculate the instantaneous efficiency.
         ieff[mask] = tnom[mask] / (toh[mask] + texp[mask])
-        return ieff, toh_initial
+
+        # Calculate the exposure midpoint relative to the current time.
+        t_midpt = 0.5 * (toh_initial + texp)
+
+        return ieff, toh_initial, t_midpt
+
+    def hourangle_score(self, when, tmid, design_HA, sigma=7.5):
+        """
+        """
+        # Get the current apparent local sidereal time.
+        when.location = desisurvey.utils.get_location()
+        LST = when.sidereal_time('apparent')
+        # Calculate each tile's current hour angle in degrees.
+        HA = (LST - self.tiles['ra'] * u.deg).to(u.deg).value
+        # Adjust HA for the estimated exposure midpoints (in seconds).
+        HA += tmid * 15. / 3600.
+        # Ensure that HA is in the range [-180, +180].
+        HA = np.fmod(HA + 540, 360) - 180
+        assert np.min(HA) >= -180 and np.max(HA) <= +180
+        # Compare actual HA with design HA.
+        dHA = HA - design_HA
+        return np.exp(-0.5 * (dHA / sigma) ** 2)
 
     def rank_score(self, when):
         """
@@ -293,8 +314,8 @@ class Planner(object):
         ratio = self.fexp[ij] / fexp_max
         return ratio
 
-    def next_tile(self, when, cutoff, seeing, transparency, progress, strategy,
-                  weights=None):
+    def next_tile(self, when, cutoff, seeing, transparency, progress,
+                  strategy, plan):
         """Return the next tile to observe.
 
         Parameters
@@ -312,9 +333,8 @@ class Planner(object):
             calling this method.
         strategy : str
             Strategy to use for scheduling tiles during each night.
-        weights : array or None
-            Array of per-tile weights that multiply the scores used to select
-            the best tile.  All weights assumed to be one when None.
+        plan : astropy.table.Table
+            Table that specifies active tiles and design hour angles.
 
         Returns
         -------
@@ -333,32 +353,40 @@ class Planner(object):
         # slices, which we change to 3 (BRIGHT).
         ephem = self.etable[ij]
         program = ephem['program'] or 3
-        # Only consider tiles with a non-zero weight.
-        if weights is None:
-            weights = np.ones(len(self.tiles), float)
-        mask = (weights > 0)
+        # Only active tiles.
+        mask = plan['active']
+        # Only tiles with < 8 exposures and snr2frac < 0.8.
+        summary = progress.get_summary('all')
+        mask = mask & (summary['nexp'] < 8) & (summary['snr2frac'] < 0.8)
         if not np.any(mask):
-            self.log.warn('No tiles available at {0}.'.format(when.datetime))
+            self.log.warn('No active tiles at {0}.'.format(when.datetime))
             return None
         # Only consider tiles in the current program (for now).
-        ##sel = self.tiles['program'] == program
-        ##mask[~sel] = False
+        '''
+        sel = self.tiles['program'] == program
+        mask[~sel] = False
+        '''
         # Calculate instantaneous efficiencies and initial overhead times.
-        ieff, toh = self.instantaneous_efficiency(
+        ieff, toh, tmid = self.instantaneous_efficiency(
             when, cutoff, seeing, transparency, progress, mask)
         # Calculate each tile's score using the requested strategy.
         score = np.ones(len(self.tiles))
         strategy = strategy.split('+')
         if 'greedy' in strategy:
             score *= ieff
+        else:
+            # Zero the score of unobservable tiles.
+            score[ieff == 0] = 0.
+        if 'HA' in strategy:
+            # Calculate the timestamp at the estimated exposure midpoint.
+            score *= self.hourangle_score(
+                when, tmid, plan['hourangle'])[self.tiles['map']]
         if 'ratio' in strategy:
             score *= self.ratio_score(when)[self.tiles['map']]
         if 'rank' in strategy:
             score *= self.rank_score(when)[self.tiles['map']]
-        # Scale the final scores by the policy weights.
-        score *= weights
         if np.max(score) <= 0:
-            self.log.warn('Found max score {0} at {1}.'
+            self.log.info('Found max score {0} at {1}.'
                           .format(np.max(score), when.datetime))
             return None
         # Find the best tile in each program.
