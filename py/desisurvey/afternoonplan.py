@@ -549,9 +549,6 @@ class surveyPlan:
             #orig_airmass = airMassCalculator(ra, dec, ra+orig_ha)
             airmass = cos_zenith_to_airmass(cos_zenith(ha*u.deg, dec*u.deg, Mayall_lat_deg))
             num_ok_airmass = len( (np.where(airmass <= max_airmass))[0] )
-            #ii = np.where(airmass <= max_airmass)
-            #ha_temp = ha[ii]
-            #print( len(ha_temp[ha_temp>180.0]), len(ha_temp[ha_temp<-180.0]) )
             orig_airmass = cos_zenith_to_airmass(cos_zenith(orig_ha*u.deg, dec*u.deg, Mayall_lat_deg))
             rank_plates_tmp = np.power(airmass, surveystruct['alpha_red'])*obs['i_increase'][ngcplates]
             obs_bit = obs['obs_bit'][ngcplates]
@@ -574,7 +571,7 @@ class surveyPlan:
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]
                 #airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
-                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, dec*u.deg, Mayall_lat_deg))
+                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, obs['dec'][j2]*u.deg, Mayall_lat_deg))
                 red = surveystruct['avg_rsn']/np.power(airmass, surveystruct['alpha_red']/obs['i_increase'][j2])
                 rtime = surveystruct['overhead1'] + surveystruct['exptime']*surveystruct['r_threshold']/red
                 blue = surveystruct['avg_bsn']/np.power(airmass, surveystruct['alpha_blue'])/obs['g_increase'][j2]
@@ -641,7 +638,7 @@ class surveyPlan:
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]
                 #airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
-                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, dec*u.deg, Mayall_lat_deg))
+                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, obs['dec'][j2]*u.deg, Mayall_lat_deg))
                 red = surveystruct['avg_rsn']/np.power(airmass, surveystruct['alpha_red']/obs['i_increase'][j2])
                 rtime = surveystruct['overhead1'] + surveystruct['exptime']*surveystruct['r_threshold']/red
                 blue = surveystruct['avg_bsn']/np.power(airmass, surveystruct['alpha_blue']/obs['g_increase'][j2])
