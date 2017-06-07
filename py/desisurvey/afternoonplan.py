@@ -16,7 +16,7 @@ import desimodel.io
 import desiutil.log
 
 import desisurvey.config
-from desisurvey.utils import mjd2lst, inLSTwindow, zenith_angle_to_airmass, zrad, sort2arr, is_monsoon
+from desisurvey.utils import mjd2lst, inLSTwindow, cos_zenith_to_airmass, cos_zenith, sort2arr, is_monsoon
 
 
 class surveyPlan:
@@ -373,12 +373,9 @@ class surveyPlan:
                         'ngcfraction_times' : ngcfraction_times,
                         'sgcfraction_times' : sgcfraction_times,
                         'ngc_begin' : 75.0,           # estimate of bounds for NGC
-                        'ngc_end' : 300.0,            # estimate of bounds for NGC
-                        'platearea' : 1.4,           # area in sq degrees per unique tile
-                        'surveyarea' : 14000.0}      # required survey area
+                        'ngc_end' : 300.0}            # estimate of bounds for NGC
 
         obs = self.compute_extinction(program)
-        surveystruct['platearea'] = surveystruct['surveyarea'] / float( len(obs['tileid']) )
 
         # FIND MINIMUM AMOUNT OF TIME REQUIRED TO COMPLETE PLATES
         num_obs = len(obs['ra'])
@@ -390,25 +387,32 @@ class surveyPlan:
         optimize = 1
         self.retile(obs, surveystruct, optimize)
         print("HA assigned for ", len(np.ravel(np.where(obs['EXPLEN']!=0.0))), " out of ", num_obs," tiles.")
+
         # ADJUST THRESHOLDS ONCE TO MATCH AVAILABLE LST DISTRIBUTION
-        """
         a = np.ravel(np.where(obs['obs_bit'] > 1))
-        rel_area = len(a)*surveystruct['platearea']/surveystruct['surveyarea']
-        obs_avg = np.mean(obs['EXPLEN'][a])
-        oh_avg = np.mean(obs['EXPLEN'][a])
-        if rel_area < 1.0 and rel_area > 0.0:
+        rel_area = len(a) / num_obs
+        #obs_avg = np.mean(obs['EXPLEN'][a])
+        #oh_avg = np.mean(obs['overhead'][a])
+        #if rel_area < 1.0 and rel_area > 0.0:
+        while rel_area < 1.0 and rel_area > 0.0:
+            obs_avg = np.mean(obs['EXPLEN'][a])
+            oh_avg = np.mean(obs['overhead'][a])
             t_scheduled = obs_avg - oh_avg
             t_required = obs_avg*rel_area - oh_avg
             surveystruct['r_threshold'] *= t_required/t_scheduled
             surveystruct['b_threshold'] *= t_required/t_scheduled
-        if np.sum(surveystruct['remaining_times']) > 0.0:
-            t_scheduled = np.sum(surveystruct['observed_times'])/num_obs - oh_avg
-            t_required = np.sum(surveystruct['scheduled_times'])/num_obs - oh_avg
-            surveystruct['r_threshold'] *= t_required/t_scheduled*excess
-            surveystruct['b_threshold'] *= t_required/t_scheduled*excess
-        obs['obs_bit'][:] = 0
-        self.retile(obs, surveystruct, optimize)
-        """
+            if np.sum(surveystruct['remaining_times']) > 0.0:
+                t_scheduled = np.sum(surveystruct['observed_times'])/num_obs - oh_avg
+                t_required = np.sum(surveystruct['scheduled_times'])/num_obs - oh_avg
+                surveystruct['r_threshold'] *= t_required/t_scheduled*excess
+                surveystruct['b_threshold'] *= t_required/t_scheduled*excess
+            obs['obs_bit'][:] = 0
+            self.retile(obs, surveystruct, optimize)
+            a = np.ravel(np.where(obs['obs_bit'] > 1))
+            rel_area = len(a) / num_obs
+            print("HA assigned for ", len(a), " out of ", num_obs," tiles.")
+            print("Unused available time: ", np.sum(surveystruct['remaining_times']))
+
         return obs
 
     def compute_extinction (self, program):
@@ -494,8 +498,8 @@ class surveyPlan:
         dec = obs['dec']
         ra = obs['ra']
 
-        Mayall_lat_rad = self.config.location.latitude().to(u.rad).value
-        max_airmass = zenith_angle_to_airmass(0.5*np.pi-self.config.min_altitude().to(u.rad).value)
+        Mayall_lat_deg = self.config.location.latitude().to(u.deg)
+        max_airmass = cos_zenith_to_airmass(np.cos(0.5*np.pi-self.config.min_altitude().to(u.rad).value))
         
         ha_tmp = np.empty(num_obs, dtype='f8')
         airmass_tmp = np.empty(num_obs, dtype='f8')
@@ -543,12 +547,12 @@ class surveyPlan:
                 num_reqplates = 0
             #airmass = airMassCalculator(ra, dec, ra+ha)
             #orig_airmass = airMassCalculator(ra, dec, ra+orig_ha)
-            airmass = zenith_angle_to_airmass(zrad(Mayall_lat_rad, np.radians(dec), np.radians(ha)))
+            airmass = cos_zenith_to_airmass(cos_zenith(ha*u.deg, dec*u.deg, Mayall_lat_deg))
             num_ok_airmass = len( (np.where(airmass <= max_airmass))[0] )
             #ii = np.where(airmass <= max_airmass)
             #ha_temp = ha[ii]
             #print( len(ha_temp[ha_temp>180.0]), len(ha_temp[ha_temp<-180.0]) )
-            orig_airmass = zenith_angle_to_airmass(zrad(Mayall_lat_rad, np.radians(dec), np.radians(orig_ha)))
+            orig_airmass = cos_zenith_to_airmass(cos_zenith(orig_ha*u.deg, dec*u.deg, Mayall_lat_deg))
             rank_plates_tmp = np.power(airmass, surveystruct['alpha_red'])*obs['i_increase'][ngcplates]
             obs_bit = obs['obs_bit'][ngcplates]
             if optimize:
@@ -557,7 +561,7 @@ class surveyPlan:
                 rank_plates_tmp[np.where( (obs_bit < 2) & (np.abs(ha) < 15.0) )] = 1000.0
             todo = np.where(obs_bit < 2)
             asize = len(todo[0])
-            if asize == 0 or num_ok_airmass == 0:
+            if asize == 0:
                 break
             if asize < num_reqplates:
                 num_reqplates = asize
@@ -566,12 +570,11 @@ class surveyPlan:
             rank_plates = rank_plates_tmp[todo]
             tile0 = sort2arr(tile[todo],rank_plates)
             ha0 = sort2arr(ha[todo], rank_plates)
-            #print( len(ha0[ha0>180.0]), len(ha0[ha0<-180.0]), "\n")
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]
                 #airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
-                airmass = zenith_angle_to_airmass(zrad(Mayall_lat_rad, np.radians(obs['dec'][j2]), np.radians(h)))
+                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, dec*u.deg, Mayall_lat_deg))
                 red = surveystruct['avg_rsn']/np.power(airmass, surveystruct['alpha_red']/obs['i_increase'][j2])
                 rtime = surveystruct['overhead1'] + surveystruct['exptime']*surveystruct['r_threshold']/red
                 blue = surveystruct['avg_bsn']/np.power(airmass, surveystruct['alpha_blue'])/obs['g_increase'][j2]
@@ -614,12 +617,9 @@ class surveyPlan:
                 num_reqplates = 0
             #airmass = airMassCalculator(ra, dec, ha+ra)
             #orig_airmass = airMassCalculator(ra, dec, orig_ha+ra)
-            airmass = zenith_angle_to_airmass(zrad(Mayall_lat_rad, np.radians(dec), np.radians(ha)))
-            #ii = np.where(airmass <= max_airmass)
-            #ha_temp = ha[ii]
-            #print( len(ha_temp[ha_temp>180.0]), len(ha_temp[ha_temp<-180.0]) )
+            airmass = cos_zenith_to_airmass(cos_zenith(ha*u.deg, dec*u.deg, Mayall_lat_deg))
             num_ok_airmass = len( (np.where(airmass <= max_airmass))[0] )
-            orig_airmass = zenith_angle_to_airmass(zrad(Mayall_lat_rad, np.radians(dec), np.radians(orig_ha)))
+            orig_airmass = cos_zenith_to_airmass(cos_zenith(orig_ha*u.deg, dec*u.deg, Mayall_lat_deg))
             rank_plates = np.power(airmass, surveystruct['alpha_red'])*obs['i_increase'][sgcplates]
             obs_bit = obs['obs_bit'][sgcplates]
             if optimize:
@@ -628,7 +628,7 @@ class surveyPlan:
                 rank_plates[np.where( (obs_bit < 2) & (np.abs(ha) < 15.0) )] = 1000.0
             todo = np.where(obs_bit < 2)
             asize = len(todo[0])
-            if asize == 0 or num_ok_airmass == 0:
+            if asize == 0:
                 break
             num_reqplates = min([num_reqplates,asize])
             if num_ok_airmass < num_reqplates:
@@ -636,13 +636,12 @@ class surveyPlan:
             rank_plates = rank_plates[todo]
             tile0 = sort2arr(tile[todo],rank_plates)
             ha0 = sort2arr(ha[todo], rank_plates)
-            #print( len(ha0[ha0>180.0]), len(ha0[ha0<-180.0]), "\n")
 
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]
                 #airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
-                airmass = zenith_angle_to_airmass(zrad(Mayall_lat_rad, np.radians(obs['dec'][j2]), np.radians(h)))
+                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, dec*u.deg, Mayall_lat_deg))
                 red = surveystruct['avg_rsn']/np.power(airmass, surveystruct['alpha_red']/obs['i_increase'][j2])
                 rtime = surveystruct['overhead1'] + surveystruct['exptime']*surveystruct['r_threshold']/red
                 blue = surveystruct['avg_bsn']/np.power(airmass, surveystruct['alpha_blue']/obs['g_increase'][j2])
@@ -663,9 +662,7 @@ class surveyPlan:
 
         overhead = surveystruct['overhead1']
         #airmass = airMassCalculator(obs['ra'][index], obs['dec'][index], ha+obs['ra'][index])
-        airmass = zenith_angle_to_airmass(zrad(self.config.location.latitude().to(u.rad).value,
-                                               np.radians(obs['dec'][index]),
-                                               np.radians(ha)))
+        airmass = cos_zenith_to_airmass(cos_zenith(ha*u.deg, obs['dec'][index]*u.deg))
         #print(zrad(self.config.location.latitude().to(u.rad).value, np.radians(obs['dec'][index]), np.radians(ha)),
         #      airmass)
         red = surveystruct['avg_rsn'] / np.power(airmass, surveystruct['alpha_red']) / obs['i_increase'][index]

@@ -277,44 +277,31 @@ def get_observer(when, alt=None, az=None):
         location=get_location(), obstime=when, pressure=0, **kwargs)
 
 
-def zenith_angle_to_airmass(zenith_angle):
+def cos_zenith_to_airmass(cosZ):
     """Convert a zenith angle to an airmass.
-
-    Uses the Rozenberg 1966 interpolative formula, which gives reasonable
+    Uses the Rozenberg 1966 interpolation formula, which gives reasonable
     results for high zenith angles, with a horizon air mass of 40.
-
     https://en.wikipedia.org/wiki/Air_mass_(astronomy)#Interpolative_formulas
-
     Rozenberg, G. V. 1966. "Twilight: A Study in Atmospheric Optics."
     New York: Plenum Press, 160.
-
-    The value of cosZ is clipped at zero, so observations below the horizon
+    The value of cosZ is clipped to [0,1], so observations below the horizon
     return the horizon value (~40).
-
     Parameters
     ----------
-    zenith_angle : float or array or astropy.units.Quantity
-        Angle(s) to convert.  Assumed to be in radians unless units are
-        specified.
-
+    cosZ : float or array
+        Cosine of angle(s) to convert.
     Returns
     -------
     float or array
         Airmass value(s)
     """
-    try:
-        Z = zenith_angle.to(u.rad).value
-    except (AttributeError, u.UnitConversionError):
-        Z = np.asarray(zenith_angle)
-    cosZ = np.clip(np.cos(Z), 0., 1.)
+    cosZ = np.clip(np.asarray(cosZ), 0., 1.)
     return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
 
 
 def get_airmass(when, ra, dec):
     """Return the airmass of (ra,dec) at the specified observing time.
-
-    Uses :func:`zenith_angle_to_airmass`.
-
+    Uses :func:`cos_zenith_to_airmass`.
     Parameters
     ----------
     when : astropy.time.Time
@@ -323,19 +310,45 @@ def get_airmass(when, ra, dec):
         Target RA angle(s)
     dec : astropy.units.Quantity
         Target DEC angle(s)
-
     Returns
     -------
     array or float
         Value of the airmass for each input (ra,dec).
     """
-    target = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
+    target = astropy.coordinates.ICRS(ra=ra, dec=dec)
     zenith = get_observer(when, alt=90 * u.deg, az=0 * u.deg
                           ).transform_to(astropy.coordinates.ICRS)
     # Calculate zenith angle in degrees.
     zenith_angle = target.separation(zenith)
     # Convert to airmass.
-    return zenith_angle_to_airmass(zenith_angle)
+    return cos_zenith_to_airmass(np.cos(zenith_angle))
+
+
+def cos_zenith(ha, dec, latitude=None):
+    """Calculate cos(zenith) for specified hour angle, DEC and latitude.
+    Combine with :func:`cos_zenith_to_airmass` to calculate airmass.
+    Parameters
+    ----------
+    ha : astropy.units.Quantity
+        Hour angle(s) to use, with units convertible to angle.
+    dec : astropy.units.Quantity
+        Declination angle(s) to use, with units convertible to angle.
+    latitude : astropy.units.Quantity or None
+        Latitude angle to use, with units convertible to angle.
+        Defaults to the latitude of :func:`get_location` if None.
+    Returns
+    -------
+    numpy array
+        cosine of zenith angle(s) corresponding to the inputs.
+    """
+    if latitude is None:
+        # Use the observatory latitude by default.
+        latitude = desisurvey.config.Configuration().location.latitude()
+    # Calculate sin(altitude) = cos(zenith).
+    cosZ = (np.sin(dec) * np.sin(latitude) +
+            np.cos(dec) * np.cos(latitude) * np.cos(ha))
+    # Return a plain array (instead of a unitless Quantity).
+    return cosZ.value
 
 
 def is_monsoon(night):
