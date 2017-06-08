@@ -314,12 +314,10 @@ def get_observer(when, alt=None, az=None):
 
 def cos_zenith_to_airmass(cosZ):
     """Convert a zenith angle to an airmass.
-
+    
     Uses the Rozenberg 1966 interpolation formula, which gives reasonable
     results for high zenith angles, with a horizon air mass of 40.
-
     https://en.wikipedia.org/wiki/Air_mass_(astronomy)#Interpolative_formulas
-
     Rozenberg, G. V. 1966. "Twilight: A Study in Atmospheric Optics."
     New York: Plenum Press, 160.
 
@@ -353,7 +351,6 @@ def get_airmass(when, ra, dec):
         Target RA angle(s)
     dec : astropy.units.Quantity
         Target DEC angle(s)
-
     Returns
     -------
     array or float
@@ -660,13 +657,44 @@ def inLSTwindow(lst, begin, end):
        Assumes that all values are between 0 and 360.
        Used in afternoonplan.
     """
-    answer = False
-    if begin == end:
-        return False
-    elif begin < end:
-        if lst > begin and lst < end:
-            answer = True
+    if np.isscalar(lst):
+        answer = False
+        if begin == end:
+            return False
+        elif begin < end:
+            if lst > begin and lst < end:
+                answer = True
+        else:
+            if lst > begin or lst < end:
+                answer = True
+    elif isinstance(lst, np.ndarray):
+        answer = np.zeros(len(lst), dtype=bool)
+        if begin == end:
+            return answer
+        elif begin < end:
+            answer[(lst > begin) & (lst < end)] = True
+        else:
+            answer[(lst > begin) | (lst < end)] = True
     else:
-        if lst > begin or lst < end:
-            answer = True
+        print("Error[desisurvey.utils.inLSTwindow]: container not supporter")
     return answer
+
+def zrad(phi, dec, ha):
+    """Approximate computation of zenith angle (ignores Earth nutation),
+       given latitude, declination and hour angle.
+       Input and output in RADIANS.
+       Used in afternoonplan (plan_ha).
+    """
+
+    sinAlt = np.sin(phi)*np.sin(dec) + np.cos(phi)*np.cos(dec)*np.cos(ha)
+
+    if isinstance(sinAlt, np.ndarray):
+        sinAlt[np.where(sinAlt>1.0)] = 1.0
+        sinAlt[np.where(sinAlt<-1.0)] = -1.0
+    else:
+        if sinAlt > 1.0:
+            sinAlt = 1.0
+        if sinAlt < -1.0:
+            sinAlt = -1.0
+
+    return 0.5*np.pi - np.arcsin(sinAlt)

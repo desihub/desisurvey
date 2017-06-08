@@ -5,15 +5,18 @@ from __future__ import print_function, division
 import pkg_resources
 
 import numpy as np
+from datetime import datetime, date, time
 
 import astropy.table
 import astropy.utils.exceptions
+import astropy.units as u
+from astropy.time import Time
 
 import desimodel.io
 import desiutil.log
 
 import desisurvey.config
-from desisurvey.utils import mjd2lst
+from desisurvey.utils import mjd2lst, inLSTwindow, cos_zenith_to_airmass, cos_zenith, sort2arr, is_monsoon
 
 
 class surveyPlan:
@@ -68,8 +71,7 @@ class surveyPlan:
         dec_min[first_pass] -= 3.0
         dec_max[first_pass] += 3.0
         tiles['SUBLIST'] = passnum
-        tiles['SUBLIST'][
-            (tiles['GAL_CAP'] < 0) | (dec < dec_min) | (dec > dec_max)] += 8
+        tiles['SUBLIST'][(tiles['GAL_CAP'] < 0) | (dec < dec_min) | (dec > dec_max)] += 8
 
         # Initialize the LST bins we will use for scheduling each night.
         self.nLST = self.config.num_lst_bins()
@@ -101,20 +103,32 @@ class surveyPlan:
             False reads a pre-computed table; for development purposes only.
         """
         if compute:
-            obs_dark = self.plan_ha(MJDstart, MJDend, False)
-            obs_bright = self.plan_ha(MJDstart, MJDend, True)
+            t = Time(datetime.combine(self.config.last_day(), time(18,0,0)))
+            nominalMJDend = t.mjd
+            if nominalMJDend > MJDend:
+                MJDstop = nominalMJDend
+            else:
+                MJDstop = MJDend
+            obs_dark = self.plan_ha(MJDstart, MJDstop, "DARK")
+            obs_gray = self.plan_ha(MJDstart, MJDstop, "GRAY")
+            obs_bright = self.plan_ha(MJDstart, MJDstop, "BRIGHT")
             obs1 = astropy.table.Table(
-                [obs_dark['tileid'], obs_dark['beginobs'], obs_dark['endobs'],
-                 obs_dark['obstime'], obs_dark['ha']],
-                names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'),
+                [obs_dark['tileid'], obs_dark['LSTMIN'], obs_dark['LSTMAX'],
+                 obs_dark['EXPLEN'], obs_dark['ha']],
+                names=('TILEID','LSTMIN','LSTMAX','EXPLEN','HA'),
                 dtype=('i4','f8','f8','f8','f8'))
             obs2 = astropy.table.Table(
-                [obs_bright['tileid'], obs_bright['beginobs'],
-                 obs_bright['endobs'], obs_bright['obstime'], obs_bright['ha']],
-                names=('TILEID','BEGINOBS','ENDOBS','OBSTIME','HA'),
+                [obs_gray['tileid'], obs_gray['LSTMIN'], obs_gray['LSTMAX'],
+                 obs_gray['EXPLEN'], obs_gray['ha']],
+                names=('TILEID','LSTMIN','LSTMAX','EXPLEN','HA'),
                 dtype=('i4','f8','f8','f8','f8'))
-            info = astropy.table.vstack([obs1, obs2], join_type="exact")
-            #info.write("ha_check.dat", format="ascii")
+            obs3 = astropy.table.Table(
+                [obs_bright['tileid'], obs_bright['LSTMIN'],
+                 obs_bright['LSTMAX'], obs_bright['EXPLEN'], obs_bright['ha']],
+                names=('TILEID','LSTMIN','LSTMAX','EXPLEN','HA'),
+                dtype=('i4','f8','f8','f8','f8'))
+            info = astropy.table.vstack([obs1, obs2, obs3], join_type="exact")
+            info.write("ha_check.dat", format="ascii")
         else:
             # Read in the pre-computed HA and begin/end LST range.
             info = astropy.table.Table.read(
@@ -122,16 +136,22 @@ class surveyPlan:
                     'desisurvey', 'data/tile-info.fits'), hdu=1)
             # Ignore most of the columns.
             info = info[['TILEID', 'HA', 'BEGINOBS', 'ENDOBS', 'OBSTIME']]
+            # File has these entries in the wrong units.
+            info['BEGINOBS'] *= 15.0
+            info['ENDOBS'] *= 15.0
+            # Rename new columns.
+            info.rename_column('BEGINOBS', 'LSTMIN')
+            info.rename_column('ENDOBS', 'LSTMAX')
+            info.rename_column('OBSTIME', 'EXPLEN')
 
         # Join with our tiles table, matching on TILEID.
         self.tiles = astropy.table.join(
             self.tiles, info, keys='TILEID', join_type='left')
         if len(self.tiles) != self.numtiles:
             raise RuntimeError('Missing some tiles in tile-info.fits')
-        # Rename new columns.
-        self.tiles.rename_column('BEGINOBS', 'LSTMIN')
-        self.tiles.rename_column('ENDOBS', 'LSTMAX')
-        self.tiles.rename_column('OBSTIME', 'EXPLEN')
+
+        import sys
+        sys.exit()
 
     def afternoonPlan(self, day_stats, progress):
         """Main decision making method.
@@ -276,63 +296,66 @@ class surveyPlan:
 ####################################################################
 # Below is a translation of Kyle's IDL code to compute hour angles #
 ####################################################################
-    def plan_ha(self, survey_begin, survey_end, BGS=False):
+    def plan_ha(self, survey_begin, survey_end, program):
         """Main driver of hour angle computations
 
             Args:
                 survey_begin: MJD of (re-)start of survey
                 survey_end: MJD of the expected end
-
-            Optional:
-                BGS: bool, true if bright sample
+                program: "DARK", "GRAY" or "BRIGHT"
         """
 
-        if BGS:
-            exptime = 600.0
+        if program=="BRIGHT":
+            exptime = self.config.nominal_exposure_time.BRIGHT().value
+        elif program=="GRAY":
+            exptime = self.config.nominal_exposure_time.GRAY().value
+        elif program=="DARK":
+            exptime = self.config.nominal_exposure_time.DARK().value
         else:
-            exptime = 1000.0
+            print("ERROR[desisurvey.afternoonplan.plan_ha]: Unknown program")
         # First define general survey characteristics
         r_threshold = 1.54 # this is an initial guess for required SN2/pixel over r-band
         b_threshold = 0.7 # same for g-band, scaled relative to r-band throughout analysis, the ratio of r-b cannot change
+        weather=0.74*0.77    # SRD assumption: 74% open dome and 77% good seeing
+        excess=1.01
         times = np.copy(self.LSTbins)
         scheduled_times = np.zeros(self.nLST) # available time at each LST bin over the full survey, after accounting for weather loss
         observed_times = np.zeros(self.nLST) # time spent observing at each LST bin, iteratively filled until optimal HA distribution is achieved
         sgcfraction_times = np.zeros(self.nLST) # the fraction of total time in each bin of LST, SGC
         ngcfraction_times = np.zeros(self.nLST) # the fraction of total time in each bin of LST, NGC
-        weather=0.74*0.77    # SRD assumption: 74% open dome and 77% good seeing
-        excess=1.01
 
         # There is some repeated code from the afternoon plan
         # which should be factored out.
         for night in self.ephem._table:
-            lst_dusk = mjd2lst(night['dusk'])
-            lst_dawn = mjd2lst(night['dawn'])
-            lst_brightdusk = mjd2lst(night['brightdusk'])
-            lst_brightdawn = mjd2lst(night['brightdawn'])
-            LSTmoonrise = mjd2lst(night['moonrise'])
-            LSTmoonset = mjd2lst(night['moonset'])
-            LSTbrightstart = mjd2lst(night['brightstart'])
-            LSTbrightend = mjd2lst(night['brightstop'])
-            for i in range(self.nLST):
-                if BGS:
-                    if ( (inLSTwindow(self.LSTbins[i], lst_brightdusk, lst_brightdawn) and
-                          not inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn)) or
-                          inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
-                        scheduled_times[i] += 1.0
+            if not is_monsoon(night['noon']) and not self.ephem.is_full_moon(night['noon']):
+                lst_dusk = mjd2lst(night['dusk'])
+                lst_dawn = mjd2lst(night['dawn'])
+                lst_brightdusk = mjd2lst(night['brightdusk'])
+                lst_brightdawn = mjd2lst(night['brightdawn'])
+                LSTmoonrise = mjd2lst(night['moonrise'])
+                LSTmoonset = mjd2lst(night['moonset'])
+                LSTbrightstart = mjd2lst(night['brightstart'])
+                LSTbrightend = mjd2lst(night['brightstop'])
+                if program=="BRIGHT":
+                    scheduled_times[(inLSTwindow(self.LSTbins, lst_brightdusk, lst_brightdawn) &
+                                    ~inLSTwindow(self.LSTbins, lst_dusk, lst_dawn)) |
+                                    inLSTwindow(self.LSTbins, LSTbrightstart, LSTbrightend)] += 1.0
+                elif program=="DARK":
+                    scheduled_times[inLSTwindow(self.LSTbins, lst_dusk, lst_dawn) &
+                                    ~inLSTwindow(self.LSTbins, LSTmoonrise, LSTmoonset)] += 1.0
+                elif program=="GRAY":
+                    scheduled_times[inLSTwindow(self.LSTbins, lst_dusk, lst_dawn) &
+                                    inLSTwindow(self.LSTbins, LSTmoonrise, LSTmoonset) &
+                                    ~inLSTwindow(self.LSTbins, LSTbrightstart, LSTbrightend)] += 1.0
                 else:
-                    if ( inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn) and
-                         not inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) ):
-                        scheduled_times[i] += 1.0
-                    if ( inLSTwindow(self.LSTbins[i], lst_dusk, lst_dawn) and
-                         inLSTwindow(self.LSTbins[i], LSTmoonrise, LSTmoonset) and
-                         not inLSTwindow(self.LSTbins[i], LSTbrightstart, LSTbrightend) ):
-                        scheduled_times[i] += 1.0
+                    print("ERROR[desisurvey.afternoonplan.plan_ha]: Unknown program.\n")
+        print("Scheduled times: ", np.sum(scheduled_times))
         scheduled_times *= weather*self.LSTres
         remaining_times = np.copy(scheduled_times)
 
         surveystruct = {'exptime' : exptime/240.0,  # nominal exposure time (converted from seconds to degrees)
-                        'overhead1' : 120.0 / 240.0,      # amount of time for cals and field acquisition (idem)
-                        'overhead2' : 60.0 / 240.0,      # amount of time for readout (idem)
+                        'overhead1' : 120.0 / 240.0,      # Minimum amount of time for cals and field acquisition (idem)
+                        'overhead2' : 120.0 / 240.0,      # amount of time for readout (idem)
                         'survey_begin' : survey_begin,
                         'survey_end' : survey_end,
                         'res' : self.LSTres,
@@ -350,12 +373,9 @@ class surveyPlan:
                         'ngcfraction_times' : ngcfraction_times,
                         'sgcfraction_times' : sgcfraction_times,
                         'ngc_begin' : 75.0,           # estimate of bounds for NGC
-                        'ngc_end' : 300.0,            # estimate of bounds for NGC
-                        'platearea' : 1.4,           # area in sq degrees per unique tile
-                        'surveyarea' : 14000.0}      # required survey area
+                        'ngc_end' : 300.0}            # estimate of bounds for NGC
 
-        obs = self.compute_extinction(BGS)
-        surveystruct['platearea'] = surveystruct['surveyarea'] / float( len(obs['tileid']) )
+        obs = self.compute_extinction(program)
 
         # FIND MINIMUM AMOUNT OF TIME REQUIRED TO COMPLETE PLATES
         num_obs = len(obs['ra'])
@@ -366,33 +386,43 @@ class surveyPlan:
         # FIND OPTIMAL HA FOR FOOTPRINT, ITERATE ONLY ONCE
         optimize = 1
         self.retile(obs, surveystruct, optimize)
+        print("HA assigned for ", len(np.ravel(np.where(obs['EXPLEN']!=0.0))), " out of ", num_obs," tiles.")
 
         # ADJUST THRESHOLDS ONCE TO MATCH AVAILABLE LST DISTRIBUTION
         a = np.ravel(np.where(obs['obs_bit'] > 1))
-        rel_area = len(a)*surveystruct['platearea']/surveystruct['surveyarea']
-        obs_avg = np.mean(obs['obstime'][a])
-        oh_avg = np.mean(obs['overhead'][a])
-        if rel_area < 1.0 and rel_area > 0.0:
+        rel_area = len(a) / num_obs
+        #obs_avg = np.mean(obs['EXPLEN'][a])
+        #oh_avg = np.mean(obs['overhead'][a])
+        #if rel_area < 1.0 and rel_area > 0.0:
+        while rel_area < 1.0 and rel_area > 0.0:
+            obs_avg = np.mean(obs['EXPLEN'][a])
+            oh_avg = np.mean(obs['overhead'][a])
             t_scheduled = obs_avg - oh_avg
             t_required = obs_avg*rel_area - oh_avg
             surveystruct['r_threshold'] *= t_required/t_scheduled
             surveystruct['b_threshold'] *= t_required/t_scheduled
-        if np.sum(surveystruct['remaining_times']) > 0.0:
-            t_scheduled = np.sum(surveystruct['observed_times'])/num_obs - oh_avg
-            t_required = np.sum(surveystruct['scheduled_times'])/num_obs - oh_avg
-            surveystruct['r_threshold'] *= t_required/t_scheduled*excess
-            surveystruct['b_threshold'] *= t_required/t_scheduled*excess
-        obs['obs_bit'][:] = 0
-        self.retile(obs, surveystruct, optimize)
+            if np.sum(surveystruct['remaining_times']) > 0.0:
+                t_scheduled = np.sum(surveystruct['observed_times'])/num_obs - oh_avg
+                t_required = np.sum(surveystruct['scheduled_times'])/num_obs - oh_avg
+                surveystruct['r_threshold'] *= t_required/t_scheduled*excess
+                surveystruct['b_threshold'] *= t_required/t_scheduled*excess
+            obs['obs_bit'][:] = 0
+            self.retile(obs, surveystruct, optimize)
+            a = np.ravel(np.where(obs['obs_bit'] > 1))
+            rel_area = len(a) / num_obs
+            print("HA assigned for ", len(a), " out of ", num_obs," tiles.")
+            print("Unused available time: ", np.sum(surveystruct['remaining_times']))
 
         return obs
 
-    def compute_extinction (self, BGS=False):
+    def compute_extinction (self, program):
 
-        if BGS:
+        if program=="DARK":
+            a = np.where(self.tiles['PASS'] < 4)
+        elif program=="GRAY":
+            a = np.where(self.tiles['PASS'] == 4)
+        elif program=="BRIGHT":
             a = np.where(self.tiles['PASS'] > 4)
-        else:
-            a = np.where(self.tiles['PASS'] <= 4)
         subtiles = self.tiles[a]
         ntiles = len(subtiles)
         tileid = subtiles['TILEID']
@@ -401,13 +431,13 @@ class surveyPlan:
         ebv = subtiles['EBV_MED']
 
         layer = subtiles['PASS']
-        program = subtiles['PROGRAM']
-        obsconditions = subtiles['OBSCONDITIONS']
+        #program = subtiles['PROGRAM']
+        #obsconditions = subtiles['OBSCONDITIONS']
 
         i_increase = np.zeros(ntiles, dtype='f8')
         g_increase = np.zeros(ntiles, dtype='f8')
-        glong = np.zeros(ntiles, dtype='f8')
-        glat = np.zeros(ntiles, dtype='f8')
+        #glong = np.zeros(ntiles, dtype='f8')
+        #glat = np.zeros(ntiles, dtype='f8')
         overhead = np.zeros(ntiles, dtype='f8')
 
         # From http://arxiv.org/pdf/1012.4804v2.pdf Table 6
@@ -433,23 +463,24 @@ class surveyPlan:
         obs = {'tileid' : tileid,
                 'ra' : ra,
                 'dec' : dec,
-                'glong' : glong,
-                'glat' : glat,
+                #'glong' : glong,
+                #'glat' : glat,
                 'ha' : ha,
                 'airmass' : airmass,
                 'ebv' : ebv,
                 'i_increase' : i_increase,
                 'g_increase' : g_increase,
                 'obs_bit' : obs_bit,
-                'obstime' : obstime,
+                'EXPLEN' : obstime,
                 'overhead' : overhead,
-                'beginobs' : beginobs,
-                'endobs' : endobs,
+                'LSTMIN' : beginobs,
+                'LSTMAX' : endobs,
                 'red_sn' : red_sn,
                 'blue_sn' : blue_sn,
                 'pass' : layer,
-                'PROGRAM' : program,
-                'OBSCONDITIONS' : obsconditions}
+                #'PROGRAM' : program,
+                #'OBSCONDITIONS' : obsconditions
+                }
 
         return obs
 
@@ -467,6 +498,9 @@ class surveyPlan:
         dec = obs['dec']
         ra = obs['ra']
 
+        Mayall_lat_deg = self.config.location.latitude().to(u.deg)
+        max_airmass = cos_zenith_to_airmass(np.cos(0.5*np.pi-self.config.min_altitude().to(u.rad).value))
+        
         ha_tmp = np.empty(num_obs, dtype='f8')
         airmass_tmp = np.empty(num_obs, dtype='f8')
 
@@ -483,7 +517,7 @@ class surveyPlan:
         surveystruct['sgcfraction_times'][index2] = 0.5*surveystruct['scheduled_times'][index2]/sgctime
         surveystruct['ngcfraction_times'][index2] = 0.5*surveystruct['scheduled_times'][index2]/ngctime
 
-        obs['obstime'][:] = 0.0
+        obs['EXPLEN'][:] = 0.0
         sgcplates = np.where( (obs['ra'] < surveystruct['ngc_begin']) |
                               (obs['ra'] > surveystruct['ngc_end']) )
         ngcplates = np.where( (obs['ra'] > surveystruct['ngc_begin']) &
@@ -511,9 +545,12 @@ class surveyPlan:
             num_reqplates = int(np.ceil( (surveystruct['ngcfraction_times'][index]*ngctime-surveystruct['observed_times'][index])/surveystruct['res'] ))
             if num_reqplates < 0: # Why is this possible?
                 num_reqplates = 0
-            airmass = airMassCalculator(ra, dec, ra+ha)
-            orig_airmass = airMassCalculator(ra, dec, ra+orig_ha)
-            rank_plates_tmp = np.power(airmass, surveystruct['alpha_red']*obs['i_increase'][ngcplates])
+            #airmass = airMassCalculator(ra, dec, ra+ha)
+            #orig_airmass = airMassCalculator(ra, dec, ra+orig_ha)
+            airmass = cos_zenith_to_airmass(cos_zenith(ha*u.deg, dec*u.deg, Mayall_lat_deg))
+            num_ok_airmass = len( (np.where(airmass <= max_airmass))[0] )
+            orig_airmass = cos_zenith_to_airmass(cos_zenith(orig_ha*u.deg, dec*u.deg, Mayall_lat_deg))
+            rank_plates_tmp = np.power(airmass, surveystruct['alpha_red'])*obs['i_increase'][ngcplates]
             obs_bit = obs['obs_bit'][ngcplates]
             if optimize:
                 rank_plates_tmp -= np.power(orig_airmass, surveystruct['alpha_red']*obs['i_increase'][ngcplates])
@@ -525,13 +562,16 @@ class surveyPlan:
                 break
             if asize < num_reqplates:
                 num_reqplates = asize
+            if num_ok_airmass < num_reqplates:
+                num_reqplates = num_ok_airmass
             rank_plates = rank_plates_tmp[todo]
             tile0 = sort2arr(tile[todo],rank_plates)
             ha0 = sort2arr(ha[todo], rank_plates)
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]
-                airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
+                #airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
+                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, obs['dec'][j2]*u.deg, Mayall_lat_deg))
                 red = surveystruct['avg_rsn']/np.power(airmass, surveystruct['alpha_red']/obs['i_increase'][j2])
                 rtime = surveystruct['overhead1'] + surveystruct['exptime']*surveystruct['r_threshold']/red
                 blue = surveystruct['avg_bsn']/np.power(airmass, surveystruct['alpha_blue'])/obs['g_increase'][j2]
@@ -546,6 +586,7 @@ class surveyPlan:
                 self.filltimes(obs, surveystruct, h, j2)
                 obs['ha'][j2] = h
 
+        #print("Now SGC\n")
         nindices = num_times-(index2-index1)
 
         dec = obs['dec'][sgcplates]
@@ -571,9 +612,12 @@ class surveyPlan:
             num_reqplates = int(np.ceil((surveystruct['sgcfraction_times'][index]*sgctime - surveystruct['observed_times'][index])/surveystruct['res']))
             if num_reqplates < 0: # Why is this possible?
                 num_reqplates = 0
-            airmass = airMassCalculator(ra, dec, ha+ra)
-            orig_airmass = airMassCalculator(ra, dec, orig_ha+ra)
-            rank_plates = np.power(airmass, surveystruct['alpha_red']*obs['i_increase'][sgcplates])
+            #airmass = airMassCalculator(ra, dec, ha+ra)
+            #orig_airmass = airMassCalculator(ra, dec, orig_ha+ra)
+            airmass = cos_zenith_to_airmass(cos_zenith(ha*u.deg, dec*u.deg, Mayall_lat_deg))
+            num_ok_airmass = len( (np.where(airmass <= max_airmass))[0] )
+            orig_airmass = cos_zenith_to_airmass(cos_zenith(orig_ha*u.deg, dec*u.deg, Mayall_lat_deg))
+            rank_plates = np.power(airmass, surveystruct['alpha_red'])*obs['i_increase'][sgcplates]
             obs_bit = obs['obs_bit'][sgcplates]
             if optimize:
                 rank_plates -= np.power(orig_airmass, surveystruct['alpha_red']*obs['i_increase'][sgcplates])
@@ -584,6 +628,8 @@ class surveyPlan:
             if asize == 0:
                 break
             num_reqplates = min([num_reqplates,asize])
+            if num_ok_airmass < num_reqplates:
+                num_reqplates = num_ok_airmass
             rank_plates = rank_plates[todo]
             tile0 = sort2arr(tile[todo],rank_plates)
             ha0 = sort2arr(ha[todo], rank_plates)
@@ -591,7 +637,8 @@ class surveyPlan:
             for j in range(num_reqplates):
                 j2 = np.ravel(np.where(obs['tileid'] == tile0[j]))[0]
                 h = ha0[j]
-                airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
+                #airmass = airMassCalculator(obs['ra'][j2], obs['dec'][j2], obs['ra'][j2]+h)
+                airmass = cos_zenith_to_airmass(cos_zenith(h*u.deg, obs['dec'][j2]*u.deg, Mayall_lat_deg))
                 red = surveystruct['avg_rsn']/np.power(airmass, surveystruct['alpha_red']/obs['i_increase'][j2])
                 rtime = surveystruct['overhead1'] + surveystruct['exptime']*surveystruct['r_threshold']/red
                 blue = surveystruct['avg_bsn']/np.power(airmass, surveystruct['alpha_blue']/obs['g_increase'][j2])
@@ -606,16 +653,20 @@ class surveyPlan:
 
     def filltimes(self, obs, surveystruct, ha, index):
 
+        #print(ha)
         res = surveystruct['res']
         times = surveystruct['times']
 
         overhead = surveystruct['overhead1']
-        airmass = airMassCalculator(obs['ra'][index], obs['dec'][index], ha+obs['ra'][index])
+        #airmass = airMassCalculator(obs['ra'][index], obs['dec'][index], ha+obs['ra'][index])
+        airmass = cos_zenith_to_airmass(cos_zenith(ha*u.deg, obs['dec'][index]*u.deg))
+        #print(zrad(self.config.location.latitude().to(u.rad).value, np.radians(obs['dec'][index]), np.radians(ha)),
+        #      airmass)
         red = surveystruct['avg_rsn'] / np.power(airmass, surveystruct['alpha_red']) / obs['i_increase'][index]
         rtime = surveystruct['exptime']*surveystruct['r_threshold']/red
         blue = surveystruct['avg_bsn'] / np.power(airmass, surveystruct['alpha_blue'])/obs['g_increase'][index]
         btime = surveystruct['exptime']*surveystruct['b_threshold']/blue
-        if btime > 5.0 or rtime > 5.0:
+        if btime > 15.0 or rtime > 15.0:
             overhead += surveystruct['overhead2']
         rtime += overhead
         btime += overhead
@@ -624,49 +675,56 @@ class surveyPlan:
 
         obs['red_sn'][index] = red*(time-overhead)/surveystruct['exptime']
         obs['blue_sn'][index] = blue*(time-overhead)/surveystruct['exptime']
-        obs['obstime'][index] = time
-        obs['beginobs'][index] = obs['ra'][index] + ha - 0.5*time
-        obs['endobs'][index] = obs['ra'][index] + ha + 0.5*time
+        obs['EXPLEN'][index] = time * 240.0 # Convert to seconds.
+        obs['LSTMIN'][index] = obs['ra'][index] + ha - 0.5*time
+        obs['LSTMAX'][index] = obs['ra'][index] + ha + 0.5*time
         obs['airmass'][index] = airmass
         obs['ha'][index] = ha
+        #print(ha, obs['ra'][index], time, obs['beginobs'][index], obs['endobs'][index])
+        if obs['LSTMIN'][index] < 0.0 and obs['LSTMAX'][index] < 0.0:
+            obs['LSTMIN'][index] += 360.0
+            obs['LSTMAX'][index] += 360.0
 
-        if obs['beginobs'][index] < 0.0 and obs['endobs'][index] < 0.0:
-            obs['beginobs'][index] += 360.0
-            obs['endobs'][index] += 360.0
-
-        if obs['beginobs'][index] > 360.0 and obs['endobs'][index] > 360.0:
-            obs['beginobs'][index] -= 360.0
-            obs['endobs'][index] -= 360.0
+        if obs['LSTMIN'][index] > 360.0 and obs['LSTMAX'][index] > 360.0:
+            obs['LSTMIN'][index] -= 360.0
+            obs['LSTMAX'][index] -= 360.0
 
         #fill in times over LST range
         num = len(surveystruct['times'])
+        t_b = obs['LSTMIN'][index]
+        t_e = obs['LSTMAX'][index]
+        #print (t_b, t_e)
         for i in range(num):
-            if obs['beginobs'][index] <= surveystruct['times'][i]-0.5*res and obs['endobs'][index] >= surveystruct['times'][i]+0.5*res:
+            t1 = surveystruct['times'][i]-0.5*res
+            t2 = surveystruct['times'][i]+0.5*res
+            if t_b <= t1 and t_e >= t2:
                 surveystruct['remaining_times'][i] -= res
                 surveystruct['observed_times'][i] += res
-            if obs['beginobs'][index] > surveystruct['times'][i]-0.5*res and obs['beginobs'][index] < surveystruct['times'][i]+0.5*res:
-                surveystruct['remaining_times'][i] -= (surveystruct['times'][i]+0.5*res-obs['beginobs'][index])
-                surveystruct['observed_times'][i] += (surveystruct['times'][i]+0.5*res-obs['beginobs'][index])
-            if obs['endobs'][index] > surveystruct['times'][i]-0.5*res and obs['endobs'][index] < surveystruct['times'][i]+0.5*res:
-                surveystruct['remaining_times'][i] -= (-(surveystruct['times'][i]-0.5*res)+obs['endobs'][index])
-                surveystruct['observed_times'][i] += (-(surveystruct['times'][i]-0.5*res)+obs['endobs'][index])
+            if t_b > t1 and t_b < t2:
+                surveystruct['remaining_times'][i] -= (t2-t_b)
+                surveystruct['observed_times'][i] += (t2-t_b)
+            if t_e > t1 and t_e < t2:
+                surveystruct['remaining_times'][i] -= (-t1+t_e)
+                surveystruct['observed_times'][i] += (-t1+t_e)
 
-        if obs['beginobs'][index] < 0.0:
-            t = np.floor(-obs['beginobs'][index]/res)
+        if t_b < 0.0:
+            t = np.floor(-t_b/res)
             it = int(t)
             if t > 0.0:
                 surveystruct['remaining_times'][num-it:num-1] -= res
                 surveystruct['observed_times'][num-it:num-1] += res
-            surveystruct['remaining_times'][num-it-1] -= (-obs['beginobs'][index]-t*res)
-            surveystruct['observed_times'][num-it-1] += (-obs['beginobs'][index]-t*res)
-            obs['beginobs'][index] += 360.0
+            #print(obs['beginobs'][index], t)
+            surveystruct['remaining_times'][num-it-1] -= (-t_b-t*res)
+            surveystruct['observed_times'][num-it-1] += (-t_b-t*res)
+            obs['LSTMIN'][index] += 360.0
 
-        if obs['endobs'][index] > 360.0:
-            obs['endobs'][index] -= 360.0 * np.floor(obs['endobs'][index]/360.0)
-            t = np.floor(obs['endobs'][index]/res)
+        if t_e > 360.0:
+            obs['LSTMAX'][index] -= 360.0 #* np.floor(obs['endobs'][index]/360.0)
+            t_e = obs['LSTMAX'][index]
+            t = np.floor(t_e/res)
             it = int(t)
             if t > 0.0:
                 surveystruct['remaining_times'][0:it-1] -= res
                 surveystruct['observed_times'][0:it-1] += res
-            surveystruct['remaining_times'][it] -= (obs['endobs'][index]-t*res)
-            surveystruct['observed_times'][it] += (obs['endobs'][index]-t*res)
+            surveystruct['remaining_times'][it] -= (t_e-t*res)
+            surveystruct['observed_times'][it] += (t_e-t*res)
