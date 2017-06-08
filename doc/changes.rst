@@ -5,7 +5,7 @@ desisurvey change log
 0.7.1 (unreleased)
 ------------------
 
-* No changes yet
+* Implement iterative HA optimization and LST-driven scheduler.
 
 0.7.0 (2017-06-05)
 ------------------

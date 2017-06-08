@@ -219,6 +219,7 @@ class Ephemerides(object):
         # Tabulate the observing program for each night to initialize the
         # brightstart/stop values needed by the afternoonplan module.
         for day_offset in range(num_nights):
+            row = self._table[day_offset]
             t_night = row['noon'] + 0.5 + t_grid
             dark, gray, bright = self.get_program(t_night)
             # Select BRIGHT times during dark night, i.e., excluding the
