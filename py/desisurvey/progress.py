@@ -43,7 +43,7 @@ class Progress(object):
         table will allocate space for.  Ignored when restoring a previous
         progress record.
     """
-    def __init__(self, restore=None, max_exposures=16):
+    def __init__(self, restore=None, max_exposures=32):
 
         self.log = desiutil.log.get_logger()
 
@@ -138,7 +138,7 @@ class Progress(object):
 
     @property
     def first_mjd(self):
-        """MJD of most recent exposure or 0 if no exposures have been added."""
+        """MJD of first exposure or 0 if no exposures have been added."""
         return self._first_mjd
 
     @property
@@ -368,7 +368,7 @@ class Progress(object):
         """
         mjd = start.mjd
         self.log.debug(
-            'Adding {0:.1f}s exposure of {1} at {2} (MJD {3:.5f}).'
+            'Adding {0:.1f} exposure of {1} at {2} (MJD {3:.5f}).'
             .format(exptime, tile_id, start.datetime, mjd))
         row = self.get_tile(tile_id)
 

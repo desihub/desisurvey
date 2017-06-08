@@ -29,42 +29,6 @@ class TestUtils(unittest.TestCase):
         # Remove the directory after the test.
         shutil.rmtree(cls.tmpdir)
 
-    def tearDown(self):
-        utils._iers_is_frozen = False
-
-    def test_update_iers_bad_ext(self):
-        """Test save_name extension check"""
-        save_name = os.path.join(self.tmpdir, 'iers.fits')
-        with self.assertRaises(ValueError):
-            utils.update_iers(save_name)
-
-    def test_update_iers(self):
-        """Test updating the IERS table.  Requires a network connection."""
-        save_name = os.path.join(self.tmpdir, 'iers.ecsv')
-        utils.update_iers(save_name)
-        # Second write should overwrite original file.
-        utils.update_iers(save_name)
-        utils.freeze_iers(save_name)
-
-    def test_freeze_iers(self):
-        """Test freezing from package data/"""
-        utils.freeze_iers()
-
-    def test_freeze_iers_bad_ext(self):
-        """Test freezing from package data/"""
-        with self.assertRaises(ValueError):
-            utils.freeze_iers('_non_existent_.fits')
-
-    def test_freeze_iers_bad_name(self):
-        """Test freezing from package data/"""
-        with self.assertRaises(ValueError):
-            utils.freeze_iers('_non_existent_.ecsv')
-
-    def test_freeze_iers_bad_format(self):
-        """Test freezing from valid file with wrong format"""
-        with self.assertRaises(ValueError):
-            utils.freeze_iers('config.yaml')
-
     def setUp(self):
         # Configure a CSV reader for the Horizons output format.
         csv_reader = astropy.io.ascii.Csv()
@@ -84,11 +48,59 @@ class TestUtils(unittest.TestCase):
         for old_name, new_name in zip(self.table.colnames, names):
             self.table[old_name].name = new_name
 
+    def tearDown(self):
+        utils._iers_is_frozen = False
+
+    def test_dome_probs(self):
+        """Checks of dome-closed probabilities"""
+        probs = utils.dome_closed_probabilities()
+        self.assertEqual(len(probs), 12)
+        self.assertTrue(np.all(probs > 0))
+        self.assertTrue(np.all(probs < 1))
+        self.assertTrue(np.all(probs > 0))
+        self.assertTrue(probs[6] > 0.5) # July > 50%
+        self.assertTrue(probs[5] < 0.2) # June < 20%
+
+    def test_update_iers_bad_ext(self):
+        """Test save_name extension check"""
+        save_name = os.path.join(self.tmpdir, 'iers.fits')
+        with self.assertRaises(ValueError):
+            utils.update_iers(save_name)
+
+    def test_update_iers(self):
+        """Test updating the IERS table.  Requires a network connection."""
+        save_name = os.path.join(self.tmpdir, 'iers.ecsv')
+        utils.update_iers(save_name)
+        # Second write should overwrite original file.
+        utils.update_iers(save_name)
+        utils.freeze_iers(save_name)
+
+    def test_freeze_iers(self):
+        """Test freezing from package data/"""
+        utils.freeze_iers()
+        future = astropy.time.Time('2024-01-01', location=utils.get_location())
+        lst = future.sidereal_time('apparent')
+
+    def test_freeze_iers_bad_ext(self):
+        """Test freezing from package data/"""
+        with self.assertRaises(ValueError):
+            utils.freeze_iers('_non_existent_.fits')
+
+    def test_freeze_iers_bad_name(self):
+        """Test freezing from package data/"""
+        with self.assertRaises(ValueError):
+            utils.freeze_iers('_non_existent_.ecsv')
+
+    def test_freeze_iers_bad_format(self):
+        """Test freezing from valid file with wrong format"""
+        with self.assertRaises(ValueError):
+            utils.freeze_iers('config.yaml')
+
     def test_get_overhead(self):
         """Sanity checks on overhead time calculations"""
         c = config.Configuration()
         tro = c.readout_time()
-        p0 = astropy.coordinates.SkyCoord(ra=300 * u.deg, dec=10 * u.deg)
+        p0 = astropy.coordinates.ICRS(ra=300 * u.deg, dec=10 * u.deg)
         # Move with no readout and no slew only has focus overhead.
         self.assertEqual(utils.get_overhead_time(None, p0, tro),
                          c.focus_time())
@@ -103,7 +115,7 @@ class TestUtils(unittest.TestCase):
         for delta in (1, 45, 70):
             ra = p0.ra + [+delta, -delta, 0, 0] * u.deg
             dec = p0.dec + [0, 0, +delta, -delta] * u.deg
-            p1 = astropy.coordinates.SkyCoord(ra=ra, dec=dec)
+            p1 = astropy.coordinates.ICRS(ra=ra, dec=dec)
             dt = utils.get_overhead_time(p0, p1)
             self.assertTrue(dt.shape == (4,))
             self.assertEqual(dt[0], dt[1])
@@ -164,28 +176,36 @@ class TestUtils(unittest.TestCase):
     def test_zenith_airmass(self):
         """Airmass values monotically increase with zenith angle"""
         Z = np.arange(90) * np.pi / 180.
-        X = utils.zenith_angle_to_airmass(Z)
+        cosZ = np.cos(Z)
+        X = utils.cos_zenith_to_airmass(cosZ)
         self.assertEqual(Z.shape, X.shape)
         self.assertTrue(np.all(np.diff(X) > 0))
 
-    def test_zenith_airmass(self):
-        """Zenith angles can have units"""
-        Z1 = np.arange(90) * u.deg
-        Z2 = Z1.to(u.rad)
-        X1 = utils.zenith_angle_to_airmass(Z1)
-        X2 = utils.zenith_angle_to_airmass(Z2)
-        self.assertTrue(np.allclose(X1, X2))
+    def test_cosz_range(self):
+        """cos(z) must be between -1 and +1"""
+        ha = np.arange(-100, +400) * u.deg
+        for dec in [-10, 20, 40] * u.deg:
+            cosz = utils.cos_zenith(ha, dec)
+            self.assertTrue(np.all(cosz >= -1))
+            self.assertTrue(np.all(cosz <= +1))
+
+    def test_cosz_one(self):
+        """cos(z) == 1 when ha=0 and dec=lat"""
+        ha = 0 * u.hourangle
+        for dec in [-10, 20, 40] * u.deg:
+            cosz = utils.cos_zenith(ha, dec, latitude=dec)
+            self.assertTrue(np.allclose(cosz, 1.))
 
     def test_airmass_scalar(self):
         """Scalar input returns scalar output"""
-        X = utils.zenith_angle_to_airmass(0.)
+        X = utils.cos_zenith_to_airmass(1.)
         self.assertEqual(X.shape, ())
 
     def test_airmass_clip(self):
-        """Zenith angles > 90 deg are clipped"""
+        """cosZ values < 0 are clipped"""
         self.assertAlmostEqual(
-            utils.zenith_angle_to_airmass(90 * u.deg),
-            utils.zenith_angle_to_airmass(100 * u.deg))
+            utils.cos_zenith_to_airmass(0),
+            utils.cos_zenith_to_airmass(-1))
 
     def test_get_airmass_lowest(self):
         """The lowest airmass occurs when dec=latitude"""

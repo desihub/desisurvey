@@ -34,6 +34,13 @@ class TestPlan(unittest.TestCase):
         ephem = desisurvey.ephemerides.Ephemerides(start, stop)
         initialize(ephem)
 
+    def test_lst_range(self):
+        """Test that 0 <= LST < 360 deg"""
+        p = Planner(os.path.join(self.tmpdir, 'planner.fits'))
+        lst = p.etable['lst']
+        self.assertTrue(np.min(lst) >= 0.)
+        self.assertTrue(np.max(lst) < 360.)
+
     def test_time_index_conversion(self):
         """Test time <-> index round trips"""
         p = Planner(os.path.join(self.tmpdir, 'planner.fits'))

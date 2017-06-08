@@ -3,6 +3,7 @@
 from __future__ import print_function, division
 
 import datetime
+import calendar
 
 import numpy as np
 
@@ -21,10 +22,10 @@ program_color = {'DARK': 'black', 'GRAY': 'gray', 'BRIGHT': 'orange'}
 
 
 def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
-                    label='label', save=None):
+                    label='label', cmap='viridis', save=None):
     """Plot sky maps for each pass of a per-tile scalar quantity.
 
-    The matplotlib package must be installed to use this function.
+    The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
@@ -42,6 +43,8 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
         See :meth:`desiutil.plot.prepare_data`
     label : string
         Brief description of per-tile value ``z`` to use for axis labels.
+    cmap : colormap name or object
+        Matplotlib colormap to use for mapping data values to colors.
     save : string or None
         Name of file where plot should be saved.  Format is inferred from
         the extension.
@@ -77,7 +80,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
             z[sel], clip_lo=vmin, clip_hi=vmax, save_limits=True)
         # Plot the sky map for this pass.
         desiutil.plots.plot_sky_circles(
-            ra_center=ra[sel], dec_center=dec[sel], data=z_sel,
+            ra_center=ra[sel], dec_center=dec[sel], data=z_sel, cmap=cmap,
             colorbar=True, basemap=basemap, edgecolor='none', label=label)
         # Plot the histogram of values for this pass.
         hist_sel = (passnum == p) & (z > vmin) & (z < vmax)
@@ -176,11 +179,11 @@ def plot_observed(progress, include='observed', start_date=None, stop_date=None,
 
 def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
                  include_monsoon=False, include_full_moon=False,
-                 night_start=-6.5, night_stop=7.5, num_points=500,
-                 bg_color='lightblue', save=None):
+                 apply_weather=False, night_start=-6.5, night_stop=7.5,
+                 num_points=500, bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
-    The matplotlib package must be installed to use this function.
+    The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
@@ -199,6 +202,13 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         relative to local midnight, "histogram" shows elapsed time for
         each program during each night, and "cumulative" shows the
         cummulative time for each program since ``start_date``.
+    include_monsoon : bool
+        Include nights during the annual monsoon shutdowns.
+    include_fullmoon : bool
+        Include nights during the monthly full-moon breaks.
+    apply_weather : bool
+        Weight each night according to its monthly average dome-open fraction.
+        Only affects the printed totals with the "localtime" style.
     night_start : float
         Start of night in hours relative to local midnight used to set
         y-axis minimum for 'localtime' style and tabulate nightly program.
@@ -229,6 +239,9 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     styles = ('localtime', 'histogram', 'cumulative')
     if style not in styles:
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
+
+    if apply_weather:
+        weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
 
     if night_start >= night_stop:
         raise ValueError('Expected night_start < night_stop.')
@@ -274,6 +287,9 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         hours[0, i] = dt * np.count_nonzero(dark)
         hours[1, i] = dt * np.count_nonzero(gray)
         hours[2, i] = dt * np.count_nonzero(bright)
+        if apply_weather:
+            date = desisurvey.utils.get_date(midnight[i])
+            hours[:, i] *= weather_weights[date.month - 1]
 
     # Initialize the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
@@ -387,7 +403,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
                     save=None):
     """Plot diagnostics for the next field selector.
 
-    The matplotlib package must be installed to use this function.
+    The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
@@ -472,7 +488,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     # Place a SkyCoord at the center of each bin.
     ra = 0.5 * (ra_edges[1:] + ra_edges[:-1])
     dec = 0.5 * (dec_edges[1:] + dec_edges[:-1])[:, np.newaxis]
-    radec_grid = astropy.coordinates.SkyCoord(ra=ra * u.deg, dec=dec * u.deg)
+    radec_grid = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
 
     # Ignore atmospheric refraction and restrict to small airmass, for speed.
     altaz_frame = astropy.coordinates.AltAz(
@@ -575,10 +591,10 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
 
 def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
                  night_summary='dark', dust=True, monsoon=True, fullmoon=True,
-                 cmap='magma', save=None):
+                 weather=False, cmap='magma', save=None):
     """Plot a summary of the planner observing efficiency forecast.
 
-    Requires that the matplotlib package is installed.
+    Requires that the matplotlib and basemap packages are installed.
 
     Parameters
     ----------
@@ -613,6 +629,9 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
         Ignored if ``when`` specifies a time.
     fullmoon : bool
         Do not observe during scheduled full-moon breaks?
+        Ignored if ``when`` specifies a time.
+    weather : bool
+        Reweight exposure factors by expected dome-open fraction each month.
         Ignored if ``when`` specifies a time.
     cmap : matplotlib colormap spec
         Colormap to use to represent observing efficiency. Not used for a
@@ -736,6 +755,10 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
         if fullmoon:
             fexp[p.calendar['fullmoon'][lo:hi]] = 0.
 
+        # Apply weather factors if requested.
+        if weather:
+            fexp *= p.calendar['weather'][lo:hi, np.newaxis]
+
         # Project out the night axis if requested.
         if when == 'best':
             # Observe each pixel during its best night.
@@ -817,6 +840,112 @@ def plot_planner(p, start_date=None, stop_date=None, where=None, when=None,
     return fig, ax
 
 
+def plot_monthly(p, program='DARK', monsoon=False, fullmoon=True,
+                 cmap='viridis', save=None):
+    """Plot average nightly visibility by month.
+
+    Parameters
+    ----------
+    p : desisurvey.plan.Planner
+        The planner object to use.
+    program : 'DARK', 'GRAY', 'BRIGHT' or 'ANY'
+        Name of the program to display visibility for.
+    monsoon : bool
+        Do not observe during scheduled monsoon shutdowns?
+        Ignored if ``when`` specifies a time.
+    fullmoon : bool
+        Do not observe during scheduled full-moon breaks?
+        Ignored if ``when`` specifies a time.
+    cmap : matplotlib colormap spec
+        Colormap to use to represent observing efficiency. Not used for a
+        time series plot.
+    save : string or None
+        Name of file where plot should be saved.  Format is inferred from
+        the extension.
+
+    Returns
+    -------
+    tuple
+        Tuple (figure, axes) returned by ``plt.subplots()``.
+
+    Visibility does not include dust extinction or monthly weather factors.
+
+    The nightly moon is displayed except for the DARK program, with an area
+    proportional to the illuminated fraction and the nightly program time.
+
+    Requires that the matplotlib and basemap packages are installed.
+    """
+    import matplotlib.pyplot as plt
+
+    # Tabulate month index for each night.
+    month = np.empty_like(p.calendar, np.int16)
+    weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
+    for m in range(12):
+        sel = np.in1d(p.calendar['weather'], [weather_weights[m],])
+        month[sel] = m
+
+    # Restrict to the specified program.
+    if program == 'ANY':
+        sel = p.etable['program'] > 0
+    else:
+        pcode = dict(DARK=1, GRAY=2, BRIGHT=3)[program]
+        sel = p.etable['program'] == pcode
+
+    # Restrict to scheduled observing nights.
+    sel = sel.reshape(p.num_nights, p.num_times)
+    if fullmoon:
+        sel[p.calendar['fullmoon']] = False
+    if monsoon:
+        sel[p.calendar['monsoon']] = False
+    livetime = sel.sum(axis=1) / float(p.num_times)
+
+    # Get visibility of each pixel during each month in units of
+    # equivalent hours of nominal observing per night.
+    fexp = p.fexp.copy()
+    fexp = fexp.reshape(p.num_nights, p.num_times, -1)
+    fexp[~sel] = 0.
+    visibility = np.zeros((12, len(p.footprint_pixels)))
+    for m in range(12):
+        visibility[m] = fexp[month == m].sum(axis=1).mean(axis=0)
+    visibility *= p.step_size.to(u.hour).value
+
+    # Lookup moon parameters at midnight.
+    midnight = slice(p.num_times // 2, None, p.num_times)
+    moon_ra = p.etable['moon_ra'].data[midnight]
+    moon_dec = p.etable['moon_dec'].data[midnight]
+    moon_wgt = p.etable['moon_frac'].data[midnight] * livetime
+
+    # Plot grid of results.
+    v = np.zeros(p.npix)
+    vmax = np.max(visibility)
+    nrow, ncol = 4, 3
+    fig, axes = plt.subplots(
+        nrow, ncol, sharex=True, sharey=True, figsize=(14, 12))
+    for m, ax in enumerate(axes.flat):
+        v[p.footprint_pixels] = visibility[m]
+        data = desiutil.plots.prepare_data(
+            v, mask=~p.footprint, clip_lo=0.01, clip_hi=vmax, save_limits=True)
+        bm = desiutil.plots.init_sky(ax=ax, ra_labels=None, dec_labels=None)
+        label = '{0} {1} Visibility [nom. hours/night]'.format(
+            calendar.month_name[m + 1], program)
+        desiutil.plots.plot_healpix_map(
+            data, label=label, cmap=cmap, basemap=bm)
+        if program != 'DARK':
+            # Show the moon positions during this month.
+            msel = (month == m) & (moon_wgt > 0)
+            # Basemap scatter with arrays not working for some reason.
+            for ra, dec, frac in zip(
+                moon_ra[msel], moon_dec[msel], moon_wgt[msel]):
+                #print m, ra, dec, frac
+                bm.scatter(ra, dec, latlon=True, c='white',
+                           s=200 * frac, zorder=100)
+
+    plt.subplots_adjust(wspace=0.05, hspace=0.05)
+    if save:
+        plt.savefig(save)
+    return fig, axes
+
+
 def plot_iers(which='auto', num_points=500, save=None):
     """Plot IERS data from 2015-2025.
 
@@ -828,7 +957,7 @@ def plot_iers(which='auto', num_points=500, save=None):
     This function is primarily intended to document and debug the
     :func:`desisurvey.utils.update_iers` and :func:`desisurvey.utils.freeze_iers` functions.
 
-    Requires that the matplotlib package is installed.
+    Requires that the matplotlib and basemap packages are installed.
 
     Parameters
     ----------

@@ -25,6 +25,27 @@ import desisurvey.config
 
 _telescope_location = None
 _iers_is_frozen = False
+_dome_closed_probabilities = None
+
+
+def dome_closed_probabilities():
+    """Return an array of monthly dome-closed probabilities.
+
+    Returns
+    -------
+    array
+        Array of 12 probabilities in the range 0-1.
+    """
+    global _dome_closed_probabilities
+    if _dome_closed_probabilities is None:
+        config = desisurvey.config.Configuration()
+        _dome_closed_probabilities = np.empty(12)
+        for i, month in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun',
+                                   'jul', 'aug', 'sep', 'oct', 'nov', 'dec')):
+            _dome_closed_probabilities[i] = (
+                # Convert from percentage to fraction.
+                getattr(config.dome_closed_probability, month)() / 100.)
+    return _dome_closed_probabilities
 
 
 def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
@@ -38,7 +59,11 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
 
     After this call, the loaded table will be returned by
     :func:`astropy.utils.iers.IERS_Auto.open()` and treated like a
-    a normal IERS-B table by all astropy code.
+    a normal IERS table by all astropy code.  Specifically, this method
+    registers an instance of a custom IERS_Frozen class that inherits from
+    IERS_B and overrides
+    :meth:`astropy.utils.iers.IERS._check_interpolate_indices` to prevent
+    any IERSRangeError being raised.
 
     See `http://docs.astropy.org/en/stable/utils/iers.html`_ for details.
 
@@ -88,7 +113,15 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
         table = astropy.table.Table.read(name, format='ascii.ecsv').filled()
     except IOError:
         raise RuntimeError('Unable to load IERS table from {0}.'.format(name))
-    iers = astropy.utils.iers.IERS(table)
+
+    # Define a subclass of IERS_B that overrides _check_interpolate_indices
+    # to prevent any IERSRangeError being raised.
+    class IERS_Frozen(astropy.utils.iers.IERS_B):
+        def _check_interpolate_indices(self, indices_orig, indices_clipped,
+                                       max_input_mjd): pass
+
+    # Create and register an instance of this class from the table.
+    iers = IERS_Frozen(table)
     astropy.utils.iers.IERS.iers_table = iers
     # Prevent any attempts to automatically download updated IERS-A tables.
     astropy.utils.iers.conf.auto_download = False
@@ -192,13 +225,15 @@ def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
     deadtime : astropy.units.Quantity
         Amount of deadtime elapsed since end of any previous exposure.
         Used to ensure that the overhead time is sufficient to finish
-        reading out the previous exposure.
+        reading out the previous exposure. Must be >= 0.
 
     Returns
     -------
     astropy.units.Quantity
         Overhead time(s) for each new_pointing.
     """
+    if deadtime.to(u.s).value < 0:
+        raise ValueError('Expected deadtime >= 0 (got {0}).'.format(deadtime))
     config = desisurvey.config.Configuration()
     if current_pointing is not None:
         # Calculate the amount that each axis needs to move in degrees.
@@ -279,17 +314,21 @@ def get_observer(when, alt=None, az=None):
 
 def cos_zenith_to_airmass(cosZ):
     """Convert a zenith angle to an airmass.
+    
     Uses the Rozenberg 1966 interpolation formula, which gives reasonable
     results for high zenith angles, with a horizon air mass of 40.
     https://en.wikipedia.org/wiki/Air_mass_(astronomy)#Interpolative_formulas
     Rozenberg, G. V. 1966. "Twilight: A Study in Atmospheric Optics."
     New York: Plenum Press, 160.
+
     The value of cosZ is clipped to [0,1], so observations below the horizon
     return the horizon value (~40).
+
     Parameters
     ----------
     cosZ : float or array
         Cosine of angle(s) to convert.
+
     Returns
     -------
     float or array
@@ -301,7 +340,9 @@ def cos_zenith_to_airmass(cosZ):
 
 def get_airmass(when, ra, dec):
     """Return the airmass of (ra,dec) at the specified observing time.
+
     Uses :func:`cos_zenith_to_airmass`.
+
     Parameters
     ----------
     when : astropy.time.Time
@@ -326,7 +367,9 @@ def get_airmass(when, ra, dec):
 
 def cos_zenith(ha, dec, latitude=None):
     """Calculate cos(zenith) for specified hour angle, DEC and latitude.
+
     Combine with :func:`cos_zenith_to_airmass` to calculate airmass.
+
     Parameters
     ----------
     ha : astropy.units.Quantity
@@ -336,6 +379,7 @@ def cos_zenith(ha, dec, latitude=None):
     latitude : astropy.units.Quantity or None
         Latitude angle to use, with units convertible to angle.
         Defaults to the latitude of :func:`get_location` if None.
+
     Returns
     -------
     numpy array

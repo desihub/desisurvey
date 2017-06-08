@@ -37,6 +37,26 @@ monsoon_stop: 2019-08-27
 full_moon_nights: 7
 
 #-------------------------------------------------------------------
+# Weather forecast.
+#-------------------------------------------------------------------
+
+# Percentage probability that the dome is closed during dark time
+# due to weather. TODO: find doc-db reference for these (#1658,730,735,993?)
+dome_closed_probability:
+    jan: 35.24
+    feb: 44.14
+    mar: 27.68
+    apr: 26.73
+    may: 14.22
+    jun: 15.78
+    jul: 55.92
+    aug: 48.75
+    sep: 29.45
+    oct: 24.44
+    nov: 24.86
+    dec: 34.74
+
+#-------------------------------------------------------------------
 # Definition of the DARK / GRAY / BRIGHT nominal programs based on
 # sun and moon ephemerides.
 #-------------------------------------------------------------------
