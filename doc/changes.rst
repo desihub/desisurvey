@@ -2,12 +2,19 @@
 desisurvey change log
 =====================
 
-0.6.1 (unreleased)
+0.7.1 (unreleased)
+------------------
+
+* No changes yet
+
+0.7.0 (2017-06-05)
 ------------------
 
 * Freeze IERS table used by astropy time, coordinates.
 * Implement alternate greedy scheduler with optional policy weights.
 * Implement iterative HA optimization and LST-driven scheduler.
+* Add `plots.plot_planner()`
+* Partial fix of RA=0/360 planning bug
 
 0.6.0 (2017-05-10)
 ------------------
