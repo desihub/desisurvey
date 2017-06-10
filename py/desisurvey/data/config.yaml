@@ -127,6 +127,19 @@ avoid_bodies:
     uranus: 2 deg
     #ceres: 2 deg  # not implemented in pyephem: do we need it?
 
+# Weights for scheduling a tile out of the nominal program, relative
+# to 1 for observing a tile from the nominal program.
+fallback_weights:
+    # DARK program fallback weights.
+    gray_in_dark: 0.5
+    bright_in_dark: 0.3
+    # GRAY program fallback weights.
+    dark_in_gray: 0.0
+    bright_in_gray: 0.5
+    # BRIGHT program fallback weights.
+    dark_in_bright: 0.0
+    gray_in_bright: 0.0
+
 # Number of LST bins covering 24h=360d used for afternoon planning.
 num_lst_bins: 144
 

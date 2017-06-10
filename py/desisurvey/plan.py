@@ -68,6 +68,22 @@ class Planner(object):
         assert self.fexp.shape == (
             self.num_nights * self.num_times, len(self.footprint_pixels))
 
+        # Load fallback weights into a (3,3) matrix with row, column
+        # indices 0=DARK, 1=GRAY, 2=BRIGHT. The row index specifies the
+        # current nominal program, and the column index specifies the
+        # alternate fall back program.  Weights are relative to 1 for
+        # staying within the nominal program.
+        fb = config.fallback_weights
+        self.fallback_weights = np.identity(3)
+        self.fallback_weights[0, 1] = fb.gray_in_dark()
+        self.fallback_weights[0, 2] = fb.bright_in_dark()
+        self.fallback_weights[1, 0] = fb.dark_in_gray()
+        self.fallback_weights[1, 2] = fb.bright_in_gray()
+        self.fallback_weights[2, 0] = fb.dark_in_bright()
+        self.fallback_weights[2, 1] = fb.gray_in_bright()
+        assert np.all(self.fallback_weights >= 0)
+        print(self.fallback_weights)
+
     def index_of_time(self, when):
         """Calculate the temporal bin index of the specified time.
 
