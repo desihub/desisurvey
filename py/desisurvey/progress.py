@@ -87,6 +87,15 @@ class Progress(object):
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
                 description='Estimate FWHM seeing of observation in arcsecs',
                 unit='arcsec')
+            table['moonfrac'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.3f',
+                description='Moon illuminated fraction (0-1)')
+            table['moonalt'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='Moon altitude angle in degrees', unit='deg')
+            table['moonsep'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='Moon-tile separation angle in degrees', unit='deg')
             # Copy tile data.
             table['tileid'] = tiles['TILEID']
             table['pass'] = tiles['PASS']
@@ -259,7 +268,7 @@ class Progress(object):
         un-observed tiles. The summary ``exptime`` and ``snr2frac`` columns
         are sums of the individual exposures.  The summary ``airmass``
         and ``seeing`` columns are means. A ``nexp`` column counts the number
-        of exposures for each tile.
+        of exposures for each tile.  The moon parameters are not summarized.
 
         Can be combined with :meth:`copy_range` to summarize observations during
         a range of dates.
@@ -348,7 +357,8 @@ class Progress(object):
         # Return a new progress object with this table.
         return Progress(restore=table)
 
-    def add_exposure(self, tile_id, start, exptime, snr2frac, airmass, seeing):
+    def add_exposure(self, tile_id, start, exptime, snr2frac, airmass, seeing,
+                     moonfrac, moonalt, moonsep):
         """Add a single exposure to the progress.
 
         Parameters
@@ -365,6 +375,12 @@ class Progress(object):
             Estimated airmass of this exposure.
         seeing : float
             Estimated FWHM seeing of this exposure in arcseconds.
+        moonfrac : float
+            Moon illuminated fraction (0-1).
+        moonalt : float
+            Moon altitude angle in degrees.
+        moonsep : float
+            Moon-tile separation angle in degrees.
         """
         mjd = start.mjd
         self.log.debug(
@@ -398,6 +414,9 @@ class Progress(object):
         row['snr2frac'][num_exp] = snr2frac
         row['airmass'][num_exp] = airmass
         row['seeing'][num_exp] = seeing
+        row['moonfrac'][num_exp] = moonfrac
+        row['moonalt'][num_exp] = moonalt
+        row['moonsep'][num_exp] = moonsep
 
         # Update this tile's status.
         row['status'] = 1 if row['snr2frac'].sum() < 1 else 2
