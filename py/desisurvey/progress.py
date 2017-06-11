@@ -436,7 +436,8 @@ class Progress(object):
             Last date to include in the list of exposures, or date of the
             last observation if None.
         tile_fields : str
-            Comma-separated list of per-tile field names to include.
+            Comma-separated list of per-tile field names to include. The
+            special name 'index' denotes the index into the visible tile array.
         exp_fields : str
             Comma-separated list of per-exposure field names to include. The
             special name 'snr2cum' denotes the cummulative snr2frac on each
@@ -473,7 +474,10 @@ class Progress(object):
         # Create the output table.
         output = astropy.table.Table()
         for name in tile_fields.split(','):
-            output[name] = table[name][tile_index]
+            if name == 'index':
+                output[name] = tile_index
+            else:
+                output[name] = table[name][tile_index]
         for name in exp_fields.split(','):
             if name == 'snr2cum':
                 data = np.cumsum(table['snr2frac'], axis=1).flatten()
