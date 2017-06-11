@@ -70,6 +70,8 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p.completed(include_partial=False), 0.)
         self.assertTrue(p.first_mjd > 0)
         self.assertTrue(p.last_mjd > p.first_mjd)
+        explist = p.get_exposures()
+        self.assertTrue(np.all(np.diff(explist['mjd']) > 0))
 
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""

@@ -13,10 +13,11 @@ import desimodel.io
 import desiutil.log
 
 import desisurvey.config
+import desisurvey.utils
 
 # Increment this value whenever a non-backwards compatible change to the
 # table schema is introduced.
-_version = 1
+_version = 2
 
 class Progress(object):
     """Initialize a progress tracking object.
@@ -420,3 +421,64 @@ class Progress(object):
 
         # Update this tile's status.
         row['status'] = 1 if row['snr2frac'].sum() < 1 else 2
+
+    def get_exposures(self, start=None, stop=None, tile_fields='tileid',
+                      exp_fields=\
+                      'mjd,exptime,seeing,airmass,moonfrac,moonalt,moonsep'):
+        """Create a table listing exposures in time order.
+
+        Parameters
+        ----------
+        start : date or None
+            First date to include in the list of exposures, or date of the
+            first observation if None.
+        stop  : date or None
+            Last date to include in the list of exposures, or date of the
+            last observation if None.
+        tile_fields : str
+            Comma-separated list of per-tile field names to include.
+        exp_fields : str
+            Comma-separated list of per-exposure field names to include. The
+            special name 'snr2cum' denotes the cummulative snr2frac on each
+            tile.
+
+        Returns
+        -------
+        astropy.table.Table
+            Table with the specified columns and one row per exposure.
+        """
+        # Get MJD range to show.
+        if start is None:
+            start = self.first_mjd
+        start = desisurvey.utils.local_noon_on_date(
+            desisurvey.utils.get_date(start)).mjd
+        if stop is None:
+            stop = self.last_mjd
+        stop = desisurvey.utils.local_noon_on_date(
+            desisurvey.utils.get_date(stop)).mjd + 1
+        if start >= stop:
+            raise ValueError('Expected start < stop.')
+
+        # Build a list of exposures in time sequence.
+        table = self._table
+        mjd = table['mjd'].data.flatten()
+        order = np.argsort(mjd)
+        tile_index = (order // self.max_exposures)
+
+        # Restrict to the requested date range.
+        first, last = np.searchsorted(mjd, [start, stop], sorter=order)
+        tile_index = tile_index[first:last + 1]
+        order = order[first: last + 1]
+
+        # Create the output table.
+        output = astropy.table.Table()
+        for name in tile_fields.split(','):
+            output[name] = table[name][tile_index]
+        for name in exp_fields.split(','):
+            if name == 'snr2cum':
+                data = np.cumsum(table['snr2frac'], axis=1).flatten()
+            else:
+                data = table[name].flatten()
+            output[name] = data[order]
+
+        return output
