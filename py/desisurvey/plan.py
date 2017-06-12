@@ -424,6 +424,7 @@ class Planner(object):
             units) before the shutter can be opened due to slewing and reading
             out any previous exposure.
         """
+        config = desisurvey.config.Configuration()
         # Look up the night number for this time.
         night = desisurvey.utils.get_date(when)
         i = (night - self.start_date).days
@@ -492,12 +493,25 @@ class Planner(object):
         ephem = self.etable[ij[np.argmax(score[mask])]]
         moon = astropy.coordinates.ICRS(
             ra=ephem['moon_ra'] * u.deg, dec=ephem['moon_dec'] * u.deg)
-        moon_sep = self.tile_coords[best].separation(moon).to(u.deg).value
+        moon_sep = self.tile_coords[best].separation(moon).to(u.deg)
+        if ephem['moon_alt'] > 0 and moon_sep < config.avoid_bodies.moon():
+            self.log.info('Best tile has moon_sep {0}.'.format(moon_sep))
+            return None
+        # Should also check planet separation vetos here
+        # ...
+        # Calculate the altitude angle of the selected tile.
+        zenith = desisurvey.utils.get_observer(
+            when, alt=90 * u.deg, az=0 * u.deg
+            ).transform_to(astropy.coordinates.ICRS)
+        alt = 90 * u.deg - self.tile_coords[best].separation(zenith)
+        if alt < config.min_altitude():
+            self.log.info('Best tile has altitude {0}.'.format(alt))
+            return None
         # Prepare the dictionary to return.
         target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
                       Program=('DARK', 'GRAY', 'BRIGHT')[tile['program'] - 1],
                       Ebmv=tile['EBV'], moon_illum_frac=ephem['moon_frac'],
-                      MoonDist=moon_sep, MoonAlt=ephem['moon_alt'],
+                      MoonDist=moon_sep.value, MoonAlt=ephem['moon_alt'],
                       overhead=toh[best] * u.s)
         return target
 
