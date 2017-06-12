@@ -150,9 +150,6 @@ class surveyPlan:
         if len(self.tiles) != self.numtiles:
             raise RuntimeError('Missing some tiles in tile-info.fits')
 
-        import sys
-        sys.exit()
-
     def afternoonPlan(self, day_stats, progress):
         """Main decision making method.
 
