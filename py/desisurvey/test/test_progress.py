@@ -70,8 +70,33 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p.completed(include_partial=False), 0.)
         self.assertTrue(p.first_mjd > 0)
         self.assertTrue(p.last_mjd > p.first_mjd)
+
+    def test_get_exposures(self):
+        """Test get_exposures() method"""
+        p = Progress()
+        t = p._table
+        tiles = t['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
+        for i, tile_id in enumerate(tiles):
+            p.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         explist = p.get_exposures()
         self.assertTrue(np.all(np.diff(explist['mjd']) > 0))
+        explist = p.get_exposures(tile_fields='index', exp_fields='lst')
+        self.assertTrue(np.all(np.diff(explist['lst']) > 0))
+        self.assertTrue(np.min(explist['lst'] >= 0))
+        self.assertTrue(np.max(explist['lst'] < 360))
+        with self.assertRaises(ValueError):
+            p.get_exposures(tile_fields='mjd')
+        with self.assertRaises(ValueError):
+            p.get_exposures(tile_fields='nonexistent')
+        with self.assertRaises(ValueError):
+            p.get_exposures(exp_fields='pass')
+        explist = p.get_exposures(exp_fields='mjd,night')
+        for row in explist:
+            night = str(desisurvey.utils.get_date(row['mjd']))
+            self.assertEqual(row['night'], night)
+            self.assertEqual(night, str(desisurvey.utils.get_date(night)))
 
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""

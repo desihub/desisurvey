@@ -83,10 +83,10 @@ class Progress(object):
                 description='Fraction of target S/N**2 ratio achieved')
             table['airmass'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
-                description='Estimate airmass of observation')
+                description='Estimated airmass of observation')
             table['seeing'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
-                description='Estimate FWHM seeing of observation in arcsecs',
+                description='Estimated FWHM seeing of observation in arcsecs',
                 unit='arcsec')
             table['moonfrac'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.3f',
@@ -422,9 +422,10 @@ class Progress(object):
         # Update this tile's status.
         row['status'] = 1 if row['snr2frac'].sum() < 1 else 2
 
-    def get_exposures(self, start=None, stop=None, tile_fields='tileid',
-                      exp_fields=\
-                      'mjd,exptime,seeing,airmass,moonfrac,moonalt,moonsep'):
+    def get_exposures(self, start=None, stop=None,
+                      tile_fields='tileid,pass,ra,dec',
+                      exp_fields='night,mjd,exptime,seeing,airmass,' +
+                      'moonfrac,moonalt,moonsep'):
         """Create a table listing exposures in time order.
 
         Parameters
@@ -441,7 +442,10 @@ class Progress(object):
         exp_fields : str
             Comma-separated list of per-exposure field names to include. The
             special name 'snr2cum' denotes the cummulative snr2frac on each
-            tile.
+            tile, since the start of the survey.  The special name 'night'
+            denotes a string YYYY-MM-DD specifying the date on which each
+            night starts. The special name 'lst' denotes the apparent local
+            sidereal time of the shutter open timestamp.
 
         Returns
         -------
@@ -477,12 +481,37 @@ class Progress(object):
             if name == 'index':
                 output[name] = tile_index
             else:
+                if name not in table.colnames or len(table[name].shape) != 1:
+                    raise ValueError(
+                        'Invalid tile field name: {0}.'.format(name))
                 output[name] = table[name][tile_index]
         for name in exp_fields.split(','):
             if name == 'snr2cum':
-                data = np.cumsum(table['snr2frac'], axis=1).flatten()
+                snr2cum = np.cumsum(
+                    table['snr2frac'], axis=1).flatten()[order]
+                output[name] = astropy.table.Column(
+                    snr2cum, format='%.3f',
+                    description='Cummulative fraction of target S/N**2')
+            elif name == 'night':
+                mjd = table['mjd'].flatten()[order]
+                night = np.empty(len(mjd), dtype='S10')
+                for i in range(len(mjd)):
+                    night[i] = str(desisurvey.utils.get_date(mjd[i]))
+                output[name] = astropy.table.Column(
+                    night,
+                    description='Date at start of night when exposure taken')
+            elif name == 'lst':
+                mjd = table['mjd'].flatten()[order]
+                times = astropy.time.Time(
+                    mjd, format='mjd', location=desisurvey.utils.get_location())
+                lst = times.sidereal_time('apparent').to(u.deg).value
+                output[name] = astropy.table.Column(
+                    lst, format='%.1f', unit='deg',
+                    description='Apparent local sidereal time in degrees')
             else:
-                data = table[name].flatten()
-            output[name] = data[order]
+                if name not in table.colnames or len(table[name].shape) != 2:
+                    raise ValueError(
+                        'Invalid exposure field name: {0}.'.format(name))
+                output[name] = table[name].flatten()[order]
 
         return output
