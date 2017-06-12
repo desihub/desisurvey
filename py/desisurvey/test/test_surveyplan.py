@@ -38,10 +38,10 @@ class TestSurveyPlan(unittest.TestCase):
 
         tiles = sp.tiles
         dLST = tiles['LSTMAX'] - tiles['LSTMIN']
-        wraparound = (dLST < -12)
-        dLST[wraparound] += 24
+        wraparound = (dLST < -180)
+        dLST[wraparound] += 360
         self.assertGreater(np.min(dLST), 0)
-        self.assertLess(np.max(dLST), 2)
+        self.assertLess(np.max(dLST), 30)
         self.assertTrue(np.all(tiles['EXPLEN'] > 500))
 
         #- Plan night 0; set the first 10 tiles as observed
