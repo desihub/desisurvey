@@ -116,6 +116,9 @@ nominal_conditions:
     transparency: 1.0
     EBV: 0.0
 
+# Reobserve tiles that have not reached this fraction of their target SNR**2.
+min_snr2_fraction: 0.8
+
 # List of bodies to avoid when scheduling tiles.
 avoid_bodies:
     moon: 50 deg

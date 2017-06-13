@@ -390,7 +390,7 @@ class Scheduler(object):
         plt.show()
 
     def next_tile(self, when, cutoff, seeing, transparency, progress,
-                  strategy, plan, snr2max=0.8, plot=False):
+                  strategy, plan, plot=False):
         """Return the next tile to observe.
 
         Parameters
@@ -437,9 +437,9 @@ class Scheduler(object):
         ephem0 = self.etable[ij0]
         # Only schedule active tiles.
         mask = plan['active']
-        # Do not schedule tiles that are (almost) complete.
+        # Do not re-schedule tiles that have reached their min SNR**2 fraction.
         snr2frac = progress._table['snr2frac'].data.sum(axis=1)
-        mask = mask & (snr2frac < snr2max)
+        mask = mask & (snr2frac < config.min_snr2_fraction())
         if not np.any(mask):
             self.log.warn('No active tiles at {0}.'.format(when.datetime))
             return None
