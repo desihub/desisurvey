@@ -8,6 +8,7 @@ desisurvey change log
 * Implement LST-driven scheduling strategy.
 * Create new optimize module for iterative HA optimization.
 * Rename module plan -> schedule.
+* Create new plan module to manage fiber-assignment groups and priorities.
 
 0.7.0 (2017-06-05)
 ------------------
