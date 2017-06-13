@@ -71,6 +71,20 @@ class TestProgress(unittest.TestCase):
         self.assertTrue(p.first_mjd > 0)
         self.assertTrue(p.last_mjd > p.first_mjd)
 
+    def test_restore_status(self):
+        """Test that status is restored"""
+        p = Progress()
+        t = p._table
+        tiles = t['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
+        for i, tile_id in enumerate(tiles):
+            p.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 2.0, 1.5, 1.1, 0, 0, 0)
+        good_status = p._table['status'].copy()
+        p._table['status'] = 0
+        p2 = Progress(p._table)
+        self.assertTrue(np.all(p2._table['status'] == good_status))
+
     def test_get_exposures(self):
         """Test get_exposures() method"""
         p = Progress()

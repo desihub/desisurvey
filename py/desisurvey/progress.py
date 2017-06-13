@@ -48,6 +48,10 @@ class Progress(object):
 
         self.log = desiutil.log.get_logger()
 
+        # Lookup the completeness SNR2 threshold to use.
+        config = desisurvey.config.Configuration()
+        self.min_snr2 = config.min_snr2_fraction()
+
         if restore is None:
             # Load the list of tiles to observe.
             tiles = astropy.table.Table(
@@ -114,7 +118,6 @@ class Progress(object):
             if isinstance(restore, astropy.table.Table):
                 table = restore
             else:
-                config = desisurvey.config.Configuration()
                 filename = config.get_path(restore)
                 table = astropy.table.Table.read(filename)
                 self.log.info('Loaded progress from {0}.'.format(filename))
@@ -123,10 +126,19 @@ class Progress(object):
                 raise RuntimeError(
                     'Progress table has incompatible version {0}.'
                     .format(table.meta['VERSION']))
-            # We could check that the status column matches the exposure
-            # data here, and that exposure timestamps are ordered, etc,
-            # but this isn't necessary unless the table has been modified
-            # outside of this class.
+            # Check that the status column matches the current min_snr2.
+            snr2sum = table['snr2frac'].data.sum(axis=1)
+            if not np.all(snr2sum >= 0):
+                raise RuntimeError('Found invalid snr2frac values.')
+            status = np.ones_like(table['status'])
+            status[snr2sum == 0] = 0
+            status[snr2sum >= self.min_snr2] = 2
+            if not np.all(table['status'] == status):
+                self.log.warn('Updating status values for min(SNR2) = {0:.1f}.'
+                              .format(self.min_snr2))
+                table['status'] = status
+            # We could do more sanity checks here, but they shouldn't be
+            # necessary unless the table has been modified outside this class.
 
         # Initialize attributes from table data.
         self._table = table
@@ -140,6 +152,7 @@ class Progress(object):
         else:
             self._first_mjd = self._last_mjd = 0.
             self._last_tile = None
+
 
     @property
     def num_tiles(self):
@@ -354,7 +367,7 @@ class Progress(object):
         assert np.all(snr2sum >= 0)
         table['status'] = 1
         table['status'][snr2sum == 0] = 0
-        table['status'][snr2sum >= 1] = 2
+        table['status'][snr2sum >= self.min_snr2] = 2
         # Return a new progress object with this table.
         return Progress(restore=table)
 
@@ -420,7 +433,7 @@ class Progress(object):
         row['moonsep'][num_exp] = moonsep
 
         # Update this tile's status.
-        row['status'] = 1 if row['snr2frac'].sum() < 1 else 2
+        row['status'] = 1 if row['snr2frac'].sum() < self.min_snr2 else 2
 
     def get_exposures(self, start=None, stop=None,
                       tile_fields='tileid,pass,ra,dec',
