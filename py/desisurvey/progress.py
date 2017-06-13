@@ -184,7 +184,8 @@ class Progress(object):
 
         Completion is based on the sum of ``snr2frac`` values for all exposures
         of each tiles.  A completed tile (with ``status`` of 2) counts as one
-        towards the completion value, even if its ``snr2frac`` exceeds one.
+        towards the completion value, even if its ``snr2frac`` exceeds the
+        minimum required SNR**2 fraction.
 
         Can be combined with :meth:`copy_range` to reconstruct the number of
         completed observations over an arbitrary date range.
@@ -222,7 +223,7 @@ class Progress(object):
         # Calculate the total SNR**2 for each tile.
         snr2sum = table['snr2frac'].data.sum(axis=1)
         # Count fully completed tiles as 1.
-        completed = snr2sum >= 1.
+        completed = snr2sum >= self.min_snr2
         num_complete = float(np.count_nonzero(completed))
         if include_partial:
             # Add partial SNR**2 sums.

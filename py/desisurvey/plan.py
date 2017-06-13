@@ -127,12 +127,11 @@ def update(plan, progress=None, plot_basename=None):
     return plan
 
 
-def update_required(plan, progress=None):
+def update_required(plan, progress):
     """Test if all active tiles in any group are complete.
     """
     answer = False
     log = desiutil.log.get_logger()
-    progress = desisurvey.progress.Progress(restore=progress)
     # Match plan tiles to the progress table.
     idx = np.searchsorted(plan['tileid'], progress._table['tileid'])
     assert np.all(progress._table['tileid'][idx] == plan['tileid'])
@@ -141,12 +140,14 @@ def update_required(plan, progress=None):
     for group in np.unique(plan['group']):
         # Find active tiles in this group.
         sel = (plan['group'] == group) & plan['active']
-        pri = np.unique(plan['priority'][sel])
-        assert len(pri) == 1
-        nsel = np.count_nonzero(sel)
-        log.info('Group {0} Priority {1} has {2} tile(s) remaining.'
-                 .format(group, pri[0], nsel))
-        if nsel == 0:
+        priority = np.unique(plan['priority'][sel])
+        if len(priority) != 1:
+            raise RuntimeError('Found mixed priorities {0} for group {1}'
+                               .format(priority, group))
+        nremaining = np.count_nonzero(sel & incomplete)
+        log.info('Group {0} Priority {1} has {2:4d} tile(s) remaining.'
+                 .format(group, priority[0], nremaining))
+        if nremaining == 0:
             answer = True
     return answer
 
