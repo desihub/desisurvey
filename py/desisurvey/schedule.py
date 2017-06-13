@@ -1,4 +1,4 @@
-"""Plan future DESI observations.
+"""Schedule future DESI observations.
 """
 from __future__ import print_function, division
 
@@ -19,16 +19,16 @@ import desisurvey.utils
 import desisurvey.etc
 
 
-class Planner(object):
-    """Initialize a survey planner from a FITS file.
+class Scheduler(object):
+    """Initialize a survey scheduler from a FITS file.
 
     Parameters
     ----------
     name : str
-        Name of the planner file to load.  Relative paths refer to
+        Name of the scheduler file to load.  Relative paths refer to
         our config output path.
     """
-    def __init__(self, name='planner.fits'):
+    def __init__(self, name='scheduler.fits'):
 
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
@@ -525,7 +525,7 @@ import desisurvey.ephemerides
 
 
 def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
-               healpix_nside=16, output_name='planner.fits'):
+               healpix_nside=16, output_name='scheduler.fits'):
     """Calculate exposure-time factors over a grid of times and pointings.
 
     Takes about 9 minutes to run and writes a 1.3Gb output file with the

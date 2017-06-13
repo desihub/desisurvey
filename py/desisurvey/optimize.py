@@ -364,8 +364,8 @@ class Optimizer(object):
 if __name__ == '__main__':
     """This should eventually be made into a first-class script entry point.
     """
-    import desisurvey.plan
-    planner = desisurvey.plan.Planner()
-    opt = Optimizer(planner, 'GRAY')
+    import desisurvey.schedule
+    scheduler = desisurvey.schedule.Scheduler()
+    opt = Optimizer(scheduler, 'GRAY')
     for i in range(10):
         opt.improve(frac=0.25, verbose=True)
