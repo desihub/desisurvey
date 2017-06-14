@@ -67,20 +67,20 @@ def create(planner=baseline):
 
     group, priority = planner(tiles)
 
-    table = astropy.table.Table()
-    table['tileid'] = tiles['TILEID']
-    table['ra'] = tiles['RA']
-    table['dec'] = tiles['DEC']
-    table['pass'] = tiles['PASS']
-    table['group'] = group
-    table['priority'] = priority
-    table['active'] = np.zeros(len(tiles), bool)
-    table['hourangle'] = np.zeros(len(tiles))
-    return table
+    plan = astropy.table.Table()
+    plan['tileid'] = tiles['TILEID']
+    plan['ra'] = tiles['RA']
+    plan['dec'] = tiles['DEC']
+    plan['pass'] = tiles['PASS']
+    plan['group'] = group
+    plan['priority'] = priority
+    plan['active'] = np.zeros(len(tiles), bool)
+    plan['hourangle'] = np.zeros(len(tiles))
+    return plan
 
 
-def update(plan, progress=None, plot_basename=None):
-    """Identify the active tiles and update their hour angle assignments.
+def update_active(plan, progress):
+    """Identify the active tiles given the survey progress so far.
     """
     log = desiutil.log.get_logger()
     progress = desisurvey.progress.Progress(restore=progress)
@@ -102,19 +102,30 @@ def update(plan, progress=None, plot_basename=None):
                 active[psel] = True
                 break
     plan['active'] = active
-    # Calculate active-tile HA assignments separately each program.
+    return plan
+
+
+def get_optimizer(plan, scheduler, program, init='info'):
+    """Return an optimizer for all tiles in the specified program.
+    """
+    program_passes = dict(DARK=(0, 3), GRAY=(4, 4), BRIGHT=(5, 7))
+    passes = program_passes[program]
     passnum = plan['pass']
-    program_passes = ((0, 3), (4, 4), (5, 7))
-    scheduler = desisurvey.schedule.Scheduler()
-    for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
-        passes = program_passes[i]
-        sel = active & (passnum >= passes[0]) & (passnum <= passes[1])
-        log.info('Optimizing {0} active {1} tiles.'
-                 .format(np.count_nonzero(sel), program))
-        popt = desisurvey.optimize.Optimizer(
-            scheduler, program, plan['tileid'][sel], init='info')
-        assert np.all(popt.tid == plan['tileid'][sel])
-        ##return popt
+    sel = plan['active'] & (passnum >= passes[0]) & (passnum <= passes[1])
+    print('Optimizing {0} active {1} tiles.'
+          .format(np.count_nonzero(sel), program))
+    popt = desisurvey.optimize.Optimizer(
+        scheduler, program, plan['tileid'][sel], init=init)
+    assert np.all(popt.tid == plan['tileid'][sel])
+    return popt
+
+
+def update(plan, progress, scheduler, plot_basename=None):
+    """Update the hour angle assignments in a plan based on survey progress.
+    """
+    plan = update_active(plan, progress)
+    for program in 'DARK', 'GRAY', 'BRIGHT':
+        popt = get_optimizer(plan, scheduler, program)
         for frac in (0.5,):
             for j in range(5000):
                 popt.improve(frac)
@@ -123,7 +134,6 @@ def update(plan, progress=None, plot_basename=None):
         if plot_basename is not None:
             popt.plot(save='{0}_{1}.png'.format(plot_basename, program))
         plan['hourangle'][sel] = popt.ha
-
     return plan
 
 
@@ -161,6 +171,10 @@ if __name__ == '__main__':
     - initial_plan_GRAY.png
     - initial_plan_BRIGHT.png
     """
+    plan = create()
     config = desisurvey.config.Configuration()
-    plan = update(create(), plot_basename=config.get_path('initial_plan'))
+    progress = desisurvey.progress.Progress()
+    scheduler = desisurvey.schedule.Scheduler()
+    plan = update(plan, progress, scheduler,
+                  plot_basename=config.get_path('initial_plan'))
     plan.write(config.get_path('initial_plan.fits'), overwrite=True)
