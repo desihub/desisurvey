@@ -129,6 +129,15 @@ class Optimizer(object):
         self.tid = p_tiles['tileid'].data
         self.ntiles = len(self.ra)
 
+        # Calculate the maximum |HA| in degrees allowed for each tile to stay
+        # above the survey minimum altitude (plus a 5 deg padding).
+        cosZ_min = np.cos(90 * u.deg - (config.min_altitude() + 5 * u.deg))
+        latitude = desisurvey.config.Configuration().location.latitude()
+        cosHA_min = (
+            (cosZ_min - np.sin(self.dec * u.deg) * np.sin(latitude)) /
+            (np.cos(self.dec * u.deg) * np.cos(latitude))).value
+        self.max_abs_ha = np.degrees(np.arccos(cosHA_min))
+
         # Calculate static dust exposure factors for each tile.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(p_tiles['EBV'])
 
@@ -165,6 +174,10 @@ class Optimizer(object):
             idx = np.searchsorted(info['TILEID'], self.tid)
             assert np.all(info['TILEID'][idx] == self.tid)
             self.ha = info['HA'][idx]
+            ha_clipped = np.clip(self.ha, -self.max_abs_ha, +self.max_abs_ha)
+            if not np.all(self.ha == ha_clipped):
+                print('Clipping info HA assignments to airmass limits.')
+                self.ha = ha_clipped
         elif init == 'flat':
             if center is None:
                 centers = np.arange(0, 360, 5)
@@ -184,6 +197,8 @@ class Optimizer(object):
                 ra = wrap(p_tiles['ra'].data, center)
                 tile_lst = np.interp(tile_cdf, lst_cdf, edges)
                 ha = np.fmod(tile_lst - ra, 360)
+                # Clip tiles to their airmass limits.
+                ha = np.clip(ha, -self.max_abs_ha, +self.max_abs_ha)
                 self.plan_tiles_os = self.get_plan(ha)
                 self.use_plan()
                 if  self.MSE_history[-1] < MSE_min:
@@ -402,7 +417,7 @@ class Optimizer(object):
             dha_sign = +1
         return idx, dha_sign
 
-    def improve(self, frac=1., clip=50., verbose=False):
+    def improve(self, frac=1., verbose=False):
         """Perform one iteration of improving the hour angle assignments.
 
         Each call will adjust the HA of a single tile with a magnitude |dHA|
@@ -414,8 +429,6 @@ class Optimizer(object):
             Mean fraction of an LST bin to adjust the selected tile's HA by.
             Actual HA adjustments are randomly distributed around this mean
             to smooth out adjustments.
-        clip : float
-            The calculated HA adjustment is clipped to [-clip,+clip] in degrees.
         verbose : bool
             Print verbose information about the algorithm progress.
         """
@@ -442,6 +455,11 @@ class Optimizer(object):
                 # Randomly select a direction to shift the next tile.
                 dha_sign = +1 if self.gen.uniform() > 0.5 else -1
 
+            # Do no move any tiles that are already at their |HA| limits.
+            dha = 360. / self.nbins * frac * dha_sign
+            veto = np.abs(self.ha + dha) >= self.max_abs_ha
+            sel[veto] = False
+            # Are there any tiles available to adjust?
             nsel = np.count_nonzero(sel)
             if nsel == 0:
                 print('No tiles available for {0} method.'.format(method))
@@ -455,7 +473,6 @@ class Optimizer(object):
                 sel = sel & (self.num_adjustments < np.max(nadj))
                 nsel = np.count_nonzero(sel)
             subset = np.where(sel)[0]
-            dha = 360. / self.nbins * frac * dha_sign
             # Calculate how the plan changes by moving each selected tile.
             scenario_os = self.get_plan(self.ha[subset] + dha, subset)
             scenario = scenario_os.reshape(
@@ -477,7 +494,8 @@ class Optimizer(object):
                 print('Moving tile {0} in bin {1} by dHA = {2:.3f}h'
                       .format(self.tid[itile], ibin, dha))
             # Update the plan.
-            self.ha[itile] = np.clip(self.ha[itile] + dha, -clip, +clip)
+            self.ha[itile] = self.ha[itile] + dha
+            assert np.abs(self.ha[itile]) < self.max_abs_ha[itile]
             self.plan_tiles_os[itile] = scenario_os[i]
             # No need to try additional methods.
             break
