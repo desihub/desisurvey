@@ -32,6 +32,12 @@ class Optimizer(object):
     subset : array or None
         An array of tile ID values to optimize within the specified program.
         Optimizes all tiles in the program if None.
+    start : date or None
+        Only consider available LST starting from this date.  Use the
+        nominal survey start date if None.
+    stop : date or None
+        Only consider available LST before this end date.  Use the nominal
+        survey stop date if None.
     nbins : int
         Number of LST histogram bins to use when calculating the optimization
         metrics.
@@ -60,13 +66,25 @@ class Optimizer(object):
         consider, in decreasing order, and the weight values determines their
         relative weight. The next bin to optimize is then selected at random.
     """
-    def __init__(self, sched, program='GRAY', subset=None, nbins=90,
-                 init='info', origin=-60, center=220, seed=123, oversampling=32,
-                 weights=[5, 4, 3, 2, 1]):
+    def __init__(self, sched, program, subset=None, start=None, stop=None,
+                 nbins=90, init='info', origin=-60, center=220, seed=123,
+                 oversampling=32, weights=[5, 4, 3, 2, 1]):
+
         config = desisurvey.config.Configuration()
         self.gen = np.random.RandomState(seed)
         self.cum_weights = np.asarray(weights, float).cumsum()
         self.cum_weights /= self.cum_weights[-1]
+
+        if start is None:
+            start = sched.start_date
+        else:
+            start = desisurvey.utils.get_date(start)
+        if stop is None:
+            stop = sched.stop_date
+        else:
+            stop = desisurvey.utils.get_date(stop)
+        if start >= stop:
+            raise ValueError('Expected start < stop.')
 
         # Calculate the time available in bins of LST for this program.
         e = sched.etable
@@ -76,6 +94,9 @@ class Optimizer(object):
         # Zero out nights during monsoon and full moon.
         sel[sched.calendar['monsoon']] = False
         sel[sched.calendar['fullmoon']] = False
+        # Zero out nights outside [start:stop].
+        sel[:(start - sched.start_date).days] = False
+        sel[(stop - sched.start_date).days:] = False
         # Accumulate times in hours over the full survey.
         dt = sched.step_size.to(u.hour).value
         wgt = dt * np.ones((sched.num_nights, sched.num_times))
@@ -295,6 +316,11 @@ class Optimizer(object):
         a useful independent check that the optimization is producing the
         desired results.
 
+        This metric is not well defined if any bin of the available LST
+        histogram is empty, which indicates that some tiles will not be
+        observable during the [start:stop] range being optimized.  In this case,
+        only bins with some available LST are included in the scale calculation.
+
         Parameters
         ----------
         plan_hist : array
@@ -305,7 +331,8 @@ class Optimizer(object):
         float
             Scale factor.
         """
-        return (plan_hist / self.lst_hist).max()
+        nonzero = self.lst_hist > 0
+        return (plan_hist[nonzero] / self.lst_hist[nonzero]).max()
 
     def use_plan(self):
         """Use the current oversampled plan and update internal arrays.

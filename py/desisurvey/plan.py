@@ -105,7 +105,7 @@ def update_active(plan, progress):
     return plan
 
 
-def get_optimizer(plan, scheduler, program, init='info'):
+def get_optimizer(plan, scheduler, program, start, stop, init='info'):
     """Return an optimizer for all tiles in the specified program.
     """
     program_passes = dict(DARK=(0, 3), GRAY=(4, 4), BRIGHT=(5, 7))
@@ -115,17 +115,23 @@ def get_optimizer(plan, scheduler, program, init='info'):
     print('Optimizing {0} active {1} tiles.'
           .format(np.count_nonzero(sel), program))
     popt = desisurvey.optimize.Optimizer(
-        scheduler, program, plan['tileid'][sel], init=init)
+        scheduler, program, plan['tileid'][sel], start, stop, init=init)
     assert np.all(popt.tid == plan['tileid'][sel])
     return popt
 
 
-def update(plan, progress, scheduler, plot_basename=None):
+def update(plan, progress, scheduler, duration=150*u.day, plot_basename=None):
     """Update the hour angle assignments in a plan based on survey progress.
     """
     plan = update_active(plan, progress)
+    # Use the date of the last observation for the start of the updated plan.
+    start = astropy.time.Time(progress.last_mjd + 1, format='mjd')
+    stop = start + duration
+    print('Updating plan for {0} to {1}'
+          .format(desisurvey.utils.get_date(start),
+                  desisurvey.utils.get_date(stop)))
     for program in 'DARK', 'GRAY', 'BRIGHT':
-        popt = get_optimizer(plan, scheduler, program)
+        popt = get_optimizer(plan, scheduler, program, start, stop)
         for frac in (0.5,):
             for j in range(5000):
                 popt.improve(frac)
