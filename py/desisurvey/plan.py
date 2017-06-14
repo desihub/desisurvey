@@ -120,13 +120,22 @@ def get_optimizer(plan, scheduler, program, start, stop, init='info'):
     return popt
 
 
-def update(plan, progress, scheduler, duration=150*u.day, plot_basename=None):
+def update(plan, progress, scheduler, duration=None, plot_basename=None):
     """Update the hour angle assignments in a plan based on survey progress.
     """
     plan = update_active(plan, progress)
-    # Use the date of the last observation for the start of the updated plan.
-    start = astropy.time.Time(progress.last_mjd + 1, format='mjd')
-    stop = start + duration
+    # Use the date of the last observation, if any, or the survey start
+    # for the start of the updated plan.
+    if progress.last_mjd > 0:
+        start = astropy.time.Time(progress.last_mjd + 1, format='mjd')
+    else:
+        print(scheduler.start_date)
+        start = desisurvey.utils.local_noon_on_date(scheduler.start_date)
+    # Use the specified duration or the remainder of the survey.
+    if duration is not None:
+        stop = start + duration if duration else None
+    else:
+        stop = desisurvey.utils.local_noon_on_date(scheduler.stop_date)
     print('Updating plan for {0} to {1}'
           .format(desisurvey.utils.get_date(start),
                   desisurvey.utils.get_date(stop)))
@@ -139,7 +148,7 @@ def update(plan, progress, scheduler, duration=150*u.day, plot_basename=None):
                 program, popt.nimprove, popt.nslow, popt.nstuck))
         if plot_basename is not None:
             popt.plot(save='{0}_{1}.png'.format(plot_basename, program))
-        plan['hourangle'][sel] = popt.ha
+        plan['hourangle'][popt.idx] = popt.ha
     return plan
 
 
@@ -171,16 +180,17 @@ def update_required(plan, progress):
 if __name__ == '__main__':
     """This should eventually be made into a first-class script entry point.
 
-    This takes a few minutes to run and writes four files to $DESISURVEY:
+    This takes ~4 minutes to run and writes four files to $DESISURVEY:
     - initial_plan.fits
     - initial_plan_DARK.png
     - initial_plan_GRAY.png
     - initial_plan_BRIGHT.png
     """
+    desisurvey.utils.freeze_iers()
     plan = create()
     config = desisurvey.config.Configuration()
     progress = desisurvey.progress.Progress()
     scheduler = desisurvey.schedule.Scheduler()
-    plan = update(plan, progress, scheduler,
+    plan = update(plan, progress, scheduler, duration=150*u.day,
                   plot_basename=config.get_path('initial_plan'))
     plan.write(config.get_path('initial_plan.fits'), overwrite=True)

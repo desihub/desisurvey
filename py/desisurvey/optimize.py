@@ -129,6 +129,10 @@ class Optimizer(object):
         self.tid = p_tiles['tileid'].data
         self.ntiles = len(self.ra)
 
+        # Initialize an index array for the selected tiles.
+        self.idx = np.searchsorted(sched.tiles['tileid'], self.tid)
+        assert(np.all(sched.tiles['tileid'][self.idx] == self.tid))
+
         # Calculate the maximum |HA| in degrees allowed for each tile to stay
         # above the survey minimum altitude (plus a 5 deg padding).
         cosZ_min = np.cos(90 * u.deg - (config.min_altitude() + 5 * u.deg))
