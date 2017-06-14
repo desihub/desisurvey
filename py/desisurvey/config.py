@@ -176,8 +176,8 @@ class Configuration(Node):
         with open(full_path) as f:
             Node.__init__(self, yaml.safe_load(f))
 
-        # Set the output path.
-        self.set_output_path(self.output_path())
+        # Output path is not set until it is first used.
+        self._output_path = None
 
 
     def set_output_path(self, output_path):
@@ -225,4 +225,6 @@ class Configuration(Node):
             Path name to use. Relative path names will have our output_path
             prepended.  Absolute path names will be unchanged.
         """
+        if self._output_path is None:
+            self.set_output_path(self.output_path())
         return os.path.join(self._output_path, name)
