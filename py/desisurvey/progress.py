@@ -2,6 +2,7 @@
 """
 from __future__ import print_function, division
 
+import os.path
 
 import numpy as np
 
@@ -115,10 +116,14 @@ class Progress(object):
             table['seeing'] = 0.
 
         else:
-            if isinstance(restore, astropy.table.Table):
+            if isinstance(restore, Progress):
+                table = restore._table
+            elif isinstance(restore, astropy.table.Table):
                 table = restore
             else:
                 filename = config.get_path(restore)
+                if not os.path.exists(filename):
+                    raise ValueError('Invalid restore: {0}.'.format(restore))
                 table = astropy.table.Table.read(filename)
                 self.log.info('Loaded progress from {0}.'.format(filename))
             # Check that this table has the current version.
