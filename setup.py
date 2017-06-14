@@ -65,7 +65,7 @@ setup (
     url='https://github.com/desihub/desisurvey',
     package_dir={'':'py'},
     packages=find_packages('py'),
-    scripts=[ fname for fname in glob.glob(os.path.join('bin', '*.py')) ],
+    scripts=[ fname for fname in glob.glob(os.path.join('bin', '*')) ],
     license='BSD',
     requires=['Python (>3.5.2)', ],
     use_2to3=False,
