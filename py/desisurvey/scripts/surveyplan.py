@@ -9,6 +9,7 @@ from __future__ import print_function, division, absolute_import
 import argparse
 import os.path
 import datetime
+import sys
 
 import astropy.time
 import astropy.table
@@ -109,6 +110,9 @@ def main(args):
     log.info('Planning observations for {0} to {1}.'
              .format(start, stop))
 
+    # Save a backup of the progress so far.
+    progress.save('progress_{0}.fits'.format(start))
+
     # Save plots?
     if args.plots:
         import matplotlib
@@ -122,9 +126,12 @@ def main(args):
         plan, progress, scheduler, start, stop,
         nopts=(args.nopts,), plot_basename=plots)
 
-    # Save the plan.
-    plan.write(config.get_path('plan.fits'), overwrite=True)
+    # All done?
+    if plan is None:
+        log.info('All tiles observed!')
+        # Return a shell exit code to allow scripts to detect this condition.
+        sys.exit(9)
 
-    # Make a backup of the plan and progress files with a start-date suffix.
+    # Save the plan and a backup.
+    plan.write(config.get_path('plan.fits'), overwrite=True)
     plan.write(config.get_path('plan_{0}.fits'.format(start)), overwrite=True)
-    progress.save('progress_{0}.fits'.format(start))

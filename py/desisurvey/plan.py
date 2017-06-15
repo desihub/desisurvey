@@ -123,6 +123,8 @@ def get_optimizer(plan, scheduler, program, start, stop, init):
 def update(plan, progress, scheduler, start, stop, init='info',
            nopts=(5000,), fracs=(0.5,), plot_basename=None):
     """Update the hour angle assignments in a plan based on survey progress.
+
+    Returns None if all tiles have been observed.
     """
     log = desiutil.log.get_logger()
     log.info('Updating plan for {0} to {1}'.format(start, stop))
@@ -130,6 +132,8 @@ def update(plan, progress, scheduler, start, stop, init='info',
         raise ValueError('Must have same lengths for nopts, fracs.')
     # Update the active-tile assignments.
     plan = update_active(plan, progress)
+    if np.count_nonzero(plan['active']) == 0:
+        return None
     # Specify HA assignments for the active tiles in each program.
     for program in 'DARK', 'GRAY', 'BRIGHT':
         popt = get_optimizer(plan, scheduler, program, start, stop, init)
