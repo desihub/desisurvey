@@ -505,7 +505,7 @@ class Scheduler(object):
             ).transform_to(astropy.coordinates.ICRS)
         alt = 90 * u.deg - self.tile_coords[best].separation(zenith)
         if alt < config.min_altitude():
-            self.log.info('Best tile has altitude {0}.'.format(alt))
+            self.log.debug('Best tile has altitude {0:.1f}.'.format(alt))
             return None
         # Prepare the dictionary to return.
         target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
