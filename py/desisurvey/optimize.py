@@ -555,18 +555,22 @@ class Optimizer(object):
         rhs = ax[1].twinx()
         rhs.plot(self.scale_history, 'kx', ms=5, label='Scale')
         rhs.legend(loc='upper right', numpoints=1)
-        ax[1].set_xlim(0, len(self.MSE_history))
+        ax[1].set_xlim(-0.1, len(self.MSE_history) - 0.9)
         ax[1].set_xlabel('Iterations')
 
-        ax[2].hist(self.ha, bins=50)
+        ax[2].hist(self.ha, bins=50, histtype='stepfilled')
         ax[2].set_xlabel('Tile Design Hour Angle [deg]')
 
         s = ax[3].scatter(self.ra, self.dec, c=self.ha - self.ha_initial,
                           s=12, lw=0, cmap='jet')
         ax[3].set_xlim(self.lst_edges[0] - 5, self.lst_edges[-1] + 5)
         ax[3].set_xticks([])
+        ax[3].set_xlabel('Tile Hour Angle Adjustments [deg]')
         ax[3].set_ylim(-20, 80)
-        plt.colorbar(s, ax=ax[3], orientation='horizontal', pad=0.01)
+        ax[3].set_yticks([])
+        cbar = plt.colorbar(s, ax=ax[3], orientation='vertical',
+                            fraction=0.05, pad=0.01, format='%.1f')
+        cbar.ax.tick_params(labelsize=9)
         plt.tight_layout()
         if save:
             plt.savefig(save)
