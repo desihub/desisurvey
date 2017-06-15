@@ -37,6 +37,9 @@ def parse(options=None):
         '--duration', type=int, metavar='DAYS', default=None,
         help='duration of plan in days (or plan rest of the survey)')
     parser.add_argument(
+        '--nopts', type=int, metavar='N', default=5000,
+        help='number of hour-angle optimization iterations to perform')
+    parser.add_argument(
         '--plots', action='store_true',
         help='save diagnostic plots of the plan optimzation for each program')
     parser.add_argument(
@@ -98,7 +101,10 @@ def main(args):
         start = desisurvey.utils.get_date(progress.last_mjd + 1)
     else:
         start = scheduler.start_date
-    stop = start + datetime.timedelta(days=args.duration)
+    if args.duration is not None:
+        stop = start + datetime.timedelta(days=args.duration)
+    else:
+        stop = config.last_day()
 
     log.info('Planning observations for {0} to {1}.'
              .format(start, stop))
@@ -113,7 +119,8 @@ def main(args):
 
     # Update the plan.
     plan = desisurvey.plan.update(
-        plan, progress, scheduler, start, stop, plot_basename=plots)
+        plan, progress, scheduler, start, stop,
+        nopts=(args.nopts,), plot_basename=plots)
 
     # Save the plan.
     plan.write(config.get_path('plan.fits'), overwrite=True)

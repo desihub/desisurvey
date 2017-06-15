@@ -105,7 +105,7 @@ def update_active(plan, progress):
     return plan
 
 
-def get_optimizer(plan, scheduler, program, start, stop, init='info'):
+def get_optimizer(plan, scheduler, program, start, stop, init):
     """Return an optimizer for all tiles in the specified program.
     """
     program_passes = dict(DARK=(0, 3), GRAY=(4, 4), BRIGHT=(5, 7))
@@ -120,19 +120,22 @@ def get_optimizer(plan, scheduler, program, start, stop, init='info'):
     return popt
 
 
-def update(plan, progress, scheduler, start, stop, plot_basename=None):
+def update(plan, progress, scheduler, start, stop, init='info',
+           nopts=(5000,), fracs=(0.5,), plot_basename=None):
     """Update the hour angle assignments in a plan based on survey progress.
     """
-    plan = update_active(plan, progress)
     log = desiutil.log.get_logger()
     log.info('Updating plan for {0} to {1}'.format(start, stop))
+    if len(nopts) != len(fracs):
+        raise ValueError('Must have same lengths for nopts, fracs.')
+    # Update the active-tile assignments.
+    plan = update_active(plan, progress)
+    # Specify HA assignments for the active tiles in each program.
     for program in 'DARK', 'GRAY', 'BRIGHT':
-        popt = get_optimizer(plan, scheduler, program, start, stop)
-        for frac in (0.5,):
-            for j in range(5000):
+        popt = get_optimizer(plan, scheduler, program, start, stop, init)
+        for nopt, frac in zip(nopts, fracs):
+            for j in range(nopt):
                 popt.improve(frac)
-        log.debug('{0} optimize stats: {1}, {2}, {3}'
-                  .format(program, popt.nimprove, popt.nslow, popt.nstuck))
         if plot_basename is not None:
             popt.plot(save='{0}_{1}.png'.format(plot_basename, program))
         plan['hourangle'][popt.idx] = popt.ha
