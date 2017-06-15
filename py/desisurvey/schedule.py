@@ -482,8 +482,8 @@ class Scheduler(object):
         if plot:
             self.plot_scores(when, cutoff, score, mask, ephem0, prev)
         if np.max(score) <= 0:
-            self.log.info('Found max score {0} at {1}.'
-                          .format(np.max(score), when.datetime))
+            self.log.debug('Found max score {0} at {1}.'
+                           .format(np.max(score), when.datetime))
             return None
         # Pick the tile with the highest score.
         best = np.argmax(score)
@@ -495,7 +495,7 @@ class Scheduler(object):
             ra=ephem['moon_ra'] * u.deg, dec=ephem['moon_dec'] * u.deg)
         moon_sep = self.tile_coords[best].separation(moon).to(u.deg)
         if ephem['moon_alt'] > 0 and moon_sep < config.avoid_bodies.moon():
-            self.log.info('Best tile has moon_sep {0}.'.format(moon_sep))
+            self.log.debug('Best tile has moon_sep {0}.'.format(moon_sep))
             return None
         # Should also check planet separation vetos here
         # ...

@@ -10,6 +10,8 @@ import scipy.special
 import astropy.table
 import astropy.units as u
 
+import desiutil.log
+
 import desisurvey.config
 
 
@@ -70,6 +72,7 @@ class Optimizer(object):
                  nbins=90, init='info', origin=-60, center=220, seed=123,
                  oversampling=32, weights=[5, 4, 3, 2, 1]):
 
+        self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         self.gen = np.random.RandomState(seed)
         self.cum_weights = np.asarray(weights, float).cumsum()
@@ -145,8 +148,9 @@ class Optimizer(object):
         # Calculate static dust exposure factors for each tile.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(p_tiles['EBV'])
 
-        print('{0} program: {1:.1f}h to observe {2} tiles (texp_nom {3:.1f}).'
-              .format(program, self.lst_hist.sum(), len(p_tiles), texp_nom))
+        self.log.info(
+            '{0} program: {1:.1f}h to observe {2} tiles (texp_nom {3:.1f}).'
+            .format(program, self.lst_hist.sum(), len(p_tiles), texp_nom))
 
         # Precompute coefficients for exposure time calculations.
         latitude = np.radians(config.location.latitude())
@@ -180,7 +184,7 @@ class Optimizer(object):
             self.ha = info['HA'][idx]
             ha_clipped = np.clip(self.ha, -self.max_abs_ha, +self.max_abs_ha)
             if not np.all(self.ha == ha_clipped):
-                print('Clipping info HA assignments to airmass limits.')
+                self.log.warn('Clipping info HA assignments to airmass limits.')
                 self.ha = ha_clipped
         elif init == 'flat':
             if center is None:
@@ -421,7 +425,7 @@ class Optimizer(object):
             dha_sign = +1
         return idx, dha_sign
 
-    def improve(self, frac=1., verbose=False):
+    def improve(self, frac=1.):
         """Perform one iteration of improving the hour angle assignments.
 
         Each call will adjust the HA of a single tile with a magnitude |dHA|
@@ -433,8 +437,6 @@ class Optimizer(object):
             Mean fraction of an LST bin to adjust the selected tile's HA by.
             Actual HA adjustments are randomly distributed around this mean
             to smooth out adjustments.
-        verbose : bool
-            Print verbose information about the algorithm progress.
         """
         # Randomly perturb the size of the HA adjustment.  This adds some
         # noise but also makes it possible to get out of dead ends.
@@ -466,7 +468,8 @@ class Optimizer(object):
             # Are there any tiles available to adjust?
             nsel = np.count_nonzero(sel)
             if nsel == 0:
-                print('No tiles available for {0} method.'.format(method))
+                self.log.debug('No tiles available for {0} method.'
+                               .format(method))
                 continue
             # How many times have these tiles already been adjusted?
             nadj = self.num_adjustments[sel]
@@ -494,9 +497,9 @@ class Optimizer(object):
             # Accept the tile that gives the smallest MSE.
             itile = subset[i]
             self.num_adjustments[itile] += 1
-            if verbose:
-                print('Moving tile {0} in bin {1} by dHA = {2:.3f}h'
-                      .format(self.tid[itile], ibin, dha))
+            self.log.debug(
+                'Moving tile {0} in bin {1} by dHA = {2:.3f}h'
+                .format(self.tid[itile], ibin, dha))
             # Update the plan.
             self.ha[itile] = self.ha[itile] + dha
             assert np.abs(self.ha[itile]) < self.max_abs_ha[itile]
