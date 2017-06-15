@@ -567,7 +567,8 @@ class Optimizer(object):
         plt.tight_layout()
         if save:
             plt.savefig(save)
-        plt.show()
+        else:
+            plt.show()
 
 
 if __name__ == '__main__':

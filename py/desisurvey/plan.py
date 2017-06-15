@@ -120,32 +120,19 @@ def get_optimizer(plan, scheduler, program, start, stop, init='info'):
     return popt
 
 
-def update(plan, progress, scheduler, duration=None, plot_basename=None):
+def update(plan, progress, scheduler, start, stop, plot_basename=None):
     """Update the hour angle assignments in a plan based on survey progress.
     """
     plan = update_active(plan, progress)
-    # Use the date of the last observation, if any, or the survey start
-    # for the start of the updated plan.
-    if progress.last_mjd > 0:
-        start = astropy.time.Time(progress.last_mjd + 1, format='mjd')
-    else:
-        print(scheduler.start_date)
-        start = desisurvey.utils.local_noon_on_date(scheduler.start_date)
-    # Use the specified duration or the remainder of the survey.
-    if duration is not None:
-        stop = start + duration if duration else None
-    else:
-        stop = desisurvey.utils.local_noon_on_date(scheduler.stop_date)
-    print('Updating plan for {0} to {1}'
-          .format(desisurvey.utils.get_date(start),
-                  desisurvey.utils.get_date(stop)))
+    log = desiutil.log.get_logger()
+    log.info('Updating plan for {0} to {1}'.format(start, stop))
     for program in 'DARK', 'GRAY', 'BRIGHT':
         popt = get_optimizer(plan, scheduler, program, start, stop)
         for frac in (0.5,):
             for j in range(5000):
                 popt.improve(frac)
-        print('{0}: {1}, {2}, {3}'.format(
-                program, popt.nimprove, popt.nslow, popt.nstuck))
+        log.debug('{0} optimize stats: {1}, {2}, {3}'
+                  .format(program, popt.nimprove, popt.nslow, popt.nstuck))
         if plot_basename is not None:
             popt.plot(save='{0}_{1}.png'.format(plot_basename, program))
         plan['hourangle'][popt.idx] = popt.ha

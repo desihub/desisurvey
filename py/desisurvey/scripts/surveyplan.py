@@ -7,6 +7,11 @@ command search path.
 from __future__ import print_function, division, absolute_import
 
 import argparse
+import os.path
+import datetime
+
+import astropy.time
+import astropy.table
 
 import desiutil.log
 
@@ -31,6 +36,9 @@ def parse(options=None):
     parser.add_argument(
         '--duration', type=int, metavar='DAYS', default=None,
         help='duration of plan in days (or plan rest of the survey)')
+    parser.add_argument(
+        '--plots', action='store_true',
+        help='save diagnostic plots of the plan optimzation for each program')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
@@ -62,3 +70,54 @@ def main(args):
     config = desisurvey.config.Configuration()
     if args.output_path is not None:
         config.set_output_path(args.output_path)
+
+    # Tabulate emphemerides if necessary.
+    ephem = desisurvey.ephemerides.Ephemerides()
+
+    if not os.path.exists(config.get_path('scheduler.fits')):
+        # Tabulate data used the the scheduler.
+        desisurvey.schedule.initialize(ephem)
+    scheduler = desisurvey.schedule.Scheduler()
+
+    if args.create:
+        # Create a new plan and empty progress record.
+        plan = desisurvey.plan.create()
+        progress = desisurvey.progress.Progress()
+    else:
+        # Load an existing plan and progress record.
+        if not os.path.exists(config.get_path('plan.fits')):
+            log.error('No plan.fits found in output path.')
+            return -1
+        if not os.path.exists(config.get_path('progress.fits')):
+            log.error('No progress.fits found in output path.')
+            return -1
+        plan = astropy.table.Table.read(config.get_path('plan.fits'))
+        progress = desisurvey.progress.Progress('progress.fits')
+
+    if progress.last_mjd > 0:
+        start = desisurvey.utils.get_date(progress.last_mjd + 1)
+    else:
+        start = scheduler.start_date
+    stop = start + datetime.timedelta(days=args.duration)
+
+    log.info('Planning observations for {0} to {1}.'
+             .format(start, stop))
+
+    # Save plots?
+    if args.plots:
+        import matplotlib
+        matplotlib.use('Agg')
+        plots = config.get_path('plan_{0}'.format(start))
+    else:
+        plots = None
+
+    # Update the plan.
+    plan = desisurvey.plan.update(
+        plan, progress, scheduler, start, stop, plot_basename=plots)
+
+    # Save the plan.
+    plan.write(config.get_path('plan.fits'), overwrite=True)
+
+    # Make a backup of the plan and progress files with a start-date suffix.
+    plan.write(config.get_path('plan_{0}.fits'.format(start)), overwrite=True)
+    progress.save('progress_{0}.fits'.format(start))
