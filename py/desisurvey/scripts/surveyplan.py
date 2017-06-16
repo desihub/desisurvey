@@ -87,6 +87,8 @@ def main(args):
         # Create a new plan and empty progress record.
         plan = desisurvey.plan.create()
         progress = desisurvey.progress.Progress()
+        # Start the survey from scratch.
+        start = scheduler.start_date
     else:
         # Load an existing plan and progress record.
         if not os.path.exists(config.get_path('plan.fits')):
@@ -97,11 +99,19 @@ def main(args):
             return -1
         plan = astropy.table.Table.read(config.get_path('plan.fits'))
         progress = desisurvey.progress.Progress('progress.fits')
+        # Start the new plan from the last observing date.
+        with open(config.get_path('last_date.txt'), 'r') as f:
+            start = desisurvey.utils.get_date(f.read().rstrip())
 
-    if progress.last_mjd > 0:
-        start = desisurvey.utils.get_date(progress.last_mjd + 1)
-    else:
-        start = scheduler.start_date
+    # Save a backup of the progress so far.
+    progress.save('progress_{0}.fits'.format(start))
+
+    # Reached end of the survey?
+    if start >= config.last_day():
+        log.info('Reached survey end date!')
+        sys.exit(9)
+
+    # Calculate the end date of the plan.
     if args.duration is not None:
         stop = start + datetime.timedelta(days=args.duration)
     else:
@@ -109,9 +119,6 @@ def main(args):
 
     log.info('Planning observations for {0} to {1}.'
              .format(start, stop))
-
-    # Save a backup of the progress so far.
-    progress.save('progress_{0}.fits'.format(start))
 
     # Save plots?
     if args.plots:

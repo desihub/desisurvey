@@ -159,6 +159,9 @@ def update_required(plan, progress):
     for group in np.unique(plan['group']):
         # Find active tiles in this group.
         sel = (plan['group'] == group) & plan['active']
+        if np.count_nonzero(sel) == 0:
+            log.info('Group {0} is complete.'.format(group))
+            continue
         priority = np.unique(plan['priority'][sel])
         if len(priority) != 1:
             raise RuntimeError('Found mixed priorities {0} for group {1}'
