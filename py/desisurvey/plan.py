@@ -2,9 +2,14 @@
 """
 from __future__ import print_function, division
 
+import os
+
+import yaml
+
 import numpy as np
 
 import astropy.table
+import astropy.utils.data
 import astropy.units as u
 
 import desiutil.log
@@ -15,6 +20,71 @@ import desisurvey.config
 import desisurvey.optimize
 import desisurvey.progress
 import desisurvey.schedule
+
+
+def get_groups(file_name='plan.yaml'):
+    """Read group definitions from the specified YAML file.
+    """
+    # Load the table of tiles in the DESI footprint.
+    tiles = astropy.table.Table(
+        desimodel.io.load_tiles(onlydesi=True, extra=False))
+    num_tiles = len(tiles)
+    passnum = tiles['PASS']
+    dec = tiles['DEC']
+    NGC = (tiles['RA'] > 75.0) & (tiles['RA'] < 300.0)
+    SGC = ~NGC
+
+    # Get the full path of the YAML file to read.
+    if os.path.isabs(file_name):
+        full_path = file_name
+    else:
+        # Locate the config file in our package data/ directory.
+        full_path = astropy.utils.data._find_pkg_data_path(
+            os.path.join('data', file_name))
+
+    # Read the YAML file.
+    with open(full_path) as f:
+        config = yaml.safe_load(f)
+
+    group_names = []
+    group_ids = np.zeros(num_tiles, int)
+    for group_name in config['groups']:
+        group_sel = np.ones(num_tiles, bool)
+        node = config['groups'][group_name]
+        cap = node.get('cap')
+        if cap == 'N':
+            group_sel[~SGC] = False
+        elif cap == 'S':
+            group_sel[~NGC] = False
+        dec_min = node.get('dec_min')
+        if dec_min is not None:
+            group_sel[dec < float(dec_min)] = False
+        dec_max = node.get('dec_max')
+        if dec_max is not None:
+            group_sel[dec >= float(dec_max)] = False
+        passes = node.get('passes')
+        if passes is None:
+            raise RuntimeError(
+                'Missing required passes for {0}.'.format(group_name))
+        passes = [int(p) for p in str(passes).split(',')]
+        for p in passes:
+            group_names.append('{0}[{1:d}]'.format(group_name, p))
+            group_id = len(group_names)
+            pass_sel = group_sel & (passnum == p)
+            if np.any(group_ids[pass_sel] != 0):
+                other_id = np.unique(group_ids[pass_sel])[-1]
+                raise RuntimeError(
+                    'Some tiles assigned to multiple groups: {0}, {1}.'
+                    .format(group_names[other_id - 1], group_names[-1]))
+            group_ids[pass_sel] = group_id
+            print(group_id, group_names[-1], np.count_nonzero(pass_sel))
+    # Check that all tiles are assigned to exactly one group.
+    if np.any(group_ids == 0):
+        orphans = (group_ids == 0)
+        passes = ','.join([str(s) for s in np.unique(passnum[orphans])])
+        raise RuntimeError('{0} tiles in passes {1} not assigned to any group.'
+                           .format(np.count_nonzero(orphans), passes))
+    return group_names, group_ids
 
 
 def baseline(tiles):
@@ -175,19 +245,4 @@ def update_required(plan, progress):
 
 
 if __name__ == '__main__':
-    """This should eventually be made into a first-class script entry point.
-
-    This takes ~4 minutes to run and writes four files to $DESISURVEY:
-    - initial_plan.fits
-    - initial_plan_DARK.png
-    - initial_plan_GRAY.png
-    - initial_plan_BRIGHT.png
-    """
-    desisurvey.utils.freeze_iers()
-    plan = create()
-    config = desisurvey.config.Configuration()
-    progress = desisurvey.progress.Progress()
-    scheduler = desisurvey.schedule.Scheduler()
-    plan = update(plan, progress, scheduler, duration=150*u.day,
-                  plot_basename=config.get_path('initial_plan'))
-    plan.write(config.get_path('initial_plan.fits'), overwrite=True)
+    get_groups()

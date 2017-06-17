@@ -1,0 +1,41 @@
+#-------------------------------------------------------------------
+# Definition of tile groups that are separately scheduled
+# and prioritized. All tiles in the footprint must be assigned
+# to exactly one group.
+#-------------------------------------------------------------------
+
+groups:
+    N16:
+        cap: N
+        dec_min: 12
+        dec_max: 28
+        passes: 0,4,5
+    N16LO:
+        cap: N
+        dec_max: 12
+        passes: 0,4,5
+    N16HI:
+        cap: N
+        dec_min: 28
+        passes: 0,4,5
+    N10:
+        cap: N
+        dec_min: 15
+        dec_max: 25
+        passes: 1,2,3,6,7
+    N10LO:
+        cap: N
+        dec_max: 15
+        passes: 1,2,3,6,7
+    N10HI:
+        cap: N
+        dec_min: 25
+        passes: 1,2,3,6,7
+    SLO:
+        cap: S
+        dec_max: 5
+        passes: 0,1,2,3,4,5,6,7
+    SHI:
+        cap: S
+        dec_min: 5
+        passes: 0,1,2,3,4,5,6,7
