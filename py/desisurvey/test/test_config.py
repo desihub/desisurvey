@@ -136,8 +136,9 @@ class TestConfig(unittest.TestCase):
         with open(bad, 'w') as f:
             f.write('output_path: _non_existent_\n')
         Configuration.reset()
+        c = Configuration(bad)
         with self.assertRaises(ValueError):
-            c = Configuration(bad)
+            c.get_path('blah')
 
     def test_dict_key_type(self):
         """Dictionary keys must be valid python identifiers"""

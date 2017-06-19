@@ -2,716 +2,314 @@
 """
 from __future__ import print_function, division
 
-import datetime
+import os
+import re
+
+import yaml
 
 import numpy as np
 
-import astropy.io.fits
 import astropy.table
-import astropy.time
-import astropy.coordinates
+import astropy.utils.data
 import astropy.units as u
 
 import desiutil.log
 
+import desimodel.io
+
 import desisurvey.config
-import desisurvey.utils
-import desisurvey.etc
+import desisurvey.optimize
+import desisurvey.progress
+import desisurvey.schedule
 
 
 class Planner(object):
-    """Initialize a survey planner from a FITS file.
+    """Load an observing plan from the specified file.
 
-    Parameters
-    ----------
-    name : str
-        Name of the planner file to load.  Relative paths refer to
-        our config output path.
+    Read tile group definitions and observing rules from the specified
+    YAML file.
     """
-    def __init__(self, name='planner.fits'):
+    def __init__(self, file_name='plan.yaml', restore=None):
+        # Load the table of tiles in the DESI footprint.
+        tiles = astropy.table.Table(
+            desimodel.io.load_tiles(onlydesi=True, extra=False))
+        num_tiles = len(tiles)
+        passnum = tiles['PASS']
+        dec = tiles['DEC']
+        NGC = (tiles['RA'] > 75.0) & (tiles['RA'] < 300.0)
+        SGC = ~NGC
 
-        self.log = desiutil.log.get_logger()
-        config = desisurvey.config.Configuration()
-        output_file = config.get_path(name)
+        # Initialize regexp for parsing "GROUP_NAME(PASS)"
+        parser = re.compile('([^\(]+)\(([0-7])\)$')
 
-        hdus = astropy.io.fits.open(output_file)
-        header = hdus[0].header
-        self.start_date = desisurvey.utils.get_date(header['START'])
-        self.stop_date = desisurvey.utils.get_date(header['STOP'])
-        self.num_nights = (self.stop_date - self.start_date).days
-        self.nside = header['NSIDE']
-        self.step_size = header['STEP'] * u.min
-        self.npix = 12 * self.nside ** 2
-        self.pix_area = 360. ** 2 / np.pi / self.npix * u.deg ** 2
-
-        self.tiles = astropy.table.Table.read(output_file, hdu='TILES')
-        self.tile_coords = astropy.coordinates.ICRS(
-            ra=self.tiles['ra'] * u.deg, dec=self.tiles['dec'] * u.deg)
-
-        self.calendar = astropy.table.Table.read(output_file, hdu='CALENDAR')
-        self.etable = astropy.table.Table.read(output_file, hdu='EPHEM')
-
-        self.t_edges = hdus['GRID'].data
-        self.t_centers = 0.5 * (self.t_edges[1:] + self.t_edges[:-1])
-        self.num_times = len(self.t_centers)
-
-        static = astropy.table.Table.read(output_file, hdu='STATIC')
-        self.footprint_pixels = static['pixel'].data
-        self.footprint = np.zeros(self.npix, bool)
-        self.footprint[self.footprint_pixels] = True
-        self.footprint_area = len(self.footprint_pixels) * self.pix_area
-        self.fdust = static['dust'].data
-        self.pixel_ra = static['ra'].data
-        self.pixel_dec = static['dec'].data
-
-        self.fexp = hdus['DYNAMIC'].data
-        assert self.fexp.shape == (
-            self.num_nights * self.num_times, len(self.footprint_pixels))
-
-    def index_of_time(self, when):
-        """Calculate the temporal bin index of the specified time.
-
-        Parameters
-        ----------
-        when : astropy.time.Time
-
-        Returns
-        -------
-        int
-            Index of the temporal bin that ``when`` falls into.
-        """
-        # Look up the night number for this time.
-        night = desisurvey.utils.get_date(when)
-        i = (night - self.start_date).days
-        if i < 0 or i >= self.num_nights:
-            raise ValueError('Time out of range: {0} - {1}.'
-                             .format(self.start_date, self.stop_date))
-        # Find the time relative to local midnight in days.
-        dt = when.mjd - desisurvey.utils.local_noon_on_date(night).mjd - 0.5
-        # Lookup the corresponding time index offset for this night.
-        j = np.digitize(dt, self.t_edges) - 1
-        if j < 0 or j >= self.num_times:
-            raise ValueError('Time is not during the night.')
-        # Combine the night and time indices.
-        return i * self.num_times + j
-
-    def time_of_index(self, ij):
-        """Calculate the time at the center of the specified temporal bin.
-
-        Parameters
-        ----------
-        ij : int
-            Index of a temporal bin.
-
-        Returns
-        -------
-        astropy.time.Time
-            Time at the center of the specified temporal bin.
-        """
-        if ij < 0 or ij >= self.num_nights * self.num_times:
-            raise ValueError('Time index out of range.')
-        i = ij // self.num_times
-        j = ij % self.num_times
-        night = self.start_date + datetime.timedelta(days=i)
-        mjd = desisurvey.utils.local_noon_on_date(
-            night).mjd + 0.5 + self.t_centers[j]
-        return astropy.time.Time(mjd, format='mjd')
-
-    def index_of_tile(self, tile_id):
-        """Calculate the spatial bin index of the specified tile.
-
-        Parameters
-        ----------
-        tile_id : int
-            Tile identifier in the DESI footprint.
-
-        Returns
-        -------
-        int
-            Index of the spatial bin that ``tile_id`` falls into.
-        """
-        sel = np.where(self.tiles['tileid'] == tile_id)[0]
-        if len(sel) == 0:
-            raise ValueError('Invalid tile_id: {0}.'.format(tile_id))
-        assert len(sel) == 1
-        return self.tiles['map'][sel[0]]
-
-    def instantaneous_efficiency(self, when, cutoff, seeing, transparency,
-                                 progress, mask=None):
-        """Calculate the instantaneous efficiency of all tiles.
-
-        Calculated as ``texp / (texp + toh) * eff`` where the exposure time
-        ``texp`` accounts for the tile's remaining SNR**2 and the current
-        exposure-time factors, and the ovhead time ``toh`` accounts for
-        readout, slew, focus and cosmic splits.
-
-        Parameters
-        ----------
-        when : astropy.time.Time
-            Time for which the efficiency should be calculated.
-        cutoff : astropy.time.Time
-            Time by which observing must stop tonight.  Any exposure expected
-            to last beyond this cutoff will be assigned an instantaneous
-            efficiency of zero.
-        seeing : float or array
-            FWHM seeing value in arcseconds.
-        transparency : float or array
-            Dimensionless transparency value in the range [0-1].
-        progress : desisurvey.progress.Progress
-            Record of observations made so far.  Will not be modified by
-            calling this method.
-        mask : array or None
-            Boolean mask array specifying which tiles to consider. Use all
-            tiles if None.
-
-        Returns
-        -------
-        tuple
-            Tuple of arrays (ieff, toh) where ieff are the instantaneous
-            efficiences for each tile and toh are the corresponding initial
-            overhead times, without any cosmic-ray splits.
-        """
-        config = desisurvey.config.Configuration()
-
-        # Select the time slice to use.
-        fexp = self.fexp[self.index_of_time(when)].copy()
-
-        # Apply dust extinction.
-        fexp *= self.fdust
-
-        # Allocate arrays.
-        ntiles = len(self.tiles)
-        tnom = np.empty(ntiles)
-        texp = np.zeros(ntiles)
-        toh_initial = np.zeros(ntiles)
-        nsplit = np.zeros(ntiles, int)
-        ieff = np.zeros(ntiles)
-        if mask is None:
-            mask = np.ones(ntiles, bool)
-
-        # Calculate the exposure efficiency of each tile at the current time
-        # and with the current conditions.
-        eff = fexp[self.tiles['map']]
-        eff /= desisurvey.etc.seeing_exposure_factor(seeing)
-        eff /= desisurvey.etc.transparency_exposure_factor(transparency)
-
-        # Ignore tiles with no efficiency, i.e., not visible now.
-        mask = mask & (eff > 0)
-
-        # Calculate target exposure time in seconds of each tile at nominal
-        # conditions.
-        for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
-            sel = self.tiles['program'] == i + 1
-            tnom[sel] = getattr(
-                config.nominal_exposure_time, program)().to(u.s).value
-
-        # Scale target exposure time for remaining SNR**2.
-        snr2frac = progress._table['snr2frac'].data.sum(axis=1)
-        tnom *= np.maximum(0., 1. - snr2frac)
-
-        # Estimate the required exposure time.
-        texp[mask] = tnom[mask] / eff[mask]
-
-        # Determine the previous pointing if we need to include slew time
-        # in the overhead calcluations.
-        if progress.last_tile is None:
-            # No slew needed for next exposure.
-            previous = None
-            # No readout time needed for previous exposure.
-            deadtime = config.readout_time()
+        # Get the full path of the YAML file to read.
+        if os.path.isabs(file_name):
+            full_path = file_name
         else:
-            last = progress.last_tile
-            # How much time has elapsed since the last exposure ended?
-            last_end = (last['mjd'] + last['exptime'] / 86400.).max()
-            deadtime = max(0., when.mjd - last_end) * u.day
-            # Is this the first exposure of the night?
-            today = desisurvey.utils.get_date(when)
-            if desisurvey.utils.get_date(last_end) < today:
-                # No slew necessary.
-                previous = None
-            else:
-                # Where are we slewing from?
-                previous = astropy.coordinates.ICRS(
-                    ra=last['ra'] * u.deg, dec=last['dec'] * u.deg)
+            # Locate the config file in our package data/ directory.
+            full_path = astropy.utils.data._find_pkg_data_path(
+                os.path.join('data', file_name))
 
-        # Calculate the initial overhead times for each possible tile.
-        toh_initial[mask] = desisurvey.utils.get_overhead_time(
-            previous, self.tile_coords[mask], deadtime).to(u.s).value
+        # Read the YAML file into memory.
+        with open(full_path) as f:
+            config = yaml.safe_load(f)
 
-        # Add overhead for any cosmic-ray splits.
-        nsplit[mask] = np.floor(
-            (texp[mask] / config.cosmic_ray_split().to(u.s).value))
-        toh = toh_initial + nsplit * config.readout_time().to(u.s).value
+        group_names = []
+        group_ids = np.zeros(num_tiles, int)
+        group_rules = {}
 
-        # Zero the efficiency of any tiles whose exposures cannot be completed
-        # before the cutoff.  (Could soften to include tiles whose first
-        # exposure is expected to complete before the cutoff.)
-        beyond_cutoff = toh + texp > (cutoff - when).to(u.s).value
-        mask[beyond_cutoff] = False
+        for group_name in config:
+            group_sel = np.ones(num_tiles, bool)
+            node = config[group_name]
 
-        # Calculate the instantaneous efficiency.
-        ieff[mask] = tnom[mask] / (toh[mask] + texp[mask])
+            # Parse optional geographical attribute.
+            cap = node.get('cap')
+            if cap == 'N':
+                group_sel[~SGC] = False
+            elif cap == 'S':
+                group_sel[~NGC] = False
+            dec_min = node.get('dec_min')
+            if dec_min is not None:
+                group_sel[dec < float(dec_min)] = False
+            dec_max = node.get('dec_max')
+            if dec_max is not None:
+                group_sel[dec >= float(dec_max)] = False
 
-        # Calculate the exposure midpoint relative to the current time.
-        t_midpt = 0.5 * (toh_initial + texp)
+            # Parse required "passes" attribute.
+            passes = node.get('passes')
+            if passes is None:
+                raise RuntimeError(
+                    'Missing required passes for {0}.'.format(group_name))
+            passes = [int(p) for p in str(passes).split(',')]
 
-        return ieff, toh_initial, t_midpt
+            # Create GROUP(PASS) combinations.
+            for p in passes:
+                pass_name = '{0}({1:d})'.format(group_name, p)
+                group_names.append(pass_name)
+                group_id = len(group_names)
+                pass_sel = group_sel & (passnum == p)
+                if np.any(group_ids[pass_sel] != 0):
+                    other_id = np.unique(group_ids[pass_sel])[-1]
+                    raise RuntimeError(
+                        'Some tiles assigned to multiple groups: {0}, {1}.'
+                        .format(group_names[other_id - 1], pass_name))
+                group_ids[pass_sel] = group_id
+                group_rules[pass_name] = {}
 
-    def hourangle_score(self, when, tmid, design_HA, sigma=7.5):
-        """
-        """
-        # Get the current apparent local sidereal time.
-        when.location = desisurvey.utils.get_location()
-        LST = when.sidereal_time('apparent')
-        # Calculate each tile's current hour angle in degrees.
-        HA = (LST - self.tiles['ra'] * u.deg).to(u.deg).value
-        # Adjust HA for the estimated exposure midpoints (in seconds).
-        HA += tmid * 15. / 3600.
-        # Ensure that HA is in the range [-180, +180].
-        HA = np.fmod(HA + 540, 360) - 180
-        assert np.min(HA) >= -180 and np.max(HA) <= +180
-        # Compare actual HA with design HA.
-        dHA = HA - design_HA
-        return np.exp(-0.5 * (dHA / sigma) ** 2)
+            # Parse rules for this group.
+            rules = node.get('rules')
+            if rules is None:
+                raise RuntimeError(
+                    'Missing required rules for {0}.'.format(group_name))
+            for target in rules:
+                target_parsed = parser.match(target)
+                if not target_parsed or target_parsed.groups(1) == group_name:
+                    raise RuntimeError('Invalid rule target: {0}'.format(target))
+                for trigger in rules[target]:
+                    if trigger == 'START':
+                        continue
+                    trigger_parsed = parser.match(trigger)
+                    if not trigger_parsed:
+                        raise RuntimeError(
+                            'Invalid rule trigger: {0}.'.format(trigger))
+                    try:
+                        new_weight = float(rules[target][trigger])
+                    except ValueError:
+                        raise RuntimeError(
+                            'Invalid new weight for trigger {0}: {1}.'
+                            .format(trigger, rules[target][trigger]))
+                group_rules[target][trigger] = new_weight
 
-    def rank_score(self, when):
-        """
-        Calculate percentile rank of present time compared with future times.
-        """
-        # Get the temporal index for this time.
-        ij = self.index_of_time(when)
-        # Round down to the start of this night.
-        ij0 = ij - (ij % self.num_times)
-        # Find the maximum efficiency for each pixel during each remaining
-        # night.
-        num_nights = self.num_nights - ij0 // self.num_times
-        num_pix = len(self.footprint_pixels)
-        future_exp = np.zeros((num_nights + 1, num_pix), dtype=np.float32)
-        future_exp[1:] = self.fexp[ij0:].reshape(
-            num_nights, self.num_times, num_pix).max(axis=1)
-        # Compare future max efficiencies with the current efficiencies.
-        future_exp[0] = self.fexp[ij]
-        # Sort the efficiencies for each pixel.
-        order = np.argsort(future_exp, axis=1)
-        # Calculate the rank [0, num_nights] of the current time.
-        #rank = np.where(order == 0)[1]
-        rank2 = order.argsort(axis=1)
-        #assert np.all(rank == rank2[0])
-        # Each pixel's rank score is the sort position of its current efficiency
-        # compared with all future nightly max efficiencies. Scale from 0-1.
-        return rank2[0] / float(num_nights)
+        # Check that all groups have at least one rule.
+        for pass_name in group_rules:
+            if group_rules[pass_name] == {}:
+                raise RuntimeError('Missing rules for {0}.'.format(pass_name))
 
-    def ratio_score(self, when):
-        """
-        Calculate ratio of present time compared with best future time.
-        """
-        # Get the temporal index for this time.
-        ij = self.index_of_time(when)
-        # Find the maximum efficiency of all future times.
-        fexp_max = self.fexp[ij:].max(axis=0)
-        # Take the ratio of the current efficiency with the future max
-        # efficiency.
-        ratio = self.fexp[ij] / fexp_max
-        return ratio
+        # Check that all tiles are assigned to exactly one group.
+        if np.any(group_ids == 0):
+            orphans = (group_ids == 0)
+            passes = ','.join([str(s) for s in np.unique(passnum[orphans])])
+            raise RuntimeError(
+                '{0} tiles in passes {1} not assigned to any group.'
+                .format(np.count_nonzero(orphans), passes))
 
-    def next_tile(self, when, cutoff, seeing, transparency, progress,
-                  strategy, plan):
-        """Return the next tile to observe.
+        self.group_names = group_names
+        self.group_ids = group_ids
+        self.group_rules = group_rules
 
-        Parameters
-        ----------
-        when : astropy.time.Time
-            Time at which the next tile decision is being made.
-        cutoff : astropy.time.Time
-            Time by which observing must stop tonight.
-        seeing : float or array
-            FWHM seeing value in arcseconds.
-        transparency : float or array
-            Dimensionless transparency value in the range [0-1].
-        progress : desisurvey.progress.Progress
-            Record of observations made so far.  Will not be modified by
-            calling this method.
-        strategy : str
-            Strategy to use for scheduling tiles during each night.
-        plan : astropy.table.Table
-            Table that specifies active tiles and design hour angles.
-
-        Returns
-        -------
-        dict
-            Dictionary describing the next tile to observe or None if no
-            suitable target is available.  The dictionary will contain the
-            following keys: tileID, RA, DEC, Program, Ebmv, moon_illum_frac,
-            MoonDist, MoonAlt and overhead.  Overhead is the delay (with time
-            units) before the shutter can be opened due to slewing and reading
-            out any previous exposure.
-        """
-        # Locate the current time slice.
-        ij = self.index_of_time(when)
-        # What program are we in? (1=DARK, 2=GRAY, 3=BRIGHT). Since this is
-        # based on the slice midpoint, it could be zero in the first and last
-        # slices, which we change to 3 (BRIGHT).
-        ephem = self.etable[ij]
-        program = ephem['program'] or 3
-        # Only active tiles.
-        mask = plan['active']
-        # Only tiles with < 8 exposures and snr2frac < 0.8.
-        summary = progress.get_summary('all')
-        mask = mask & (summary['nexp'] < 8) & (summary['snr2frac'] < 0.8)
-        if not np.any(mask):
-            self.log.warn('No active tiles at {0}.'.format(when.datetime))
-            return None
-        # Only consider tiles in the current program (for now).
-        '''
-        sel = self.tiles['program'] == program
-        mask[~sel] = False
-        '''
-        # Calculate instantaneous efficiencies and initial overhead times.
-        ieff, toh, tmid = self.instantaneous_efficiency(
-            when, cutoff, seeing, transparency, progress, mask)
-        # Calculate each tile's score using the requested strategy.
-        score = np.ones(len(self.tiles))
-        strategy = strategy.split('+')
-        if 'greedy' in strategy:
-            score *= ieff
+        if restore is not None:
+            self.plan = astropy.table.Table.read(restore)
         else:
-            # Zero the score of unobservable tiles.
-            score[ieff == 0] = 0.
-        if 'HA' in strategy:
-            # Calculate the timestamp at the estimated exposure midpoint.
-            score *= self.hourangle_score(
-                when, tmid, plan['hourangle'])[self.tiles['map']]
-        if 'ratio' in strategy:
-            score *= self.ratio_score(when)[self.tiles['map']]
-        if 'rank' in strategy:
-            score *= self.rank_score(when)[self.tiles['map']]
-        if np.max(score) <= 0:
-            self.log.info('Found max score {0} at {1}.'
-                          .format(np.max(score), when.datetime))
-            return None
-        # Find the best tile in each program.
-        '''
-        best_in_program = {}
-        for p, name in enumerate(('DARK', 'GRAY', 'BRIGHT')):
-            in_program = self.tiles['program'] == p + 1
-            best = np.argmax(score[in_program])
-            tile = self.tiles[best]
-            best_in_program[name] = dict(
-                tileid=tile['tileid'], score=score[best])
-        '''
-        # Pick the best tile in any program.
-        best = np.argmax(score)
-        tile = self.tiles[best]
-        # Calculate separation angle in degrees between the selected tile
-        # and the moon.
-        moon = astropy.coordinates.ICRS(
-            ra=ephem['moon_ra'] * u.deg, dec=ephem['moon_dec'] * u.deg)
-        moon_sep = self.tile_coords[best].separation(moon).to(u.deg).value
-        # Prepare the dictionary to return.
-        target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
-                      #CurrentProgram=('DARK', 'GRAY', 'BRIGHT')[program - 1],
-                      Program=('DARK', 'GRAY', 'BRIGHT')[tile['program'] - 1],
-                      #BestInProgram=best_in_program,
-                      Ebmv=tile['EBV'], moon_illum_frac=ephem['moon_frac'],
-                      MoonDist=moon_sep, MoonAlt=ephem['moon_alt'],
-                      overhead=toh[best] * u.s)
-        return target
+            # Create a new plan.
+            self.plan = astropy.table.Table()
+            self.plan['tileid'] = tiles['TILEID']
+            self.plan['ra'] = tiles['RA']
+            self.plan['dec'] = tiles['DEC']
+            self.plan['pass'] = tiles['PASS']
+            self.plan['group'] = self.group_ids
+            self.plan['weight'] = np.zeros(len(tiles))
+            ##self.plan['priority'] = priority
+            ##self.plan['active'] = np.zeros(len(tiles), bool)
+            self.plan['hourangle'] = np.zeros(len(tiles))
 
 
-# Imports only needed by initialize() go here.
-import specsim.atmosphere
-
-import desimodel.io
-
-import desisurvey.ephemerides
-
-
-def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
-               healpix_nside=16, output_name='planner.fits'):
-    """Calculate exposure-time factors over a grid of times and pointings.
-
-    Takes about 9 minutes to run and writes a 1.3Gb output file with the
-    default parameters.
-
-    Requires that healpy is installed.
-
-    Parameters
-    ----------
-    ephem : `desisurvey.ephem.Ephemerides`
-        Tabulated ephemerides data to use for planning.
-    start_date : date or None
-        Survey planning starts on the evening of this date. Must be convertible
-        to a date using :func:`desisurvey.utils.get_date`.  Use the first night
-        of the ephemerides when None.
-    stop_date : date or None
-        Survey planning stops on the morning of this date. Must be convertible
-        to a date using :func:`desisurvey.utils.get_date`.  Use the first night
-        of the ephemerides when None.
-    step_size : astropy.units.Quantity
-        Exposure-time factors are tabulated at this interval during each night.
-    healpix_nside : int
-        Healpix NSIDE parameter to use for binning the sky. Must be a power of
-        two.  Values larger than 16 will lead to holes in the footprint with
-        the current implementation.
-    output_name : str
-        Name of the FITS output file where results are saved. A relative path
-        refers to the :meth:`configuration output path
-        <desisurvey.config.Configuration.get_path>`.
+def baseline(tiles):
+    """Tabulate the group and priority assignments of the baseline plan.
     """
-    import healpy
+    config = desisurvey.config.Configuration().full_depth_field
 
-    log = desiutil.log.get_logger()
+    passnum = tiles['PASS']
+    dark = (passnum < 4)
+    gray = (passnum == 4)
+    bright = (passnum > 4)
 
-    # Freeze IERS table for consistent results.
-    desisurvey.utils.freeze_iers()
+    # Specify the fiber-assignment sequencing of each pass.
+    fa1 = (passnum == 0) | (passnum == 4) | (passnum == 5)
+    fa2 = (passnum == 1) | (passnum == 6)
+    fa3 = (passnum == 2) | (passnum == 3) | (passnum == 7)
+    fa_priority = fa1 * 3 + fa2 * 2 + fa3 * 1
 
-    config = desisurvey.config.Configuration()
-    output_name = config.get_path(output_name)
+    # Specify the sky regions with independent sequencing.
+    NGC = (tiles['RA'] > 75.0) & (tiles['RA'] < 300.0)
+    SGC = ~NGC
+    dec = tiles['DEC']
+    dec_min = np.full(len(dec), config.min_declination().to(u.deg).value)
+    dec_max = np.full(len(dec), config.max_declination().to(u.deg).value)
+    pad = config.first_pass_padding().to(u.deg).value
+    dec_min[fa1] -= pad
+    dec_max[fa1] += pad
+    DN = NGC & (dec >= dec_min) & (dec <= dec_max)
+    N1 = NGC & (dec < dec_min)
+    N2 = NGC & (dec > dec_max)
+    S1 = SGC & (dec < 5)
+    S2 = SGC & (dec >= 5)
 
-    start_date = desisurvey.utils.get_date(start_date or ephem.start)
-    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
-    if start_date >= stop_date:
-        raise ValueError('Expected start_date < stop_date.')
-    mjd = ephem._table['noon']
-    sel = ((mjd >= desisurvey.utils.local_noon_on_date(start_date).mjd) &
-           (mjd < desisurvey.utils.local_noon_on_date(stop_date).mjd))
-    t = ephem._table[sel]
-    num_nights = len(t)
+    # Combine pass and region priorities.
+    group = ((dark & NGC) * 1 + (dark & SGC) * 2 +
+             (gray & NGC) * 3 + (gray & SGC) * 4 +
+             (bright & NGC) * 5 + (bright & SGC) * 6)
+    priority = ((DN | S1) * (6 + fa_priority) +
+                (N1 | S2) * (3 + fa_priority) +
+                N2 * fa_priority)
 
-    # Build a grid of elapsed time relative to local midnight during each night.
-    midnight = t['noon'] + 0.5
-    t_edges = desisurvey.ephemerides.get_grid(step_size)
-    t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
-    num_points = len(t_centers)
+    return group, priority
 
-    # Create an empty HDU0 with header info.
-    header = astropy.io.fits.Header()
-    header['START'] = str(start_date)
-    header['STOP'] = str(stop_date)
-    header['NSIDE'] = healpix_nside
-    header['NPOINTS'] = num_points
-    header['STEP'] = step_size.to(u.min).value
-    hdus = astropy.io.fits.HDUList()
-    hdus.append(astropy.io.fits.ImageHDU(header=header))
 
-    # Save time grid.
-    hdus.append(astropy.io.fits.ImageHDU(name='GRID', data=t_edges))
-
-    # Load the list of tiles to observe.
+def create(planner=baseline):
+    """Create a new plan for the start of the survey.
+    """
     tiles = astropy.table.Table(
         desimodel.io.load_tiles(onlydesi=True, extra=False))
 
-    # Build the footprint as a healpix map of the requested size.
-    # The footprint includes any pixel containing at least one tile center.
-    npix = healpy.nside2npix(healpix_nside)
-    footprint = np.zeros(npix, bool)
-    pixels = healpy.ang2pix(
-            healpix_nside, np.radians(90 - tiles['DEC'].data),
-            np.radians(tiles['RA'].data))
-    footprint[np.unique(pixels)] = True
-    footprint_pixels = np.where(footprint)[0]
-    num_footprint = len(footprint_pixels)
-    log.info('Footprint contains {0} pixels.'.format(num_footprint))
+    group, priority = planner(tiles)
 
-    # Sort pixels in order of increasing phi + 60deg so that the north and south
-    # galactic caps are contiguous in the arrays we create below.
-    pix_theta, pix_phi = healpy.pix2ang(healpix_nside, footprint_pixels)
-    pix_dphi = np.fmod(pix_phi + np.pi / 3, 2 * np.pi)
-    sort_order = np.argsort(pix_dphi)
-    footprint_pixels = footprint_pixels[sort_order]
-    # Calculate sorted pixel (ra,dec).
-    pix_theta, pix_phi = healpy.pix2ang(healpix_nside, footprint_pixels)
-    pix_ra, pix_dec = np.degrees(pix_phi), 90 - np.degrees(pix_theta)
+    plan = astropy.table.Table()
+    plan['tileid'] = tiles['TILEID']
+    plan['ra'] = tiles['RA']
+    plan['dec'] = tiles['DEC']
+    plan['pass'] = tiles['PASS']
+    plan['group'] = group
+    plan['priority'] = priority
+    plan['active'] = np.zeros(len(tiles), bool)
+    plan['hourangle'] = np.zeros(len(tiles))
+    return plan
 
-    # Record per-tile info needed for planning.
-    table = astropy.table.Table()
-    table['tileid'] = tiles['TILEID'].astype(np.int32)
-    table['ra'] = tiles['RA'].astype(np.float32)
-    table['dec'] = tiles['DEC'].astype(np.float32)
-    table['EBV'] = tiles['EBV_MED'].astype(np.float32)
-    table['pass'] = tiles['PASS'].astype(np.int16)
-    # Map each tile ID to the corresponding index in our spatial arrays.
-    mapper = np.zeros(npix, int)
-    mapper[footprint_pixels] = np.arange(len(footprint_pixels))
-    table['map'] = mapper[pixels].astype(np.int16)
-    # Use a small int to identify the program.
-    table['program'] = np.zeros(len(tiles), np.int16)
-    for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
-        table['program'][tiles['PROGRAM'] == program] = i + 1
-    assert np.all(table['program'] > 0)
-    hdu = astropy.io.fits.table_to_hdu(table)
-    hdu.name = 'TILES'
-    hdus.append(hdu)
 
-    # Average E(B-V) for all tiles falling into a pixel.
-    tiles_per_pixel = np.bincount(pixels, minlength=npix)
-    EBV = np.bincount(pixels, weights=tiles['EBV_MED'], minlength=npix)
-    EBV[footprint] /= tiles_per_pixel[footprint]
+def update_active(plan, progress):
+    """Identify the active tiles given the survey progress so far.
+    """
+    log = desiutil.log.get_logger()
+    progress = desisurvey.progress.Progress(restore=progress)
+    # Match plan tiles to the progress table.
+    idx = np.searchsorted(plan['tileid'], progress._table['tileid'])
+    assert np.all(progress._table['tileid'][idx] == plan['tileid'])
+    incomplete = progress._table['status'][idx] < 2
+    # Loop over fiber-assignment groups.
+    active = np.zeros_like(incomplete)
+    for group in np.unique(plan['group']):
+        sel = plan['group'] == group
+        # Loop over priorities in descending order for this group.
+        for priority in np.unique(plan['priority'][sel])[::-1]:
+            # Identify tiles that still need observing in this (group, priority).
+            psel = sel & (plan['priority'] == priority) & incomplete
+            if np.count_nonzero(psel) > 0:
+                log.info('Adding {0} active tiles from group {1} priority {2}'
+                         .format(np.count_nonzero(psel), group, priority))
+                active[psel] = True
+                break
+    plan['active'] = active
+    return plan
 
-    # Calculate dust extinction exposure-time factor.
-    f_EBV = 1. / desisurvey.etc.dust_exposure_factor(EBV)
 
-    # Save HDU with the footprint and static dust exposure map.
-    table = astropy.table.Table()
-    table['pixel'] = footprint_pixels
-    table['dust'] = f_EBV[footprint_pixels]
-    table['ra'] = pix_ra
-    table['dec'] = pix_dec
-    hdu = astropy.io.fits.table_to_hdu(table)
-    hdu.name = 'STATIC'
-    hdus.append(hdu)
+def get_optimizer(plan, scheduler, program, start, stop, init):
+    """Return an optimizer for all tiles in the specified program.
+    """
+    program_passes = dict(DARK=(0, 3), GRAY=(4, 4), BRIGHT=(5, 7))
+    passes = program_passes[program]
+    passnum = plan['pass']
+    sel = plan['active'] & (passnum >= passes[0]) & (passnum <= passes[1])
+    print('Optimizing {0} active {1} tiles.'
+          .format(np.count_nonzero(sel), program))
+    popt = desisurvey.optimize.Optimizer(
+        scheduler, program, plan['tileid'][sel], start, stop, init=init)
+    assert np.all(popt.tid == plan['tileid'][sel])
+    return popt
 
-    # Prepare a table of calendar data.
-    calendar = astropy.table.Table()
-    calendar['midnight'] = midnight
-    calendar['monsoon'] = np.zeros(num_nights, bool)
-    calendar['fullmoon'] = np.zeros(num_nights, bool)
-    calendar['weather'] = np.zeros(num_nights, np.float32)
-    weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
 
-    # Prepare a table of ephemeris data.
-    etable = astropy.table.Table()
-    etable['program'] = np.zeros(num_nights * num_points, dtype=np.int16)
-    etable['moon_frac'] = np.zeros(num_nights * num_points, dtype=np.float32)
-    etable['moon_ra'] = np.zeros(num_nights * num_points, dtype=np.float32)
-    etable['moon_dec'] = np.zeros(num_nights * num_points, dtype=np.float32)
-    etable['moon_alt'] = np.zeros(num_nights * num_points, dtype=np.float32)
-    etable['zenith_ra'] = np.zeros(num_nights * num_points, dtype=np.float32)
-    etable['zenith_dec'] = np.zeros(num_nights * num_points, dtype=np.float32)
+def update(plan, progress, scheduler, start, stop, init='info',
+           nopts=(5000,), fracs=(0.5,), plot_basename=None):
+    """Update the hour angle assignments in a plan based on survey progress.
 
-    # Tabulate MJD and apparent LST values for each time step. We don't save
-    # MJD values since they are cheap to reconstruct from the index, but
-    # do use them below.
-    mjd0 = desisurvey.utils.local_noon_on_date(start_date).mjd + 0.5
-    mjd = mjd0 + np.arange(num_nights)[:, np.newaxis] + t_centers
-    times = astropy.time.Time(
-        mjd, format='mjd', location=desisurvey.utils.get_location())
-    etable['lst'] = times.sidereal_time('apparent').flatten().to(u.deg).value
+    Returns None if all tiles have been observed.
+    """
+    log = desiutil.log.get_logger()
+    log.info('Updating plan for {0} to {1}'.format(start, stop))
+    if len(nopts) != len(fracs):
+        raise ValueError('Must have same lengths for nopts, fracs.')
+    # Update the active-tile assignments.
+    plan = update_active(plan, progress)
+    if np.count_nonzero(plan['active']) == 0:
+        return None
+    # Specify HA assignments for the active tiles in each program.
+    for program in 'DARK', 'GRAY', 'BRIGHT':
+        popt = get_optimizer(plan, scheduler, program, start, stop, init)
+        for nopt, frac in zip(nopts, fracs):
+            for j in range(nopt):
+                popt.improve(frac)
+        if plot_basename is not None:
+            popt.plot(save='{0}_{1}.png'.format(plot_basename, program))
+        plan['hourangle'][popt.idx] = popt.ha
+    return plan
 
-    # Build sky coordinates for each pixel in the footprint.
-    pix_theta, pix_phi = healpy.pix2ang(healpix_nside, footprint_pixels)
-    pix_ra, pix_dec = np.degrees(pix_phi), 90 - np.degrees(pix_theta)
-    pix_sky = astropy.coordinates.ICRS(pix_ra * u.deg, pix_dec * u.deg)
 
-    # Initialize exposure factor calculations.
-    alt, az = np.full(num_points, 90.) * u.deg, np.zeros(num_points) * u.deg
-    fexp = np.zeros((num_nights * num_points, num_footprint), dtype=np.float32)
-    vband_extinction = 0.15154
-    one = np.ones((num_points, num_footprint))
-
-    # Loop over nights.
-    for i in range(num_nights):
-        night = ephem.get_night(midnight[i])
-        date = desisurvey.utils.get_date(midnight[i])
-        if date.day == 1:
-            log.info('Starting {0} (completed {1}/{2} nights)'
-                     .format(date.strftime('%b %Y'), i, num_nights))
-        # Initialize the slice of the fexp[] time index for this night.
-        sl = slice(i * num_points, (i + 1) * num_points)
-        # Do we expect to observe on this night?
-        calendar[i]['monsoon'] = desisurvey.utils.is_monsoon(midnight[i])
-        calendar[i]['fullmoon'] = ephem.is_full_moon(midnight[i])
-        # Look up expected dome-open fraction due to weather.
-        calendar[i]['weather'] = weather_weights[date.month - 1]
-        # Calculate the program during this night.
-        mjd = midnight[i] + t_centers
-        dark, gray, bright = ephem.get_program(mjd)
-        etable['program'][sl][dark] = 1
-        etable['program'][sl][gray] = 2
-        etable['program'][sl][bright] = 3
-        # Zero the exposure factor whenever we are not oberving.
-        fexp[sl] = (dark | gray | bright)[:, np.newaxis]
-        # Transform the local zenith to (ra,dec).
-        zenith = desisurvey.utils.get_observer(
-            times[i], alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
-        etable['zenith_ra'][sl] = zenith.ra.to(u.deg).value
-        etable['zenith_dec'][sl] = zenith.dec.to(u.deg).value
-        # Calculate zenith angles to each pixel in the footprint.
-        pix_sep = pix_sky.separation(zenith[:, np.newaxis])
-        # Zero the exposure factor for pixels below the horizon.
-        visible = pix_sep < 90 * u.deg
-        fexp[sl][~visible] = 0.
-        # Calculate the airmass exposure-time penalty.
-        X = desisurvey.utils.cos_zenith_to_airmass(np.cos(pix_sep[visible]))
-        fexp[sl][visible] /= desisurvey.etc.airmass_exposure_factor(X)
-        # Loop over objects we need to avoid.
-        for name in config.avoid_bodies.keys:
-            f_obj = desisurvey.ephemerides.get_object_interpolator(night, name)
-            # Calculate this object's (dec,ra) path during the night.
-            obj_dec, obj_ra = f_obj(mjd)
-            sky_obj = astropy.coordinates.ICRS(
-                ra=obj_ra[:, np.newaxis] * u.deg,
-                dec=obj_dec[:, np.newaxis] * u.deg)
-            # Calculate the separation angles to each pixel in the footprint.
-            obj_sep = pix_sky.separation(sky_obj)
-            if name == 'moon':
-                etable['moon_ra'][sl] = obj_ra
-                etable['moon_dec'][sl] = obj_dec
-                # Calculate moon altitude during the night.
-                moon_alt, _ = desisurvey.ephemerides.get_object_interpolator(
-                    night, 'moon', altaz=True)(mjd)
-                etable['moon_alt'][sl] = moon_alt
-                moon_zenith = (90 - moon_alt[:,np.newaxis]) * u.deg
-                moon_up = moon_alt > 0
-                assert np.all(moon_alt[gray] > 0)
-                # Calculate the moon illuminated fraction during the night.
-                moon_frac = ephem.get_moon_illuminated_fraction(mjd)
-                etable['moon_frac'][sl] = moon_frac
-                # Convert to temporal moon phase.
-                moon_phase = np.arccos(2 * moon_frac[:,np.newaxis] - 1) / np.pi
-                # Calculate scattered moon V-band brightness at each pixel.
-                V = specsim.atmosphere.krisciunas_schaefer(
-                    pix_sep, moon_zenith, obj_sep,
-                    moon_phase, vband_extinction).value
-                # Estimate the exposure time factor from V.
-                X = np.dstack((one, np.exp(-V), 1/V, 1/V**2, 1/V**3))
-                T = X.dot(desisurvey.etc._moonCoefficients)
-                # No penalty when the moon is below the horizon.
-                T[moon_alt < 0, :] = 1.
-                fexp[sl] *= 1. / T
-                # Veto pointings within avoidance size when the moon is
-                # above the horizon. Apply Gaussian smoothing to the veto edge.
-                veto = np.ones_like(T)
-                dsep = (obj_sep - config.avoid_bodies.moon()).to(u.deg).value
-                veto[dsep <= 0] = 0.
-                veto[dsep > 0] = 1 - np.exp(-0.5 * (dsep[dsep > 0] / 3) ** 2)
-                veto[moon_alt < 0] = 1.
-                fexp[sl] *= veto
-            else:
-                # Lookup the avoidance size for this object.
-                size = getattr(config.avoid_bodies, name)()
-                # Penalize the exposure-time with a factor
-                # 1 - exp(-0.5*(obj_sep/size)**2)
-                penalty = 1. - np.exp(-0.5 * (obj_sep / size) ** 2)
-                fexp[sl] *= penalty
-
-    # Save calendar table.
-    hdu = astropy.io.fits.table_to_hdu(calendar)
-    hdu.name = 'CALENDAR'
-    hdus.append(hdu)
-
-    # Save ephemerides table.
-    hdu = astropy.io.fits.table_to_hdu(etable)
-    hdu.name = 'EPHEM'
-    hdus.append(hdu)
-
-    # Save dynamic exposure-time factors.
-    hdus.append(astropy.io.fits.ImageHDU(name='DYNAMIC', data=fexp))
-
-    # Finalize the output file.
-    try:
-        hdus.writeto(output_name, overwrite=True)
-    except TypeError:
-        # astropy < 1.3 uses the now deprecated clobber.
-        hdus.writeto(output_name, clobber=True)
-    log.info('Plan initialization saved to {0}'.format(output_name))
+def update_required(plan, progress):
+    """Test if all active tiles in any group are complete.
+    """
+    answer = False
+    log = desiutil.log.get_logger()
+    # Match plan tiles to the progress table.
+    idx = np.searchsorted(plan['tileid'], progress._table['tileid'])
+    assert np.all(progress._table['tileid'][idx] == plan['tileid'])
+    incomplete = progress._table['status'][idx] < 2
+    # Loop over fiber-assignment groups.
+    for group in np.unique(plan['group']):
+        # Find active tiles in this group.
+        sel = (plan['group'] == group) & plan['active']
+        if np.count_nonzero(sel) == 0:
+            log.info('Group {0} is complete.'.format(group))
+            continue
+        priority = np.unique(plan['priority'][sel])
+        if len(priority) != 1:
+            raise RuntimeError('Found mixed priorities {0} for group {1}'
+                               .format(priority, group))
+        nremaining = np.count_nonzero(sel & incomplete)
+        log.info('Group {0} Priority {1} has {2:4d} tile(s) remaining.'
+                 .format(group, priority[0], nremaining))
+        if nremaining == 0:
+            answer = True
+    return answer
 
 
 if __name__ == '__main__':
-    """This should eventually be made into a first-class script entry point.
-    """
-    #stop = desisurvey.utils.get_date('2019-10-03')
-    #stop = desisurvey.utils.get_date('2020-07-13')
-    stop = None
-    ephem = desisurvey.ephemerides.Ephemerides(stop_date=stop)
-    initialize(ephem, stop_date=stop)
+    """Regression test for loading a plan from a YAML file"""
+    p = Planner()

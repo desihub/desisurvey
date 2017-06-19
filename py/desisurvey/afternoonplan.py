@@ -150,8 +150,9 @@ class surveyPlan:
         if len(self.tiles) != self.numtiles:
             raise RuntimeError('Missing some tiles in tile-info.fits')
 
-        import sys
-        sys.exit()
+        ## Why is this here??
+        ##import sys
+        ##sys.exit()
 
     def afternoonPlan(self, day_stats, progress):
         """Main decision making method.
@@ -500,7 +501,7 @@ class surveyPlan:
 
         Mayall_lat_deg = self.config.location.latitude().to(u.deg)
         max_airmass = cos_zenith_to_airmass(np.cos(0.5*np.pi-self.config.min_altitude().to(u.rad).value))
-        
+
         ha_tmp = np.empty(num_obs, dtype='f8')
         airmass_tmp = np.empty(num_obs, dtype='f8')
 

@@ -314,7 +314,7 @@ def get_observer(when, alt=None, az=None):
 
 def cos_zenith_to_airmass(cosZ):
     """Convert a zenith angle to an airmass.
-    
+
     Uses the Rozenberg 1966 interpolation formula, which gives reasonable
     results for high zenith angles, with a horizon air mass of 40.
     https://en.wikipedia.org/wiki/Air_mass_(astronomy)#Interpolative_formulas
@@ -678,23 +678,3 @@ def inLSTwindow(lst, begin, end):
     else:
         print("Error[desisurvey.utils.inLSTwindow]: container not supporter")
     return answer
-
-def zrad(phi, dec, ha):
-    """Approximate computation of zenith angle (ignores Earth nutation),
-       given latitude, declination and hour angle.
-       Input and output in RADIANS.
-       Used in afternoonplan (plan_ha).
-    """
-
-    sinAlt = np.sin(phi)*np.sin(dec) + np.cos(phi)*np.cos(dec)*np.cos(ha)
-
-    if isinstance(sinAlt, np.ndarray):
-        sinAlt[np.where(sinAlt>1.0)] = 1.0
-        sinAlt[np.where(sinAlt<-1.0)] = -1.0
-    else:
-        if sinAlt > 1.0:
-            sinAlt = 1.0
-        if sinAlt < -1.0:
-            sinAlt = -1.0
-
-    return 0.5*np.pi - np.arcsin(sinAlt)

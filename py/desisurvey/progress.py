@@ -2,6 +2,7 @@
 """
 from __future__ import print_function, division
 
+import os.path
 
 import numpy as np
 
@@ -13,10 +14,11 @@ import desimodel.io
 import desiutil.log
 
 import desisurvey.config
+import desisurvey.utils
 
 # Increment this value whenever a non-backwards compatible change to the
 # table schema is introduced.
-_version = 1
+_version = 2
 
 class Progress(object):
     """Initialize a progress tracking object.
@@ -46,6 +48,10 @@ class Progress(object):
     def __init__(self, restore=None, max_exposures=32):
 
         self.log = desiutil.log.get_logger()
+
+        # Lookup the completeness SNR2 threshold to use.
+        config = desisurvey.config.Configuration()
+        self.min_snr2 = config.min_snr2_fraction()
 
         if restore is None:
             # Load the list of tiles to observe.
@@ -82,11 +88,20 @@ class Progress(object):
                 description='Fraction of target S/N**2 ratio achieved')
             table['airmass'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
-                description='Estimate airmass of observation')
+                description='Estimated airmass of observation')
             table['seeing'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
-                description='Estimate FWHM seeing of observation in arcsecs',
+                description='Estimated FWHM seeing of observation in arcsecs',
                 unit='arcsec')
+            table['moonfrac'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.3f',
+                description='Moon illuminated fraction (0-1)')
+            table['moonalt'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='Moon altitude angle in degrees', unit='deg')
+            table['moonsep'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='Moon-tile separation angle in degrees', unit='deg')
             # Copy tile data.
             table['tileid'] = tiles['TILEID']
             table['pass'] = tiles['PASS']
@@ -101,11 +116,14 @@ class Progress(object):
             table['seeing'] = 0.
 
         else:
-            if isinstance(restore, astropy.table.Table):
+            if isinstance(restore, Progress):
+                table = restore._table
+            elif isinstance(restore, astropy.table.Table):
                 table = restore
             else:
-                config = desisurvey.config.Configuration()
                 filename = config.get_path(restore)
+                if not os.path.exists(filename):
+                    raise ValueError('Invalid restore: {0}.'.format(restore))
                 table = astropy.table.Table.read(filename)
                 self.log.info('Loaded progress from {0}.'.format(filename))
             # Check that this table has the current version.
@@ -113,10 +131,19 @@ class Progress(object):
                 raise RuntimeError(
                     'Progress table has incompatible version {0}.'
                     .format(table.meta['VERSION']))
-            # We could check that the status column matches the exposure
-            # data here, and that exposure timestamps are ordered, etc,
-            # but this isn't necessary unless the table has been modified
-            # outside of this class.
+            # Check that the status column matches the current min_snr2.
+            snr2sum = table['snr2frac'].data.sum(axis=1)
+            if not np.all(snr2sum >= 0):
+                raise RuntimeError('Found invalid snr2frac values.')
+            status = np.ones_like(table['status'])
+            status[snr2sum == 0] = 0
+            status[snr2sum >= self.min_snr2] = 2
+            if not np.all(table['status'] == status):
+                self.log.warn('Updating status values for min(SNR2) = {0:.1f}.'
+                              .format(self.min_snr2))
+                table['status'] = status
+            # We could do more sanity checks here, but they shouldn't be
+            # necessary unless the table has been modified outside this class.
 
         # Initialize attributes from table data.
         self._table = table
@@ -130,6 +157,7 @@ class Progress(object):
         else:
             self._first_mjd = self._last_mjd = 0.
             self._last_tile = None
+
 
     @property
     def num_tiles(self):
@@ -161,7 +189,8 @@ class Progress(object):
 
         Completion is based on the sum of ``snr2frac`` values for all exposures
         of each tiles.  A completed tile (with ``status`` of 2) counts as one
-        towards the completion value, even if its ``snr2frac`` exceeds one.
+        towards the completion value, even if its ``snr2frac`` exceeds the
+        minimum required SNR**2 fraction.
 
         Can be combined with :meth:`copy_range` to reconstruct the number of
         completed observations over an arbitrary date range.
@@ -199,7 +228,7 @@ class Progress(object):
         # Calculate the total SNR**2 for each tile.
         snr2sum = table['snr2frac'].data.sum(axis=1)
         # Count fully completed tiles as 1.
-        completed = snr2sum >= 1.
+        completed = snr2sum >= self.min_snr2
         num_complete = float(np.count_nonzero(completed))
         if include_partial:
             # Add partial SNR**2 sums.
@@ -259,7 +288,7 @@ class Progress(object):
         un-observed tiles. The summary ``exptime`` and ``snr2frac`` columns
         are sums of the individual exposures.  The summary ``airmass``
         and ``seeing`` columns are means. A ``nexp`` column counts the number
-        of exposures for each tile.
+        of exposures for each tile.  The moon parameters are not summarized.
 
         Can be combined with :meth:`copy_range` to summarize observations during
         a range of dates.
@@ -344,11 +373,12 @@ class Progress(object):
         assert np.all(snr2sum >= 0)
         table['status'] = 1
         table['status'][snr2sum == 0] = 0
-        table['status'][snr2sum >= 1] = 2
+        table['status'][snr2sum >= self.min_snr2] = 2
         # Return a new progress object with this table.
         return Progress(restore=table)
 
-    def add_exposure(self, tile_id, start, exptime, snr2frac, airmass, seeing):
+    def add_exposure(self, tile_id, start, exptime, snr2frac, airmass, seeing,
+                     moonfrac, moonalt, moonsep):
         """Add a single exposure to the progress.
 
         Parameters
@@ -365,6 +395,12 @@ class Progress(object):
             Estimated airmass of this exposure.
         seeing : float
             Estimated FWHM seeing of this exposure in arcseconds.
+        moonfrac : float
+            Moon illuminated fraction (0-1).
+        moonalt : float
+            Moon altitude angle in degrees.
+        moonsep : float
+            Moon-tile separation angle in degrees.
         """
         mjd = start.mjd
         self.log.debug(
@@ -398,6 +434,103 @@ class Progress(object):
         row['snr2frac'][num_exp] = snr2frac
         row['airmass'][num_exp] = airmass
         row['seeing'][num_exp] = seeing
+        row['moonfrac'][num_exp] = moonfrac
+        row['moonalt'][num_exp] = moonalt
+        row['moonsep'][num_exp] = moonsep
 
         # Update this tile's status.
-        row['status'] = 1 if row['snr2frac'].sum() < 1 else 2
+        row['status'] = 1 if row['snr2frac'].sum() < self.min_snr2 else 2
+
+    def get_exposures(self, start=None, stop=None,
+                      tile_fields='tileid,pass,ra,dec',
+                      exp_fields='night,mjd,exptime,seeing,airmass,' +
+                      'moonfrac,moonalt,moonsep'):
+        """Create a table listing exposures in time order.
+
+        Parameters
+        ----------
+        start : date or None
+            First date to include in the list of exposures, or date of the
+            first observation if None.
+        stop  : date or None
+            Last date to include in the list of exposures, or date of the
+            last observation if None.
+        tile_fields : str
+            Comma-separated list of per-tile field names to include. The
+            special name 'index' denotes the index into the visible tile array.
+        exp_fields : str
+            Comma-separated list of per-exposure field names to include. The
+            special name 'snr2cum' denotes the cummulative snr2frac on each
+            tile, since the start of the survey.  The special name 'night'
+            denotes a string YYYY-MM-DD specifying the date on which each
+            night starts. The special name 'lst' denotes the apparent local
+            sidereal time of the shutter open timestamp.
+
+        Returns
+        -------
+        astropy.table.Table
+            Table with the specified columns and one row per exposure.
+        """
+        # Get MJD range to show.
+        if start is None:
+            start = self.first_mjd
+        start = desisurvey.utils.local_noon_on_date(
+            desisurvey.utils.get_date(start)).mjd
+        if stop is None:
+            stop = self.last_mjd
+        stop = desisurvey.utils.local_noon_on_date(
+            desisurvey.utils.get_date(stop)).mjd + 1
+        if start >= stop:
+            raise ValueError('Expected start < stop.')
+
+        # Build a list of exposures in time sequence.
+        table = self._table
+        mjd = table['mjd'].data.flatten()
+        order = np.argsort(mjd)
+        tile_index = (order // self.max_exposures)
+
+        # Restrict to the requested date range.
+        first, last = np.searchsorted(mjd, [start, stop], sorter=order)
+        tile_index = tile_index[first:last + 1]
+        order = order[first: last + 1]
+
+        # Create the output table.
+        output = astropy.table.Table()
+        for name in tile_fields.split(','):
+            if name == 'index':
+                output[name] = tile_index
+            else:
+                if name not in table.colnames or len(table[name].shape) != 1:
+                    raise ValueError(
+                        'Invalid tile field name: {0}.'.format(name))
+                output[name] = table[name][tile_index]
+        for name in exp_fields.split(','):
+            if name == 'snr2cum':
+                snr2cum = np.cumsum(
+                    table['snr2frac'], axis=1).flatten()[order]
+                output[name] = astropy.table.Column(
+                    snr2cum, format='%.3f',
+                    description='Cummulative fraction of target S/N**2')
+            elif name == 'night':
+                mjd = table['mjd'].flatten()[order]
+                night = np.empty(len(mjd), dtype='S10')
+                for i in range(len(mjd)):
+                    night[i] = str(desisurvey.utils.get_date(mjd[i]))
+                output[name] = astropy.table.Column(
+                    night,
+                    description='Date at start of night when exposure taken')
+            elif name == 'lst':
+                mjd = table['mjd'].flatten()[order]
+                times = astropy.time.Time(
+                    mjd, format='mjd', location=desisurvey.utils.get_location())
+                lst = times.sidereal_time('apparent').to(u.deg).value
+                output[name] = astropy.table.Column(
+                    lst, format='%.1f', unit='deg',
+                    description='Apparent local sidereal time in degrees')
+            else:
+                if name not in table.colnames or len(table[name].shape) != 2:
+                    raise ValueError(
+                        'Invalid exposure field name: {0}.'.format(name))
+                output[name] = table[name].flatten()[order]
+
+        return output

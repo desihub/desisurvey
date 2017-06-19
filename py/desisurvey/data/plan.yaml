@@ -1,0 +1,116 @@
+#-------------------------------------------------------------------
+# Definition of tile groups that are separately scheduled
+# and prioritized. All tiles in the footprint must be assigned
+# to exactly one group.
+#
+# Group names are arbitrary strings. The tiles associated with a
+# group are either specified via a filename containing a list of
+# tile IDs (not yet implemented) or by providing geographical
+# parameters (cap, dec_min, dec_max) and a list of pass numbers.
+#
+# Each group has associated rules that specify its relative weight
+# when selecting the next tile in the scheduler.
+#
+# Rules are assigned separately for each pass of a group using the
+# notation:
+#
+#   GROUP_NAME[PASS]: { ...rules... }
+#
+# By default, each group has an initial weight of zero when the
+# survey starts (so will not be scheduled), unless it has an explicit
+# start rule:
+#
+#   START: INITIAL_WEIGHT
+#
+# Additional rules of the form:
+#
+#   GROUP_NAME[PASS]: NEW_WEIGHT
+#
+# specify the group weight that will be assigned when the specified
+# pass of the other group has been completely observed.
+#-------------------------------------------------------------------
+
+N16:
+    cap: N
+    dec_min: 12
+    dec_max: 28
+    passes: 0,4,5
+    rules:
+        N16(0): { START: 1.0 }
+        N16(4): { START: 1.0 }
+        N16(5): { START: 1.0 }
+N16LO:
+    cap: N
+    dec_max: 12
+    passes: 0,4,5
+    rules:
+        N16LO(0): { N16(0): 0.5, N16(1): 1.0 }
+        N16LO(4): { N16(4): 1.0 }
+        N16LO(5): { N16(5): 0.5, N16(5): 1.0 }
+N16HI:
+    cap: N
+    dec_min: 28
+    passes: 0,4,5
+    rules:
+        N16HI(0): { N16LO(0): 1.0 }
+        N16HI(4): { N16LO(4): 1.0 }
+        N16HI(5): { N16LO(5): 1.0 }
+N10:
+    cap: N
+    dec_min: 15
+    dec_max: 25
+    passes: 1,2,3,6,7
+    rules:
+        N10(1): { N16(0): 1.0 }
+        # Start passes 2,3 simultaneously after pass 1.
+        N10(2): { N10(1): 1.0 }
+        N10(3): { N10(1): 0.8, N10(2): 1.0 }
+        # Start passes 6,7 simultaneously after pass 4.
+        N10(6): { N16(4): 1.0 }
+        N10(7): { N16(4): 0.8, N10(6): 1.0 }
+N10LO:
+    cap: N
+    dec_max: 15
+    passes: 1,2,3,6,7
+    rules:
+        N10LO(1): { N10(1): 1.0 }
+        N10LO(2): { N10(2): 1.0 }
+        N10LO(3): { N10(3): 1.0 }
+        N10LO(6): { N10(6): 1.0 }
+        N10LO(7): { N10(7): 1.0 }
+N10HI:
+    cap: N
+    dec_min: 25
+    passes: 1,2,3,6,7
+    rules:
+        N10HI(1): { N10LO(1): 1.0 }
+        N10HI(2): { N10LO(2): 1.0 }
+        N10HI(3): { N10LO(3): 1.0 }
+        N10HI(6): { N10LO(6): 1.0 }
+        N10HI(7): { N10LO(7): 1.0 }
+SLO:
+    cap: S
+    dec_max: 5
+    passes: 0,1,2,3,4,5,6,7
+    rules:
+        SLO(0): { START: 1.0 }
+        SLO(1): { START: 1.0 }
+        SLO(2): { START: 1.0 }
+        SLO(3): { START: 1.0 }
+        SLO(4): { START: 1.0 }
+        SLO(5): { START: 1.0 }
+        SLO(6): { START: 1.0 }
+        SLO(7): { START: 1.0 }
+SHI:
+    cap: S
+    dec_min: 5
+    passes: 0,1,2,3,4,5,6,7
+    rules:
+        SHI(0): { SLO(0): 1.0 }
+        SHI(1): { SLO(1): 1.0 }
+        SHI(2): { SLO(2): 1.0 }
+        SHI(3): { SLO(3): 1.0 }
+        SHI(4): { SLO(4): 1.0 }
+        SHI(5): { SLO(5): 1.0 }
+        SHI(6): { SLO(6): 1.0 }
+        SHI(7): { SLO(7): 1.0 }

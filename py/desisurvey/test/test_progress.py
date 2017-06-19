@@ -59,7 +59,8 @@ class TestProgress(unittest.TestCase):
         tiles = t['tileid'][:10].data
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
+            p.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
             self.assertTrue(p.get_tile(tile_id)['snr2frac'][0] == 0.5)
             last_tile = p.get_tile(tile_id)
             self.assertTrue(np.array_equal(
@@ -70,6 +71,47 @@ class TestProgress(unittest.TestCase):
         self.assertTrue(p.first_mjd > 0)
         self.assertTrue(p.last_mjd > p.first_mjd)
 
+    def test_restore_status(self):
+        """Test that status is restored"""
+        p = Progress()
+        t = p._table
+        tiles = t['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
+        for i, tile_id in enumerate(tiles):
+            p.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 2.0, 1.5, 1.1, 0, 0, 0)
+        good_status = p._table['status'].copy()
+        p._table['status'] = 0
+        p2 = Progress(p._table)
+        self.assertTrue(np.all(p2._table['status'] == good_status))
+
+    def test_get_exposures(self):
+        """Test get_exposures() method"""
+        p = Progress()
+        t = p._table
+        tiles = t['tileid'][:10].data
+        t0 = astropy.time.Time('2020-01-01 07:00')
+        for i, tile_id in enumerate(tiles):
+            p.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
+        explist = p.get_exposures()
+        self.assertTrue(np.all(np.diff(explist['mjd']) > 0))
+        explist = p.get_exposures(tile_fields='index', exp_fields='lst')
+        self.assertTrue(np.all(np.diff(explist['lst']) > 0))
+        self.assertTrue(np.min(explist['lst'] >= 0))
+        self.assertTrue(np.max(explist['lst'] < 360))
+        with self.assertRaises(ValueError):
+            p.get_exposures(tile_fields='mjd')
+        with self.assertRaises(ValueError):
+            p.get_exposures(tile_fields='nonexistent')
+        with self.assertRaises(ValueError):
+            p.get_exposures(exp_fields='pass')
+        explist = p.get_exposures(exp_fields='mjd,night')
+        for row in explist:
+            night = str(desisurvey.utils.get_date(row['mjd']))
+            self.assertEqual(row['night'], night)
+            self.assertEqual(night, str(desisurvey.utils.get_date(night)))
+
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""
         p = Progress()
@@ -77,12 +119,12 @@ class TestProgress(unittest.TestCase):
         tile_id = t['tileid'][0]
         t0 = astropy.time.Time('2020-01-01 07:00')
         t1 = t0 + 1 * u.hour
-        p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, t1, 1e3 * u.s, 0.5, 1.5, 1.1)
+        p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
+        p.add_exposure(tile_id, t1, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         self.assertEqual(p.first_mjd, t0.mjd)
         self.assertEqual(p.last_mjd, t1.mjd)
         with self.assertRaises(ValueError):
-            p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1)
+            p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
 
     def test_save_read(self):
         """Create, save and read a progress table"""
@@ -90,7 +132,8 @@ class TestProgress(unittest.TestCase):
         tiles = p1._table['tileid'][:10].data
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p1.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
+            p1.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         p1.save('p1.fits')
         p2 = Progress('p1.fits')
         self.assertEqual(p2.completed(include_partial=True), 5.)
@@ -105,7 +148,8 @@ class TestProgress(unittest.TestCase):
         tiles = p1._table['tileid'][:10].data
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p1.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
+            p1.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         p2 = Progress(p1._table)
         self.assertEqual(p2.completed(include_partial=True), 5.)
         self.assertEqual(p2.completed(include_partial=False), 0.)
@@ -123,9 +167,12 @@ class TestProgress(unittest.TestCase):
         p = Progress()
         tile_id = p._table['tileid'][0]
         t0 = astropy.time.Time('2020-01-01 07:00')
-        p.add_exposure(tile_id, t0 + 1 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, t0 + 2 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
-        p.add_exposure(tile_id, t0 + 3 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
+        p.add_exposure(
+            tile_id, t0 + 1 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
+        p.add_exposure(
+            tile_id, t0 + 2 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
+        p.add_exposure(
+            tile_id, t0 + 3 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         self.assertEqual(p.completed(include_partial=True), 1.)
         self.assertEqual(p.completed(include_partial=False), 1.)
 
@@ -146,7 +193,7 @@ class TestProgress(unittest.TestCase):
         tiles = p._table['tileid'][list(pass1[:n]) + list(pass7[:n])]
         t0 = astropy.time.Time('2020-01-01 07:00')
         for tile_id in tiles:
-            p.add_exposure(tile_id, t0, 1e3 * u.s, 1.5, 1.5, 1.1)
+            p.add_exposure(tile_id, t0, 1e3 * u.s, 1.5, 1.5, 1.1, 0, 0, 0)
             t0 += 0.1 * u.day
         self.assertEqual(p.completed(only_passes=(7, 1)), 2 * n)
         self.assertEqual(p.completed(only_passes=7), n)
@@ -166,9 +213,9 @@ class TestProgress(unittest.TestCase):
         mjds = 58849. + np.arange(n)
         tt = astropy.time.Time('2020-01-01 07:00') + np.arange(n) * u.hour
         for t in tt[:-1]:
-            p.add_exposure(tile_id, t, 1e3 * u.s, 0.2, 1.5, 1.1)
+            p.add_exposure(tile_id, t, 1e3 * u.s, 0.2, 1.5, 1.1, 0, 0, 0)
         with self.assertRaises(RuntimeError):
-            p.add_exposure(tile_id, tt[-1], 1e3 * u.s, 0.2, 1.5, 1.1)
+            p.add_exposure(tile_id, tt[-1], 1e3 * u.s, 0.2, 1.5, 1.1, 0, 0, 0)
 
     def test_summary(self):
         """Summary contains one row per tile"""
@@ -180,9 +227,10 @@ class TestProgress(unittest.TestCase):
         n, airmass, seeing = 100, 1.5, 1.1
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, t in enumerate(p._table['tileid'][:n]):
-            p.add_exposure(t, t0 + i * u.hour, 1e3 * u.s, 0.25, airmass, seeing)
+            p.add_exposure(
+                t, t0 + i * u.hour, 1e3 * u.s, 0.25, airmass, seeing, 0, 0, 0)
             p.add_exposure(t, t0 + (i + 0.5) * u.hour, 1e3 * u.s, 0.25,
-                           airmass, seeing)
+                           airmass, seeing, 0, 0, 0)
         self.assertEqual(len(p.get_summary('observed')), 100)
         self.assertEqual(len(p.get_summary('completed')), 0)
         self.assertTrue(np.all(p.get_summary('observed')['nexp'] == 2))
@@ -209,7 +257,8 @@ class TestProgress(unittest.TestCase):
         tiles = p1._table['tileid'][:10].data
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
-            p1.add_exposure(tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1)
+            p1.add_exposure(
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         p2 = p1.copy_range()
         self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
 
@@ -220,9 +269,10 @@ class TestProgress(unittest.TestCase):
         tiles = p1._table['tileid'][:n].data
         tt = astropy.time.Time('2020-01-01 07:00') + np.arange(n) * u.hour
         for t, tile_id in zip(tt, tiles):
-            p1.add_exposure(tile_id, t, 1e3 * u.s, 0.5, 1.5, 1.1)
+            p1.add_exposure(tile_id, t, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         for t, tile_id in zip(tt, tiles):
-            p1.add_exposure(tile_id, t + 100 * u.day, 1e3 * u.s, 0.5, 1.5, 1.1)
+            p1.add_exposure(
+                tile_id, t + 100 * u.day, 1e3 * u.s, 0.5, 1.5, 1.1, 0, 0, 0)
         self.assertEqual(p1.completed(), n)
         # Selects everything.
         mjd0 = tt[0].mjd

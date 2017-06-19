@@ -50,7 +50,8 @@ class TestNextField(unittest.TestCase):
         for i in range(10):
             tileinfo = nextFieldSelector(planfile, mjd, progress)
             progress.add_exposure(
-                tileinfo['tileID'], t0 + i * u.min, 30 * u.s, 1., 1.5, 1.1)
+                tileinfo['tileID'], t0 + i * u.min, 30 * u.s,
+                1., 1.5, 1.1, 0, 0, 0)
             tilesObserved.append(tileinfo['tileID'])
             decobs.append(tileinfo['DEC'])
             prev_ra = tileinfo['RA']
@@ -67,7 +68,7 @@ class TestNextField(unittest.TestCase):
             t0 += 0.3 * u.hour
             tileinfo = nextFieldSelector(planfile, t0.mjd, progress)
             progress.add_exposure(
-                tileinfo['tileID'], t0, 1e3 * u.s, 1., 1.5, 1.1)
+                tileinfo['tileID'], t0, 1e3 * u.s, 1., 1.5, 1.1, 0, 0, 0)
             tilesObserved.append(tileinfo['tileID'])
             prev_ra = tileinfo['RA']
             prev_dec = tileinfo['DEC']
