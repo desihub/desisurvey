@@ -9,6 +9,7 @@ from astropy.table import Table
 import astropy.time
 import astropy.units as u
 
+import desisurvey.config
 from desisurvey.ephemerides import Ephemerides
 from desisurvey.progress import Progress
 from desisurvey.afternoonplan import surveyPlan
