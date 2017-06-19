@@ -109,7 +109,7 @@ class TestProgress(unittest.TestCase):
         explist = p.get_exposures(exp_fields='mjd,night')
         for row in explist:
             night = str(desisurvey.utils.get_date(row['mjd']))
-            self.assertEqual(row['night'], night)
+            self.assertEqual(row['night'].decode('utf-8'), night)
             self.assertEqual(night, str(desisurvey.utils.get_date(night)))
 
     def test_exposures_incrementing(self):
@@ -298,5 +298,9 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p2.completed(), 0.)
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_suite():
+    """Allows testing of only this module with the command::
+
+        python setup.py test -m <modulename>
+    """
+    return unittest.defaultTestLoader.loadTestsFromName(__name__)

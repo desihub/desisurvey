@@ -1,7 +1,8 @@
 import unittest
 import os
-import uuid
 import datetime
+import tempfile
+import shutil
 
 import numpy as np
 
@@ -10,8 +11,8 @@ from astropy.coordinates import ICRS, AltAz
 import astropy.units as u
 import astropy.io
 
+import desisurvey.config
 from desisurvey.ephemerides import Ephemerides, get_grid, get_object_interpolator
-from desisurvey.config import Configuration
 from desisurvey.utils import get_date, get_location
 
 
@@ -19,10 +20,11 @@ class TestEphemerides(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.origdir = os.getcwd()
-        cls.testdir = os.path.abspath('./test-{}'.format(uuid.uuid4()))
-        os.mkdir(cls.testdir)
-        os.chdir(cls.testdir)
+        # Create a temporary directory.
+        cls.tmpdir = tempfile.mkdtemp()
+        # Write output files to this temporary directory.
+        config = desisurvey.config.Configuration()
+        config.set_output_path(cls.tmpdir)
         # Configure a CSV reader for the Horizons output format.
         csv_reader = astropy.io.ascii.Csv()
         csv_reader.header.comment = r'[^ ]'
@@ -43,10 +45,10 @@ class TestEphemerides(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        os.chdir(cls.origdir)
-        if os.path.isdir(cls.testdir):
-            import shutil
-            shutil.rmtree(cls.testdir)
+        # Remove the directory after the test.
+        shutil.rmtree(cls.tmpdir)
+        # Reset our configuration.
+        desisurvey.config.Configuration.reset()
 
     def test_getephem(self):
         """Tabulate one month of ephemerides"""
@@ -159,5 +161,9 @@ class TestEphemerides(unittest.TestCase):
             self.assertTrue(abs(sep.to(u.deg).value) < 0.3)
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_suite():
+    """Allows testing of only this module with the command::
+
+        python setup.py test -m <modulename>
+    """
+    return unittest.defaultTestLoader.loadTestsFromName(__name__)
