@@ -1,7 +1,8 @@
 import unittest
 import os
-import uuid
 import datetime
+import tempfile
+import shutil
 
 import numpy as np
 
@@ -9,6 +10,7 @@ from astropy.table import Table
 from astropy.time import Time
 import astropy.units as u
 
+import desisurvey.config
 from desisurvey.ephemerides import Ephemerides
 from desisurvey.progress import Progress
 from desisurvey.afternoonplan import surveyPlan
@@ -17,18 +19,18 @@ class TestSurveyPlan(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        import uuid
-        cls.testdir = os.path.abspath('./test-{}'.format(uuid.uuid4()))
-        cls.origdir = os.getcwd()
-        os.mkdir(cls.testdir)
-        os.chdir(cls.testdir)
+        # Create a temporary directory.
+        cls.tmpdir = tempfile.mkdtemp()
+        # Write output files to this temporary directory.
+        config = desisurvey.config.Configuration()
+        config.set_output_path(cls.tmpdir)
 
     @classmethod
     def tearDownClass(cls):
-        os.chdir(cls.origdir)
-        if os.path.isdir(cls.testdir):
-            import shutil
-            shutil.rmtree(cls.testdir)
+        # Remove the directory after the test.
+        shutil.rmtree(cls.tmpdir)
+        # Reset our configuration.
+        desisurvey.config.Configuration.reset()
 
     def test_planning(self):
         start = datetime.date(2019, 9, 1)

@@ -1,4 +1,6 @@
 import unittest
+import tempfile
+import shutil
 import os
 import datetime
 
@@ -16,11 +18,11 @@ class TestNextField(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        import uuid
-        cls.testdir = os.path.abspath('./test-{}'.format(uuid.uuid4()))
-        cls.origdir = os.getcwd()
-        os.mkdir(cls.testdir)
-        os.chdir(cls.testdir)
+        # Create a temporary directory.
+        cls.tmpdir = tempfile.mkdtemp()
+        # Write output files to this temporary directory.
+        config = desisurvey.config.Configuration()
+        config.set_output_path(cls.tmpdir)
 
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 10, 1)
@@ -30,10 +32,10 @@ class TestNextField(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        os.chdir(cls.origdir)
-        if os.path.isdir(cls.testdir):
-            import shutil
-            shutil.rmtree(cls.testdir)
+        # Remove the directory after the test.
+        shutil.rmtree(cls.tmpdir)
+        # Reset our configuration.
+        desisurvey.config.Configuration.reset()
 
     def test_nfs(self):
         #- Plan night 0; set the first 10 tiles as observed
