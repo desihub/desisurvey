@@ -66,5 +66,9 @@ class TestSurveyPlan(unittest.TestCase):
         plan0 = Table.read(planfile0)
         self.assertTrue(np.any(np.in1d(plan0['TILEID'][10:], plan1['TILEID'])))
 
-if __name__ == '__main__':
-    unittest.main()
+def test_suite():
+    """Allows testing of only this module with the command::
+
+        python setup.py test -m <modulename>
+    """
+    return unittest.defaultTestLoader.loadTestsFromName(__name__)

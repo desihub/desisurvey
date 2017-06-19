@@ -308,5 +308,9 @@ class TestUtils(unittest.TestCase):
         self.assertAlmostEqual(b, -42.82614243, 4)
 
 
-if __name__ == '__main__':
-    unittest.main()
+def test_suite():
+    """Allows testing of only this module with the command::
+
+        python setup.py test -m <modulename>
+    """
+    return unittest.defaultTestLoader.loadTestsFromName(__name__)
