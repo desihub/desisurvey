@@ -5,7 +5,7 @@ desisurvey change log
 0.8.1 (unreleased)
 ------------------
 
-* No changes yet.
+* Fix unit tests broken in 0.8.0.
 
 0.8.0 (2017-06-18)
 ------------------
