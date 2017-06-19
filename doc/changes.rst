@@ -2,10 +2,12 @@
 desisurvey change log
 =====================
 
-0.8.1 (unreleased)
+0.8.1 (2017-06-19)
 ------------------
 
-* Fix unit tests broken in 0.8.0.
+* Fix unit tests broken in 0.8.0 (PR `#46`_).
+
+.. _`#46`: https://github.com/desihub/desisurvey/pull/46
 
 0.8.0 (2017-06-18)
 ------------------
