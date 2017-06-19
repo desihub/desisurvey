@@ -2,7 +2,7 @@
 desisurvey change log
 =====================
 
-0.8.0 (unreleased)
+0.8.0 (2017-06-18)
 ------------------
 
 * Implement LST-driven scheduling strategy.
