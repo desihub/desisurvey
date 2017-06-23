@@ -43,10 +43,14 @@ class Optimizer(object):
     nbins : int
         Number of LST histogram bins to use when calculating the optimization
         metrics.
-    init : 'zero', 'info' or 'flat'
+    init : 'zero', 'info', 'flat' or 'array'
         Method for initializing tile hour angles: 'zero' sets all hour angles
-        to zero, 'init' reads 'tile-info.fits' and 'flat' matches the CDF of
-        available LST to planned LST (without accounting for exposure time).
+        to zero, 'init' reads 'tile-info.fits', 'flat' matches the CDF of
+        available LST to planned LST (without accounting for exposure time),
+        'array' initializes from the initial_ha argument.
+    initial_ha : array or None
+        Only used when init is 'array'. The subset arg must also be provided
+        to specify which tile each HA applies to.
     origin : float
         Rotate DEC values in plots so that the left edge is at this value
         in degrees.
@@ -69,7 +73,8 @@ class Optimizer(object):
         relative weight. The next bin to optimize is then selected at random.
     """
     def __init__(self, sched, program, subset=None, start=None, stop=None,
-                 nbins=90, init='info', origin=-60, center=220, seed=123,
+                 nbins=192, init='info', initial_ha=None,
+                 origin=-60, center=220, seed=123,
                  oversampling=32, weights=[5, 4, 3, 2, 1]):
 
         self.log = desiutil.log.get_logger()
@@ -121,10 +126,13 @@ class Optimizer(object):
         p_tiles = sched.tiles[sched.tiles['program'] == p_index]
         # Restrict to a subset of tiles in this program, if requested.
         if subset is not None:
+            subset = np.asarray(subset)
             idx = np.searchsorted(p_tiles['tileid'], subset)
             if not np.all(p_tiles['tileid'][idx] == subset):
+                bad = set(subset) - set(p_tiles['tileid'])
                 raise ValueError(
-                    'Invalid subset for {0} program.'.format(program))
+                    'Subset contains non-{0} tiles: {1}.'
+                    .format(program, ','.join([str(n) for n in bad])))
             p_tiles = p_tiles[idx]
 
         self.ra = wrap(p_tiles['ra'].data, origin)
@@ -183,10 +191,12 @@ class Optimizer(object):
             idx = np.searchsorted(info['TILEID'], self.tid)
             assert np.all(info['TILEID'][idx] == self.tid)
             self.ha = info['HA'][idx]
-            ha_clipped = np.clip(self.ha, -self.max_abs_ha, +self.max_abs_ha)
-            if not np.all(self.ha == ha_clipped):
-                self.log.warn('Clipping info HA assignments to airmass limits.')
-                self.ha = ha_clipped
+        elif init == 'array':
+            if subset is None:
+                raise ValueError('Must specify subset when init is "array".')
+            if len(initial_ha) != self.ntiles:
+                raise ValueError('Array initial_ha has wrong length.')
+            self.ha = np.asarray(initial_ha)
         elif init == 'flat':
             if center is None:
                 centers = np.arange(0, 360, 5)
@@ -229,6 +239,12 @@ class Optimizer(object):
             self.MSE_history = []
         else:
             raise ValueError('Invalid init option: {0}.'.format(init))
+
+        # Check initial HA assignments against airmass limits.
+        ha_clipped = np.clip(self.ha, -self.max_abs_ha, +self.max_abs_ha)
+        if not np.all(self.ha == ha_clipped):
+            self.log.warn('Clipping info HA assignments to airmass limits.')
+            self.ha = ha_clipped
 
         # Calculate schedule plan with HA=0 asignments to establish
         # the smallest possible total exposure time.
@@ -533,7 +549,7 @@ class Optimizer(object):
             self.nstuck += 1
         self.nimprove += 1
 
-    def plot(self, save=None):
+    def plot(self, save=None, relative=True):
         """Plot the current optimzation status.
 
         Requires that matplotlib is installed.
@@ -584,11 +600,16 @@ class Optimizer(object):
         ax[2].hist(self.ha, bins=50, histtype='stepfilled')
         ax[2].set_xlabel('Tile Design Hour Angle [deg]')
 
-        s = ax[3].scatter(self.ra, self.dec, c=self.ha - self.ha_initial,
-                          s=12, lw=0, cmap='jet')
+        if relative:
+            c = self.ha - self.ha_initial
+            clabel = 'Tile Hour Angle Adjustments [deg]'
+        else:
+            c = self.ha
+            clabel = 'Tile Hour Angle [deg]'
+        s = ax[3].scatter(self.ra, self.dec, c=c, s=12, lw=0, cmap='jet')
         ax[3].set_xlim(self.lst_edges[0] - 5, self.lst_edges[-1] + 5)
         ax[3].set_xticks([])
-        ax[3].set_xlabel('Tile Hour Angle Adjustments [deg]')
+        ax[3].set_xlabel(clabel)
         ax[3].set_ylim(-20, 80)
         ax[3].set_yticks([])
         cbar = plt.colorbar(s, ax=ax[3], orientation='vertical',
