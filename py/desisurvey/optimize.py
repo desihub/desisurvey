@@ -163,6 +163,7 @@ class Optimizer(object):
         self.lst_centers_os = 0.5 * (lst_edges_os[1:] + lst_edges_os[:-1])
         self.oversampling = oversampling
         self.scale_history = []
+        self.loss_history = []
         self.MSE_history = []
 
         # Initialize improve() counters.
@@ -228,6 +229,12 @@ class Optimizer(object):
             self.MSE_history = []
         else:
             raise ValueError('Invalid init option: {0}.'.format(init))
+
+        # Calculate schedule plan with HA=0 asignments to establish
+        # the smallest possible total exposure time.
+        self.plan_tiles_os = self.get_plan(np.zeros_like(self.ha))
+        self.use_plan(save_history=False)
+        self.min_total_time = self.plan_hist.sum()
 
         # Calculate schedule plan with initial HA asignments.
         self.plan_tiles_os = self.get_plan(self.ha)
@@ -327,6 +334,21 @@ class Optimizer(object):
         scale = plan_hist.sum() / self.lst_hist.sum()
         return np.sum((plan_hist - scale * self.lst_hist) ** 2)
 
+    def eval_loss(self, plan_hist):
+        """Evaluate ratio of current plan to HA=0 total exposure times.
+
+        Parameters
+        ----------
+        plan_hist : array
+            Histogram of planned LST usage for all tiles.
+
+        Returns
+        -------
+        float
+            Loss factor.
+        """
+        return plan_hist.sum() / self.min_total_time
+
     def eval_scale(self, plan_hist):
         """Evaluate the efficiency of the specified plan.
 
@@ -357,7 +379,7 @@ class Optimizer(object):
         nonzero = self.lst_hist > 0
         return (plan_hist[nonzero] / self.lst_hist[nonzero]).max()
 
-    def use_plan(self):
+    def use_plan(self, save_history=True):
         """Use the current oversampled plan and update internal arrays.
 
         Calculates the downsampled `plan_tiles` and `plan_hist` arrays from
@@ -369,10 +391,10 @@ class Optimizer(object):
             self.ntiles, self.nbins, self.oversampling).mean(axis=-1)
         # Sum over tiles at low resolution.
         self.plan_hist = self.plan_tiles.sum(axis=0)
-        # Calculate the amount that the nominal LST budget needs to be rescaled
-        # to accomodate this plan.
-        self.scale_history.append(self.eval_scale(self.plan_hist))
-        self.MSE_history.append(self.eval_MSE(self.plan_hist))
+        if save_history:
+            self.scale_history.append(self.eval_scale(self.plan_hist))
+            self.loss_history.append(self.eval_loss(self.plan_hist))
+            self.MSE_history.append(self.eval_MSE(self.plan_hist))
 
     def next_bin(self):
         """Select which LST bin to adjust next.
@@ -554,6 +576,7 @@ class Optimizer(object):
         ax[1].legend(loc='lower left', numpoints=1)
         rhs = ax[1].twinx()
         rhs.plot(self.scale_history, 'kx', ms=5, label='Scale')
+        #rhs.plot(self.loss_history, 'g+', ms=5, label='Loss')
         rhs.legend(loc='upper right', numpoints=1)
         ax[1].set_xlim(-0.1, len(self.MSE_history) - 0.9)
         ax[1].set_xlabel('Iterations')
