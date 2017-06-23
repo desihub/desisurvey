@@ -183,8 +183,9 @@ class Configuration(Node):
     def set_output_path(self, output_path):
         """Set the output directory for relative paths.
 
-        The path must exist when this method is called. Used by :meth:`ge_path`.
-        This method updates the configuration output_path value.
+        The path must exist when this method is called. Called by
+        :meth:`get_path` for a non-absolute path. This method updates the
+        configuration output_path value.
 
         Parameters
         ----------
@@ -214,6 +215,10 @@ class Configuration(Node):
 
         Configured by the ``output_path`` node and :meth:`set_output_path`.
 
+        An absolute path is returned immediately so an environment variable
+        used in output_path only needs to be defined if relative paths
+        are used.
+
         Parameters
         ----------
         name : str
@@ -225,6 +230,8 @@ class Configuration(Node):
             Path name to use. Relative path names will have our output_path
             prepended.  Absolute path names will be unchanged.
         """
+        if os.path.isabs(name):
+            return name
         if self._output_path is None:
             self.set_output_path(self.output_path())
         return os.path.join(self._output_path, name)
