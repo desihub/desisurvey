@@ -20,6 +20,11 @@ def wrap(angle, offset):
     """
     return np.fmod(angle - offset + 360, 360) + offset
 
+def unwrap(angle, offset):
+    """Upwrap values in the range [offset, offset+360] to [0, 360].
+    """
+    return np.fmod(angle + 360, 360)
+
 
 class Optimizer(object):
     """Initialize the hour angle assignments for specified tiles.
@@ -62,9 +67,6 @@ class Optimizer(object):
     seed : int or None
         Random number seed to use for stochastic elements of the optimizer.
         Do not use None if reproducible results are required.
-    oversampling : int
-        Oversampling of the LST histogram (relative to nbins) to use when
-        spreading each planned observation over its estimated exposure time.
     weights : array
         Array of relative weights to use when selecting which LST bin to
         optimize next.  Candidate bins are ordered by an estimated improvement.
@@ -74,8 +76,7 @@ class Optimizer(object):
     """
     def __init__(self, sched, program, subset=None, start=None, stop=None,
                  nbins=192, init='info', initial_ha=None,
-                 origin=-60, center=220, seed=123,
-                 oversampling=32, weights=[5, 4, 3, 2, 1]):
+                 origin=-60, center=220, seed=123, weights=[5, 4, 3, 2, 1]):
 
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
@@ -116,6 +117,8 @@ class Optimizer(object):
             lst, bins=nbins, range=(origin, origin + 360), weights=wgt)
         self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
         self.nbins = nbins
+        self.origin = origin
+        self.binsize = 360. / self.nbins
 
         # Get nominal exposure time for this program,
         # converted to LST equivalent in degrees.
@@ -165,11 +168,7 @@ class Optimizer(object):
         self.A = np.sin(np.radians(self.dec)) * np.sin(latitude)
         self.B = np.cos(np.radians(self.dec)) * np.cos(latitude)
 
-        # Initialize oversampled schedule planning calculations.
-        lst_edges_os = np.linspace(
-            origin, origin + 360, self.nbins * oversampling + 1)
-        self.lst_centers_os = 0.5 * (lst_edges_os[1:] + lst_edges_os[:-1])
-        self.oversampling = oversampling
+        # Initialize metric histories.
         self.scale_history = []
         self.loss_history = []
         self.MSE_history = []
@@ -218,7 +217,7 @@ class Optimizer(object):
                 ha = np.fmod(tile_lst - ra, 360)
                 # Clip tiles to their airmass limits.
                 ha = np.clip(ha, -self.max_abs_ha, +self.max_abs_ha)
-                self.plan_tiles_os = self.get_plan(ha)
+                self.plan_tiles = self.get_plan(ha)
                 self.use_plan()
                 if  self.MSE_history[-1] < MSE_min:
                     self.ha = ha.copy()
@@ -248,12 +247,12 @@ class Optimizer(object):
 
         # Calculate schedule plan with HA=0 asignments to establish
         # the smallest possible total exposure time.
-        self.plan_tiles_os = self.get_plan(np.zeros_like(self.ha))
+        self.plan_tiles = self.get_plan(np.zeros_like(self.ha))
         self.use_plan(save_history=False)
         self.min_total_time = self.plan_hist.sum()
 
         # Calculate schedule plan with initial HA asignments.
-        self.plan_tiles_os = self.get_plan(self.ha)
+        self.plan_tiles = self.get_plan(self.ha)
         self.use_plan()
         self.ha_initial = self.ha.copy()
         self.num_adjustments = np.zeros(self.ntiles, int)
@@ -293,8 +292,6 @@ class Optimizer(object):
     def get_plan(self, ha, subset=None):
         """Calculate an LST usage plan for specified hour angle assignments.
 
-        The plan is calculated on the oversampled LST grid.
-
         Parameters
         ----------
         ha : array
@@ -307,23 +304,31 @@ class Optimizer(object):
         Returns
         -------
         array
-            Array of shape (ntiles, nbins * oversampling) giving the exposure time in hours that each tile needs in each oversampled LST bin.
-            When a subset is specified, ntiles only indexes tiles in the subset.
+            Array of shape (ntiles, nbins) giving the exposure time in hours
+            that each tile needs in each LST bin. When a subset is specified,
+            ntiles only indexes tiles in the subset.
         """
         exptime, subset = self.get_exptime(ha, subset)
         # Calculate LST windows for each tile's exposure.
         lst_mid = self.ra[subset] + ha
-        lst_min = lst_mid - 0.5 * exptime
-        lst_max = lst_mid + 0.5 * exptime
-        # Sample each tile's exposure on the oversampled LST grid.
-        dlo = np.fmod(
-            self.lst_centers_os - lst_min[:, np.newaxis] + 540, 360) - 180
-        dhi = np.fmod(
-            self.lst_centers_os - lst_max[:, np.newaxis] + 540, 360) - 180
-        # Normalize to hours per LST bin. Factor of 2 sharpens the erf() edges.
-        return 24. / self.nbins * np.maximum(
-            0, 0.5 * (scipy.special.erf(2.0 * dlo) -
-                      scipy.special.erf(2.0 * dhi)))
+        lst_min = np.fmod(
+            lst_mid - 0.5 * exptime - self.origin + 360, 360) + self.origin
+        assert np.all(lst_min >= self.origin)
+        assert np.all(lst_min < self.origin + 360)
+        lst_max = np.fmod(
+            lst_mid + 0.5 * exptime - self.origin + 360, 360) + self.origin
+        assert np.all(lst_max >= self.origin)
+        assert np.all(lst_max < self.origin + 360)
+        # Calculate each exposure's overlap with each LST bin.
+        lo = np.clip(
+            self.lst_edges[1:] - lst_min[:, np.newaxis], 0, self.binsize)
+        hi = np.clip(
+            lst_max[:, np.newaxis] - self.lst_edges[:-1], 0, self.binsize)
+        plan = lo + hi
+        plan[lst_max > lst_min] -= self.binsize
+        assert np.allclose(plan.sum(axis=1), exptime)
+        # Convert from degrees to hours.
+        return plan * 24. / 360.
 
     def eval_MSE(self, plan_hist):
         """Evaluate the mean-squared error metric for the specified plan.
@@ -396,16 +401,11 @@ class Optimizer(object):
         return (plan_hist[nonzero] / self.lst_hist[nonzero]).max()
 
     def use_plan(self, save_history=True):
-        """Use the current oversampled plan and update internal arrays.
+        """Use the current plan and update internal arrays.
 
-        Calculates the downsampled `plan_tiles` and `plan_hist` arrays from
-        the oversampled per-tile `plan_tiles_os` array, and records the
-        current values of the MSE and scale metrics.
+        Calculates the `plan_hist` arrays from the per-tile `plan_tiles` array,
+        and records the current values of the MSE and scale metrics.
         """
-        # Downsample the high resolution plan to the LST bins.
-        self.plan_tiles = self.plan_tiles_os.reshape(
-            self.ntiles, self.nbins, self.oversampling).mean(axis=-1)
-        # Sum over tiles at low resolution.
         self.plan_hist = self.plan_tiles.sum(axis=0)
         if save_history:
             self.scale_history.append(self.eval_scale(self.plan_hist))
@@ -519,9 +519,7 @@ class Optimizer(object):
                 nsel = np.count_nonzero(sel)
             subset = np.where(sel)[0]
             # Calculate how the plan changes by moving each selected tile.
-            scenario_os = self.get_plan(self.ha[subset] + dha, subset)
-            scenario = scenario_os.reshape(
-                nsel, self.nbins, self.oversampling).mean(axis=-1)
+            scenario = self.get_plan(self.ha[subset] + dha, subset)
             new_MSE = np.zeros(nsel)
             for i, itile in enumerate(subset):
                 # Calculate the (downsampled) plan when this tile is moved.
@@ -541,7 +539,7 @@ class Optimizer(object):
             # Update the plan.
             self.ha[itile] = self.ha[itile] + dha
             assert np.abs(self.ha[itile]) < self.max_abs_ha[itile]
-            self.plan_tiles_os[itile] = scenario_os[i]
+            self.plan_tiles[itile] = scenario[i]
             # No need to try additional methods.
             break
         self.use_plan()
@@ -573,9 +571,6 @@ class Optimizer(object):
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
                  weights=self.lst_hist * MSE_scale, histtype='step',
                  fc=(1,0,0,0.25), ec='r', ls='--')
-        # Superimpose the high-resolution plan.
-        plan_os = self.plan_tiles_os.sum(axis=0)
-        ax[0].plot(self.lst_centers_os, plan_os, 'b-', alpha=0.5, lw=1)
 
         nbins = len(self.lst_centers)
         idx, dha = self.next_bin()
