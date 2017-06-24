@@ -5,7 +5,7 @@ desisurvey change log
 0.8.2 (unreleased)
 ------------------
 
-* No changes yet.
+* Create surveyinit script to calculate initial HA assignments.
 
 0.8.1 (2017-06-19)
 ------------------
