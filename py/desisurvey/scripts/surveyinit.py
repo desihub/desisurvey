@@ -1,5 +1,9 @@
 """Script wrapper for initializing survey planning and scheduling.
 
+This is normally run once, at the start of the survey, and saves its results
+to a FITS file surveyinit.fits.  With the default parameters, the running time
+is about 1 hour.
+
 To run this script from the command line, use the ``surveyinit`` entry point
 that is created when this package is installed, and should be in your shell
 command search path.
@@ -34,17 +38,23 @@ def parse(options=None):
         '--debug', action='store_true',
         help='display log messages with severity >= debug (implies verbose)')
     parser.add_argument(
-        '--nbins', type=int, default=90, metavar='N',
+        '--nbins', type=int, default=180, metavar='N',
         help='number of LST bins to use')
+    parser.add_argument(
+        '--smoothing', default=0.05, metavar='S',
+        help='amount to smooth HA assignments after each annealing cycle')
     parser.add_argument(
         '--initial-frac', default=0.5, metavar='F',
         help='fraction of an LST bin for initial HA adjustments')
     parser.add_argument(
-        '--anneal-rate', default=0.9, metavar='R',
+        '--anneal-rate', default=0.95, metavar='R',
         help='decrease fraction by this factor after each annealing cycle')
     parser.add_argument(
-        '--epsilon', default=0.01, metavar='EPS',
-        help='stop cycles when fractional MSE improvement < EPS')
+        '--max-mse', default=5.0, metavar='MAX',
+        help='continue cycles until MSE is below this threshold')
+    parser.add_argument(
+        '--epsilon', default=0.03, metavar='EPS',
+        help='stop cycles when fractional score improvement < EPS')
     parser.add_argument(
         '--max-cycles', type=int, default=100,
         help='maximum number of annealing cycles for each program')
@@ -104,20 +114,25 @@ def main(args):
         # Loop over annealing cycles.
         num_cycles = 0
         frac = args.initial_frac
+        smoothing = args.smoothing
         while num_cycles < args.max_cycles:
-            start_MSE = opt.MSE_history[-1]
+            start_score = opt.eval_score(opt.plan_hist)
             for i in range(opt.ntiles):
                 opt.improve(frac)
-            stop_MSE = opt.MSE_history[-1]
-            delta_MSE = (stop_MSE - start_MSE) / start_MSE
+            if smoothing > 0:
+                opt.smooth(alpha=smoothing)
+            stop_score = opt.eval_score(opt.plan_hist)
+            delta = (stop_score - start_score) / start_score
+            MSE = opt.MSE_history[-1]
             loss = opt.loss_history[-1]
             log.info(
-                '[{0:03d}] frac={1:.4f} MSE={2:7.1f} ({3:4.1f}%) LOSS={4:4.1f}%'
-                     .format(num_cycles + 1, frac, stop_MSE, 1e2 * delta_MSE,
-                             1e2 * loss))
-            if delta_MSE > -args.epsilon:
+                '[{:03d}] f={:.4f} MSE={:7.1f} LOSS={:4.1f}% delta={:+5.1f}%'
+                     .format(num_cycles + 1, frac, MSE, 1e2*loss, 1e2*delta))
+            if MSE < args.max_mse and delta > -args.epsilon:
                 break
+            # Anneal parameters for next cycle.
             frac *= args.anneal_rate
+            smoothing *= args.anneal_rate
             num_cycles += 1
 
         # Calculate exposure times in seconds.

@@ -181,7 +181,6 @@ class Optimizer(object):
 
         # Initialize improve() counters.
         self.nslow = 0
-        self.nstuck = 0
         self.nimprove = 0
         self.nsmooth = 0
 
@@ -249,7 +248,12 @@ class Optimizer(object):
         # Check initial HA assignments against airmass limits.
         ha_clipped = np.clip(self.ha, -self.max_abs_ha, +self.max_abs_ha)
         if not np.all(self.ha == ha_clipped):
-            self.log.warn('Clipping info HA assignments to airmass limits.')
+            delta = np.abs(self.ha - ha_clipped)
+            idx = np.argmax(delta)
+            self.log.warn('Clipped {0} HA assignments to airmass limits.'
+                          .format(np.count_nonzero(delta)))
+            self.log.warn('Max clip is {0:.1f} deg for tile {1}.'
+                          .format(delta[idx], self.tid[idx]))
             self.ha = ha_clipped
 
         # Calculate schedule plan with HA=0 asignments to establish
@@ -337,6 +341,23 @@ class Optimizer(object):
         # Convert from degrees to hours.
         return plan * 24. / 360.
 
+    def eval_score(self, plan_hist):
+        """Evaluate the score that improve() tries to minimize.
+
+        Score is calculated as MSE + 100 * loss.
+
+        Parameters
+        ----------
+        plan_hist : array
+            Histogram of planned LST usage for all tiles.
+
+        Returns
+        -------
+        float
+            Score value.
+        """
+        return self.eval_MSE(plan_hist) + 100 * self.eval_loss(plan_hist)
+
     def eval_MSE(self, plan_hist):
         """Evaluate the mean-squared error metric for the specified plan.
 
@@ -347,6 +368,9 @@ class Optimizer(object):
 
         The histogram of available LST is rescaled to the same total time (area)
         before calculating residuals relative to the planned LST usage.
+
+        MSE values are scaled by (10K / ntiles) so the absolute metric value
+        is more consistent when ntiles is varied.
 
         Parameters
         ----------
@@ -361,7 +385,7 @@ class Optimizer(object):
         # Rescale the available LST total time to the plan total time.
         scale = plan_hist.sum() / self.lst_hist_sum
         residuals = plan_hist - scale * self.lst_hist
-        return residuals.dot(residuals)
+        return residuals.dot(residuals) * 1e4 / self.ntiles
 
     def eval_loss(self, plan_hist):
         """Evaluate relative loss of current plan relative to HA=0 plan.
@@ -491,8 +515,8 @@ class Optimizer(object):
         # noise but also makes it possible to get out of dead ends.
         frac = np.minimum(2., self.gen.rayleigh(
             scale=np.sqrt(2 / np.pi) * frac))
-        # Calculate the initial MSE.
-        initial_MSE = self.eval_MSE(self.plan_hist)
+        # Calculate the initial score.
+        initial_score = self.eval_score(self.plan_hist)
         # Try a fast method first, then fall back to a slower method.
         for method in 'next_bin', 'any_bin':
             if method == 'next_bin':
@@ -531,17 +555,17 @@ class Optimizer(object):
             subset = np.where(sel)[0]
             # Calculate how the plan changes by moving each selected tile.
             scenario = self.get_plan(self.ha[subset] + dha, subset)
-            new_MSE = np.zeros(nsel)
+            new_score = np.zeros(nsel)
             for i, itile in enumerate(subset):
                 # Calculate the (downsampled) plan when this tile is moved.
                 new_plan_hist = (
                     self.plan_hist - self.plan_tiles[itile] + scenario[i])
-                new_MSE[i]= self.eval_MSE(new_plan_hist)
-            i = np.argmin(new_MSE)
-            if new_MSE[i] > initial_MSE:
-                # All candidate adjustments give a worse MSE.
+                new_score[i]= self.eval_score(new_plan_hist)
+            i = np.argmin(new_score)
+            if new_score[i] > initial_score:
+                # All candidate adjustments give a worse score.
                 continue
-            # Accept the tile that gives the smallest MSE.
+            # Accept the tile that gives the smallest score.
             itile = subset[i]
             self.num_adjustments[itile] += 1
             self.log.debug(
@@ -554,8 +578,6 @@ class Optimizer(object):
             # No need to try additional methods.
             break
         self.use_plan()
-        if self.MSE_history[-1] >= initial_MSE:
-            self.nstuck += 1
         self.nimprove += 1
 
     def init_smoothing(self, radius):
