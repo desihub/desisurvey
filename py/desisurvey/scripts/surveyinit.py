@@ -22,6 +22,7 @@ import desiutil.log
 import desimodel.io
 
 import desisurvey.utils
+import desisurvey.ephemerides
 import desisurvey.schedule
 import desisurvey.optimize
 
@@ -92,6 +93,13 @@ def main(args):
     config = desisurvey.config.Configuration()
     if args.output_path is not None:
         config.set_output_path(args.output_path)
+
+    # Tabulate emphemerides if necessary.
+    ephem = desisurvey.ephemerides.Ephemerides()
+
+    if not os.path.exists(config.get_path('scheduler.fits')):
+        # Tabulate data used the the scheduler.
+        desisurvey.schedule.initialize(ephem)
 
     # Load scheduler with precomputed tables needed by the optimizer.
     scheduler = desisurvey.schedule.Scheduler()
