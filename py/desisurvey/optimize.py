@@ -56,6 +56,8 @@ class Optimizer(object):
     initial_ha : array or None
         Only used when init is 'array'. The subset arg must also be provided
         to specify which tile each HA applies to.
+    stretch : float
+        Factor to stretch all exposure times by.
     origin : float
         Rotate DEC values in plots so that the left edge is at this value
         in degrees.
@@ -75,7 +77,7 @@ class Optimizer(object):
         relative weight. The next bin to optimize is then selected at random.
     """
     def __init__(self, sched, program, subset=None, start=None, stop=None,
-                 nbins=192, init='info', initial_ha=None,
+                 nbins=192, init='info', initial_ha=None, stretch=1.0,
                  origin=-60, center=220, seed=123, weights=[5, 4, 3, 2, 1]):
 
         self.log = desiutil.log.get_logger()
@@ -118,6 +120,8 @@ class Optimizer(object):
         self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
         self.nbins = nbins
         self.origin = origin
+        self.stretch = stretch
+        self.lst_hist_sum = self.lst_hist.sum()
         self.binsize = 360. / self.nbins
 
         # Get nominal exposure time for this program,
@@ -161,7 +165,7 @@ class Optimizer(object):
 
         self.log.info(
             '{0} program: {1:.1f}h to observe {2} tiles (texp_nom {3:.1f}).'
-            .format(program, self.lst_hist.sum(), len(p_tiles), texp_nom))
+            .format(program, self.lst_hist_sum, len(p_tiles), texp_nom))
 
         # Precompute coefficients for exposure time calculations.
         latitude = np.radians(config.location.latitude())
@@ -286,7 +290,7 @@ class Optimizer(object):
         cosZ = self.A[subset] + self.B[subset] * np.cos(np.radians(ha))
         X = desisurvey.utils.cos_zenith_to_airmass(cosZ)
         exptime = (self.dlst_nom * desisurvey.etc.airmass_exposure_factor(X) *
-                   self.dust_factor[subset])
+                   self.dust_factor[subset]) * self.stretch
         return exptime, subset
 
     def get_plan(self, ha, subset=None):
@@ -313,12 +317,12 @@ class Optimizer(object):
         lst_mid = self.ra[subset] + ha
         lst_min = np.fmod(
             lst_mid - 0.5 * exptime - self.origin + 360, 360) + self.origin
-        assert np.all(lst_min >= self.origin)
-        assert np.all(lst_min < self.origin + 360)
+        ##assert np.all(lst_min >= self.origin)
+        ##assert np.all(lst_min < self.origin + 360)
         lst_max = np.fmod(
             lst_mid + 0.5 * exptime - self.origin + 360, 360) + self.origin
-        assert np.all(lst_max >= self.origin)
-        assert np.all(lst_max < self.origin + 360)
+        ##assert np.all(lst_max >= self.origin)
+        ##assert np.all(lst_max < self.origin + 360)
         # Calculate each exposure's overlap with each LST bin.
         lo = np.clip(
             self.lst_edges[1:] - lst_min[:, np.newaxis], 0, self.binsize)
@@ -326,7 +330,7 @@ class Optimizer(object):
             lst_max[:, np.newaxis] - self.lst_edges[:-1], 0, self.binsize)
         plan = lo + hi
         plan[lst_max > lst_min] -= self.binsize
-        assert np.allclose(plan.sum(axis=1), exptime)
+        ##assert np.allclose(plan.sum(axis=1), exptime)
         # Convert from degrees to hours.
         return plan * 24. / 360.
 
@@ -352,8 +356,9 @@ class Optimizer(object):
             Mean squared error value.
         """
         # Rescale the available LST total time to the plan total time.
-        scale = plan_hist.sum() / self.lst_hist.sum()
-        return np.sum((plan_hist - scale * self.lst_hist) ** 2)
+        scale = plan_hist.sum() / self.lst_hist_sum
+        residuals = plan_hist - scale * self.lst_hist
+        return residuals.dot(residuals)
 
     def eval_loss(self, plan_hist):
         """Evaluate ratio of current plan to HA=0 total exposure times.
@@ -436,7 +441,7 @@ class Optimizer(object):
             dha_sign gives the sign +/-1 of the HA adjustment required.
         """
         # Rescale the available LST total time to the current plan total time.
-        A = self.lst_hist * self.plan_hist.sum() / self.lst_hist.sum()
+        A = self.lst_hist * self.plan_hist.sum() / self.lst_hist_sum
         # Calculate residuals in each LST bin.
         P = self.plan_hist
         res = P - A
@@ -567,7 +572,7 @@ class Optimizer(object):
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
                  weights=self.plan_hist, histtype='stepfilled',
                  fc=(0.7,0.7,1), ec='b')
-        MSE_scale = self.plan_hist.sum() / self.lst_hist.sum()
+        MSE_scale = self.plan_hist.sum() / self.lst_hist_sum
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
                  weights=self.lst_hist * MSE_scale, histtype='step',
                  fc=(1,0,0,0.25), ec='r', ls='--')
