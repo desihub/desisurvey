@@ -8,6 +8,7 @@ import numpy as np
 import scipy.special
 
 import astropy.table
+import astropy.coordinates
 import astropy.units as u
 
 import desiutil.log
@@ -53,6 +54,8 @@ class Optimizer(object):
         to specify which tile each HA applies to.
     stretch : float
         Factor to stretch all exposure times by.
+    smoothing_radius : astropy.units.Quantity
+        Gaussian sigma for calculating smoothing weights with angular units.
     origin : float
         Rotate DEC values in plots so that the left edge is at this value
         in degrees.
@@ -73,6 +76,7 @@ class Optimizer(object):
     """
     def __init__(self, sched, program, subset=None, start=None, stop=None,
                  nbins=192, init='info', initial_ha=None, stretch=1.0,
+                 smoothing_radius=10 * u.deg,
                  origin=-60, center=220, seed=123, weights=[5, 4, 3, 2, 1]):
 
         self.log = desiutil.log.get_logger()
@@ -158,6 +162,9 @@ class Optimizer(object):
         # Calculate static dust exposure factors for each tile.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(p_tiles['EBV'])
 
+        # Initialize smoothing weights.
+        self.init_smoothing(smoothing_radius)
+
         self.log.info(
             '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}, stretch {4:.3f}).'
             .format(program, self.lst_hist_sum, self.ntiles, texp_nom, stretch))
@@ -176,6 +183,7 @@ class Optimizer(object):
         self.nslow = 0
         self.nstuck = 0
         self.nimprove = 0
+        self.nsmooth = 0
 
         # Initialize HA assignments for each tile.
         if init == 'zero':
@@ -549,6 +557,45 @@ class Optimizer(object):
         if self.MSE_history[-1] >= initial_MSE:
             self.nstuck += 1
         self.nimprove += 1
+
+    def init_smoothing(self, radius):
+        """Calculate and save smoothing weights.
+
+        Weights for each pair of tiles [i,j] are calculated as::
+
+            wgt[i,j] = exp(-0.5 * (sep[i,j]/radius) ** 2)
+
+        where sep[i,j] is the separation angle between the tile centers.
+
+        Parameters
+        ----------
+        radius : astropy.units.Quantity
+            Gaussian sigma for calculating weights with angular units.
+        """
+        unitvecs = astropy.coordinates.ICRS(
+            ra=self.ra * u.deg, dec=self.dec * u.deg)
+        separations = unitvecs.separation(unitvecs[:, np.newaxis])
+        ratio = separations.to(u.deg).value / radius.to(u.deg).value
+        self.smoothing_weights = np.exp(-0.5 * ratio ** 2)
+        # Set self weight to zero.
+        self_weights = np.diag(self.smoothing_weights)
+        assert np.allclose(self_weights, 1.)
+        self.smoothing_weights -= np.diag(self_weights)
+        self.smoothing_sums = self.smoothing_weights.sum(axis=1)
+
+    def smooth(self, alpha=0.1):
+        """Smooth the current HA assignments.
+
+        Each HA is replaced with a smoothed value::
+
+            (1-alpha) * HA + alpha * HA[avg]
+
+        where HA[avg] is the weighted average of all other tile HA assignments.
+        """
+        avg_ha = self.smoothing_weights.dot(self.ha) / self.smoothing_sums
+        self.ha = (1 - alpha) * self.ha + alpha * avg_ha
+        self.plan_tiles = self.get_plan(self.ha)
+        self.use_plan()
 
     def plot(self, save=None, relative=True):
         """Plot the current optimzation status.

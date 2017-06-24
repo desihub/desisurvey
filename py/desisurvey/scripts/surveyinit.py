@@ -40,7 +40,7 @@ def parse(options=None):
         '--initial-frac', default=0.5, metavar='F',
         help='fraction of an LST bin for initial HA adjustments')
     parser.add_argument(
-        '--anneal-rate', default=0.8, metavar='R',
+        '--anneal-rate', default=0.9, metavar='R',
         help='decrease fraction by this factor after each annealing cycle')
     parser.add_argument(
         '--epsilon', default=0.01, metavar='EPS',
