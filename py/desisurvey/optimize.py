@@ -20,11 +20,6 @@ def wrap(angle, offset):
     """
     return np.fmod(angle - offset + 360, 360) + offset
 
-def unwrap(angle, offset):
-    """Upwrap values in the range [offset, offset+360] to [0, 360].
-    """
-    return np.fmod(angle + 360, 360)
-
 
 class Optimizer(object):
     """Initialize the hour angle assignments for specified tiles.
@@ -164,8 +159,8 @@ class Optimizer(object):
         self.dust_factor = desisurvey.etc.dust_exposure_factor(p_tiles['EBV'])
 
         self.log.info(
-            '{0} program: {1:.1f}h to observe {2} tiles (texp_nom {3:.1f}).'
-            .format(program, self.lst_hist_sum, len(p_tiles), texp_nom))
+            '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}, stretch {4:.3f}).'
+            .format(program, self.lst_hist_sum, self.ntiles, texp_nom, stretch))
 
         # Precompute coefficients for exposure time calculations.
         latitude = np.radians(config.location.latitude())
@@ -361,7 +356,10 @@ class Optimizer(object):
         return residuals.dot(residuals)
 
     def eval_loss(self, plan_hist):
-        """Evaluate ratio of current plan to HA=0 total exposure times.
+        """Evaluate relative loss of current plan relative to HA=0 plan.
+
+        Calculated as (T-T0)/T0 where T is the total exposure time of the
+        current plan and T0 is the total exposure time of an HA=0 plan.
 
         Parameters
         ----------
@@ -373,7 +371,7 @@ class Optimizer(object):
         float
             Loss factor.
         """
-        return plan_hist.sum() / self.min_total_time
+        return plan_hist.sum() / self.min_total_time - 1.0
 
     def eval_scale(self, plan_hist):
         """Evaluate the efficiency of the specified plan.

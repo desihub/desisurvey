@@ -56,7 +56,7 @@ def parse(options=None):
 
 
 def main(args):
-    """Command-line driver for running survey simulations.
+    """Command-line driver for updating the survey plan.
     """
     # Set up the logger
     if args.debug:
