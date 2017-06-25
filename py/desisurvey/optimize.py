@@ -208,23 +208,40 @@ class Optimizer(object):
             min_score = np.inf
             scores = []
             for center in centers:
-                # Histogram LST values relative to the specified center.
+                # Histogram available LST relative to the specified center.
                 lst = wrap(e['lst'][sel_flat], center)
                 hist, edges = np.histogram(
                     lst, bins=nbins, range=(center, center + 360), weights=wgt)
+                # Calculate the CDF of available LST.
                 lst_cdf = np.zeros_like(edges)
                 lst_cdf[1:] = np.cumsum(hist)
                 lst_cdf /= lst_cdf[-1]
-                idx = np.argsort(np.argsort(wrap(self.ra, center)))
-                tile_cdf = (0.5 + idx) / self.ntiles
-                ra = wrap(p_tiles['ra'].data, center)
-                tile_lst = np.interp(tile_cdf, lst_cdf, edges)
-                ha = np.fmod(tile_lst - ra, 360)
+                # Calculate the CDF of planned LST usage relative to the same
+                # central LST, assuming HA=0. Instead of spreading each exposure
+                # over multiple LST bins, add its entire HA=0 exposure time at
+                # LST=RA.
+                exptime, _ = self.get_exptime(ha=np.zeros(self.ntiles))
+                tile_ra = wrap(p_tiles['ra'].data, center)
+                ##sort_idx = np.argsort(np.argsort(np.argsort(tile_ra)))
+                sort_idx = np.argsort(np.argsort(wrap(self.ra, center)))
+                ##tile_cdf = np.cumsum(exptime[sort_idx])
+                tile_cdf = (0.5 + sort_idx) / self.ntiles
+                ##tile_cdf /= tile_cdf[-1]
+                # Use linear interpolation to find an LST for each tile that
+                # matches the plan CDF to the available LST CDF.
+                new_lst = np.interp(tile_cdf, lst_cdf, edges)
+                # Calculate each tile's HA as the difference between its HA=0
+                # LST and its new LST after CDF matching.
+                ##ha = np.empty(self.ntiles)
+                ##ha[sort_idx] = np.fmod(new_lst - tile_ra[sort_idx], 360)
+                ha = np.fmod(new_lst - tile_ra, 360)
                 # Clip tiles to their airmass limits.
                 ha = np.clip(ha, -self.max_abs_ha, +self.max_abs_ha)
+                # Calculate the score for this HA assignment.
                 self.plan_tiles = self.get_plan(ha)
                 self.use_plan(save_history=False)
                 scores.append(self.eval_score(self.plan_hist))
+                # Keep track of the best score found so far.
                 if scores[-1] < min_score:
                     self.ha = ha.copy()
                     min_score = scores[-1]
