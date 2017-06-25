@@ -2,10 +2,10 @@
 
 This is normally run once, at the start of the survey, and saves its results
 to a FITS file surveyinit.fits.  With the default parameters, the running time
-is about 1 hour.
+is about 25 minutes.
 
-This script will create the ephemerides and scheduler files if necessary,
-which takes about 15 additional minutes.
+This script will create the ephemerides and scheduler files, if necessary,
+which takes about 15 additional minutes. These only need to be created once.
 
 To run this script from the command line, use the ``surveyinit`` entry point
 that is created when this package is installed, and should be in your shell

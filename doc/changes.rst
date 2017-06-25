@@ -6,6 +6,7 @@ desisurvey change log
 ------------------
 
 * Create surveyinit script to calculate initial HA assignments.
+* Improve Optimizer algorithms (~10x faster, better initialization).
 
 0.8.1 (2017-06-19)
 ------------------
