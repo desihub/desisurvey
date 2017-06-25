@@ -125,7 +125,7 @@ def main(args):
             subset=tiles['TILEID'][sel], stretch=stretches[program])
         # Loop over annealing cycles.
         num_cycles = 0
-        frac = args.initial_frac
+        frac = args.frac
         smoothing = args.smoothing
         while num_cycles < args.max_cycles:
             start_score = opt.eval_score(opt.plan_hist)
