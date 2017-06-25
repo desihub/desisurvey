@@ -202,7 +202,7 @@ class Optimizer(object):
             self.ha = np.asarray(initial_ha)
         elif init == 'flat':
             if center is None:
-                centers = np.arange(0, 360, 5)
+                centers = np.arange(-180, 180, 5)
             else:
                 centers = [center]
             min_score = np.inf
@@ -222,19 +222,16 @@ class Optimizer(object):
                 # LST=RA.
                 exptime, _ = self.get_exptime(ha=np.zeros(self.ntiles))
                 tile_ra = wrap(p_tiles['ra'].data, center)
-                ##sort_idx = np.argsort(np.argsort(np.argsort(tile_ra)))
-                sort_idx = np.argsort(np.argsort(wrap(self.ra, center)))
-                ##tile_cdf = np.cumsum(exptime[sort_idx])
-                tile_cdf = (0.5 + sort_idx) / self.ntiles
-                ##tile_cdf /= tile_cdf[-1]
+                sort_idx = np.argsort(tile_ra)
+                tile_cdf = np.cumsum(exptime[sort_idx])
+                tile_cdf /= tile_cdf[-1]
                 # Use linear interpolation to find an LST for each tile that
                 # matches the plan CDF to the available LST CDF.
                 new_lst = np.interp(tile_cdf, lst_cdf, edges)
                 # Calculate each tile's HA as the difference between its HA=0
                 # LST and its new LST after CDF matching.
-                ##ha = np.empty(self.ntiles)
-                ##ha[sort_idx] = np.fmod(new_lst - tile_ra[sort_idx], 360)
-                ha = np.fmod(new_lst - tile_ra, 360)
+                ha = np.empty(self.ntiles)
+                ha[sort_idx] = np.fmod(new_lst - tile_ra[sort_idx], 360)
                 # Clip tiles to their airmass limits.
                 ha = np.clip(ha, -self.max_abs_ha, +self.max_abs_ha)
                 # Calculate the score for this HA assignment.
