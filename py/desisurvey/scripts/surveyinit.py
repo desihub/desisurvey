@@ -43,19 +43,19 @@ def parse(options=None):
         '--debug', action='store_true',
         help='display log messages with severity >= debug (implies verbose)')
     parser.add_argument(
-        '--nbins', type=int, default=180, metavar='N',
+        '--nbins', type=int, default=192, metavar='N',
         help='number of LST bins to use')
     parser.add_argument(
         '--smoothing', default=0.05, metavar='S',
-        help='amount to smooth HA assignments after each annealing cycle')
+        help='amount to smooth HA assignments, anneals each cycle')
     parser.add_argument(
-        '--initial-frac', default=0.5, metavar='F',
-        help='fraction of an LST bin for initial HA adjustments')
+        '--frac', default=0.5, metavar='F',
+        help='fraction of an LST bin for HA adjustments, anneals each cycle')
     parser.add_argument(
         '--anneal-rate', default=0.95, metavar='R',
         help='decrease fraction by this factor after each annealing cycle')
     parser.add_argument(
-        '--max-rmse', default=0.005, metavar='MAX',
+        '--max-rmse', default=0.01, metavar='MAX',
         help='continue cycles until RMSE is below this threshold')
     parser.add_argument(
         '--epsilon', default=0.03, metavar='EPS',

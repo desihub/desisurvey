@@ -344,7 +344,7 @@ class Optimizer(object):
     def eval_score(self, plan_hist):
         """Evaluate the score that improve() tries to minimize.
 
-        Score is calculated as 1000 * RMSE + 100 * loss.
+        Score is calculated as 100 * RMSE + 100 * loss.
 
         Parameters
         ----------
@@ -357,7 +357,7 @@ class Optimizer(object):
             Score value.
         """
         return (
-            1000 * self.eval_RMSE(plan_hist) +
+            100 * self.eval_RMSE(plan_hist) +
             100 * self.eval_loss(plan_hist))
 
     def eval_RMSE(self, plan_hist):
