@@ -111,9 +111,9 @@ class Optimizer(object):
         dt = sched.step_size.to(u.hour).value
         wgt = dt * np.ones((sched.num_nights, sched.num_times))
         # Weight nights for weather availability.
-        lst = wrap(e['lst'][sel.flat], origin)
+        lst = wrap(e['lst'][sel.flatten()], origin)
         wgt *= sched.calendar['weather'][:, np.newaxis]
-        wgt = wgt[sel].flat
+        wgt = wgt[sel].flatten()
         self.lst_hist, self.lst_edges = np.histogram(
             lst, bins=nbins, range=(origin, origin + 360), weights=wgt)
         self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
@@ -177,7 +177,7 @@ class Optimizer(object):
         # Initialize metric histories.
         self.scale_history = []
         self.loss_history = []
-        self.MSE_history = []
+        self.RMSE_history = []
 
         # Initialize improve() counters.
         self.nslow = 0
@@ -207,7 +207,7 @@ class Optimizer(object):
                 centers = np.arange(0, 360, 5)
             else:
                 centers = [center]
-            MSE_min = np.inf
+            RMSE_min = np.inf
             for center in centers:
                 # Histogram LST values relative to the specified center.
                 lst = wrap(e['lst'][sel.flat], center)
@@ -225,9 +225,9 @@ class Optimizer(object):
                 ha = np.clip(ha, -self.max_abs_ha, +self.max_abs_ha)
                 self.plan_tiles = self.get_plan(ha)
                 self.use_plan()
-                if  self.MSE_history[-1] < MSE_min:
+                if  self.RMSE_history[-1] < RMSE_min:
                     self.ha = ha.copy()
-                    MSE_min = self.MSE_history[-1]
+                    RMSE_min = self.RMSE_history[-1]
                     center_best = center
             if len(centers) > 1:
                 import matplotlib.pyplot as plt
@@ -236,12 +236,12 @@ class Optimizer(object):
                 plt.ylabel('Efficiency')
                 plt.axvline(center_best)
                 rhs = plt.twinx()
-                rhs.plot(centers, self.MSE_history, 'bx')
-                rhs.set_ylabel('MSE')
+                rhs.plot(centers, self.RMSE_history, 'bx')
+                rhs.set_ylabel('RMSE')
                 plt.xlim(0, 360)
                 plt.show()
             self.scale_history = []
-            self.MSE_history = []
+            self.RMSE_history = []
         else:
             raise ValueError('Invalid init option: {0}.'.format(init))
 
@@ -344,7 +344,7 @@ class Optimizer(object):
     def eval_score(self, plan_hist):
         """Evaluate the score that improve() tries to minimize.
 
-        Score is calculated as MSE + 100 * loss.
+        Score is calculated as 1000 * RMSE + 100 * loss.
 
         Parameters
         ----------
@@ -356,9 +356,11 @@ class Optimizer(object):
         float
             Score value.
         """
-        return self.eval_MSE(plan_hist) + 100 * self.eval_loss(plan_hist)
+        return (
+            1000 * self.eval_RMSE(plan_hist) +
+            100 * self.eval_loss(plan_hist))
 
-    def eval_MSE(self, plan_hist):
+    def eval_RMSE(self, plan_hist):
         """Evaluate the mean-squared error metric for the specified plan.
 
         This is the metric that :meth:`optimize` attempts to improve. It
@@ -369,7 +371,7 @@ class Optimizer(object):
         The histogram of available LST is rescaled to the same total time (area)
         before calculating residuals relative to the planned LST usage.
 
-        MSE values are scaled by (10K / ntiles) so the absolute metric value
+        RMSE values are scaled by (10K / ntiles) so the absolute metric value
         is more consistent when ntiles is varied.
 
         Parameters
@@ -383,9 +385,10 @@ class Optimizer(object):
             Mean squared error value.
         """
         # Rescale the available LST total time to the plan total time.
-        scale = plan_hist.sum() / self.lst_hist_sum
+        plan_sum = plan_hist.sum()
+        scale = plan_sum / self.lst_hist_sum
         residuals = plan_hist - scale * self.lst_hist
-        return residuals.dot(residuals) * 1e4 / self.ntiles
+        return np.sqrt(residuals.dot(residuals) * self.nbins) / plan_sum
 
     def eval_loss(self, plan_hist):
         """Evaluate relative loss of current plan relative to HA=0 plan.
@@ -413,7 +416,7 @@ class Optimizer(object):
         available LST histogram.  This value can be intepreted as the fraction
         of the available time required to complete all tiles.
 
-        This metric is only loosely correlated with the MSE metric, so provides
+        This metric is only loosely correlated with the RMSE metric, so provides
         a useful independent check that the optimization is producing the
         desired results.
 
@@ -439,19 +442,19 @@ class Optimizer(object):
         """Use the current plan and update internal arrays.
 
         Calculates the `plan_hist` arrays from the per-tile `plan_tiles` array,
-        and records the current values of the MSE and scale metrics.
+        and records the current values of the RMSE and scale metrics.
         """
         self.plan_hist = self.plan_tiles.sum(axis=0)
         if save_history:
             self.scale_history.append(self.eval_scale(self.plan_hist))
             self.loss_history.append(self.eval_loss(self.plan_hist))
-            self.MSE_history.append(self.eval_MSE(self.plan_hist))
+            self.RMSE_history.append(self.eval_RMSE(self.plan_hist))
 
     def next_bin(self):
         """Select which LST bin to adjust next.
 
         The algorithm determines which bin of the planned LST usage histogram
-        should be decreased in order to maximize the decrease of the MSE metric,
+        should be decreased in order to maximize the decrease of the score,
         assuming that the decrease is moved to one of the neighboring bins.
 
         Since each tile's contribution to the plan can, in general, span several
@@ -483,14 +486,14 @@ class Optimizer(object):
         empty = (P == 0)
         dres[empty & (dres < 0)] = 0.
         dres[empty[adjacent] & (dres > 0)] = 0.
-        # Select the movements that reduce the MSE between A and P by
+        # Select the movements that reduce the RMSE between A and P by
         # the largest amounts.
         order = np.argsort(np.abs(dres))[::-1][:len(self.cum_weights)]
         # Randomly select one of these moments, according to our weights.
         which = np.searchsorted(self.cum_weights, self.gen.uniform())
         idx = order[which]
         if dres[idx] == 0:
-            raise RuntimeError('Cannot improve MSE.')
+            raise RuntimeError('Cannot improve RMSE.')
         elif dres[idx] > 0:
             idx = adjacent[idx]
             dha_sign = -1
@@ -639,9 +642,9 @@ class Optimizer(object):
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
                  weights=self.plan_hist, histtype='stepfilled',
                  fc=(0.7,0.7,1), ec='b')
-        MSE_scale = self.plan_hist.sum() / self.lst_hist_sum
+        RMSE_scale = self.plan_hist.sum() / self.lst_hist_sum
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
-                 weights=self.lst_hist * MSE_scale, histtype='step',
+                 weights=self.lst_hist * RMSE_scale, histtype='step',
                  fc=(1,0,0,0.25), ec='r', ls='--')
 
         nbins = len(self.lst_centers)
@@ -655,13 +658,13 @@ class Optimizer(object):
         ax[0].set_xlabel('Local Sidereal Time [deg]')
         ax[0].set_ylabel('Hours / LST Bin')
 
-        ax[1].plot(self.MSE_history, 'r.', ms=10, label='MSE')
+        ax[1].plot(self.RMSE_history, 'r.', ms=10, label='RMSE')
         ax[1].legend(loc='lower left', numpoints=1)
         rhs = ax[1].twinx()
         rhs.plot(self.scale_history, 'kx', ms=5, label='Scale')
         #rhs.plot(self.loss_history, 'g+', ms=5, label='Loss')
         rhs.legend(loc='upper right', numpoints=1)
-        ax[1].set_xlim(-0.1, len(self.MSE_history) - 0.9)
+        ax[1].set_xlim(-0.1, len(self.RMSE_history) - 0.9)
         ax[1].set_xlabel('Iterations')
 
         ax[2].hist(self.ha, bins=50, histtype='stepfilled')

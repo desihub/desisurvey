@@ -55,8 +55,8 @@ def parse(options=None):
         '--anneal-rate', default=0.95, metavar='R',
         help='decrease fraction by this factor after each annealing cycle')
     parser.add_argument(
-        '--max-mse', default=5.0, metavar='MAX',
-        help='continue cycles until MSE is below this threshold')
+        '--max-rmse', default=0.005, metavar='MAX',
+        help='continue cycles until RMSE is below this threshold')
     parser.add_argument(
         '--epsilon', default=0.03, metavar='EPS',
         help='stop cycles when fractional score improvement < EPS')
@@ -135,12 +135,12 @@ def main(args):
                 opt.smooth(alpha=smoothing)
             stop_score = opt.eval_score(opt.plan_hist)
             delta = (stop_score - start_score) / start_score
-            MSE = opt.MSE_history[-1]
+            RMSE = opt.RMSE_history[-1]
             loss = opt.loss_history[-1]
             log.info(
-                '[{:03d}] f={:.4f} MSE={:7.1f} LOSS={:4.1f}% delta={:+5.1f}%'
-                     .format(num_cycles + 1, frac, MSE, 1e2*loss, 1e2*delta))
-            if MSE < args.max_mse and delta > -args.epsilon:
+                '[{:03d}] f={:.4f} RMSE={:6.2f}% LOSS={:5.2f}% delta={:+5.1f}%'
+                .format(num_cycles + 1, frac, 1e2*RMSE, 1e2*loss, 1e2*delta))
+            if RMSE < args.max_rmse and delta > -args.epsilon:
                 break
             # Anneal parameters for next cycle.
             frac *= args.anneal_rate
