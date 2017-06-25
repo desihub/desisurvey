@@ -46,20 +46,23 @@ def parse(options=None):
         '--nbins', type=int, default=192, metavar='N',
         help='number of LST bins to use')
     parser.add_argument(
-        '--smoothing', default=0.05, metavar='S',
+        '--init', choices=('zero', 'flat'), default='flat',
+        help='method to assign initial HA to each tile')
+    parser.add_argument(
+        '--adjust', default=1.0, metavar='DEG',
+        help='tile HA adjustment (deg) per iteration, anneals each cycle')
+    parser.add_argument(
+        '--smooth', default=0.05, metavar='S',
         help='amount to smooth HA assignments, anneals each cycle')
     parser.add_argument(
-        '--frac', default=0.5, metavar='F',
-        help='fraction of an LST bin for HA adjustments, anneals each cycle')
+        '--anneal', default=0.95, metavar='A',
+        help='decrease adjust, smooth by this factor after each cycle')
     parser.add_argument(
-        '--anneal-rate', default=0.95, metavar='R',
-        help='decrease fraction by this factor after each annealing cycle')
+        '--max-rmse', default=0.02, metavar='MAX',
+        help='continue cycles until root mean square error < MAX')
     parser.add_argument(
-        '--max-rmse', default=0.01, metavar='MAX',
-        help='continue cycles until RMSE is below this threshold')
-    parser.add_argument(
-        '--epsilon', default=0.03, metavar='EPS',
-        help='stop cycles when fractional score improvement < EPS')
+        '--epsilon', default=0.01, metavar='EPS',
+        help='continue cycles until fractional score improvement < EPS')
     parser.add_argument(
         '--max-cycles', type=int, default=100,
         help='maximum number of annealing cycles for each program')
@@ -90,9 +93,6 @@ def main(args):
     else:
         log = desiutil.log.get_logger(desiutil.log.WARNING)
 
-    # Freeze IERS table for consistent results.
-    desisurvey.utils.freeze_iers()
-
     # Set the output path if requested.
     config = desisurvey.config.Configuration()
     if args.output_path is not None:
@@ -121,13 +121,15 @@ def main(args):
     for program in 'DARK', 'GRAY', 'BRIGHT':
         sel = tiles['PROGRAM'] == program
         opt = desisurvey.optimize.Optimizer(
-            scheduler, program, init='zero', nbins=args.nbins,
+            scheduler, program, init=args.init, nbins=args.nbins,
             subset=tiles['TILEID'][sel], stretch=stretches[program])
+        # Initialize annealing cycles.
+        ncycles = 0
+        binsize = 360. / args.nbins
+        frac = args.adjust / binsize
+        smoothing = args.smooth
         # Loop over annealing cycles.
-        num_cycles = 0
-        frac = args.frac
-        smoothing = args.smoothing
-        while num_cycles < args.max_cycles:
+        while ncycles < args.max_cycles:
             start_score = opt.eval_score(opt.plan_hist)
             for i in range(opt.ntiles):
                 opt.improve(frac)
@@ -138,14 +140,16 @@ def main(args):
             RMSE = opt.RMSE_history[-1]
             loss = opt.loss_history[-1]
             log.info(
-                '[{:03d}] f={:.4f} RMSE={:6.2f}% LOSS={:5.2f}% delta={:+5.1f}%'
-                .format(num_cycles + 1, frac, 1e2*RMSE, 1e2*loss, 1e2*delta))
+                '[{:03d}] dHA={:5.3f}deg '.format(ncycles + 1, frac * binsize) +
+                'RMSE={:6.2f}% LOSS={:5.2f}% delta(score)={:+5.1f}%'
+                .format(1e2*RMSE, 1e2*loss, 1e2*delta))
+            # Both conditions must be satisfied to terminate.
             if RMSE < args.max_rmse and delta > -args.epsilon:
                 break
             # Anneal parameters for next cycle.
-            frac *= args.anneal_rate
-            smoothing *= args.anneal_rate
-            num_cycles += 1
+            frac *= args.anneal
+            smoothing *= args.anneal
+            ncycles += 1
 
         # Calculate exposure times in seconds.
         texp, _ = opt.get_exptime(opt.ha)

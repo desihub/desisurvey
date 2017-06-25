@@ -44,11 +44,11 @@ class Optimizer(object):
     nbins : int
         Number of LST histogram bins to use when calculating the optimization
         metrics.
-    init : 'zero', 'info', 'flat' or 'array'
+    init : 'zero', 'flat' or 'array'
         Method for initializing tile hour angles: 'zero' sets all hour angles
-        to zero, 'init' reads 'tile-info.fits', 'flat' matches the CDF of
-        available LST to planned LST (without accounting for exposure time),
-        'array' initializes from the initial_ha argument.
+        to zero, 'flat' matches the CDF of available LST to planned LST (without
+        accounting for exposure time), 'array' initializes from the initial_ha
+        argument.
     initial_ha : array or None
         Only used when init is 'array'. The subset arg must also be provided
         to specify which tile each HA applies to.
@@ -77,7 +77,7 @@ class Optimizer(object):
     def __init__(self, sched, program, subset=None, start=None, stop=None,
                  nbins=192, init='info', initial_ha=None, stretch=1.0,
                  smoothing_radius=10 * u.deg,
-                 origin=-60, center=220, seed=123, weights=[5, 4, 3, 2, 1]):
+                 origin=-60, center=None, seed=123, weights=[5, 4, 3, 2, 1]):
 
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
@@ -111,7 +111,8 @@ class Optimizer(object):
         dt = sched.step_size.to(u.hour).value
         wgt = dt * np.ones((sched.num_nights, sched.num_times))
         # Weight nights for weather availability.
-        lst = wrap(e['lst'][sel.flatten()], origin)
+        sel_flat = sel.flatten()
+        lst = wrap(e['lst'][sel_flat], origin)
         wgt *= sched.calendar['weather'][:, np.newaxis]
         wgt = wgt[sel].flatten()
         self.lst_hist, self.lst_edges = np.histogram(
@@ -184,18 +185,15 @@ class Optimizer(object):
         self.nimprove = 0
         self.nsmooth = 0
 
+        # Calculate schedule plan with HA=0 asignments to establish
+        # the smallest possible total exposure time.
+        self.plan_tiles = self.get_plan(np.zeros(self.ntiles))
+        self.use_plan(save_history=False)
+        self.min_total_time = self.plan_hist.sum()
+
         # Initialize HA assignments for each tile.
         if init == 'zero':
             self.ha = np.zeros(self.ntiles)
-        elif init == 'info':
-            info = astropy.table.Table.read(
-                pkg_resources.resource_filename(
-                    'desisurvey', 'data/tile-info.fits'), hdu=1)
-            # Lookup each tile ID.
-            assert np.all(np.diff(info['TILEID']) > 0)
-            idx = np.searchsorted(info['TILEID'], self.tid)
-            assert np.all(info['TILEID'][idx] == self.tid)
-            self.ha = info['HA'][idx]
         elif init == 'array':
             if subset is None:
                 raise ValueError('Must specify subset when init is "array".')
@@ -207,10 +205,11 @@ class Optimizer(object):
                 centers = np.arange(0, 360, 5)
             else:
                 centers = [center]
-            RMSE_min = np.inf
+            min_score = np.inf
+            scores = []
             for center in centers:
                 # Histogram LST values relative to the specified center.
-                lst = wrap(e['lst'][sel.flat], center)
+                lst = wrap(e['lst'][sel_flat], center)
                 hist, edges = np.histogram(
                     lst, bins=nbins, range=(center, center + 360), weights=wgt)
                 lst_cdf = np.zeros_like(edges)
@@ -224,24 +223,15 @@ class Optimizer(object):
                 # Clip tiles to their airmass limits.
                 ha = np.clip(ha, -self.max_abs_ha, +self.max_abs_ha)
                 self.plan_tiles = self.get_plan(ha)
-                self.use_plan()
-                if  self.RMSE_history[-1] < RMSE_min:
+                self.use_plan(save_history=False)
+                scores.append(self.eval_score(self.plan_hist))
+                if scores[-1] < min_score:
                     self.ha = ha.copy()
-                    RMSE_min = self.RMSE_history[-1]
+                    min_score = scores[-1]
                     center_best = center
-            if len(centers) > 1:
-                import matplotlib.pyplot as plt
-                plt.plot(centers, self.scale_history, 'r-')
-                plt.xlabel('Central RA [deg]')
-                plt.ylabel('Efficiency')
-                plt.axvline(center_best)
-                rhs = plt.twinx()
-                rhs.plot(centers, self.RMSE_history, 'bx')
-                rhs.set_ylabel('RMSE')
-                plt.xlim(0, 360)
-                plt.show()
-            self.scale_history = []
-            self.RMSE_history = []
+            self.log.info(
+                'Center flat initial HA assignments at LST {:.0f} deg.'
+                .format(center_best))
         else:
             raise ValueError('Invalid init option: {0}.'.format(init))
 
@@ -255,12 +245,6 @@ class Optimizer(object):
             self.log.warn('Max clip is {0:.1f} deg for tile {1}.'
                           .format(delta[idx], self.tid[idx]))
             self.ha = ha_clipped
-
-        # Calculate schedule plan with HA=0 asignments to establish
-        # the smallest possible total exposure time.
-        self.plan_tiles = self.get_plan(np.zeros_like(self.ha))
-        self.use_plan(save_history=False)
-        self.min_total_time = self.plan_hist.sum()
 
         # Calculate schedule plan with initial HA asignments.
         self.plan_tiles = self.get_plan(self.ha)
@@ -571,9 +555,6 @@ class Optimizer(object):
             # Accept the tile that gives the smallest score.
             itile = subset[i]
             self.num_adjustments[itile] += 1
-            self.log.debug(
-                'Moving tile {0} in bin {1} by dHA = {2:.3f}h'
-                .format(self.tid[itile], ibin, dha))
             # Update the plan.
             self.ha[itile] = self.ha[itile] + dha
             assert np.abs(self.ha[itile]) < self.max_abs_ha[itile]
