@@ -1,0 +1,236 @@
+\documentclass[12pt]{article}
+
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage[margin=1.2in]{geometry}
+
+\providecommand{\eqn}[1]{eqn.~(\ref{eqn:#1})}
+\providecommand{\tab}[1]{Table~\ref{tab:#1}}
+\providecommand{\fig}[1]{Figure~\ref{fig:#1}}
+
+\providecommand{\vecsymbol}[1]{\ensuremath{\boldsymbol{#1}}}
+%\providecommand{\pv}{\vecsymbol{p}}
+%\providecommand{\deltav}{\vecsymbol{\delta}}
+
+\title{Observing Hour Angle Assignments\\
+for the DESI Survey\\
+\vspace{5mm}{\large\bf DESI-doc-3060-v1}}
+\author{David Kirkby, Kyle Dawson}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+This note briefly describes the algorithm used to assign a near-optimal observing hour angle (HA) to each tile in the DESI footprint~\cite{desi-717} and documents the result for the current baseline survey strategy~\cite{desi-1767, desi-1770}. The algorithm is implemented in python code in the {\tt desisurvey} package\footnote{\url{https://github.com/desihub/desisurvey}} and the reader is referred there for implementation details.
+
+\section{Algorithm Description}
+
+The algorithm is run separately for each program (DARK, GRAY, BRIGHT) and has two main inputs:
+\begin{itemize}
+    \item the date range to optimize the program for, and
+    \item a list of tiles remaining to observe in the program.
+\end{itemize}
+The date range determines the available hours at each apparent local sidereal time (LST) for the specified program, taking into account planned shutdowns (during the annual monsoon and full-moon), expected weather outages each month, and the solar and lunar ephemerides that determine the time available to the program during each night. The list of tiles determines the required exposure time at each LST, given HA assignments and an exposure-time calculator.
+
+The basic idea of the algorithm is to iteratively adjust the HA assignments of each tile to minimize a score function that accounts for two metrics:
+\begin{itemize}
+    \item the matching of available and planned LST usage, and
+    \item the total required exposure time.
+\end{itemize}
+We run the algorithm in two different modes:
+\begin{itemize}
+    \item Start of survey: optimize all tiles over the nominal five-year survey dates.
+    \item Afternoon planning: optimize all tiles not yet observed for the remainder of the survey.
+\end{itemize}
+The first mode is only used before the survey starts and then only needs to be rerun after a change in the definition of the tiles, programs, or nominal observing schedule. The second mode is run regularly during the survey and adjusts HA assignments to reflect actual observing progress and any schedule changes.
+
+Most of the assumptions used in the survey planning and program definitions are listed in a text configuration parameter file\footnote{\url{https://github.com/desihub/desisurvey/blob/master/py/desisurvey/data/config.yaml}}. One parameter, in particular, limits the HA solution space by requiring that all tiles are observed above a minimum altitude angle of $30^\circ$.  In order to allow some leeway for exposure duration, we calculate a maximum $|\text{HA}|$ for each tile corresponding to its declination and a minimum altitude of $35^\circ$.
+
+\subsection{Initialization}
+
+The initial HA assignments that are subsequently optimized can be set in three different ways:
+\begin{itemize}
+    \item Read HAs from a file.
+    \item Set all HAs to zero.
+    \item Assign HAs to approximately match the cummulative distribution functions of available and planned LST usage.
+\end{itemize}
+The first method is used during afternoon planning, while the last two methods bootstrap the optimization at the start of the survey.
+
+Assigning zero initial HAs minimizes the total exposure time required, but generally leads to a large mismatch between the available and planned LST usage. While conceptually simple, this approach is inefficient since it requires a large number of iterations to converge to a near-optimal solution. \fig{LST_zero0} compares the available and planned LST usage after initializing
+all HAs to zero.
+
+\begin{figure}[htb]
+\begin{center}
+\includegraphics[width=6in]{LST_zero0}
+\caption{Available (red) and planned (blue) LST usage for the HA=0 initialization method.  The blue outline histogram shows the planned usage rescaled to the area of the available LST histogram.  The LST axis starts at $-60^\circ$ and the gaps in the planned usage correspond to the breaks between the southern and northern galactic caps in the DESI footprint.}
+\label{fig:LST_zero0}
+\end{center}
+\end{figure}
+
+An alternative bootstrap initialization, which we refer to as the ``flat'' method, is to approximately match the cummulative distribution of available LST to planned LST usage. We first tabulate the available survey time $a_j$ in $n$ LST bins
+$$
+\theta_j \le \theta < \theta_{j+1} \quad , \quad \theta_j = (j/n) 360^\circ \; ,
+$$
+where $j$ ranges from $0$ to $n-1$, then calculate its cummulative distribution function (CDF) in $n+1$ steps as
+$$
+A_0 = 0 \quad , \quad
+A_{j+1} = \frac{\sum_{k=0}^{j} a_k}{\sum_{k=0}^{n-1} a_k} \; .
+$$
+Next, we approximate the CDF of planned LST usage of $i = 0, 1, \ldots, N-1$ tiles with all HAs equal zero as:
+$$
+P_i = \frac{\sum_{k=0}^{i} \Delta t_k}{\sum_{k=0}^N \Delta t_k} \; ,
+$$
+where $\Delta t_k$ is the expected exposure time for tile $k$ at HA=0 and tiles are ordered in increasing right ascension (RA). Finally, we match the available and planned CDFs by adjusting each tile's LST $\tilde{\theta}_i$ using linear interpolation of the inverse mapping $A_j \rightarrow \theta_j$ evaluated at each $P_i$.  We then select
+$$
+\text{HA}_i = \tilde{\theta}_i - \text{RA}_i
+$$
+as the initial HA for tile $i$.
+
+Since LST and RA are periodic, the initial HAs obtained with this method depend on an arbitrary choice of starting angle, which corresponds to an LST where all tiles will have HA=0. In practice, we repeat this initialization on a grid of possible starting angles and select the one with the minimum score function (defined below). \fig{LST_flat0} compares the available and planned LST usage after initializing all HAs with this method. \fig{HA_flat0} shows the distribution of initial HAs over the sky for each pass of each program.
+
+\begin{figure}[htb]
+\begin{center}
+\includegraphics[width=6in]{LST_flat0}
+\caption{Available (red) and planned (blue) LST usage for the flat initialization method.  The blue outline histogram shows the planned usage rescaled to the area of the available LST histogram.  The LST axis starts at $-60^\circ$.}
+\label{fig:LST_flat0}
+\end{center}
+\end{figure}
+
+\begin{figure}[htb]
+\begin{center}
+\includegraphics[width=6in]{HA_flat0}
+\caption{All-sky maps of the tiles in each pass (0-7) color coded by their initial HA assignment using the ``flat'' initialization method.  Passes 0-1 (top row), 2-4 (middle row) and 5-7 (bottom row) correspond to the DARK (0-3), GRAY (4) and BRIGHT (5-7) programs.  Histograms show the HA distribution in each pass, color coded by the pass program: black (DARK), gray (GRAY) and orange (BRIGHT).}
+\label{fig:HA_flat0}
+\end{center}
+\end{figure}
+
+This CDF-matching ``flat'' method does a good job of matching the available and planned LST usage, but generally increases the total exposure time required more than necessary. The approximations in this method are that:
+\begin{itemize}
+    \item Exposure times are calculated for HA=0 and then used to estimate non-zero HAs for each tile.
+    \item The contribution from each exposure is assumed to contribute at a single LST rather than being spread of LST in proportion to the length of the exposure.
+    \item The CDF matching procedure enforces that the ordering of tile LSTs matches the ordering of tile RAs, but this may not be optimal.
+\end{itemize}
+The iterative improvement scheme described below does not have any of these limitations.
+
+\subsection{Exposure Times}
+
+Exposure times for observing during the DARK program are estimated as:
+$$
+\Delta t = \Delta t_{\text{nom}}\, f_{\text{dust}}\, f_{\text{airmass}}\,
+f_{\text{seeing}}\, f_{\text{transp}} \; ,
+$$
+where the nominal exposure time $\Delta t_{\text{nom}}$ is specified by the program (1000 seconds for DARK and GRAY, and 300s for BRIGHT) and the remaining dimensionless factors correct for the actual versus nominal observing conditions: dust extinction, airmass, seeing, and atmospheric transparency.
+
+The dust factor is fixed by the median value of $E_{B-V}$ over the tile and given by:
+$$
+f_{\text{dust}} = \ldots
+$$
+The airmass factor is a function of the tile DEC and HA and given by:
+$$
+f_{\text{airmass}} = \ldots
+$$
+The remaining factors will vary stochastically during actual observing so our goal here is simply to account for their mean effect via
+$$
+f_{\text{seeing}}\, f_{\text{transp}} = \ldots
+$$
+\tab{expfac} below summarizes the results of a study using a weather simulation of empirical seeing and transparency distributions.
+
+\begin{table}[htb]
+\begin{center}
+\begin{tabular}{lccc}
+Condition & Median & Mean & $\langle f\rangle$ \\
+\hline
+Seeing & $1.19$" & $1.41$" & 1.252 \\
+Transparency & $1.00$ & $0.93$ & 1.107 \\
+\hline
+Combined & & & 1.387 \\
+\end{tabular}
+\caption{Summary of simulated weather study to establish the average exposure factor due to variable seeing and transparency.}
+\label{tab:expfac}
+\end{center}
+\end{table}
+
+Exposure times during the GRAY and BRIGHT programs have an additional factor due to scattered moonlight, but further study is needed to accurately estimate its impact.  We therefore assign average exposure time factors to account for seeing, transparency and moon of: 1.4 (DARK), 1.5 (GRAY) and 2.0 (BRIGHT).
+
+\subsection{Iteration}
+
+Describe the iteration method here...
+
+\subsection{Annealing}
+
+Describe the smoothing perfomed after each cycle and how the adjustment size and smoothing parameter are annealed here...
+
+\section{Results}
+
+\fig{LST_zero} and \fig{LST_flat} show the LST distributions obtained after optimizing initial HAs set to be zero or ``flat''.  \fig{HA_zero} and \fig{HA_flat} show the corresponding all-sky distributions of HAs for each tile.  Both methods match the available and planned LST usage to high accuracy and predict similar total exposure times and corresponding safety margins. However, they use qualitatively different HA distributions to achieve similar results, indicating that the HA-assignment optimization problem has many comparable local minima.  In the following, we select the ``flat'' initialization method since it has slightly better performance and more closely matches the algorithm used for BOSS and eBOSS.  \tab{summary} summarizes the planned LST usage in each program using ``flat'' initialization.  There is some safety margin for all programs with our assumed exposure-time model and survey schedule.
+
+\begin{figure}[htb]
+\begin{center}
+\includegraphics[width=6in]{LST_zero}
+\caption{Available (red) and planned (blue) LST usage after optimizing initial HA=0 assignments.  The blue outline histogram shows the planned usage rescaled to the area of the available LST histogram.  The LST axis starts at $-60^\circ$.}
+\label{fig:LST_zero}
+\end{center}
+\end{figure}
+
+\begin{figure}[htb]
+\begin{center}
+\includegraphics[width=6in]{LST_flat}
+\caption{Available (red) and planned (blue) LST usage after optimizing initial HAs obtained with the ``flat'' method.  The blue outline histogram shows the planned usage rescaled to the area of the available LST histogram.  The LST axis starts at $-60^\circ$.}
+\label{fig:LST_flat}
+\end{center}
+\end{figure}
+
+\begin{figure}[htb]
+\begin{center}
+\includegraphics[width=6in]{HA_zero}
+\caption{All-sky maps of the tiles in each pass (0-7) color coded by their initial HA assignment after optimizing initial HA=0 assignments.}
+\label{fig:HA_zero}
+\end{center}
+\end{figure}
+
+\begin{figure}[htb]
+\begin{center}
+\includegraphics[width=6in]{HA_flat}
+\caption{All-sky maps of the tiles in each pass (0-7) color coded by their initial HA assignment after optimizing initial HA=0 assignments.}
+\label{fig:HA_flat}
+\end{center}
+\end{figure}
+
+\begin{table}[htb]
+\begin{center}
+\begin{tabular}{lcccc}
+Program & Available & Planned & Stretch & Margin \\
+\hline
+DARK   & 5319.0h & 4784.9h & 1.4 & 11.2\% \\
+GRAY   & 1357.8h & 1284.4h & 1.5 &  5.7\% \\
+BRIGHT & 1899.8h & 1553.0h & 2.0 & 22.3\% \\
+\hline
+\end{tabular}
+\caption{Summary of observing plan for each program based on the observing hour angle assignments obtained with the ``flat'' initialization method.}
+\label{tab:summary}
+\end{center}
+\end{table}
+
+\def\apjl{ApJL} %Astrophysical Journal Letters
+\def\aj{AJ} %Astronomical Journal
+\def\apj{ApJ} %Astrophysical Journal
+\def\pasp{PASP} %Publications of the Astronomical Society of the Pacific
+\def\spie{SPIE} %
+\def\apjs{ApJS} %Astrophysical Journal Supplement
+\def\araa{ARAA} %Annual Review of Astronomy and Astrophysics
+\def\aap{A\&A} %Astronomy and Astrophysics
+\def\aaps{A\&A~Supl.} %Astronomy and Astrophysics Supplement
+\def\nat{Nature} %Nature
+\def\nar{New Astron. Rev.} %New Astronomy Review
+\def\mnras{MNRAS} %Monthly Notices of the Royal Astronomical Society
+\def\jcap{JCAP} %Journal of Cosmology and Astroparticle physics
+\def\prd{{Phys.~Rev.~D}}        % Physical Review D
+\def\physrep{{Phys.~Reports}} % Physics Reports
+
+\bibliographystyle{unsrt}
+\bibliography{design_ha}
+
+\end{document}
