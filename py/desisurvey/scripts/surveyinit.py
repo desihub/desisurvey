@@ -67,6 +67,15 @@ def parse(options=None):
         '--max-cycles', type=int, default=100,
         help='maximum number of annealing cycles for each program')
     parser.add_argument(
+        '--dark-stretch', type=float, default=1.4, metavar='S',
+        help='stretch DARK exposure times by this factor')
+    parser.add_argument(
+        '--gray-stretch', type=float, default=1.5, metavar='S',
+        help='stretch GRAY exposure times by this factor')
+    parser.add_argument(
+        '--bright-stretch', type=float, default=2.0, metavar='S',
+        help='stretch BRIGHT exposure times by this factor')
+    parser.add_argument(
         '--save', default='surveyinit.fits', metavar='NAME',
         help='name of FITS output file where results are saved')
     parser.add_argument(
@@ -115,13 +124,15 @@ def main(args):
     out['HA'] = np.zeros(len(out))
     out['OBSTIME'] = np.zeros(len(out))
 
-    stretches = dict(DARK=1.0, GRAY=1.0, BRIGHT=1.25)
-
     # Optimize each program separately.
+    stretches = dict(
+        DARK=args.dark_stretch,
+        GRAY=args.gray_stretch,
+        BRIGHT=args.bright_stretch)
     for program in 'DARK', 'GRAY', 'BRIGHT':
         sel = tiles['PROGRAM'] == program
         opt = desisurvey.optimize.Optimizer(
-            scheduler, program, init=args.init, nbins=args.nbins,
+            scheduler, program, init=args.init, center=None, nbins=args.nbins,
             subset=tiles['TILEID'][sel], stretch=stretches[program])
         # Initialize annealing cycles.
         ncycles = 0
@@ -150,6 +161,11 @@ def main(args):
             frac *= args.anneal
             smoothing *= args.anneal
             ncycles += 1
+        plan_sum = opt.plan_hist.sum()
+        avail_sum = opt.lst_hist_sum
+        margin = (avail_sum - plan_sum) / plan_sum
+        log.info('{} plan uses {:.1f}h with {:.1f}h avail ({:.1f}% margin).'
+                 .format(program, plan_sum, avail_sum, 1e2 * margin))
 
         # Calculate exposure times in seconds.
         texp, _ = opt.get_exptime(opt.ha)
