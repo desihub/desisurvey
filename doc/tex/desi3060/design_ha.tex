@@ -124,36 +124,73 @@ f_{\text{seeing}}\, f_{\text{transp}} \; ,
 $$
 where the nominal exposure time $\Delta t_{\text{nom}}$ is specified by the program (1000 seconds for DARK and GRAY, and 300s for BRIGHT) and the remaining dimensionless factors correct for the actual versus nominal observing conditions: dust extinction, airmass, seeing, and atmospheric transparency.
 
-The dust factor is fixed by the median value of $E_{B-V}$ over the tile and given by:
+The dust factor is fixed by the median value of $E_{B-V}(\text{RA}, \text{DEC})$ over the tile and given by:
 $$
-f_{\text{dust}} = \ldots
+f_{\text{dust}} = 10^{E_{B-V}}
+\quad, \quad \alpha = 2.64 \; ,
 $$
-The airmass factor is a function of the tile DEC and HA and given by:
+The airmass factor is a function of the airmass $X(\text{DEC}, \text{RA})$ and given by:
 $$
-f_{\text{airmass}} = \ldots
+f_{\text{airmass}} = X^{1.25} \; .
 $$
-The remaining factors will vary stochastically during actual observing so our goal here is simply to account for their mean effect via
+The remaining factors will vary stochastically during actual observing so our goal here is simply to account for their mean time-integrated effect using the formalism described below.
+
+Suppose the instantaneous signal-to-noise ratio depends on an observing parameter $x$ according to
 $$
-f_{\text{seeing}}\, f_{\text{transp}} = \ldots
+\frac{d\nu}{dt}(x) = f(x)^{-1}
 $$
-\tab{expfac} below summarizes the results of a study using a weather simulation of empirical seeing and transparency distributions.
+then under nominal constant conditions $x(t) = x_0$, the integrated signal-to-noise over a time interval $T$ is:
+$$
+\nu(T) = \int_0^T f(x(t))^{-1}\, dt =  T / f(x_0) \; .
+$$
+However, if $x(t)$ varies stochastically with mean $\mu_x$ and variance $\sigma_x^2$, then
+\begin{align}
+\nu(T) &= \int_0^T f(x(t))^{-1}\, dt \\
+&= \int_0^T (1/f)\left(
+\mu_x + (x(t) - \mu_x)\right) \\
+&\simeq \int_0^T \left[ (1/f)(\mu_x) + (1/f)'(\mu_x) (x - \mu_x)
++ \frac{1}{2} (1/f)''(\mu_x) (x - \mu_x)^2 \right]^{-1} \\
+&= \frac{T}{f(\mu_x)}\left[1 + g(\mu_x) \sigma_x^2 \right] \; ,
+\end{align}
+with
+$$
+g(x) \equiv \frac{f'(x)^2}{f(x)^2} - \frac{f''(x)}{2 f(x)} \; .
+$$
+We define the time-integrated exposure time factor $F_x$ as the increase in time relative to nominal conditions required to achieve the same integrated signal to noise $\nu(T)$, i.e.
+$$
+\nu(F_x T) = T f(x_0) \; .
+$$
+We can then evaluate $F_x$ approximately using:
+$$
+F_x \simeq \frac{f(\mu_x)}{f(x_0)} \left[1 +
+g(\mu_x) \sigma_x^2 \right]^{-1} \; .
+$$
+
+Consider the effects of transparency, with
+$$
+f(x) = 1/x \; ,
+$$
+and seeing, with
+$$
+f(x) = a + b x + c x^2 \quad , \quad (a,b,c) = (4.6, -1.55, 1.15) \; .
+$$
+\tab{expfac} below summarizes the expected time-integrated exposure factors using means and variances obtained from a weather simulated based on empirical distibutions. We see that the second-order corrections increase the seeing exposure factor by about 7\% but have no effect on the transparency. Assuming that transparency and seeing are uncorrelated, we expect an overall factor of 1.27 during the DARK program.
 
 \begin{table}[htb]
 \begin{center}
-\begin{tabular}{lccc}
-Condition & Median & Mean & $\langle f\rangle$ \\
+\begin{tabular}{lccccc}
+Condition & Median & $\mu_x$ & $\sigma_x$ & $g(\mu_x)$ & $F_x$ \\
 \hline
-Seeing & $1.19$" & $1.41$" & 1.252 \\
-Transparency & $1.00$ & $0.93$ & 1.107 \\
+Seeing & $1.19$" & $1.41$" & $0.76$" & -0.113 & 1.175 \\
+Transparency & $1.00$ & $0.93$ & $0.00$ & 0.000 & 1.078 \\
 \hline
-Combined & & & 1.387 \\
 \end{tabular}
-\caption{Summary of simulated weather study to establish the average exposure factor due to variable seeing and transparency.}
+\caption{Summary of simulated weather study to establish the time-integrated exposure factors due to variable seeing and transparency.}
 \label{tab:expfac}
 \end{center}
 \end{table}
 
-Exposure times during the GRAY and BRIGHT programs have an additional factor due to scattered moonlight, but further study is needed to accurately estimate its impact.  We therefore assign average exposure time factors to account for seeing, transparency and moon of: 1.4 (DARK), 1.5 (GRAY) and 2.0 (BRIGHT).
+Exposure times during the GRAY and BRIGHT programs have an additional factor due to scattered moonlight, but further study is needed to accurately estimate its impact.  We therefore assign average exposure time factors to account for seeing, transparency and moon of: 1.3 (DARK), ?? (GRAY) and ?? (BRIGHT).
 
 \subsection{Iteration}
 
