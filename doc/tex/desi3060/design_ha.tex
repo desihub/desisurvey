@@ -194,11 +194,62 @@ Exposure times during the GRAY and BRIGHT programs have an additional factor due
 
 \subsection{Iteration}
 
-Describe the iteration method here...
+For details on the iteration scheme, refer to the {\tt optimize.Optimizer.improve} method of the {\tt desisurvey} package. Here we just provide a high-level sketch of the algorithm.
 
-\subsection{Annealing}
+Each iteration is governed by an HA adjustment size parameter, $\delta\text{HA}$, which we gradually decrease in an outer loop as described in the next section. Given an adjustment size, we select a single tile to adjust then recompute the planned LST usage using its new HA and exposure time (due to its change of airmass with HA). The total number of iterations (single-tile adjustments) required to obtain near-optimal HA assignments starting from HA=0 is typically 20--30 times the total number of tiles. The algorithm has several stochastic elements in order to avoid getting stuck in a local minimum, but uses a single source of pseudo-random numbers to ensure reproducibility.
 
-Describe the smoothing perfomed after each cycle and how the adjustment size and smoothing parameter are annealed here...
+The score function that each iteration attempts to improve combines two figures of merit which we refer to as RSME and LOSS.
+
+RMSE measures the fractional deviation between the available ($A_i$) and planned ($P_i$) LST usage histograms using
+$$
+\text{RMSE} \equiv \frac{1}{\sum_i^n P_i}
+\left( n \sum_i^n (s A_i - P_i)^2 \right)^{1/2}
+$$
+where the scale factor
+$$
+s = (\sum_i^n P_i) / (\sum_i^n A_i)
+$$
+normalizes the total available LST to the total planned usage so that RMSE measures deviations in shape only.  LOSS compares the total exposure time required with the current plan ($T_P$) with the minimum possible total time ($T_0$) when all tiles are observed with HA=0, using
+$$
+\text{LOSS} \equiv (T_P - T_0) / T_0 \; .
+$$
+After some experimentation, we combine these dimensionless metrics with equal weight,
+$$
+\text{SCORE} = \text{RMSE} + \text{LOSS} \; ,
+$$
+so that RMSE typically dominates during the first phase of optimization, then LOSS dominates towards the end.  Typical final values after optimization are RMS $\simeq 1$\% and LOSS $\simeq 3$\%.
+
+We automatically switch between two algorithms to select the set of candidate tiles to adjust during each iteration: a fast algorithm that is typically selected when RMSE dominates the score, and a slower brute-force algorithm that is typically selected when LOSS dominates.  The fast algorithm first identifies which LST bin would maximally improve RMSE when tiles are shifted away from it, and then only considers tiles whose exposures overlap that bin.  The slow algorithm considers a 20\% random subset of all tiles.  We next rank all tiles in the candidate set according to how much they improve the SCORE when adjusted. We usually pick the tile with the best improvement but will sometimes randomly pick a lower-ranked tile. The size of the HA adjustment is randomly generated from a Rayleigh distribution with mean fixed to the input adjustment-size parameter $\delta\text{HA}$.
+
+\subsection{Annealing and Termination}
+
+The {\tt surveyinit} script uses the {\tt optimize.Optimizer} class to coordinate the overall HA assignment task. Optimization proceeds in ``cycles'' of $n$ adjustments with fixed parameters, where $n$ equals the number of tiles to optimize. After each cycle, the distribution of HAs is smoothed over the sky,
+$$
+\text{HA}_j = (1 - \alpha)\,\text{HA}_j + \alpha\,\overline{\text{HA}}_j
+$$
+where $\overline{\text{HA}}_j$ is the weighted average of neighboring HAs,
+$$
+\overline{\text{HA}}_j = \sum_{k\ne j} \omega_{jk}\,\text{HA}_k \; ,
+$$
+and $\alpha$ controls the amount of smoothing.  Smoothing weights are Gaussian in the separation angle $\theta_{jk}$ between pairs of tiles,
+$$
+\omega_{jk} = \exp\left( -0.5(\theta_{jk} / \sigma_S)^2 \right) \; ,
+$$
+with a smoothing length $\sigma_S \simeq 10^\circ$.
+
+After each complete cycle, the adjustment size $\delta\text{HA}$ and amount of smoothing $\alpha$ are annealed according to:
+$$
+\delta\text{HA} \rightarrow a \delta\text{HA} \quad, \quad
+\alpha\rightarrow a \alpha \; ,
+$$
+with an annealing factor $a \simeq 0.95$.
+
+Cycles are terminated once both of the following conditions are met:
+\begin{itemize}
+    \item RMSE below a preset threshold $\simeq 2$\%, and
+    \item fractional change in SCORE larger than a preset threshold $\simeq -1\%$.
+\end{itemize}
+Cycles also terminate after a preset maximum number of cycles.  All of these presets can be modified via {\tt surveyinit} command-line arguments.
 
 \section{Results}
 
