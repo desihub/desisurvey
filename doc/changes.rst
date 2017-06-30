@@ -5,7 +5,7 @@ desisurvey change log
 0.8.2 (unreleased)
 ------------------
 
-* No changes yet.
+* Fix flat vs. flatten for older versions of numpy
 
 0.8.1 (2017-06-19)
 ------------------

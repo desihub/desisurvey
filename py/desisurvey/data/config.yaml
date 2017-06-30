@@ -22,7 +22,8 @@ location:
 first_day: 2019-08-28
 
 # Survey nominally ends on morning of this date. Format is YYYY-MM-DD.
-last_day: 2024-07-13
+# last_day: 2024-07-13
+last_day: 2019-09-14
 
 # First night of monsoon shutdown is on this date each year.
 # Format is YYYY-MM-DD but the year is ignored.
