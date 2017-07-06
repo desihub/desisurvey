@@ -104,9 +104,9 @@ class Optimizer(object):
         dt = sched.step_size.to(u.hour).value
         wgt = dt * np.ones((sched.num_nights, sched.num_times))
         # Weight nights for weather availability.
-        lst = wrap(e['lst'][sel.flat], origin)
+        lst = wrap(e['lst'][sel.flatten()], origin)
         wgt *= sched.calendar['weather'][:, np.newaxis]
-        wgt = wgt[sel].flat
+        wgt = wgt[sel].flatten()
         self.lst_hist, self.lst_edges = np.histogram(
             lst, bins=nbins, range=(origin, origin + 360), weights=wgt)
         self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
@@ -194,7 +194,7 @@ class Optimizer(object):
             MSE_min = np.inf
             for center in centers:
                 # Histogram LST values relative to the specified center.
-                lst = wrap(e['lst'][sel.flat], center)
+                lst = wrap(e['lst'][sel.flatten()], center)
                 hist, edges = np.histogram(
                     lst, bins=nbins, range=(center, center + 360), weights=wgt)
                 lst_cdf = np.zeros_like(edges)
