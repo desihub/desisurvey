@@ -236,6 +236,7 @@ class Ephemerides(object):
 
         if write_cache:
             self.log.info('Saving ephemerides to {0}'.format(filename))
+            self._table.meta['EXTNAME'] = 'EPHEMERIS'
             self._table.write(filename, overwrite=True)
 
     def get_row(self, row_index):

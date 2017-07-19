@@ -35,6 +35,12 @@ def parse(options=None):
     parser.add_argument(
         '--create', action='store_true', help='create an initial plan')
     parser.add_argument(
+        '--start', type=str, default=None, metavar='DATE',
+        help='plan starts on the evening of this day, formatted as YYYY-MM-DD')
+    parser.add_argument(
+        '--stop', type=str, default=None, metavar='DATE',
+        help='plan stops on the morning of this day, formatted as YYYY-MM-DD')
+    parser.add_argument(
         '--duration', type=int, metavar='DAYS', default=None,
         help='duration of plan in days (or plan rest of the survey)')
     parser.add_argument(
@@ -74,6 +80,12 @@ def main(args):
     config = desisurvey.config.Configuration()
     if args.output_path is not None:
         config.set_output_path(args.output_path)
+
+    if args.start is not None:
+        config.first_day._value = desisurvey.utils.get_date(args.start)
+
+    if args.stop is not None:
+        config.last_day._value = desisurvey.utils.get_date(args.stop)
 
     # Tabulate emphemerides if necessary.
     ephem = desisurvey.ephemerides.Ephemerides()
@@ -140,5 +152,6 @@ def main(args):
         sys.exit(9)
 
     # Save the plan and a backup.
+    plan.meta['EXTNAME'] = 'SURVEYPLAN'
     plan.write(config.get_path('plan.fits'), overwrite=True)
     plan.write(config.get_path('plan_{0}.fits'.format(start)), overwrite=True)
