@@ -258,6 +258,7 @@ class Progress(object):
         """
         config = desisurvey.config.Configuration()
         filename = config.get_path(filename)
+        self._table.meta['EXTNAME'] = 'SURVEYPROGRESS'
         self._table.write(filename, overwrite=overwrite)
         self.log.info('Saved progress to {0}.'.format(filename))
 
