@@ -165,7 +165,7 @@ class Scheduler(object):
 
         Calculated as ``texp / (texp + toh) * eff`` where the exposure time
         ``texp`` accounts for the tile's remaining SNR**2 and the current
-        exposure-time factors, and the ovhead time ``toh`` accounts for
+        exposure-time factors, and the overhead time ``toh`` accounts for
         readout, slew, focus and cosmic splits.
 
         Parameters
@@ -447,6 +447,8 @@ class Scheduler(object):
         # and estimated exposure midpoints.
         ieff, toh, tmid, prev = self.instantaneous_efficiency(
             when, cutoff, seeing, transparency, progress, snr2frac, mask)
+        # Mask tiles with ieff=0.0 (e.g. because they extend beyond cutoff)
+        mask = mask & (ieff > 0)
         # Lookup the temporal bin index that each tile's estimated exposure
         # midpoint lands in.
         dt = when.mjd - desisurvey.utils.local_noon_on_date(night).mjd - 0.5

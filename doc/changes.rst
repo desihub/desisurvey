@@ -7,6 +7,8 @@ desisurvey change log
 
 * Added surveyplan --start and --stop options
 * Added EXTNAMEs to output files
+* Fix bug when tiles remain on last day of survey but exposures times will
+  extend beyond sunrise
 
 0.8.2 (2017-07-12)
 ------------------
