@@ -24,7 +24,9 @@ for the DESI Survey\\
 
 \section{Introduction}
 
-This note briefly describes the algorithm used to assign a near-optimal observing hour angle (HA) to each tile in the DESI footprint~\cite{desi-717} and documents the result for the current baseline survey strategy~\cite{desi-1767, desi-1770}. The algorithm is implemented in python code in the {\tt desisurvey} package\footnote{\url{https://github.com/desihub/desisurvey}} and the reader is referred there for implementation details. A jupyter notebook to create the plots in this note is provided under {\tt desisurvey/doc/nb/}.
+This note briefly describes the algorithm used to assign a near-optimal observing hour angle (HA) to each tile in the DESI footprint~\cite{desi-717} and documents the result for the current baseline survey strategy~\cite{desi-1767, desi-1770}.
+
+The algorithm is implemented in python code in the {\tt desisurvey} package\footnote{\url{https://github.com/desihub/desisurvey}} and the reader is referred there for implementation details. A jupyter notebook to create the plots in this note is provided under {\tt desisurvey/doc/nb/}. The LaTeX source for this note is maintained under {\tt desimodel/doc/tex/desi3060/}.
 
 \section{Algorithm Description}
 
@@ -126,71 +128,32 @@ where the nominal exposure time $\Delta t_{\text{nom}}$ is specified by the prog
 
 The dust factor is fixed by the median value of $E_{B-V}(\text{RA}, \text{DEC})$ over the tile and given by:
 $$
-f_{\text{dust}} = 10^{E_{B-V}}
-\quad, \quad \alpha = 2.64 \; ,
+f_{\text{dust}} = 10^{\alpha E_{B-V}}
+\quad, \quad \alpha = 2.6424 \; .
 $$
 The airmass factor is a function of the airmass $X(\text{DEC}, \text{RA})$ and given by:
 $$
 f_{\text{airmass}} = X^{1.25} \; .
 $$
-The remaining factors will vary stochastically during actual observing so our goal here is simply to account for their mean time-integrated effect using the formalism described below.
 
-Suppose the instantaneous signal-to-noise ratio depends on an observing parameter $x$ according to
-$$
-\frac{d\nu}{dt}(x) = f(x)^{-1}
-$$
-then under nominal constant conditions $x(t) = x_0$, the integrated signal-to-noise over a time interval $T$ is:
-$$
-\nu(T) = \int_0^T f(x(t))^{-1}\, dt =  T / f(x_0) \; .
-$$
-However, if $x(t)$ varies stochastically with mean $\mu_x$ and variance $\sigma_x^2$, then
-\begin{align}
-\nu(T) &= \int_0^T f(x(t))^{-1}\, dt \\
-&= \int_0^T (1/f)\left(
-\mu_x + (x(t) - \mu_x)\right) \\
-&\simeq \int_0^T \left[ (1/f)(\mu_x) + (1/f)'(\mu_x) (x - \mu_x)
-+ \frac{1}{2} (1/f)''(\mu_x) (x - \mu_x)^2 \right]^{-1} \\
-&= \frac{T}{f(\mu_x)}\left[1 + g(\mu_x) \sigma_x^2 \right] \; ,
-\end{align}
-with
-$$
-g(x) \equiv \frac{f'(x)^2}{f(x)^2} - \frac{f''(x)}{2 f(x)} \; .
-$$
-We define the time-integrated exposure time factor $F_x$ as the increase in time relative to nominal conditions required to achieve the same integrated signal to noise $\nu(T)$, i.e.
-$$
-\nu(F_x T) = T f(x_0) \; .
-$$
-We can then evaluate $F_x$ approximately using:
-$$
-F_x \simeq \frac{f(\mu_x)}{f(x_0)} \left[1 +
-g(\mu_x) \sigma_x^2 \right]^{-1} \; .
-$$
-
-Consider the effects of transparency, with
-$$
-f(x) = 1/x \; ,
-$$
-and seeing, with
-$$
-f(x) = a + b x + c x^2 \quad , \quad (a,b,c) = (4.6, -1.55, 1.15) \; .
-$$
-\tab{expfac} below summarizes the expected time-integrated exposure factors using means and variances obtained from a weather simulated based on empirical distibutions. We see that the second-order corrections increase the seeing exposure factor by about 7\% but have no effect on the transparency. Assuming that transparency and seeing are uncorrelated, we expect an overall factor of 1.27 during the DARK program.
+The remaining DARK program exposure factors are due to atmospheric seeing and transparency, which vary stochastically during actual observing. For the purposes of HA optimization, we only need to account for their mean time-integrated effects, $F_x = \langle f_x\rangle$.  Our assumptions for seeing and transparency are detailed in~\cite{desi-3087} and summarized in \tab{expfac}. The combined effect seeing and transparency, which we assume to be uncorrelated, is a $\simeq 9$\% increase in exposure time which we
+round up to 10\%.
 
 \begin{table}[htb]
 \begin{center}
-\begin{tabular}{lccccc}
-Condition & Median & $\mu_x$ & $\sigma_x$ & $g(\mu_x)$ & $F_x$ \\
+\begin{tabular}{lcccccccc}
+Condition & Nominal & Median & Mean & $F_x$ \\
 \hline
-Seeing & $1.19$" & $1.41$" & $0.76$" & -0.113 & 1.175 \\
-Transparency & $1.00$ & $0.93$ & $0.00$ & 0.000 & 1.078 \\
+      Seeing & $1.1$" & $1.10$" & $1.17$" & $1.03$ \\
+Transparency & $1.0$  & $0.98$  & $0.94$  & $1.06$ \\
 \hline
 \end{tabular}
-\caption{Summary of simulated weather study to establish the time-integrated exposure factors due to variable seeing and transparency.}
+\caption{Summary of atmospheric seeing and transparency assumptions, and estimated time-integrated exposure-time factors. See~\cite{desi-3087} for details.}
 \label{tab:expfac}
 \end{center}
 \end{table}
 
-Exposure times during the GRAY and BRIGHT programs have an additional factor due to scattered moonlight, but further study is needed to accurately estimate its impact.  We therefore assign average exposure time factors to account for seeing, transparency and moon of: 1.3 (DARK), ?? (GRAY) and ?? (BRIGHT).
+Exposure times during the GRAY and BRIGHT programs have an additional factor due to scattered moonlight, but further study is needed to accurately estimate its impact.  We therefore assign average exposure time factors to account for seeing, transparency and moon of: 1.10 (DARK), ?? (GRAY) and ?? (BRIGHT). These factors multiply the exposure times derived from dust and airmass in our HA optimization algorithm, but are expected to have a negligible impact on the assigned HAs.
 
 \subsection{Iteration}
 
