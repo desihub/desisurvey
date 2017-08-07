@@ -106,19 +106,18 @@ class Planner(object):
                 if not target_parsed or target_parsed.groups(1) == group_name:
                     raise RuntimeError('Invalid rule target: {0}'.format(target))
                 for trigger in rules[target]:
-                    if trigger == 'START':
-                        continue
-                    trigger_parsed = parser.match(trigger)
-                    if not trigger_parsed:
-                        raise RuntimeError(
-                            'Invalid rule trigger: {0}.'.format(trigger))
+                    if trigger != 'START':
+                        trigger_parsed = parser.match(trigger)
+                        if not trigger_parsed:
+                            raise RuntimeError(
+                                'Invalid rule trigger: {0}.'.format(trigger))
                     try:
                         new_weight = float(rules[target][trigger])
                     except ValueError:
                         raise RuntimeError(
                             'Invalid new weight for trigger {0}: {1}.'
                             .format(trigger, rules[target][trigger]))
-                group_rules[target][trigger] = new_weight
+                    group_rules[target][trigger] = new_weight
 
         # Check that all groups have at least one rule.
         for pass_name in group_rules:
