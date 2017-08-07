@@ -780,7 +780,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 size = getattr(config.avoid_bodies, name)()
                 # Penalize the exposure-time with a factor
                 # 1 - exp(-0.5*(obj_sep/size)**2)
-                penalty = 1. - np.exp(-0.5 * (obj_sep / size) ** 2)
+                penalty = 1. - np.exp(-0.5 * (obj_sep / size).to(1).value ** 2)
                 fexp[sl] *= penalty
 
     # Save calendar table.
