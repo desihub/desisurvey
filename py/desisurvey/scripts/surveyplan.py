@@ -21,6 +21,7 @@ import desisurvey.schedule
 import desisurvey.plan
 import desisurvey.utils
 import desisurvey.config
+import desisurvey.rules
 
 
 def parse(options=None):
@@ -35,6 +36,10 @@ def parse(options=None):
     parser.add_argument(
         '--create', action='store_true', help='create an initial plan')
     parser.add_argument(
+        '--rules', metavar='YAML', default='rules.yaml',
+        help='name of YAML file with observing priority rules')
+    '''
+    parser.add_argument(
         '--duration', type=int, metavar='DAYS', default=None,
         help='duration of plan in days (or plan rest of the survey)')
     parser.add_argument(
@@ -43,6 +48,7 @@ def parse(options=None):
     parser.add_argument(
         '--plots', action='store_true',
         help='save diagnostic plots of the plan optimzation for each program')
+    '''
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
@@ -75,13 +81,18 @@ def main(args):
     if args.output_path is not None:
         config.set_output_path(args.output_path)
 
-    # Tabulate emphemerides if necessary.
+    # Load ephemerides.
     ephem = desisurvey.ephemerides.Ephemerides()
 
+    # Initialize scheduler.
     if not os.path.exists(config.get_path('scheduler.fits')):
-        # Tabulate data used the the scheduler.
+        # Tabulate data used by the scheduler if necessary.
         desisurvey.schedule.initialize(ephem)
     scheduler = desisurvey.schedule.Scheduler()
+
+    # Read priority rules.
+    rules = desisurvey.rules.Rules(args.rules)
+    return
 
     if args.create:
         # Create a new plan and empty progress record.
