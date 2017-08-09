@@ -34,58 +34,58 @@ N16:
     cap: N
     dec_min: 12
     dec_max: 28
-    passes: 0,4,5
+    passes: 0,5
     rules:
         N16(0): { START: 1.0 }
-        N16(4): { START: 1.0 }
         N16(5): { START: 1.0 }
 N16LO:
     cap: N
     dec_max: 12
-    passes: 0,4,5
+    passes: 0,5
     rules:
-        N16LO(0): { N16(0): 0.5, N16(1): 1.0 }
-        N16LO(4): { N16(4): 1.0 }
-        N16LO(5): { N16(5): 0.5, N16(5): 1.0 }
+        N16LO(0): { N10(1): 1.0 }
+        N16LO(5): { N10(6): 1.0 }
 N16HI:
     cap: N
     dec_min: 28
-    passes: 0,4,5
+    passes: 0,5
     rules:
         N16HI(0): { N16LO(0): 1.0 }
-        N16HI(4): { N16LO(4): 1.0 }
         N16HI(5): { N16LO(5): 1.0 }
 N10:
     cap: N
     dec_min: 15
     dec_max: 25
-    passes: 1,2,3,6,7
+    passes: 1,2,3,4,6,7
     rules:
-        N10(1): { N16(0): 1.0 }
+        N10(1): { START: 0.5, N16(0): 1.0 }
         # Start passes 2,3 simultaneously after pass 1.
-        N10(2): { N10(1): 1.0 }
+        N10(2): { N16(0): 0.5, N10(1): 1.0 }
         N10(3): { N10(1): 0.8, N10(2): 1.0 }
+        N10(4): { START: 1.0 }
         # Start passes 6,7 simultaneously after pass 4.
-        N10(6): { N16(4): 1.0 }
-        N10(7): { N16(4): 0.8, N10(6): 1.0 }
+        N10(6): { START: 0.5, N16(5): 1.0 }
+        N10(7): { N16(5): 0.8, N10(6): 1.0 }
 N10LO:
     cap: N
     dec_max: 15
-    passes: 1,2,3,6,7
+    passes: 1,2,3,4,6,7
     rules:
         N10LO(1): { N10(1): 1.0 }
         N10LO(2): { N10(2): 1.0 }
         N10LO(3): { N10(3): 1.0 }
+        N10LO(3): { N10(4): 1.0 }
         N10LO(6): { N10(6): 1.0 }
         N10LO(7): { N10(7): 1.0 }
 N10HI:
     cap: N
     dec_min: 25
-    passes: 1,2,3,6,7
+    passes: 1,2,3,4,6,7
     rules:
         N10HI(1): { N10LO(1): 1.0 }
         N10HI(2): { N10LO(2): 1.0 }
         N10HI(3): { N10LO(3): 1.0 }
+        N10HI(3): { N10LO(4): 1.0 }
         N10HI(6): { N10LO(6): 1.0 }
         N10HI(7): { N10LO(7): 1.0 }
 SLO:
@@ -94,13 +94,13 @@ SLO:
     passes: 0,1,2,3,4,5,6,7
     rules:
         SLO(0): { START: 1.0 }
-        SLO(1): { START: 1.0 }
-        SLO(2): { START: 1.0 }
-        SLO(3): { START: 1.0 }
+        SLO(1): { SLO(0): 1.0 }
+        SLO(2): { SLO(1): 1.0 }
+        SLO(3): { SLO(2): 1.0 }
         SLO(4): { START: 1.0 }
         SLO(5): { START: 1.0 }
-        SLO(6): { START: 1.0 }
-        SLO(7): { START: 1.0 }
+        SLO(6): { SLO(5): 1.0 }
+        SLO(7): { SLO(6): 1.0 }
 SHI:
     cap: S
     dec_min: 5

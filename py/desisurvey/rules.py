@@ -57,9 +57,9 @@ class Rules(object):
             # Parse optional geographical attribute.
             cap = node.get('cap')
             if cap == 'N':
-                group_sel[~SGC] = False
+                group_sel[SGC] = False
             elif cap == 'S':
-                group_sel[~NGC] = False
+                group_sel[NGC] = False
             dec_min = node.get('dec_min')
             if dec_min is not None:
                 group_sel[dec < float(dec_min)] = False
@@ -86,7 +86,7 @@ class Rules(object):
                         'Some tiles assigned to multiple groups: {0}, {1}.'
                         .format(group_names[other_id - 1], pass_name))
                 group_ids[pass_sel] = group_id
-                group_rules[pass_name] = {}
+                group_rules[pass_name] = {'START': 0.0}
 
             # Parse rules for this group.
             rules = node.get('rules')
@@ -111,11 +111,6 @@ class Rules(object):
                             .format(trigger, rules[target][trigger]))
                     group_rules[target][trigger] = new_weight
 
-        # Check that all groups have at least one rule.
-        for pass_name in group_rules:
-            if group_rules[pass_name] == {}:
-                raise RuntimeError('Missing rules for {0}.'.format(pass_name))
-
         # Check that all tiles are assigned to exactly one group.
         if np.any(group_ids == 0):
             orphans = (group_ids == 0)
@@ -124,21 +119,41 @@ class Rules(object):
                 '{0} tiles in passes {1} not assigned to any group.'
                 .format(np.count_nonzero(orphans), passes))
 
+        # Check that all rule targets are valid groups.
+        for name in group_names:
+            for target in group_rules[name]:
+                if target == 'START':
+                    continue
+                if target not in group_names:
+                    raise RuntimeError(
+                        'Invalid target {0} in {1} rule.'.format(target, name))
+
+        self.tileid = tiles['TILEID']
         self.group_names = group_names
         self.group_ids = group_ids
         self.group_rules = group_rules
 
-        if restore is not None:
-            self.plan = astropy.table.Table.read(restore)
-        else:
-            # Create a new plan.
-            self.plan = astropy.table.Table()
-            self.plan['tileid'] = tiles['TILEID']
-            self.plan['ra'] = tiles['RA']
-            self.plan['dec'] = tiles['DEC']
-            self.plan['pass'] = tiles['PASS']
-            self.plan['group'] = self.group_ids
-            self.plan['weight'] = np.zeros(len(tiles))
-            ##self.plan['priority'] = priority
-            ##self.plan['active'] = np.zeros(len(tiles), bool)
-            self.plan['hourangle'] = np.zeros(len(tiles))
+    def apply(self, progress):
+        """Apply the priority rules given the observing progress so far.
+
+        Returns
+        -------
+        array
+            Array of per-tile observing priorities.
+        """
+        # Find all completed tiles.
+        assert np.all(progress._table['tileid'] == self.tileid)
+        completed = progress._table['status'] == 2
+        # First pass through groups to check trigger conditions.
+        triggered = {'START': True}
+        for gid, name in zip(np.unique(self.group_ids), self.group_names):
+            triggered[name] = np.all(completed[self.group_ids == gid])
+        # Second pass through groups to apply rules.
+        priorities = np.zeros(len(self.tileid))
+        for gid, name in zip(np.unique(self.group_ids), self.group_names):
+            priority = 0
+            for condition, value in self.group_rules[name].items():
+                if triggered[condition]:
+                    priority = max(priority, value)
+            priorities[self.group_ids == gid] = priority
+        return priorities
