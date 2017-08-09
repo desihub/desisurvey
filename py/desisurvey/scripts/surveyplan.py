@@ -38,17 +38,6 @@ def parse(options=None):
     parser.add_argument(
         '--rules', metavar='YAML', default='rules.yaml',
         help='name of YAML file with observing priority rules')
-    '''
-    parser.add_argument(
-        '--duration', type=int, metavar='DAYS', default=None,
-        help='duration of plan in days (or plan rest of the survey)')
-    parser.add_argument(
-        '--nopts', type=int, metavar='N', default=5000,
-        help='number of hour-angle optimization iterations to perform')
-    parser.add_argument(
-        '--plots', action='store_true',
-        help='save diagnostic plots of the plan optimzation for each program')
-    '''
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
@@ -92,12 +81,16 @@ def main(args):
 
     # Read priority rules.
     rules = desisurvey.rules.Rules(args.rules)
-    return
 
     if args.create:
-        # Create a new plan and empty progress record.
-        plan = desisurvey.plan.create()
+        # Load initial design hour angles for each tile.
+        design = astropy.table.Table.read(config.get_path('surveyinit.fits'))
+        # Create an empty progress record.
         progress = desisurvey.progress.Progress()
+        # Initialize the observing priorities.
+        priorities = rules.apply(progress)
+        # Create the initial plan.
+        plan = desisurvey.plan.create(design['HA'], priorities)
         # Start the survey from scratch.
         start = scheduler.start_date
     else:
@@ -120,36 +113,25 @@ def main(args):
     # Reached end of the survey?
     if start >= config.last_day():
         log.info('Reached survey end date!')
+        # Return a shell exit code so scripts can detect this condition.
         sys.exit(9)
 
-    # Calculate the end date of the plan.
-    if args.duration is not None:
-        stop = start + datetime.timedelta(days=args.duration)
-    else:
-        stop = config.last_day()
+    log.info('Planning observations for night of {0}.'.format(start))
 
-    log.info('Planning observations for {0} to {1}.'
-             .format(start, stop))
+    if not args.create:
 
-    # Save plots?
-    if args.plots:
-        import matplotlib
-        matplotlib.use('Agg')
-        plots = config.get_path('plan_{0}'.format(start))
-    else:
-        plots = None
+        # Update the plan.
+        plan = desisurvey.plan.update(
+            plan, progress, scheduler, start, stop,
+            nopts=(args.nopts,), plot_basename=plots)
 
-    # Update the plan.
-    plan = desisurvey.plan.update(
-        plan, progress, scheduler, start, stop,
-        nopts=(args.nopts,), plot_basename=plots)
-
-    # All done?
-    if plan is None:
-        log.info('All tiles observed!')
-        # Return a shell exit code to allow scripts to detect this condition.
-        sys.exit(9)
+        # All done?
+        if plan is None:
+            log.info('All tiles observed!')
+            # Return a shell exit code so scripts can detect this condition.
+            sys.exit(9)
 
     # Save the plan and a backup.
     plan.write(config.get_path('plan.fits'), overwrite=True)
-    plan.write(config.get_path('plan_{0}.fits'.format(start)), overwrite=True)
+    plan.write(
+        config.get_path('plan_{0}.fits'.format(start)), overwrite=True)

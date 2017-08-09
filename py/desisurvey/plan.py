@@ -59,23 +59,23 @@ def baseline(tiles):
     return group, priority
 
 
-def create(planner=baseline):
+def create(hourangles, priorities):
     """Create a new plan for the start of the survey.
     """
     tiles = astropy.table.Table(
         desimodel.io.load_tiles(onlydesi=True, extra=False))
-
-    group, priority = planner(tiles)
 
     plan = astropy.table.Table()
     plan['tileid'] = tiles['TILEID']
     plan['ra'] = tiles['RA']
     plan['dec'] = tiles['DEC']
     plan['pass'] = tiles['PASS']
-    plan['group'] = group
-    plan['priority'] = priority
-    plan['active'] = np.zeros(len(tiles), bool)
-    plan['hourangle'] = np.zeros(len(tiles))
+
+    plan['priority'] = priorities
+    plan['hourangle'] = hourangles
+    # Assume that all first-layer tiles have targets assigned to fibers.
+    plan['available'] = (
+        (plan['pass'] == 0) | (plan['pass'] == 4) | (plan['pass'] == 5))
     return plan
 
 
