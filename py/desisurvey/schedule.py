@@ -291,7 +291,7 @@ class Scheduler(object):
         HA = np.fmod(HA + 540, 360) - 180
         assert np.min(HA) >= -180 and np.max(HA) <= +180
         # Compare actual HA with design HA.
-        dHA = HA - design_HA
+        dHA = HA ##- design_HA
         return np.exp(-0.5 * (dHA / sigma) ** 2)
 
     def rank_score(self, when):
@@ -436,15 +436,15 @@ class Scheduler(object):
         ij0 = (i * self.num_times + np.digitize(dt, self.t_edges) - 1)
         ephem0 = self.etable[ij0]
         # Only schedule active tiles.
-        mask = plan['active']
+        mask = (plan['priority'] > 0) & plan['available']
         # Do not re-schedule tiles that have reached their min SNR**2 fraction.
-        snr2frac = progress._table['snr2frac'].data.sum(axis=1)
-        mask = mask & (snr2frac < config.min_snr2_fraction())
+        mask = mask & (progress._table['status'] < 2)
         if not np.any(mask):
             self.log.warn('No active tiles at {0}.'.format(when.datetime))
             return None
         # Calculate instantaneous efficiencies, initial overhead times,
         # and estimated exposure midpoints.
+        snr2frac = progress._table['snr2frac'].data.sum(axis=1)
         ieff, toh, tmid, prev = self.instantaneous_efficiency(
             when, cutoff, seeing, transparency, progress, snr2frac, mask)
         # Lookup the temporal bin index that each tile's estimated exposure
@@ -460,7 +460,8 @@ class Scheduler(object):
         # Lookup the program each candidate tile is assigned to.
         tile_program = self.tiles['program'][mask]
         # Calculate each tile's score using the requested strategy.
-        score = np.ones(len(self.tiles))
+        # Initialize score = priority, then apply multiplicative factors.
+        score = plan['priority'].data.copy()
         strategy = strategy.split('+')
         if 'greedy' in strategy:
             score *= ieff
