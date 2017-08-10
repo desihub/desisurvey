@@ -48,6 +48,7 @@ class Rules(object):
 
         group_names = []
         group_ids = np.zeros(num_tiles, int)
+        dec_priority = np.ones(num_tiles, float)
         group_rules = {}
 
         for group_name in config:
@@ -73,6 +74,24 @@ class Rules(object):
                 raise RuntimeError(
                     'Missing required passes for {0}.'.format(group_name))
             passes = [int(p) for p in str(passes).split(',')]
+            for p in np.unique(passnum):
+                if p not in passes:
+                    group_sel[passnum == p] = False
+
+            # Calculate priority multipliers to implement optional DEC ordering.
+            dec_order = node.get('dec_order')
+            if dec_order is not None:
+                dec_group = dec[group_sel]
+                lo, hi = np.min(dec_group), np.max(dec_group)
+                slope = float(dec_order)
+                if slope > 0:
+                    dec_priority[group_sel] = (
+                        1 + slope * (hi - dec_group) / (hi - lo))
+                else:
+                    dec_priority[group_sel] = (
+                        1 - slope * (dec_group - lo) / (hi - lo))
+            else:
+                assert np.all(dec_priority[group_sel] == 1)
 
             # Create GROUP(PASS) combinations.
             for p in passes:
@@ -132,6 +151,7 @@ class Rules(object):
         self.group_names = group_names
         self.group_ids = group_ids
         self.group_rules = group_rules
+        self.dec_priority = dec_priority
 
     def apply(self, progress):
         """Apply the priority rules given the observing progress so far.
@@ -155,5 +175,6 @@ class Rules(object):
             for condition, value in self.group_rules[name].items():
                 if triggered[condition]:
                     priority = max(priority, value)
-            priorities[self.group_ids == gid] = priority
+            sel = self.group_ids == gid
+            priorities[sel] = priority * self.dec_priority[sel]
         return priorities

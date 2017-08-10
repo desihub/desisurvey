@@ -277,7 +277,7 @@ class Scheduler(object):
 
         return ieff, toh_initial, t_midpt, previous
 
-    def hourangle_score(self, when, tmid, design_HA, sigma=7.5):
+    def hourangle_score(self, when, tmid, design_HA, sigma=15.0):
         """
         """
         # Get the current apparent local sidereal time.
@@ -291,7 +291,7 @@ class Scheduler(object):
         HA = np.fmod(HA + 540, 360) - 180
         assert np.min(HA) >= -180 and np.max(HA) <= +180
         # Compare actual HA with design HA.
-        dHA = HA ##- design_HA
+        dHA = HA - design_HA
         return np.exp(-0.5 * (dHA / sigma) ** 2)
 
     def rank_score(self, when):
