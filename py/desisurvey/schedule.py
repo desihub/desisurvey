@@ -761,7 +761,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 # Calculate scattered moon V-band brightness at each pixel.
                 V = specsim.atmosphere.krisciunas_schaefer(
                     pix_sep, moon_zenith, obj_sep,
-                    moon_phase, vband_extinction).value
+                    moon_phase, desisurvey.etc._vband_extinction).value
                 # Estimate the exposure time factor from V.
                 X = np.dstack((one, np.exp(-V), 1/V, 1/V**2, 1/V**3))
                 T = X.dot(desisurvey.etc._moonCoefficients)

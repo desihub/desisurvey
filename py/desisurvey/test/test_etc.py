@@ -46,23 +46,29 @@ class TestExpCalc(unittest.TestCase):
 
     def test_moon(self):
         #- Moon below horizon
-        x = moon_exposure_factor(moon_frac=0.5, moon_sep=60, moon_alt=-30)
+        x = moon_exposure_factor(
+            moon_frac=0.5, moon_sep=60, moon_alt=-30, airmass=1.2)
         self.assertAlmostEqual(x, 1.0, 4)
 
         #- New moon above horizon still has some impact
-        x = moon_exposure_factor(moon_frac=0.0, moon_sep=60, moon_alt=30)
+        x = moon_exposure_factor(
+            moon_frac=0.0, moon_sep=60, moon_alt=30, airmass=1.2)
         self.assertGreater(x, 1.0)
         self.assertLess(x, 1.1)
 
         #- Partial moon takes more time
-        x1 = moon_exposure_factor(moon_frac=0.1, moon_sep=60, moon_alt=30)
-        x2 = moon_exposure_factor(moon_frac=0.2, moon_sep=60, moon_alt=30)
+        x1 = moon_exposure_factor(
+            moon_frac=0.1, moon_sep=60, moon_alt=30, airmass=1.2)
+        x2 = moon_exposure_factor(
+            moon_frac=0.2, moon_sep=60, moon_alt=30, airmass=1.2)
         self.assertGreater(x1, 1.0)
         self.assertGreater(x2, x1)
 
         #- Closer moon takes more time
-        x1 = moon_exposure_factor(moon_frac=0.5, moon_sep=60, moon_alt=30)
-        x2 = moon_exposure_factor(moon_frac=0.5, moon_sep=30, moon_alt=30)
+        x1 = moon_exposure_factor(
+            moon_frac=0.5, moon_sep=60, moon_alt=30, airmass=1.2)
+        x2 = moon_exposure_factor(
+            moon_frac=0.5, moon_sep=30, moon_alt=30, airmass=1.2)
         self.assertGreater(x2, x1)
 
 

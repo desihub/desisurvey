@@ -14,7 +14,7 @@ import numpy as np
 
 import astropy.units as u
 
-import specsim.simulator
+import specsim.atmosphere
 
 import desiutil.log
 
@@ -117,16 +117,17 @@ def airmass_exposure_factor(airmass):
     return np.power((X / X0), 1.25)
 
 
-# A specsim moon model that will be created once, then cached here.
-_moonModel = None
-
 # Linear regression coefficients for converting scattered moon V-band
 # magnitude into an exposure-time correction factor.
 _moonCoefficients = np.array([
     -8.83964463188, -7372368.5041596508, 775.17763895781638,
     -20185.959363990656, 174143.69095766739])
 
-def moon_exposure_factor(moon_frac, moon_sep, moon_alt):
+# V-band extinction coefficient to use in the scattered moonlight model.
+# See specsim.atmosphere.krisciunas_schaefer for details.
+_vband_extinction = 0.15154
+
+def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     """Calculate exposure time factor due to scattered moonlight.
 
     The returned factor is relative to dark conditions when the moon is
@@ -152,6 +153,8 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt):
         Separation angle between field center and moon in degrees.
     moon_alt : float
         Altitude angle of the moon above the horizon in degrees.
+    airmass : float
+        Airmass used for observing this tile.
 
     Returns
     -------
@@ -163,22 +166,19 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt):
     if moon_alt < 0:
         return 1.
 
-    global _moonModel
-    if not _moonModel:
-        # Create a specim moon model.
-        desi = specsim.simulator.Simulator('desi')
-        _moonModel = desi.atmosphere.moon
-        desiutil.log.get_logger().info(
-            'Created a specsim moon model with EV={0}'
-            .format(_moonModel._vband_extinction))
-
     # Convert input parameters to those used in the specim moon model.
-    _moonModel.moon_phase = np.arccos(2 * moon_frac - 1) / np.pi
-    _moonModel.moon_zenith = (90 - moon_alt) * u.deg
-    _moonModel.separation_angle = moon_sep * u.deg
+    moon_phase = np.arccos(2 * moon_frac - 1) / np.pi
+    separation_angle = moon_sep * u.deg
+    moon_zenith = (90 - moon_alt) * u.deg
 
-    # Calculate the scattered moon V-band magnitude.
-    V = _moonModel.scattered_V.value
+    # Estimate the zenith angle corresponding to this observing airmass.
+    # We invert eqn.3 of KS1991 for this (instead of eqn.14).
+    obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
+
+    # Calculate scattered moon V-band brightness at each pixel.
+    V = specsim.atmosphere.krisciunas_schaefer(
+        obs_zenith, moon_zenith, separation_angle,
+        moon_phase, _vband_extinction).value
 
     # Evaluate the linear regression model.
     X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
@@ -209,8 +209,8 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
         Dimensionless transparency value(s) in the range [0-1].
     EBV : float or array
         Median dust extinction value(s) E(B-V) for the tile area.
-    airmass : float or array
-        Airmass value(s)
+    airmass : float
+        Airmass used for observing this tile.
     moon_frac : float
         Illuminated fraction of the moon, between 0-1.
     moon_sep : float
@@ -232,7 +232,7 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
     f_transparency = transparency_exposure_factor(transparency)
     f_dust = dust_exposure_factor(EBV)
     f_airmass = airmass_exposure_factor(airmass)
-    f_moon = moon_exposure_factor(moon_frac, moon_sep, moon_alt)
+    f_moon = moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass)
 
     # Calculate the exposure time required at the specified condtions.
     actual_time = nominal_time * (
