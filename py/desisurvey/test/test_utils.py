@@ -285,6 +285,23 @@ class TestUtils(unittest.TestCase):
             self.assertEqual(noon.datetime.date(), day)
             self.assertEqual(noon.datetime.time(), datetime.time(hour=12 + 7))
 
+    def test_separation_matrix(self):
+        ra = [0, 45, 90, 180, 270]
+        dec = [-90, -45, 0, 45, 90]
+        sep0 = utils.separation_matrix(ra, dec, ra, dec)
+        for n1 in range(1, 5):
+            for n2 in range(1, 5):
+                sep = utils.separation_matrix(
+                    ra[:n1], dec[:n1], ra[:n2], dec[:n2])
+                assert sep.shape == (n1, n2)
+                assert np.allclose(sep0[:n1, :n2], sep)
+        assert np.allclose(utils.separation_matrix([0], [0], [0], [0]), 0.)
+        assert np.allclose(utils.separation_matrix([90], [0], [90], [0]), 0.)
+        assert np.allclose(utils.separation_matrix([0], [0], [0], [90]), 90.)
+        assert np.allclose(utils.separation_matrix([90], [0], [90], [90]), 90.)
+        assert np.allclose(utils.separation_matrix([0], [0], [0], [-45]), 45.)
+        assert np.allclose(utils.separation_matrix([330], [0], [30], [0]), 60.)
+
     def test_sort2arr(self):
         a = [1,2,3]
         b = [3,1,2]

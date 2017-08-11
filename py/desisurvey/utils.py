@@ -539,6 +539,50 @@ def get_date(date):
     return date
 
 
+def separation_matrix(ra1, dec1, ra2, dec2):
+    """Build a matrix of pair-wise separation between (ra,dec) pointings.
+
+    The ra1 and dec1 arrays must have the same shape. The ra2 and dec2 arrays
+    must also have the same shape, but it can be different from the (ra1,dec1)
+    shape, resulting in a non-square return matrix.
+
+    Parameters
+    ----------
+    ra1 : array
+        1D array of n1 RA coordinates in degrees (without units attached).
+    dec1 : array
+        1D array of n1 DEC coordinates in degrees (without units attached).
+    ra2 : array
+        1D array of n2 RA coordinates in degrees (without units attached).
+    dec2 : array
+        1D array of n2 DEC coordinates in degrees (without units attached).
+
+    Returns
+    -------
+    array
+        Array with shape (n1,n2) with element [i1,i2] giving the 3D separation
+        angle between (ra1[i1],dec1[i1]) and (ra2[i2],dec2[i2]) in degrees.
+    """
+    ra1 = np.asarray(ra1)
+    dec1 = np.asarray(dec1)
+    if ra1.shape != dec1.shape:
+        raise ValueError('Arrays ra1, dec1 must have the same shape.')
+    if len(ra1.shape) != 1:
+        raise ValueError('Arrays ra1, dec1 must be 1D.')
+    ra2 = np.asarray(ra2)
+    dec2 = np.asarray(dec2)
+    if ra2.shape != dec2.shape:
+        raise ValueError('Arrays ra2, dec2 must have the same shape.')
+    if len(ra2.shape) != 1:
+        raise ValueError('Arrays ra2, dec2 must be 1D.')
+    # Build unit vectors for (ra1,dec1) and (ra2,dec2).
+    units1 = astropy.coordinates.ICRS(ra=ra1 * u.deg, dec=dec1 * u.deg)
+    units2 = astropy.coordinates.ICRS(ra=ra2 * u.deg, dec=dec2 * u.deg)
+    # Calculate separation angles in degrees.
+    separations = units1[:, np.newaxis].separation(units2)
+    return separations.to(u.deg).value
+
+
 def earthOrientation(MJD):
     """
     This is an approximate formula because the ser7.dat file's range
