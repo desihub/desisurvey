@@ -121,9 +121,7 @@ def main(args):
     if not args.create:
 
         # Update the plan.
-        plan = desisurvey.plan.update(
-            plan, progress, scheduler, start, stop,
-            nopts=(args.nopts,), plot_basename=plots)
+        plan = desisurvey.plan.update_available(plan, progress)
 
         # All done?
         if plan is None:
