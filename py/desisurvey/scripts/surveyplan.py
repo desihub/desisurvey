@@ -22,6 +22,7 @@ import desisurvey.plan
 import desisurvey.utils
 import desisurvey.config
 import desisurvey.rules
+import desisurvey.progress
 
 
 def parse(options=None):
