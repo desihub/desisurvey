@@ -592,10 +592,9 @@ class Optimizer(object):
         radius : astropy.units.Quantity
             Gaussian sigma for calculating weights with angular units.
         """
-        unitvecs = astropy.coordinates.ICRS(
-            ra=self.ra * u.deg, dec=self.dec * u.deg)
-        separations = unitvecs.separation(unitvecs[:, np.newaxis])
-        ratio = separations.to(u.deg).value / radius.to(u.deg).value
+        separations = desisurvey.utils.separation_matrix(
+            self.ra, self.dec, self.ra, self.dec)
+        ratio = separations / radius.to(u.deg).value
         self.smoothing_weights = np.exp(-0.5 * ratio ** 2)
         # Set self weight to zero.
         self_weights = np.diag(self.smoothing_weights)
