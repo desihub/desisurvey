@@ -1,0 +1,18 @@
+#!/usr/bin/env python
+"""
+Create a movie of DESI survey progress.
+"""
+from __future__ import print_function, division, absolute_import
+
+import sys
+
+import desisurvey.scripts.surveymovie
+
+
+if __name__ == '__main__':
+    try:
+        args = desisurvey.scripts.surveymovie.parse()
+        desisurvey.scripts.surveymovie.main(args)
+    except RuntimeError as e: #Exception as e:
+        print(e)
+        sys.exit(-1)
