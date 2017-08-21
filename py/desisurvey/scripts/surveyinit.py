@@ -43,6 +43,9 @@ def parse(options=None):
         '--debug', action='store_true',
         help='display log messages with severity >= debug (implies verbose)')
     parser.add_argument(
+        '--recalc', action='store_true',
+        help='recalculate even when previous calculations are available')
+    parser.add_argument(
         '--nbins', type=int, default=192, metavar='N',
         help='number of LST bins to use')
     parser.add_argument(
@@ -90,32 +93,10 @@ def parse(options=None):
     return args
 
 
-def main(args):
-    """Command-line driver for initializing the survey plan.
+def calculate_initial_plan(args, scheduler, fullname):
+    """Calculate initial hour-angle assignments for all tiles.
     """
-    # Set up the logger
-    if args.debug:
-        log = desiutil.log.get_logger(desiutil.log.DEBUG)
-        args.verbose = True
-    elif args.verbose:
-        log = desiutil.log.get_logger(desiutil.log.INFO)
-    else:
-        log = desiutil.log.get_logger(desiutil.log.WARNING)
-
-    # Set the output path if requested.
-    config = desisurvey.config.Configuration()
-    if args.output_path is not None:
-        config.set_output_path(args.output_path)
-
-    # Tabulate emphemerides if necessary.
-    ephem = desisurvey.ephemerides.Ephemerides()
-
-    if not os.path.exists(config.get_path('scheduler.fits')):
-        # Tabulate data used the the scheduler.
-        desisurvey.schedule.initialize(ephem)
-
-    # Load scheduler with precomputed tables needed by the optimizer.
-    scheduler = desisurvey.schedule.Scheduler()
+    log = desiutil.log.get_logger()
 
     # Initialize the output results table.
     tiles = astropy.table.Table(desimodel.io.load_tiles(
@@ -174,6 +155,38 @@ def main(args):
         out['HA'][sel] = opt.ha
         out['OBSTIME'][sel] = texp
 
-    fullname = config.get_path(args.save)
     log.info('Saving results to {0}'.format(fullname))
     out.write(fullname, overwrite=True)
+
+
+def main(args):
+    """Command-line driver for initializing the survey plan.
+    """
+    # Set up the logger
+    if args.debug:
+        log = desiutil.log.get_logger(desiutil.log.DEBUG)
+        args.verbose = True
+    elif args.verbose:
+        log = desiutil.log.get_logger(desiutil.log.INFO)
+    else:
+        log = desiutil.log.get_logger(desiutil.log.WARNING)
+
+    # Set the output path if requested.
+    config = desisurvey.config.Configuration()
+    if args.output_path is not None:
+        config.set_output_path(args.output_path)
+
+    # Tabulate emphemerides if necessary.
+    ephem = desisurvey.ephemerides.Ephemerides(use_cache=not args.recalc)
+
+    if args.recalc or not os.path.exists(config.get_path('scheduler.fits')):
+        # Tabulate data used the the scheduler.
+        desisurvey.schedule.initialize(ephem)
+
+    # Load scheduler with precomputed tables needed by the optimizer.
+    scheduler = desisurvey.schedule.Scheduler()
+
+    # Can we use existing HA assignments?
+    fullname = config.get_path(args.save)
+    if args.recalc or not os.path.exists(fullname):
+        calculate_initial_plan(args, scheduler, fullname)
