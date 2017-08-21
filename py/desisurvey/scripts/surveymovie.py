@@ -15,6 +15,7 @@ mpl.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.gridspec
 import matplotlib.animation
+import matplotlib.colors
 
 import astropy.time
 import astropy.units as u
@@ -25,6 +26,7 @@ import desisurvey.ephemerides
 import desisurvey.utils
 import desisurvey.config
 import desisurvey.progress
+import desisurvey.plots
 
 
 def parse(options=None):
@@ -171,14 +173,53 @@ def main(args):
             passnum += 1
 
     # Add axis above plot to display programs during the night.
-    programs = plt.axes([0, 0.97, 0.66667, 0.03], facecolor='y')
-    programs.set_xticks([])
-    programs.set_yticks([])
+    paxes = plt.axes([0, 0.97, 0.66667, 0.03], facecolor='y')
+    paxes.set_xticks([])
+    paxes.set_yticks([])
+    edges = 0.5 + np.linspace(-6., +7., 13 * 12) / 24.
+    dmjd = 0.5 * (edges[1:] + edges[:-1])
+    paxes.set_xlim(edges[0], edges[-1])
+    paxes.set_ylim(0., 1.)
+    pdata = np.zeros(len(dmjd), int)
+    # Prepare a custom colormap.
+    pcolors = desisurvey.plots.program_color
+    colors = ['w', pcolors['DARK'], pcolors['GRAY'], pcolors['BRIGHT']]
+    pcmap = matplotlib.colors.ListedColormap(colors, 'programs')
+    programs = paxes.imshow(
+        pdata.reshape(1, -1), interpolation='none', aspect='auto',
+        extent=(edges[0], edges[-1], 0., 1.), vmin=-0.5, vmax=3.5, cmap=pcmap)
+    pline1 = paxes.axvline(0., lw=4, ls='-', color='r')
+    pline2 = paxes.axvline(0., lw=4, ls='-', color='r')
 
     # Add text label in the top-right corner.
     text = plt.annotate(
         'Label goes here...', xy=(0.995, 0.997), xytext=(0.995, 0.997),
-        textcoords='figure fraction', fontsize=64,
+        xycoords='figure fraction', fontsize=64, color='k',
         horizontalalignment='right', verticalalignment='top')
+
+    # Define a function that updates the figure for a specific exposure.
+    def draw_exposure(idx, last_date=None):
+        info = exposures[idx]
+        mjd = info['mjd']
+        date = desisurvey.utils.get_date(mjd)
+        night = ephem.get_night(date)
+        # Update the top-right label.
+        text.set_text('{0}'.format(date))
+        if date != last_date:
+            # Update the observing program for this night.
+            dark, gray, bright = ephem.get_program(night['noon'] + dmjd)
+            pdata[:] = 0
+            pdata[dark] = 1
+            pdata[gray] = 2
+            pdata[bright] = 3
+            programs.set_data(pdata.reshape(1, -1))
+        # Update current time in program.
+        dt1 = mjd - night['noon']
+        dt2 = dt1 + info['exptime'] / 86400.
+        pline1.set_xdata([dt1, dt1])
+        pline2.set_xdata([dt2, dt2])
+        return date
+
+    draw_exposure(0)
 
     plt.savefig('movie.png')
