@@ -110,8 +110,6 @@ def main(args):
     tiles = progress._table
     ra = wrap(tiles['ra'])
     dec = tiles['dec']
-    print(np.min(ra), np.max(ra))
-    print(np.min(dec), np.max(dec))
 
     # Get a list of exposures in [start, stop].
     exposures = progress.get_exposures(
@@ -170,8 +168,17 @@ def main(args):
             s = np.full(ntiles, 85.)
             scatters.append(ax.scatter(
                 ra[sel], dec[sel], s=s, facecolors=fc, edgecolors=ec, lw=1))
-
             passnum += 1
 
+    # Add axis above plot to display programs during the night.
+    programs = plt.axes([0, 0.97, 0.66667, 0.03], facecolor='y')
+    programs.set_xticks([])
+    programs.set_yticks([])
+
+    # Add text label in the top-right corner.
+    text = plt.annotate(
+        'Label goes here...', xy=(0.995, 0.997), xytext=(0.995, 0.997),
+        textcoords='figure fraction', fontsize=64,
+        horizontalalignment='right', verticalalignment='top')
 
     plt.savefig('movie.png')
