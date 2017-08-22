@@ -49,6 +49,9 @@ def parse(options=None):
         '--stop', type=str, default=None, metavar='DATE',
         help='movie stops on the morning of this day, formatted as YYYY-MM-DD')
     parser.add_argument(
+        '--label', type=str, default='DESI surveysim', metavar='TEXT',
+        help='label to display on each frame')
+    parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
 
@@ -220,8 +223,8 @@ def main(args):
 
     # Add text label in the top-right corner.
     text = plt.annotate(
-        'Label goes here...', xy=(0.995, 0.997), xytext=(0.995, 0.997),
-        xycoords='figure fraction', fontsize=64, color='k',
+        'YYYY-MM-DD #000000', xy=(0.995, 0.997), xytext=(0.995, 0.997),
+        xycoords='figure fraction', fontsize=64, color='k', family='monospace',
         horizontalalignment='right', verticalalignment='top')
 
     # Define a function that updates the figure for a specific exposure.
@@ -231,7 +234,7 @@ def main(args):
         date = desisurvey.utils.get_date(mjd)
         night = ephem.get_night(date)
         # Update the top-right label.
-        text.set_text('{0}'.format(date))
+        text.set_text('{0} {1} #{2:06d}'.format(args.label, date, idx))
         if date != last_date:
             # Update the observing program for this night.
             dark, gray, bright = ephem.get_program(night['noon'] + dmjd)
