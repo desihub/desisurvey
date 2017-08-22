@@ -149,6 +149,8 @@ class Animator(object):
         self.avoid_names = list(self.config.avoid_bodies.keys)
         navoids = len(self.avoid_names)
         assert self.avoid_names[0] == 'moon'
+        self.xy_avoid = np.zeros((navoids, 2))
+        self.f_obj = [None] * navoids
         bgcolor = matplotlib.colors.to_rgba('lightblue')
         self.nowcolor = np.array([0., 0.7, 0., 1.])
         passnum = 0
@@ -185,7 +187,6 @@ class Animator(object):
                 ec[:, 2:] = 1.
                 s = np.full(navoids, 500.)
                 s[0] = 1500.
-                self.xy_avoid = np.zeros((navoids, 2))
                 self.avoids.append(ax.scatter(
                     self.xy_avoid[:, 0], self.xy_avoid[:, 1], facecolors=fc,
                     edgecolors=ec, s=s, lw=1))
@@ -263,6 +264,10 @@ class Animator(object):
                 hdus.close()
                 # Save index of first exposure on this date.
                 self.idx0 = np.argmax(self.exposures['night'] == str(date))
+            # Get interpolator for moon, planet positions during this night.
+            for i, name in enumerate(self.avoid_names):
+                self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
+                    night, name)
             self.last_date = date
         # Update current time in program.
         dt1 = mjd - night['noon']
@@ -292,10 +297,9 @@ class Animator(object):
             line1.set_xdata([x1, x1])
             line2.set_xdata([x2, x2])
         # Update moon and planet locations.
-        for i, name in enumerate(self.avoid_names):
-            f_obj = desisurvey.ephemerides.get_object_interpolator(night, name)
+        for i, f in enumerate(self.f_obj):
             # Calculate this object's (dec,ra) path during the night.
-            obj_dec, obj_ra = f_obj(mjd)
+            obj_dec, obj_ra = f(mjd)
             self.xy_avoid[i] = wrap(obj_ra), obj_dec
         for scatter in self.avoids:
             scatter.set_offsets(self.xy_avoid)
