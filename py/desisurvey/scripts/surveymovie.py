@@ -177,7 +177,7 @@ def main(args):
             passnum += 1
 
     # Initialize scheduler score colormap.
-    scorecmap = matplotlib.cm.get_cmap('magma_r')
+    scorecmap = matplotlib.cm.get_cmap('hot_r')
 
     # Add axis above plot to display programs during the night.
     paxes = plt.axes([0, 0.97, 0.66667, 0.03], facecolor='y')
@@ -232,9 +232,19 @@ def main(args):
         pline1.set_xdata([dt1, dt1])
         pline2.set_xdata([dt2, dt2])
         # Update scores display for this exposure.
+        score = scores[idx - idx0]
+        max_score = np.max(score)
         for passnum, scatter in enumerate(scatters):
             sel = (tiles['pass'] == passnum)
-            fc = scorecmap(scores[idx - idx0][sel])
+            fc = scorecmap(score[sel] / max_score)
+            scatter.get_sizes()[:] = 85.
+            if info['pass'] == passnum:
+                # Highlight the tile being observed now.
+                jdx = np.where(tiles['tileid'][sel] == info['tileid'])[0][0]
+                fc[jdx] = [0., 1., 0., 1.]
+                scatter.get_sizes()[jdx] = 600.
+                # Observed tiles have a green border.
+                scatter.get_edgecolors()[jdx] = [0., 1., 0., 1.]
             scatter.set_facecolors(fc)
 
         return date, scores, idx0
