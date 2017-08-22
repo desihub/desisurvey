@@ -147,6 +147,7 @@ def main(args):
     grid.update(left=0, right=1, bottom=0, top=0.97, hspace=0, wspace=0)
     axes = []
     scatters = []
+    lstlines = []
     passnum = 0
     for row in range(3):
         for col in range(3):
@@ -174,6 +175,10 @@ def main(args):
             s = np.full(ntiles, 85.)
             scatters.append(ax.scatter(
                 ra[sel], dec[sel], s=s, facecolors=fc, edgecolors=ec, lw=1))
+            # Draw LST lines for the current exposure.
+            line1 = ax.axvline(0., lw=2, ls=':', color='r')
+            line2 = ax.axvline(0., lw=2, ls=':', color='r')
+            lstlines.append((line1, line2))
             passnum += 1
 
     # Initialize scheduler score colormap.
@@ -246,6 +251,14 @@ def main(args):
                 # Observed tiles have a green border.
                 scatter.get_edgecolors()[jdx] = [0., 1., 0., 1.]
             scatter.set_facecolors(fc)
+        # Update LST lines.
+        x1, x2 = lst[idx]
+        for passnum, (line1, line2) in enumerate(lstlines):
+            ls = '-' if info['pass'] == passnum else '--'
+            line1.set_linestyle(ls)
+            line2.set_linestyle(ls)
+            line1.set_xdata([x1, x1])
+            line2.set_xdata([x2, x2])
 
         return date, scores, idx0
 
