@@ -127,7 +127,7 @@ def main(args):
     # Get a list of exposures in [start, stop].
     exposures = progress.get_exposures(
         args.start, args.stop, tile_fields='tileid,ra,dec,pass',
-        exp_fields='expid,mjd,exptime,snr2cum')
+        exp_fields='expid,mjd,night,exptime,snr2cum')
     num_exp = len(exposures)
     log.info('Found {0} exposures from {1} to {2}.'
              .format(num_exp, args.start, args.stop))
@@ -244,6 +244,7 @@ def main(args):
         info = exposures[idx]
         mjd = info['mjd']
         date = desisurvey.utils.get_date(mjd)
+        assert str(date) == info['night']
         night = ephem.get_night(date)
         # Update the top-right label.
         text.set_text(
@@ -261,7 +262,8 @@ def main(args):
             if os.path.exists(scores_name):
                 hdus = astropy.io.fits.open(scores_name, memmap=False)
                 scores = hdus[0].data
-                idx0 = idx
+                # Save index of first exposure on this date.
+                idx0 = np.argmax(exposures['night'] == str(date))
         # Update current time in program.
         dt1 = mjd - night['noon']
         dt2 = dt1 + info['exptime'] / 86400.
