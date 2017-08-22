@@ -152,6 +152,7 @@ class Animator(object):
         self.xy_avoid = np.zeros((navoids, 2))
         self.f_obj = [None] * navoids
         bgcolor = matplotlib.colors.to_rgba('lightblue')
+        avoidcolor = matplotlib.colors.to_rgba('red')
         self.nowcolor = np.array([0., 0.7, 0., 1.])
         passnum = 0
         for row in range(3):
@@ -184,12 +185,12 @@ class Animator(object):
                 # Initialize positions of moon and planets.
                 fc = np.zeros((navoids, 4))
                 ec = np.zeros((navoids, 4))
-                ec[:, 2:] = 1.
+                ec[:] = avoidcolor
                 s = np.full(navoids, 500.)
-                s[0] = 1500.
+                s[0] = 2500.
                 self.avoids.append(ax.scatter(
                     self.xy_avoid[:, 0], self.xy_avoid[:, 1], facecolors=fc,
-                    edgecolors=ec, s=s, lw=1))
+                    edgecolors=ec, s=s, lw=2))
                 # Draw LST lines for the current exposure.
                 line1 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
                 line2 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
@@ -296,6 +297,9 @@ class Animator(object):
             line2.set_linestyle(ls)
             line1.set_xdata([x1, x1])
             line2.set_xdata([x2, x2])
+        # Fill the moon with a shade of gray corresponding to its illuminated
+        # fraction during this exposure.
+        moon_frac = self.ephem.get_moon_illuminated_fraction(mjd)
         # Update moon and planet locations.
         for i, f in enumerate(self.f_obj):
             # Calculate this object's (dec,ra) path during the night.
@@ -303,6 +307,7 @@ class Animator(object):
             self.xy_avoid[i] = wrap(obj_ra), obj_dec
         for scatter in self.avoids:
             scatter.set_offsets(self.xy_avoid)
+            scatter.get_facecolors()[0] = [moon_frac, moon_frac, moon_frac, 1.]
 
 
 def main(args):
