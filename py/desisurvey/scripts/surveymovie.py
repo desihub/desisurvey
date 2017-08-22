@@ -7,6 +7,7 @@ command search path.
 from __future__ import print_function, division, absolute_import
 
 import argparse
+import os.path
 
 import numpy as np
 
@@ -18,6 +19,7 @@ import matplotlib.animation
 import matplotlib.colors
 
 import astropy.time
+import astropy.io.fits
 import astropy.units as u
 
 import desiutil.log
@@ -165,12 +167,17 @@ def main(args):
             sel = (tiles['pass'] == passnum)
             ntiles = np.count_nonzero(sel)
             fc = np.zeros((ntiles, 4))
+            fc[:, 1] = 1.0
+            fc[:, 3] = 0.5
             ec = np.zeros((ntiles, 4))
             ec[:, 3] = 0.25
             s = np.full(ntiles, 85.)
             scatters.append(ax.scatter(
                 ra[sel], dec[sel], s=s, facecolors=fc, edgecolors=ec, lw=1))
             passnum += 1
+
+    # Initialize scheduler score colormap.
+    scorecmap = matplotlib.cm.get_cmap('magma_r')
 
     # Add axis above plot to display programs during the night.
     paxes = plt.axes([0, 0.97, 0.66667, 0.03], facecolor='y')
@@ -198,7 +205,7 @@ def main(args):
         horizontalalignment='right', verticalalignment='top')
 
     # Define a function that updates the figure for a specific exposure.
-    def draw_exposure(idx, last_date=None):
+    def draw_exposure(idx, last_date=None, scores=None):
         info = exposures[idx]
         mjd = info['mjd']
         date = desisurvey.utils.get_date(mjd)
@@ -213,13 +220,25 @@ def main(args):
             pdata[gray] = 2
             pdata[bright] = 3
             programs.set_data(pdata.reshape(1, -1))
+            # Load new scheduler scores for this night.
+            scores_name = config.get_path('scores_{0}.fits'.format(date))
+            if os.path.exists(scores_name):
+                hdus = astropy.io.fits.open(scores_name, memmap=False)
+                scores = hdus[0].data
+                idx0 = idx
         # Update current time in program.
         dt1 = mjd - night['noon']
         dt2 = dt1 + info['exptime'] / 86400.
         pline1.set_xdata([dt1, dt1])
         pline2.set_xdata([dt2, dt2])
-        return date
+        # Update scores display for this exposure.
+        for passnum, scatter in enumerate(scatters):
+            sel = (tiles['pass'] == passnum)
+            fc = scorecmap(scores[idx - idx0][sel])
+            scatter.set_facecolors(fc)
 
-    draw_exposure(0)
+        return date, scores, idx0
+
+    last_date, scores, idx0 = draw_exposure(0)
 
     plt.savefig('movie.png')
