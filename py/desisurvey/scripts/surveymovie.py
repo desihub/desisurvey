@@ -3,6 +3,8 @@
 To run this script from the command line, use the ``surveymovie`` entry point
 that is created when this package is installed, and should be in your shell
 command search path.
+
+The external program ffmpeg must be installed to use this script.
 """
 from __future__ import print_function, division, absolute_import
 
@@ -338,18 +340,21 @@ def main(args):
             raise RuntimeError('Requested exposure ID {0} not available.'
                                .format(args.expid))
         animator.draw_exposure(args.expid - expid[0])
-        plt.savefig(args.save + '.png')
+        save_name = args.save + '.png'
+        plt.savefig(save_name)
+        log.info('Saved {0}.'.format(save_name))
     else:
         def init():
-            return artists
-        scores, last_date, idx0 = None, None, None
+            return animator.artists
         def update(idx):
-            log.info('Drawing frame {0} / {1}'.format(idx + 1, num_exp))
-            scores, last_date, idx0 = draw_exposure(idx, scores, last_date, idx0)
-            return artists
+            log.info('Drawing frame {0}/{1}'.format(idx + 1, animator.num_exp))
+            animator.draw_exposure(idx)
+            return animator.artists
         animation = matplotlib.animation.FuncAnimation(
-            figure, update, init_func=init, interval=100,
-            blit=True, frames=num_exp)
+            animator.figure, update, init_func=init, interval=100,
+            blit=True, frames=animator.num_exp)
         writer = matplotlib.animation.writers['ffmpeg'](
-            bitrate=2400, metadata=dict(artist='desisurvey'))
-        animation.save(args.save + '.mp4', writer=writer, dpi=figure.dpi)
+            bitrate=2400, metadata=dict(artist='surveymovie'))
+        save_name = args.save + '.mp4'
+        animation.save(save_name, writer=writer, dpi=animator.dpi)
+        log.info('Saved {0}.'.format(save_name))
