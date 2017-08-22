@@ -148,6 +148,10 @@ def main(args):
     axes = []
     scatters = []
     lstlines = []
+    avoids = []
+    avoid_names = list(config.avoid_bodies.keys)
+    navoids = len(avoid_names)
+    assert avoid_names[0] == 'moon'
     passnum = 0
     for row in range(3):
         for col in range(3):
@@ -175,6 +179,15 @@ def main(args):
             s = np.full(ntiles, 85.)
             scatters.append(ax.scatter(
                 ra[sel], dec[sel], s=s, facecolors=fc, edgecolors=ec, lw=1))
+            # Initialize positions of moon and planets.
+            fc = np.zeros((navoids, 4))
+            ec = np.zeros((navoids, 4))
+            ec[:, 2:] = 1.
+            s = np.full(navoids, 500.)
+            s[0] = 1500.
+            x_avoid, y_avoid = np.zeros(navoids), np.zeros(navoids)
+            avoids.append(ax.scatter(
+                x_avoid, y_avoid, s=s, facecolors=fc, edgecolors=ec, lw=1))
             # Draw LST lines for the current exposure.
             line1 = ax.axvline(0., lw=2, ls=':', color='r')
             line2 = ax.axvline(0., lw=2, ls=':', color='r')
@@ -259,6 +272,15 @@ def main(args):
             line2.set_linestyle(ls)
             line1.set_xdata([x1, x1])
             line2.set_xdata([x2, x2])
+        # Update moon and planet locations.
+        for i, name in enumerate(avoid_names):
+            f_obj = desisurvey.ephemerides.get_object_interpolator(night, name)
+            # Calculate this object's (dec,ra) path during the night.
+            obj_dec, obj_ra = f_obj(mjd)
+            x_avoid[i] = wrap(obj_ra)
+            y_avoid[i] = obj_dec
+        for scatter in avoids:
+            scatter.set_offsets([x_avoid, y_avoid])
 
         return date, scores, idx0
 
