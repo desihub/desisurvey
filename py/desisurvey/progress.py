@@ -464,7 +464,9 @@ class Progress(object):
             tile, since the start of the survey.  The special name 'night'
             denotes a string YYYY-MM-DD specifying the date on which each
             night starts. The special name 'lst' denotes the apparent local
-            sidereal time of the shutter open timestamp.
+            sidereal time of the shutter open timestamp. The special name
+            'expid' denotes the index of each exposure in the full progress
+            record starting from zero.
 
         Returns
         -------
@@ -489,10 +491,17 @@ class Progress(object):
         order = np.argsort(mjd)
         tile_index = (order // self.max_exposures)
 
+        # Assign each exposure a sequential index starting from zero.
+        ntot = len(mjd)
+        nexp = np.count_nonzero(mjd > 0)
+        expid = np.empty(ntot, int)
+        expid[order] = np.arange(nexp - ntot, nexp)
+
         # Restrict to the requested date range.
         first, last = np.searchsorted(mjd, [start, stop], sorter=order)
         tile_index = tile_index[first:last + 1]
-        order = order[first: last + 1]
+        order = order[first:last + 1]
+        assert np.all(expid[order] >= 0)
 
         # Create the output table.
         output = astropy.table.Table()
@@ -527,6 +536,9 @@ class Progress(object):
                 output[name] = astropy.table.Column(
                     lst, format='%.1f', unit='deg',
                     description='Apparent local sidereal time in degrees')
+            elif name == 'expid':
+                output[name] = astropy.table.Column(
+                    expid[order], description='Exposure index')
             else:
                 if name not in table.colnames or len(table[name].shape) != 2:
                     raise ValueError(
