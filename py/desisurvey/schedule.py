@@ -508,12 +508,13 @@ class Scheduler(object):
         if alt < config.min_altitude():
             self.log.debug('Best tile has altitude {0:.1f}.'.format(alt))
             return None
-        # Prepare the dictionary to return.
+        # Prepare the dictionary to return. Dictionary keys used here are
+        # mostly historical and might change.
         target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
                       Program=('DARK', 'GRAY', 'BRIGHT')[tile['program'] - 1],
                       Ebmv=tile['EBV'], moon_illum_frac=ephem['moon_frac'],
                       MoonDist=moon_sep.value, MoonAlt=ephem['moon_alt'],
-                      overhead=toh[best] * u.s)
+                      overhead=toh[best] * u.s, score=score)
         return target
 
 
