@@ -4,6 +4,8 @@ To run this script from the command line, use the ``surveymovie`` entry point
 that is created when this package is installed, and should be in your shell
 command search path.
 
+The optional matplotlib python package must be installed to use this script.
+
 The external program ffmpeg must be installed to use this script.
 """
 from __future__ import print_function, division, absolute_import
@@ -183,11 +185,10 @@ class Animator(object):
                 ec[:, 2:] = 1.
                 s = np.full(navoids, 500.)
                 s[0] = 1500.
-                self.x_avoid = np.zeros(navoids)
-                self.y_avoid = np.zeros(navoids)
+                self.xy_avoid = np.zeros((navoids, 2))
                 self.avoids.append(ax.scatter(
-                    self.x_avoid, self.y_avoid, s=s, facecolors=fc,
-                    edgecolors=ec, lw=1))
+                    self.xy_avoid[:, 0], self.xy_avoid[:, 1], facecolors=fc,
+                    edgecolors=ec, s=s, lw=1))
                 # Draw LST lines for the current exposure.
                 line1 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
                 line2 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
@@ -295,10 +296,9 @@ class Animator(object):
             f_obj = desisurvey.ephemerides.get_object_interpolator(night, name)
             # Calculate this object's (dec,ra) path during the night.
             obj_dec, obj_ra = f_obj(mjd)
-            self.x_avoid[i] = wrap(obj_ra)
-            self.y_avoid[i] = obj_dec
+            self.xy_avoid[i] = wrap(obj_ra), obj_dec
         for scatter in self.avoids:
-            scatter.set_offsets([self.x_avoid, self.y_avoid])
+            scatter.set_offsets(self.xy_avoid)
 
 
 def main(args):
