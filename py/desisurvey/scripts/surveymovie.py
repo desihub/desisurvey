@@ -49,6 +49,12 @@ def parse(options=None):
         '--stop', type=str, default=None, metavar='DATE',
         help='movie stops on the morning of this day, formatted as YYYY-MM-DD')
     parser.add_argument(
+        '--expid', type=int, default=None, metavar='ID',
+        help='index of single exposure to display')
+    parser.add_argument(
+        '--save', type=str, default='surveymovie', metavar='NAME',
+        help='base name (without extension) of output file to write')
+    parser.add_argument(
         '--label', type=str, default='DESI surveysim', metavar='TEXT',
         help='label to display on each frame')
     parser.add_argument(
@@ -120,13 +126,19 @@ def main(args):
 
     # Get a list of exposures in [start, stop].
     exposures = progress.get_exposures(
-        args.start, args.stop, tile_fields='tileid,index,ra,dec,pass',
-        exp_fields='mjd,exptime,snr2cum')
-    tile_index = exposures['index']
-    snr2 = exposures['snr2cum']
-    num_exp = len(tile_index)
+        args.start, args.stop, tile_fields='tileid,ra,dec,pass',
+        exp_fields='expid,mjd,exptime,snr2cum')
+    num_exp = len(exposures)
     log.info('Found {0} exposures from {1} to {2}.'
              .format(num_exp, args.start, args.stop))
+
+    if args.expid is not None:
+        expid = exposures['expid']
+        assert np.all(expid == expid[0] + np.arange(len(exposures)))
+        if (args.expid < expid[0]) or (args.expid > expid[-1]):
+            raise RuntimeError('Requested exposure ID {0} not available.'
+                               .format(args.expid))
+        args.expid -= expid[0]
 
     # Calculate each exposure's LST window.
     exp_midpt = astropy.time.Time(
@@ -234,7 +246,8 @@ def main(args):
         date = desisurvey.utils.get_date(mjd)
         night = ephem.get_night(date)
         # Update the top-right label.
-        text.set_text('{0} {1} #{2:06d}'.format(args.label, date, idx))
+        text.set_text(
+            '{0} {1} #{2:06d}'.format(args.label, date, info['expid']))
         if date != last_date:
             # Update the observing program for this night.
             dark, gray, bright = ephem.get_program(night['noon'] + dmjd)
@@ -288,6 +301,9 @@ def main(args):
 
         return date, scores, idx0
 
-    last_date, scores, idx0 = draw_exposure(0)
-
-    plt.savefig('movie.png')
+    if args.expid is not None:
+        last_date, scores, idx0 = draw_exposure(args.expid)
+        plt.savefig(args.save + '.png')
+    else:
+        # Make a movie...
+        pass
