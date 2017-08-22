@@ -152,11 +152,13 @@ def main(args):
     avoid_names = list(config.avoid_bodies.keys)
     navoids = len(avoid_names)
     assert avoid_names[0] == 'moon'
+    bgcolor = matplotlib.colors.to_rgba('lightblue')
+    nowcolor = np.array([0., 0.7, 0., 1.])
     passnum = 0
     for row in range(3):
         for col in range(3):
             # Create the axes for this pass.
-            ax = plt.subplot(grid[row, col])
+            ax = plt.subplot(grid[row, col], facecolor=bgcolor)
             ax.set_xticks([])
             ax.set_yticks([])
             axes.append(ax)
@@ -189,8 +191,8 @@ def main(args):
             avoids.append(ax.scatter(
                 x_avoid, y_avoid, s=s, facecolors=fc, edgecolors=ec, lw=1))
             # Draw LST lines for the current exposure.
-            line1 = ax.axvline(0., lw=2, ls=':', color='r')
-            line2 = ax.axvline(0., lw=2, ls=':', color='r')
+            line1 = ax.axvline(0., lw=2, ls=':', color=nowcolor)
+            line2 = ax.axvline(0., lw=2, ls=':', color=nowcolor)
             lstlines.append((line1, line2))
             passnum += 1
 
@@ -208,13 +210,13 @@ def main(args):
     pdata = np.zeros(len(dmjd), int)
     # Prepare a custom colormap.
     pcolors = desisurvey.plots.program_color
-    colors = ['w', pcolors['DARK'], pcolors['GRAY'], pcolors['BRIGHT']]
+    colors = [bgcolor, pcolors['DARK'], pcolors['GRAY'], pcolors['BRIGHT']]
     pcmap = matplotlib.colors.ListedColormap(colors, 'programs')
     programs = paxes.imshow(
         pdata.reshape(1, -1), interpolation='none', aspect='auto',
         extent=(edges[0], edges[-1], 0., 1.), vmin=-0.5, vmax=3.5, cmap=pcmap)
-    pline1 = paxes.axvline(0., lw=4, ls='-', color='r')
-    pline2 = paxes.axvline(0., lw=4, ls='-', color='r')
+    pline1 = paxes.axvline(0., lw=4, ls='-', color=nowcolor)
+    pline2 = paxes.axvline(0., lw=4, ls='-', color=nowcolor)
 
     # Add text label in the top-right corner.
     text = plt.annotate(
@@ -259,10 +261,9 @@ def main(args):
             if info['pass'] == passnum:
                 # Highlight the tile being observed now.
                 jdx = np.where(tiles['tileid'][sel] == info['tileid'])[0][0]
-                fc[jdx] = [0., 1., 0., 1.]
+                fc[jdx] = nowcolor
                 scatter.get_sizes()[jdx] = 600.
-                # Observed tiles have a green border.
-                scatter.get_edgecolors()[jdx] = [0., 1., 0., 1.]
+                scatter.get_edgecolors()[jdx] = nowcolor
             scatter.set_facecolors(fc)
         # Update LST lines.
         x1, x2 = lst[idx]
