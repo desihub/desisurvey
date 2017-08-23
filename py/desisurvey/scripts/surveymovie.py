@@ -178,12 +178,10 @@ class Animator(object):
                 fc = np.zeros((ntiles, 4))
                 fc[:, 1] = 1.0
                 fc[:, 3] = 0.5
-                ec = np.zeros((ntiles, 4))
-                ec[:, 3] = 0.25
                 s = np.full(ntiles, 85.)
                 self.scatters.append(ax.scatter(
                     self.ra[sel], self.dec[sel], s=s, facecolors=fc,
-                    edgecolors=ec, lw=1))
+                    edgecolors='none', lw=1))
                 # Initialize positions of moon and planets.
                 fc = np.zeros((navoids, 4))
                 ec = np.zeros((navoids, 4))
@@ -295,8 +293,8 @@ class Animator(object):
         for passnum, scatter in enumerate(self.scatters):
             sel = (self.passnum == passnum)
             fc = self.scorecmap(score[sel] / max_score)
-            scatter.get_sizes()[:] = 85.
             done = self.status[sel] == 2
+            scatter.get_sizes()[~done] = 85.
             scatter.get_sizes()[done] = 30.
             fc[done] = self.completecolor
             if info['pass'] == passnum:
@@ -304,7 +302,6 @@ class Animator(object):
                 jdx = np.where(self.tileid[sel] == info['tileid'])[0][0]
                 fc[jdx] = self.nowcolor
                 scatter.get_sizes()[jdx] = 600.
-                scatter.get_edgecolors()[jdx] = self.nowcolor
             scatter.set_facecolors(fc)
         # Update LST lines.
         x1, x2 = self.lst[idx]
