@@ -32,9 +32,9 @@ class Scheduler(object):
 
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
-        output_file = config.get_path(name)
+        input_file = config.get_path(name)
 
-        hdus = astropy.io.fits.open(output_file)
+        hdus = astropy.io.fits.open(input_file)
         header = hdus[0].header
         self.start_date = desisurvey.utils.get_date(header['START'])
         self.stop_date = desisurvey.utils.get_date(header['STOP'])
@@ -44,18 +44,23 @@ class Scheduler(object):
         self.npix = 12 * self.nside ** 2
         self.pix_area = 360. ** 2 / np.pi / self.npix * u.deg ** 2
 
-        self.tiles = astropy.table.Table.read(output_file, hdu='TILES')
+        self.tiles = astropy.table.Table.read(input_file, hdu='TILES')
         self.tile_coords = astropy.coordinates.ICRS(
             ra=self.tiles['ra'] * u.deg, dec=self.tiles['dec'] * u.deg)
 
-        self.calendar = astropy.table.Table.read(output_file, hdu='CALENDAR')
-        self.etable = astropy.table.Table.read(output_file, hdu='EPHEM')
+        self.calendar = astropy.table.Table.read(input_file, hdu='CALENDAR')
+        self.etable = astropy.table.Table.read(input_file, hdu='EPHEM')
+
+        # Temporary hack: convert program=0 to program=4 (DAYTIME).
+        self.log.warn('Using program=0 temporary hack.')
+        daytime = self.etable['program'] == 0
+        self.etable['program'][daytime] = 4
 
         self.t_edges = hdus['GRID'].data
         self.t_centers = 0.5 * (self.t_edges[1:] + self.t_edges[:-1])
         self.num_times = len(self.t_centers)
 
-        static = astropy.table.Table.read(output_file, hdu='STATIC')
+        static = astropy.table.Table.read(input_file, hdu='STATIC')
         self.footprint_pixels = static['pixel'].data
         self.footprint = np.zeros(self.npix, bool)
         self.footprint[self.footprint_pixels] = True
@@ -447,21 +452,31 @@ class Scheduler(object):
         snr2frac = progress._table['snr2frac'].data.sum(axis=1)
         ieff, toh, tmid, prev = self.instantaneous_efficiency(
             when, cutoff, seeing, transparency, progress, snr2frac, mask)
-        # Lookup the temporal bin index that each tile's estimated exposure
-        # midpoint lands in.
+        # Lookup the temporal bin index containing each tile's estimated
+        # exposure start, midpoint and endpoint.
         dt = when.mjd - desisurvey.utils.local_noon_on_date(night).mjd - 0.5
-        ij = (i * self.num_times +
-              np.digitize(dt + tmid[mask] / 86400., self.t_edges) - 1)
-        # Lookup the program during each tile's estimated exposure midpoint:
-        # 1 = DARK, 2 = GRAY, 3 = BRIGHT.
-        obs_program = self.etable['program'][ij]
-        # Program might be zero at begin/end of night: set this to BRIGHT.
-        obs_program[obs_program == 0] = 3
+        ij0 = i * self.num_times
+        ij_start = ij0 + np.digitize(
+            dt + toh[mask] / 86400., self.t_edges) - 1
+        ij_midpt = ij0 + np.digitize(
+            dt + tmid[mask] / 86400., self.t_edges) - 1
+        ij_stop = ij0 + np.digitize(
+            dt + (2 * tmid[mask] - toh[mask])/ 86400., self.t_edges) - 1
+        # Determine the brightest program at each of these times.
+        # 1 = DARK, 2 = GRAY, 3 = BRIGHT, 4 = DAYTIME.
+        obs_program_start = self.etable['program'][ij_start]
+        obs_program_midpt = self.etable['program'][ij_midpt]
+        obs_program_stop = self.etable['program'][ij_stop]
+        obs_program = np.maximum(
+            obs_program_start, obs_program_midpt, obs_program_stop)
         # Lookup the program each candidate tile is assigned to.
         tile_program = self.tiles['program'][mask]
-        # Calculate each tile's score using the requested strategy.
-        # Initialize score = priority, then apply multiplicative factors.
+        # Initialize score = priority.
         score = plan['priority'].data.copy()
+        # Do not schedule an exposure that might extend into daytime.
+        score[mask][obs_program == 4] = 0.
+        # Apply multiplicative factors to each tile's score using
+        # the requested strategies.
         strategy = strategy.split('+')
         if 'greedy' in strategy:
             score *= ieff
@@ -490,8 +505,8 @@ class Scheduler(object):
         best = np.argmax(score)
         tile = self.tiles[best]
         # Calculate separation angle in degrees between the selected tile
-        # and the moon.
-        ephem = self.etable[ij[np.argmax(score[mask])]]
+        # and the moon at the estimated exposure midpoint.
+        ephem = self.etable[ij_midpt[np.argmax(score[mask])]]
         moon = astropy.coordinates.ICRS(
             ra=ephem['moon_ra'] * u.deg, dec=ephem['moon_dec'] * u.deg)
         moon_sep = self.tile_coords[best].separation(moon).to(u.deg)
@@ -634,8 +649,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     mapper = np.zeros(npix, int)
     mapper[footprint_pixels] = np.arange(len(footprint_pixels))
     table['map'] = mapper[pixels].astype(np.int16)
-    # Use a small int to identify the program.
-    table['program'] = np.zeros(len(tiles), np.int16)
+    # Use a small int to identify the program, ordered by sky brightness:
+    # 1=DARK, 2=GRAY, 3=BRIGHT.
+    table['program'] = np.full(len(tiles), 4, np.int16)
     for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
         table['program'][tiles['PROGRAM'] == program] = i + 1
     assert np.all(table['program'] > 0)
@@ -671,7 +687,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 
     # Prepare a table of ephemeris data.
     etable = astropy.table.Table()
-    etable['program'] = np.zeros(num_nights * num_points, dtype=np.int16)
+    # Program codes ordered by increasing sky brightness:
+    # 1=DARK, 2=GRAY, 3=BRIGHT, 4=DAYTIME.
+    etable['program'] = np.full(num_nights * num_points, 4, dtype=np.int16)
     etable['moon_frac'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['moon_ra'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['moon_dec'] = np.zeros(num_nights * num_points, dtype=np.float32)
