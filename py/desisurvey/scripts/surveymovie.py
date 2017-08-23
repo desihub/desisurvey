@@ -107,6 +107,7 @@ class Animator(object):
         """
         """
         self.ephem = ephem
+        self.progress = progress
         self.label = label
         self.config = desisurvey.config.Configuration()
         tiles = progress._table
@@ -116,8 +117,8 @@ class Animator(object):
         self.tileid = tiles['tileid']
 
         # Get a list of exposures in [start, stop].
-        self.exposures = progress.get_exposures(
-            start, stop, tile_fields='tileid,ra,dec,pass',
+        self.exposures = self.progress.get_exposures(
+            start, stop, tile_fields='tileid,index,ra,dec,pass',
             exp_fields='expid,mjd,night,exptime,snr2cum')
         self.num_exp = len(self.exposures)
 
@@ -153,6 +154,7 @@ class Animator(object):
         self.f_obj = [None] * navoids
         bgcolor = matplotlib.colors.to_rgba('lightblue')
         avoidcolor = matplotlib.colors.to_rgba('red')
+        self.completecolor = np.array([0., 0.5, 0., 1.])
         self.nowcolor = np.array([0., 0.7, 0., 1.])
         passnum = 0
         for row in range(3):
@@ -236,6 +238,31 @@ class Animator(object):
         self.last_date = None
         self.scores = None
         self.idx0 = None
+        self.status = None
+
+    def init_date(self, date, night):
+        """
+        """
+        # Update the observing program for this night.
+        dark, gray, bright = self.ephem.get_program(night['noon'] + self.dmjd)
+        self.pdata[:] = 0
+        self.pdata[dark] = 1
+        self.pdata[gray] = 2
+        self.pdata[bright] = 3
+        self.programs.set_data(self.pdata.reshape(1, -1))
+        # Load new scheduler scores for this night.
+        scores_name = self.config.get_path('scores_{0}.fits'.format(date))
+        if os.path.exists(scores_name):
+            hdus = astropy.io.fits.open(scores_name, memmap=False)
+            self.scores = hdus[0].data
+            hdus.close()
+            # Save index of first exposure on this date.
+            self.idx0 = np.argmax(self.exposures['night'] == str(date))
+        # Get interpolator for moon, planet positions during this night.
+        for i, name in enumerate(self.avoid_names):
+            self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
+                night, name)
+        self.last_date = date
 
     def draw_exposure(self, idx, last_date=None, scores=None, idx0=0):
         """
@@ -245,31 +272,18 @@ class Animator(object):
         date = desisurvey.utils.get_date(mjd)
         assert str(date) == info['night']
         night = self.ephem.get_night(date)
+        # Initialize status if necessary.
+        if self.status is None:
+            snapshot = self.progress.copy_range(mjd_max=mjd)
+            self.status = np.array(snapshot._table['status'])
+        # Update the status for the current exposure.
+        complete = info['snr2cum'] >= self.config.min_snr2_fraction()
+        self.status[info['index']] = 2 if complete else 1
         # Update the top-right label.
         self.text.set_text(
             '{0} {1} #{2:06d}'.format(self.label, date, info['expid']))
         if date != self.last_date:
-            # Update the observing program for this night.
-            dark, gray, bright = self.ephem.get_program(
-                night['noon'] + self.dmjd)
-            self.pdata[:] = 0
-            self.pdata[dark] = 1
-            self.pdata[gray] = 2
-            self.pdata[bright] = 3
-            self.programs.set_data(self.pdata.reshape(1, -1))
-            # Load new scheduler scores for this night.
-            scores_name = self.config.get_path('scores_{0}.fits'.format(date))
-            if os.path.exists(scores_name):
-                hdus = astropy.io.fits.open(scores_name, memmap=False)
-                self.scores = hdus[0].data
-                hdus.close()
-                # Save index of first exposure on this date.
-                self.idx0 = np.argmax(self.exposures['night'] == str(date))
-            # Get interpolator for moon, planet positions during this night.
-            for i, name in enumerate(self.avoid_names):
-                self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
-                    night, name)
-            self.last_date = date
+            self.init_date(date, night)
         # Update current time in program.
         dt1 = mjd - night['noon']
         dt2 = dt1 + info['exptime'] / 86400.
@@ -282,6 +296,9 @@ class Animator(object):
             sel = (self.passnum == passnum)
             fc = self.scorecmap(score[sel] / max_score)
             scatter.get_sizes()[:] = 85.
+            done = self.status[sel] == 2
+            scatter.get_sizes()[done] = 30.
+            fc[done] = self.completecolor
             if info['pass'] == passnum:
                 # Highlight the tile being observed now.
                 jdx = np.where(self.tileid[sel] == info['tileid'])[0][0]
