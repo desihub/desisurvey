@@ -73,13 +73,14 @@ class Scheduler(object):
         assert self.fexp.shape == (
             self.num_nights * self.num_times, len(self.footprint_pixels))
 
-        # Load fallback weights into a (3,3) matrix with row, column
-        # indices 0=DARK, 1=GRAY, 2=BRIGHT. The row index specifies the
-        # current nominal program, and the column index specifies the
-        # alternate fall back program.  Weights are relative to 1 for
-        # staying within the nominal program.
+        # Load fallback weights into a (4,3) matrix with row, column
+        # indices 0=DARK, 1=GRAY, 2=BRIGHT, 3=DAYTIME. The row index specifies
+        # the current program based on the observing time, and the column index
+        # specifies the alternate fall back program.  Weights are relative to 1
+        # for staying within the nominal program.
         fb = config.fallback_weights
-        self.fallback_weights = np.identity(3)
+        self.fallback_weights = np.zeros((4, 3))
+        self.fallback_weights[:3] = np.identity(3)
         self.fallback_weights[0, 1] = fb.gray_in_dark()
         self.fallback_weights[0, 2] = fb.bright_in_dark()
         self.fallback_weights[1, 0] = fb.dark_in_gray()
@@ -464,6 +465,7 @@ class Scheduler(object):
             dt + (2 * tmid[mask] - toh[mask])/ 86400., self.t_edges) - 1
         # Determine the brightest program at each of these times.
         # 1 = DARK, 2 = GRAY, 3 = BRIGHT, 4 = DAYTIME.
+        assert np.all(self.etable['program'] > 0)
         obs_program_start = self.etable['program'][ij_start]
         obs_program_midpt = self.etable['program'][ij_midpt]
         obs_program_stop = self.etable['program'][ij_stop]
@@ -473,11 +475,10 @@ class Scheduler(object):
         tile_program = self.tiles['program'][mask]
         # Initialize score = priority.
         score = plan['priority'].data.copy()
-        # Do not schedule an exposure that might extend into daytime.
-        score[mask][obs_program == 4] = 0.
         # Apply multiplicative factors to each tile's score using
         # the requested strategies.
         strategy = strategy.split('+')
+        self.log.info('Using strategies: {0}.'.format(', '.join(strategy)))
         if 'greedy' in strategy:
             score *= ieff
         else:
