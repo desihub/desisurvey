@@ -241,6 +241,10 @@ class Scheduler(object):
         # Estimate the required exposure time.
         texp[mask] = tnom[mask] / eff[mask]
 
+        # Clip to the maximum exposure time.
+        tmax = config.max_exposure_length().to(u.s).value
+        texp[mask] = np.maximum(tmax, texp[mask])
+
         # Determine the previous pointing if we need to include slew time
         # in the overhead calcluations.
         if progress.last_tile is None:
@@ -375,6 +379,8 @@ class Scheduler(object):
             units) before the shutter can be opened due to slewing and reading
             out any previous exposure.
         """
+        self.log.debug('when={0}, seeing={1:.1f}", transp={2:.3f}'
+                       .format(when.datetime, seeing, transparency))
         config = desisurvey.config.Configuration()
         # Look up the night number for this time.
         date = desisurvey.utils.get_date(when)
@@ -464,7 +470,6 @@ class Scheduler(object):
                            .format(np.max(score), when.datetime))
             return None
         # Pick the tile with the highest score.
-        print('3: {0} scores > 0'.format(np.count_nonzero(score)))
         best = np.argmax(score)
         tile = self.tiles[best]
         tile_sky = self.tile_coords[best]
