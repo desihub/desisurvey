@@ -343,63 +343,8 @@ class Scheduler(object):
         ratio = self.fexp[ij] / fexp_max
         return ratio
 
-    def plot_scores(self, when, cutoff, score, mask, ephem, prev, offset=-60):
-        """
-        """
-        # Get the current apparent local sidereal time.
-        when.location = desisurvey.utils.get_location()
-        LST = when.sidereal_time('apparent').to(u.deg).value
-        LSTmax = LST + 360 * (cutoff - when).to(u.day).value
-        ra0 = np.fmod(LST - offset + 360, 360) + offset
-        ra0max = np.fmod(LSTmax - offset + 360, 360) + offset
-        if ephem['moon_alt'] > 0:
-            moon_ra = np.fmod(ephem['moon_ra'] - offset + 360, 360) + offset
-            moon_dec = ephem['moon_dec']
-            moon_size = 10 + 90 * ephem['moon_frac']
-        else:
-            moon_size = 0
-        if prev is not None:
-            prev_ra = np.fmod(
-                prev.ra.to(u.deg).value - offset + 360, 360) + offset
-            prev_dec = prev.dec.to(u.deg).value
-        best = np.argmax(score)
-        best_ra = np.fmod(self.tiles['ra'][best] - offset + 360, 360) + offset
-        best_dec = self.tiles['dec'][best]
-
-        import matplotlib.pyplot as plt
-        fig, axes = plt.subplots(
-            3, 1, figsize=(7, 10), sharex=True, sharey=True)
-        axes[0].set_xlim(-60, 300)
-        axes[0].set_ylim(-20, 80)
-        axes[0].set_xticks([])
-        axes[0].set_yticks([])
-        plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.99,
-                            wspace=0.01, hspace=0.01)
-        vmax = max(0.1, np.max(score))
-        for i in range(3):
-            ax = axes[i]
-            psel = mask & (self.tiles['program'] == i+1)
-            ra = np.fmod(self.tiles['ra'][psel] - offset + 360, 360) + offset
-            dec = self.tiles['dec'][psel]
-            s = ax.scatter(ra, dec, c=score[psel], s=15,
-                           vmin=0., vmax=vmax, cmap='viridis', lw=0)
-            ax.axvline(ra0, color='k', ls='-', lw=4, alpha=0.25)
-            ax.axvline(ra0max, color='r', ls='-', lw=1)
-            if moon_size > 0:
-                ax.scatter(moon_ra, moon_dec, s=moon_size,
-                           marker='s', facecolors='none', edgecolors='r')
-            if prev is not None:
-                ax.scatter(prev_ra, prev_dec,
-                           marker='+', color='r', lw=3, s=150, alpha=0.5)
-            if psel[best]:
-                ax.scatter(best_ra, best_dec, facecolors='none',
-                           edgecolors='r', lw=1, s=150, alpha=0.5)
-        plt.colorbar(s, ax=axes[2], orientation='horizontal',
-                     fraction=0.10, aspect=40, pad=0.01)
-        plt.show()
-
     def next_tile(self, when, ephem, seeing, transparency, progress,
-                  strategy, plan, plot=False):
+                  strategy, plan):
         """Return the next tile to observe.
 
         Parameters
@@ -419,9 +364,6 @@ class Scheduler(object):
             Strategy to use for scheduling tiles during each night.
         plan : astropy.table.Table
             Table that specifies active tiles and design hour angles.
-        plot : bool
-            Display a diagnostic plot, which requires that matplotlib is
-            installed. Not intended for production use.
 
         Returns
         -------
@@ -492,35 +434,31 @@ class Scheduler(object):
         # Initialize score = priority for observable tiles.
         score = plan['priority'].data.copy()
         score[~mask] = 0.
-        print('0: {0} scores > 0'.format(np.count_nonzero(score)))
         # Apply multiplicative factors to each tile's score using
         # the requested strategies.
         strategy = strategy.split('+')
         if 'greedy' in strategy:
             score *= ieff
-        print('1: {0} scores > 0'.format(np.count_nonzero(score)))
         if 'fallback' in strategy:
             score[mask] *= (
                 self.fallback_weights[obs_program - 1, tile_program - 1])
         else:
-            print(np.unique(obs_program), np.unique(tile_program))
+            '''
             M = np.empty((4, 3), int)
             for i in range(4):
                 for j in range(3):
                     M[i,j] = np.count_nonzero(
                         (obs_program == (i+1)) & (tile_program == (j+1)))
             print(M)
+            '''
             # Zero score for tiles that would be observed outside their program.
             score[mask] *= (obs_program == tile_program)
-        print('2: {0} scores > 0'.format(np.count_nonzero(score)))
         if 'HA' in strategy:
             score *= self.hourangle_score(when, tmid, plan['hourangle'])
         if 'ratio' in strategy:
             score *= self.ratio_score(when)[self.tiles['map']]
         if 'rank' in strategy:
             score *= self.rank_score(when)[self.tiles['map']]
-        if plot:
-            self.plot_scores(when, cutoff, score, mask, ephem0, prev)
         if np.max(score) <= 0:
             self.log.debug('Found max score {0} at {1}.'
                            .format(np.max(score), when.datetime))
