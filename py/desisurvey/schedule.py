@@ -449,14 +449,6 @@ class Scheduler(object):
             score[mask] *= (
                 self.fallback_weights[obs_program - 1, tile_program - 1])
         else:
-            '''
-            M = np.empty((4, 3), int)
-            for i in range(4):
-                for j in range(3):
-                    M[i,j] = np.count_nonzero(
-                        (obs_program == (i+1)) & (tile_program == (j+1)))
-            print(M)
-            '''
             # Zero score for tiles that would be observed outside their program.
             score[mask] *= (obs_program == tile_program)
         if 'HA' in strategy:
@@ -488,7 +480,6 @@ class Scheduler(object):
         # Calculate the moon altitude and illuminated fraction.
         moon_alt = (90 * u.deg - moon_sky.separation(zenith)).to(u.deg).value
         moon_frac = ephem.get_moon_illuminated_fraction(when.mjd)
-        print('moon alt,sep,frac =', moon_alt, moon_sep, moon_frac)
         # Should also check planet separation vetos here
         # ...
         # Prepare the dictionary to return. Dictionary keys used here are
@@ -505,7 +496,6 @@ class Scheduler(object):
 import specsim.atmosphere
 
 import desimodel.io
-
 
 
 def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
