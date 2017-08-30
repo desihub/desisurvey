@@ -18,7 +18,7 @@ import desisurvey.utils
 
 # Increment this value whenever a non-backwards compatible change to the
 # table schema is introduced.
-_version = 2
+_version = 3
 
 class Progress(object):
     """Initialize a progress tracking object.
@@ -93,6 +93,9 @@ class Progress(object):
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
                 description='Estimated FWHM seeing of observation in arcsecs',
                 unit='arcsec')
+            table['transparency'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='Estimated transparency of observation')
             table['moonfrac'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.3f',
                 description='Moon illuminated fraction (0-1)')
@@ -114,6 +117,7 @@ class Progress(object):
             table['snr2frac'] = 0.
             table['airmass'] = 0.
             table['seeing'] = 0.
+            table['transparency'] = 0.
 
         else:
             if isinstance(restore, Progress):
@@ -150,14 +154,20 @@ class Progress(object):
         mjd = table['mjd'].data
         observed = mjd > 0
         if np.any(observed):
+            self._num_exp = np.count_nonzero(observed)
             self._first_mjd = np.min(mjd[observed])
             self._last_mjd = np.max(mjd[observed])
             last = np.argmax(mjd.max(axis=1))
             self._last_tile = self._table[last]
         else:
+            self._num_exp = 0
             self._first_mjd = self._last_mjd = 0.
             self._last_tile = None
 
+    @property
+    def num_exp(self):
+        """Number of exposures recorded."""
+        return self._num_exp
 
     @property
     def num_tiles(self):
@@ -286,9 +296,10 @@ class Progress(object):
         internal table.  Exposure MJD values are summarized as separate
         ``mjd_min`` and ``mjd_max`` columns, with both equal to zero for
         un-observed tiles. The summary ``exptime`` and ``snr2frac`` columns
-        are sums of the individual exposures.  The summary ``airmass``
-        and ``seeing`` columns are means. A ``nexp`` column counts the number
-        of exposures for each tile.  The moon parameters are not summarized.
+        are sums of the individual exposures.  The summary ``airmass``,
+        ``seeing`` and ``transparency`` columns are means. A ``nexp`` column
+        counts the number of exposures for each tile.  The moon parameters are
+        not summarized.
 
         Can be combined with :meth:`copy_range` to summarize observations during
         a range of dates.
@@ -320,18 +331,21 @@ class Progress(object):
             description='Last exposure start MJD')
 
         # Sum the remaining per-exposure columns.
-        for name in ('exptime', 'snr2frac', 'airmass', 'seeing'):
+        for name in (
+            'exptime', 'snr2frac', 'airmass', 'seeing', 'transparency'):
             col = self._table[name]
             summary[name] = astropy.table.Column(
                 col.data[sel].sum(axis=1), unit=col.unit, format=col.format,
                 description=col.description)
 
-        # Convert the airmass and seeing sums to means.  We use mean rather
-        # than median since it is easier to calculate with a variable nexp.
+        # Convert the airmass, seeing and transparency sums to means.  We use
+        # mean rather than median since it is easier to calculate with a
+        # variable nexp.
         nexp = (mjd > 0).sum(axis=1).astype(int)
         mask = nexp > 0
         summary['airmass'][mask] /= nexp[mask]
         summary['seeing'][mask] /= nexp[mask]
+        summary['transparency'][mask] /= nexp[mask]
 
         # Record the number of exposures in a new column.
         summary['nexp'] = nexp
@@ -366,7 +380,8 @@ class Progress(object):
         # Copy our table.
         table = self._table.copy()
         # Zero dropped exposures.
-        for name in ('mjd', 'exptime', 'snr2frac', 'airmass', 'seeing'):
+        for name in (
+            'mjd', 'exptime', 'snr2frac', 'airmass', 'seeing', 'transparency'):
             table[name][drop] = 0.
         # Recompute the status column.
         snr2sum = table['snr2frac'].data.sum(axis=1)
@@ -378,7 +393,7 @@ class Progress(object):
         return Progress(restore=table)
 
     def add_exposure(self, tile_id, start, exptime, snr2frac, airmass, seeing,
-                     moonfrac, moonalt, moonsep):
+                     transparency, moonfrac, moonalt, moonsep):
         """Add a single exposure to the progress.
 
         Parameters
@@ -395,6 +410,8 @@ class Progress(object):
             Estimated airmass of this exposure.
         seeing : float
             Estimated FWHM seeing of this exposure in arcseconds.
+        transparency : float
+            Estimated atmospheric transparency of this exposure.
         moonfrac : float
             Moon illuminated fraction (0-1).
         moonalt : float
@@ -403,9 +420,9 @@ class Progress(object):
             Moon-tile separation angle in degrees.
         """
         mjd = start.mjd
-        self.log.debug(
-            'Adding {0:.1f} exposure of {1} at {2} (MJD {3:.5f}).'
-            .format(exptime, tile_id, start.datetime, mjd))
+        self.log.info(
+            'Adding {0:.1f} exposure #{1:06d} of {2} at {3} (MJD {4:.5f}).'
+            .format(exptime, self.num_exp, tile_id, start.datetime, mjd))
         row = self.get_tile(tile_id)
 
         # Check that we have not reached the maximum allowed exposures.
@@ -423,6 +440,7 @@ class Progress(object):
         # Remember the most recent exposure.
         self._last_mjd = mjd
         self._last_tile = row
+        self._num_exp += 1
 
         # Remember the first exposure's timestamp.
         if self._first_mjd == 0:
@@ -434,6 +452,7 @@ class Progress(object):
         row['snr2frac'][num_exp] = snr2frac
         row['airmass'][num_exp] = airmass
         row['seeing'][num_exp] = seeing
+        row['transparency'][num_exp] = transparency
         row['moonfrac'][num_exp] = moonfrac
         row['moonalt'][num_exp] = moonalt
         row['moonsep'][num_exp] = moonsep
@@ -443,8 +462,8 @@ class Progress(object):
 
     def get_exposures(self, start=None, stop=None,
                       tile_fields='tileid,pass,ra,dec',
-                      exp_fields='night,mjd,exptime,seeing,airmass,' +
-                      'moonfrac,moonalt,moonsep'):
+                      exp_fields='night,mjd,exptime,seeing,transparency,'
+                      +'airmass,moonfrac,moonalt,moonsep'):
         """Create a table listing exposures in time order.
 
         Parameters
