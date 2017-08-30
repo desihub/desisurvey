@@ -98,6 +98,10 @@ class Scheduler(object):
         assert self.avoid_names[0] == 'moon'
         self.avoid_ra = np.empty(len(self.avoid_names))
         self.avoid_dec = np.empty(len(self.avoid_names))
+        self.avoid_min = np.empty(len(self.avoid_names))
+        for i, name in enumerate(self.avoid_names):
+            self.avoid_min[i] = getattr(
+                config.avoid_bodies, name)().to(u.deg).value
         self.last_date = None
 
     def index_of_time(self, when):
@@ -421,8 +425,15 @@ class Scheduler(object):
             self.last_date = date
         for i, decra in enumerate(self.f_obj):
             self.avoid_dec[i], self.avoid_ra[i] = decra(when.mjd)
+        # Calculate separation matrix (in degrees) between observable tiles
+        # and bodies to avoid (moon, planets).
         avoid_sky = astropy.coordinates.ICRS(
             ra=self.avoid_ra * u.deg, dec=self.avoid_dec * u.deg)
+        avoid_matrix = avoid_sky.separation(
+            self.tile_coords[mask, np.newaxis]).to(u.deg).value
+        # Do not schedule any tiles that are too close to the moon or planets.
+        too_close = np.any(avoid_matrix < self.avoid_min, axis=1)
+        mask[mask] &= ~too_close
         # Lookup the program code during each tile's estimated exposure start,
         # midpoint and endpoint: 1=DARK, 2=GRAY, 3=BRIGHT, 4=DAYTIME.
         t_start = when.mjd + toh[mask] / 86400.
@@ -480,8 +491,6 @@ class Scheduler(object):
         # Calculate the moon altitude and illuminated fraction.
         moon_alt = (90 * u.deg - moon_sky.separation(zenith)).to(u.deg).value
         moon_frac = ephem.get_moon_illuminated_fraction(when.mjd)
-        # Should also check planet separation vetos here
-        # ...
         # Prepare the dictionary to return. Dictionary keys used here are
         # mostly historical and might change.
         target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
