@@ -60,7 +60,7 @@ def parse(options=None):
         '--save', type=str, default='surveymovie', metavar='NAME',
         help='base name (without extension) of output file to write')
     parser.add_argument(
-        '--label', type=str, default='DESI surveysim', metavar='TEXT',
+        '--label', type=str, default='DESI', metavar='TEXT',
         help='label to display on each frame')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
@@ -119,7 +119,7 @@ class Animator(object):
         # Get a list of exposures in [start, stop].
         self.exposures = self.progress.get_exposures(
             start, stop, tile_fields='tileid,index,ra,dec,pass',
-            exp_fields='expid,mjd,night,exptime,snr2cum')
+            exp_fields='expid,mjd,night,exptime,snr2cum,seeing,transparency')
         self.num_exp = len(self.exposures)
 
         # Calculate each exposure's LST window.
@@ -204,7 +204,7 @@ class Animator(object):
         paxes = plt.axes([0, 0.97, 0.66667, 0.03], facecolor='y')
         paxes.set_xticks([])
         paxes.set_yticks([])
-        edges = 0.5 + np.linspace(-6., +7., 13 * 12) / 24.
+        edges = 0.5 + np.linspace(-6., +7., 13 * 60) / 24.
         self.dmjd = 0.5 * (edges[1:] + edges[:-1])
         paxes.set_xlim(edges[0], edges[-1])
         paxes.set_ylim(0., 1.)
@@ -279,7 +279,9 @@ class Animator(object):
         self.status[info['index']] = 2 if complete else 1
         # Update the top-right label.
         self.text.set_text(
-            '{0} {1} #{2:06d}'.format(self.label, date, info['expid']))
+            '{0} {1} #{2:06d} ({3:.1f}",{4:.2f})'
+            .format(self.label, date, info['expid'], info['seeing'],
+                    info['transparency']))
         if date != self.last_date:
             self.init_date(date, night)
         # Update current time in program.
