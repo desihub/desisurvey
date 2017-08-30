@@ -434,18 +434,26 @@ class Scheduler(object):
         # Do not schedule any tiles that are too close to the moon or planets.
         too_close = np.any(avoid_matrix < self.avoid_min, axis=1)
         mask[mask] &= ~too_close
+        # Delete avoid_matrix now since its rows refer to the old mask.
+        del avoid_matrix
+        if not np.any(mask):
+            self.log.warn('No tiles after avoidances at {0}.'
+                          .format(when.datetime))
+            return None
         # Lookup the program code during each tile's estimated exposure start,
         # midpoint and endpoint: 1=DARK, 2=GRAY, 3=BRIGHT, 4=DAYTIME.
-        t_start = when.mjd + toh[mask] / 86400.
-        t_midpt = when.mjd + tmid[mask] / 86400.
-        t_stop = when.mjd + (2 * tmid[mask] - toh[mask])/ 86400.
-        obs_program_start = ephem.get_program(t_start, as_tuple=False)
-        obs_program_midpt = ephem.get_program(t_midpt, as_tuple=False)
-        obs_program_stop = ephem.get_program(t_stop, as_tuple=False)
-        # Determine the brightest program at each of these times.
+        timestamps = np.empty((3, np.count_nonzero(mask)))
+        # Initialize with start/midpt/stop times in seconds relative to when.
+        timestamps[0] = toh[mask]
+        timestamps[1] = tmid[mask]
+        timestamps[2] = 2 * tmid[mask] - toh[mask]
+        # Convert to MJDs.
+        timestamps /= 86400.
+        timestamps += when.mjd
+        # Get brightest program at each timestamp:
         # 1=DARK < 2=GRAY < 3=BRIGHT < 4=DAYTIME.
-        obs_program = np.maximum(
-            obs_program_start, obs_program_midpt, obs_program_stop)
+        obs_programs = ephem.get_program(timestamps, as_tuple=False)
+        obs_program = np.max(obs_programs, axis=0)
         # Lookup the program each candidate tile is assigned to.
         tile_program = self.tiles['program'][mask].data
         # Initialize score = priority for observable tiles.
@@ -476,6 +484,8 @@ class Scheduler(object):
         best = np.argmax(score)
         tile = self.tiles[best]
         tile_sky = self.tile_coords[best]
+        # Need a different index into previously masked arrays.
+        ##mbest = np.argmax(score[mask])
         # Calculate the altitude angle of the selected tile.
         zenith = desisurvey.utils.get_observer(
             when, alt=90 * u.deg, az=0 * u.deg

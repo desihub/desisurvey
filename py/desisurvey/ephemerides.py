@@ -372,7 +372,7 @@ class Ephemerides(object):
             return dark, gray, bright
         else:
             # Default value 4=DAYTIME.
-            program = np.full(len(mjd), 4, np.int16)
+            program = np.full(mjd.shape, 4, np.int16)
             program[dark] = 1
             program[gray] = 2
             program[bright] = 3
