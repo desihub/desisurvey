@@ -247,7 +247,9 @@ class Scheduler(object):
 
         # Clip to the maximum exposure time.
         tmax = config.max_exposure_length().to(u.s).value
-        texp[mask] = np.minimum(tmax, texp[mask])
+        too_long = texp > tmax
+        texp[too_long] = 0.
+        mask = mask & ~too_long
 
         # Determine the previous pointing if we need to include slew time
         # in the overhead calcluations.
