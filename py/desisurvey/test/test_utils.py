@@ -302,28 +302,6 @@ class TestUtils(unittest.TestCase):
         assert np.allclose(utils.separation_matrix([0], [0], [0], [-45]), 45.)
         assert np.allclose(utils.separation_matrix([330], [0], [30], [0]), 60.)
 
-    def test_sort2arr(self):
-        a = [1,2,3]
-        b = [3,1,2]
-        c = utils.sort2arr(a,b)
-        self.assertTrue(np.all(c == np.array([2,3,1])))
-
-    def test_inLSTwindow(self):
-        # inLSTwindow(lst, begin, end)
-        self.assertTrue(utils.inLSTwindow(10, 5, 15))
-        self.assertFalse(utils.inLSTwindow(100, 5, 15))
-
-        self.assertTrue(utils.inLSTwindow(0, -5, 10))
-        self.assertFalse(utils.inLSTwindow(-10, -5, 10))
-        self.assertFalse(utils.inLSTwindow(15, -5, 10))
-
-    def test_equ2gal_J2000(self):
-        # Test against astropy.SkyCoords result.
-        ra, dec = 15, 20
-        l, b = utils.equ2gal_J2000(ra, dec)
-        self.assertAlmostEqual(l, 125.67487462, 4)
-        self.assertAlmostEqual(b, -42.82614243, 4)
-
 
 def test_suite():
     """Allows testing of only this module with the command::

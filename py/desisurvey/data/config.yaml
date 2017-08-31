@@ -143,9 +143,6 @@ fallback_weights:
     dark_in_bright: 0.0
     gray_in_bright: 0.0
 
-# Number of LST bins covering 24h=360d used for afternoon planning.
-num_lst_bins: 144
-
 #-------------------------------------------------------------------
 # Base path to pre-pended to all non-absolute paths used for writing
 # output files. The pattern {...} will be expanded using environment
