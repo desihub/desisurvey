@@ -186,10 +186,13 @@ class Animator(object):
                     for pname in ('DARK', 'GRAY', 'BRIGHT'):
                         pc = pcolors[pname]
                         xprog = 0.5 + np.arange(num_weeks)
-                        yprog = np.full(num_weeks, -0.1)
-                        self.iplots.append(ax.scatter(
-                            xprog, yprog, s=5, lw=0, edgecolors='none',
-                            facecolors=pcolors[pname]))
+                        # Initialize values to INF so they are not plotted
+                        # until some value is assigned later.  Any week with
+                        # no observations will then result in a gap.
+                        yprog = np.full(num_weeks, np.inf)
+                        self.iplots.append(ax.plot(
+                            xprog, yprog, lw=2, ls='-',
+                            color=pcolors[pname])[0])
                     continue
                 ax.set_xlim(-55, 293)
                 ax.set_ylim(-20, 77)
@@ -296,7 +299,9 @@ class Animator(object):
             for psel, iplot in zip(self.psels, self.iplots):
                 nprog = np.count_nonzero(psel)
                 ndone = np.count_nonzero(self.status[psel] == 2)
-                iplot.get_offsets()[week_num, 1] = 1.0 * ndone / nprog
+                yprog = iplot.get_ydata()
+                yprog[week_num] = 1.0 * ndone / nprog
+                iplot.set_ydata(yprog)
         self.last_date = date
 
     def draw_exposure(self, idx, last_date=None, scores=None, idx0=0):
