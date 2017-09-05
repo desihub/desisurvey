@@ -38,6 +38,8 @@ def seeing_exposure_factor(seeing):
         on the actual vs nominal seeing.
     """
     seeing = np.asarray(seeing)
+    if np.any(seeing <= 0):
+        raise ValueError('Got invalid seeing value <= 0.')
     a, b, c = 4.6, -1.55, 1.15
     # Could drop the denominator since it cancels in the ratio.
     denom = (a - 0.25 * b * b / c)
@@ -65,8 +67,8 @@ def transparency_exposure_factor(transparency):
         on the actual vs nominal transparency.
     """
     transparency = np.asarray(transparency)
-    if np.any(transparency <= 1e-9):
-        raise ValueError('Got unlikely transparency value < 1e-9.')
+    if np.any(transparency <= 0):
+        raise ValueError('Got invalid transparency value <= 0.')
     config = desisurvey.config.Configuration()
     nominal = config.nominal_conditions.transparency()
     return nominal / transparency
@@ -112,6 +114,8 @@ def airmass_exposure_factor(airmass):
         on the actual vs nominal airmass.
     """
     X = np.asarray(airmass)
+    if np.any(X < 1):
+        raise ValueError('Got invalid airmass value < 1.')
     config = desisurvey.config.Configuration()
     X0 = config.nominal_conditions.airmass()
     return np.power((X / X0), 1.25)
@@ -148,13 +152,15 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     Parameters
     ----------
     moon_frac : float
-        Illuminated fraction of the moon, between 0-1.
+        Illuminated fraction of the moon, in the range [0,1].
     moon_sep : float
-        Separation angle between field center and moon in degrees.
+        Separation angle between field center and moon in degrees, in the
+        range [0,180].
     moon_alt : float
-        Altitude angle of the moon above the horizon in degrees.
+        Altitude angle of the moon above the horizon in degrees, in the
+        range [-90,90].
     airmass : float
-        Airmass used for observing this tile.
+        Airmass used for observing this tile, must be >= 1.
 
     Returns
     -------
@@ -163,6 +169,16 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
         account for increased sky brightness due to scattered moonlight.
         Will be 1 when the moon is below the horizon.
     """
+    if (moon_frac < 0) or (moon_frac > 1):
+        raise ValueError('Got invalid moon_frac outside [0,1].')
+    if (moon_sep < 0) or (moon_sep > 180):
+        raise ValueError('Got invalid moon_sep outside [0,180].')
+    if (moon_alt < -90) or (moon_alt > 90):
+        raise ValueError('Got invalid moon_alt outside [-90,+90].')
+    if airmass < 1:
+        raise ValueError('Got invalid airmass < 1.')
+
+    # No exposure penalty when moon is below the horizon.
     if moon_alt < 0:
         return 1.
 
