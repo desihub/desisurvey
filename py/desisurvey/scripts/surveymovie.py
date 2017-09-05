@@ -119,6 +119,12 @@ class Animator(object):
             self.passnum == np.arange(8).reshape(8, 1), axis=1)
         self.prognames = ['DARK', 'DARK', 'DARK', 'DARK', 'GRAY',
                           'BRIGHT', 'BRIGHT', 'BRIGHT']
+        self.psels = [
+            self.passnum < 4,  # DARK
+            self.passnum == 4, # GRAY
+            self.passnum > 4,  # BRIGHT
+        ]
+        self.start_date = self.config.first_day()
 
         # Get a list of exposures in [start, stop].
         self.exposures = self.progress.get_exposures(
@@ -180,9 +186,9 @@ class Animator(object):
                     for pname in ('DARK', 'GRAY', 'BRIGHT'):
                         pc = pcolors[pname]
                         xprog = 0.5 + np.arange(num_weeks)
-                        yprog = np.full(num_weeks, 0.5)
+                        yprog = np.full(num_weeks, -0.1)
                         self.iplots.append(ax.scatter(
-                            xprog, yprog, s=3, lw=0, edgecolors='none',
+                            xprog, yprog, s=5, lw=0, edgecolors='none',
                             facecolors=pcolors[pname]))
                     continue
                 ax.set_xlim(-55, 293)
@@ -250,8 +256,9 @@ class Animator(object):
             color='k', horizontalalignment='right', verticalalignment='top')
 
         # List all animated artists.
-        self.artists = self.scatters + self.avoids + self.labels + [
-            self.programs, self.pline1, self.pline2, self.text]
+        self.artists = (
+            self.scatters + self.avoids + self.labels + self.iplots + [
+            self.programs, self.pline1, self.pline2, self.text])
         for l1, l2 in self.lstlines:
             self.artists += [l1, l2]
 
@@ -283,6 +290,13 @@ class Animator(object):
         for i, name in enumerate(self.avoid_names):
             self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
                 night, name)
+        if self.last_date is not None:
+            week_num = int(np.floor((date - self.start_date).days / 7.))
+            # Update progress graphs for each program.
+            for psel, iplot in zip(self.psels, self.iplots):
+                nprog = np.count_nonzero(psel)
+                ndone = np.count_nonzero(self.status[psel] == 2)
+                iplot.get_offsets()[week_num, 1] = 1.0 * ndone / nprog
         self.last_date = date
 
     def draw_exposure(self, idx, last_date=None, scores=None, idx0=0):
@@ -297,6 +311,9 @@ class Animator(object):
         if self.status is None:
             snapshot = self.progress.copy_range(mjd_max=mjd)
             self.status = np.array(snapshot._table['status'])
+        if date != self.last_date:
+            # Initialize for this night.
+            self.init_date(date, night)
         # Update the status for the current exposure.
         complete = info['snr2cum'] >= self.config.min_snr2_fraction()
         self.status[info['index']] = 2 if complete else 1
@@ -305,8 +322,6 @@ class Animator(object):
             '{0} {1} #{2:06d} ({3:.1f}",{4:.2f})'
             .format(self.label, date, info['expid'], info['seeing'],
                     info['transparency']))
-        if date != self.last_date:
-            self.init_date(date, night)
         # Update current time in program.
         dt1 = mjd - night['noon']
         dt2 = dt1 + info['exptime'] / 86400.
