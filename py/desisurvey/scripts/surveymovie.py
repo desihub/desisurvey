@@ -115,6 +115,10 @@ class Animator(object):
         self.dec = tiles['dec']
         self.passnum = tiles['pass']
         self.tileid = tiles['tileid']
+        self.tiles_per_pass = np.count_nonzero(
+            self.passnum == np.arange(8).reshape(8, 1), axis=1)
+        self.prognames = ['DARK', 'DARK', 'DARK', 'DARK', 'GRAY',
+                          'BRIGHT', 'BRIGHT', 'BRIGHT']
 
         # Get a list of exposures in [start, stop].
         self.exposures = self.progress.get_exposures(
@@ -144,6 +148,8 @@ class Animator(object):
         grid = matplotlib.gridspec.GridSpec(3, 3)
         grid.update(left=0, right=1, bottom=0, top=0.97, hspace=0, wspace=0)
         axes = []
+        self.labels = []
+        self.iplots = []
         self.scatters = []
         self.lstlines = []
         self.avoids = []
@@ -156,6 +162,7 @@ class Animator(object):
         avoidcolor = matplotlib.colors.to_rgba('red')
         self.completecolor = np.array([0., 0.5, 0., 1.])
         self.nowcolor = np.array([0., 0.7, 0., 1.])
+        pcolors = desisurvey.plots.program_color
         passnum = 0
         for row in range(3):
             for col in range(3):
@@ -164,14 +171,31 @@ class Animator(object):
                 ax.set_xticks([])
                 ax.set_yticks([])
                 axes.append(ax)
-                # Top-right corner is reserved for a plot.
+                # Top-right corner is reserved for integrated progress plots.
                 if row == 0 and col == 2:
-                    ax.set_xlim(0, 1)
+                    num_weeks = int(np.ceil(self.ephem.num_nights / 7.))
+                    ax.set_xlim(0, num_weeks)
                     ax.set_ylim(0, 1)
-                    plt.plot([0, 1], [0, 1], 'k:')
+                    ax.plot([0, num_weeks], [0., 1.], 'w-')
+                    for pname in ('DARK', 'GRAY', 'BRIGHT'):
+                        pc = pcolors[pname]
+                        xprog = 0.5 + np.arange(num_weeks)
+                        yprog = np.full(num_weeks, 0.5)
+                        self.iplots.append(ax.scatter(
+                            xprog, yprog, s=3, lw=0, edgecolors='none',
+                            facecolors=pcolors[pname]))
                     continue
                 ax.set_xlim(-55, 293)
                 ax.set_ylim(-20, 77)
+                # Draw label for this plot.
+                pname = self.prognames[passnum]
+                pc = pcolors[pname]
+                self.labels.append(ax.annotate(
+                    '{0}-{1} 100.0%'.format(pname, passnum),
+                    xy=(0.05, 0.95), xytext=(0.05, 0.95),
+                    xycoords='axes fraction', fontsize=48, family='monospace',
+                    color=pc, horizontalalignment='left',
+                    verticalalignment='top'))
                 # Draw the tile outlines for this pass.
                 sel = (self.passnum == passnum)
                 ntiles = np.count_nonzero(sel)
@@ -210,7 +234,6 @@ class Animator(object):
         paxes.set_ylim(0., 1.)
         self.pdata = np.zeros(len(self.dmjd), int)
         # Prepare a custom colormap.
-        pcolors = desisurvey.plots.program_color
         colors = [bgcolor, pcolors['DARK'], pcolors['GRAY'], pcolors['BRIGHT']]
         pcmap = matplotlib.colors.ListedColormap(colors, 'programs')
         self.programs = paxes.imshow(
@@ -227,7 +250,7 @@ class Animator(object):
             color='k', horizontalalignment='right', verticalalignment='top')
 
         # List all animated artists.
-        self.artists = self.scatters + self.avoids + [
+        self.artists = self.scatters + self.avoids + self.labels + [
             self.programs, self.pline1, self.pline2, self.text]
         for l1, l2 in self.lstlines:
             self.artists += [l1, l2]
@@ -305,6 +328,11 @@ class Animator(object):
                 fc[jdx] = self.nowcolor
                 scatter.get_sizes()[jdx] = 600.
             scatter.set_facecolors(fc)
+            # Update percent complete label.
+            pct = (100. * np.count_nonzero(self.status[sel] == 2) /
+                   self.tiles_per_pass[passnum])
+            self.labels[passnum].set_text('{0}-{1} {2:5.1f}%'.format(
+                self.prognames[passnum], passnum, pct))
         # Update LST lines.
         x1, x2 = self.lst[idx]
         for passnum, (line1, line2) in enumerate(self.lstlines):
