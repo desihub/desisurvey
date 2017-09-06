@@ -332,10 +332,10 @@ def cos_zenith_to_airmass(cosZ):
     Returns
     -------
     float or array
-        Airmass value(s)
+        Airmass value(s) >= 1.
     """
     cosZ = np.clip(np.asarray(cosZ), 0., 1.)
-    return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
+    return np.clip(1. / (cosZ + 0.025 * np.exp(-11 * cosZ)), 1., None)
 
 
 def get_airmass(when, ra, dec):
