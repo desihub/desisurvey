@@ -71,11 +71,10 @@ def main(args):
     if args.output_path is not None:
         config.set_output_path(args.output_path)
 
-    # Load ephemerides.
-    ephem = desisurvey.ephemerides.Ephemerides()
-
     # Initialize scheduler.
     if not os.path.exists(config.get_path('scheduler.fits')):
+        # Load ephemerides.
+        ephem = desisurvey.ephemerides.Ephemerides()
         # Tabulate data used by the scheduler if necessary.
         desisurvey.schedule.initialize(ephem)
     scheduler = desisurvey.schedule.Scheduler()
