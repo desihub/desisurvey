@@ -77,16 +77,6 @@ programs:
         # Any time after twilight that is neither DARK nor GRAY is BRIGHT.
 
 #-------------------------------------------------------------------
-# Definition of the first-year full-depth NGC field.
-#-------------------------------------------------------------------
-
-full_depth_field:
-    enabled: yes
-    min_declination: 15 deg
-    max_declination: 25 deg
-    first_pass_padding: 3 deg
-
-#-------------------------------------------------------------------
 # Parameters used to plan observation during a night.
 #-------------------------------------------------------------------
 
