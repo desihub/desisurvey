@@ -133,6 +133,10 @@ fallback_weights:
     dark_in_bright: 0.0
     gray_in_bright: 0.0
 
+# Nominal tile radius for determining whether two tiles overlap.
+# https://github.com/desihub/desimodel/pull/37#issuecomment-270788581
+tile_radius: 1.62 deg
+
 #-------------------------------------------------------------------
 # Base path to pre-pended to all non-absolute paths used for writing
 # output files. The pattern {...} will be expanded using environment

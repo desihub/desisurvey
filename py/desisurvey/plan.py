@@ -33,16 +33,12 @@ def create(hourangles, priorities):
     return plan
 
 
-def update_available(plan, progress, tile_radius=1.62):
+def update_available(plan, progress):
     """Update list of available tiles.
 
     A tile becomes available when all overlapping tiles in the previous pass
     of the same program are complete. A newly available tile is ready for fiber
-    assignment.
-
-    Overlap is defined as center_separation < 2 * tile_radius, using a default
-    tile radius based on the discussion at
-    https://github.com/desihub/desimodel/pull/37#issuecomment-270788581
+    assignment. Overlap is defined as center_separation < 2 * tile_radius.
 
     Parameters
     ----------
@@ -57,6 +53,9 @@ def update_available(plan, progress, tile_radius=1.62):
         The input plan with the 'available' column updated.
     """
     log = desiutil.log.get_logger()
+    # Look up the nominal tile radius for determining overlaps.
+    tile_radius = (
+        desisurvey.config.Configuration().tile_radius().to(u.deg).value)
     # Find complete tiles.
     complete = (progress._table['status'] == 2)
     # Loop over passes.
