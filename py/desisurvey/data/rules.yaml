@@ -4,19 +4,22 @@
 # to exactly one group.
 #
 # Group names are arbitrary strings. The tiles associated with a
-# group are either specified via a filename containing a list of
-# tile IDs (not yet implemented) or by providing geographical
-# parameters (cap, dec_min, dec_max) and a list of pass numbers.
+# group can be optionally restricted using:
+# - cap = N or S.
+# - dec_min or dec_max limits.
+# - covers keyword specifies previously defined subgroups that the tiles in
+#   this group cover (for fiber assignment).
+# Groups are also associated with a list of passes, with each pass
+# defining a subgroup.
 #
-# Each group has associated rules that specify its relative weight
+# Each subgroup has associated rules that specify its relative weight
 # when selecting the next tile in the scheduler.
 #
-# Rules are assigned separately for each pass of a group using the
-# notation:
+# Rules are assigned separately for each subgroup using the notation:
 #
-#   GROUP_NAME[PASS]: { ...rules... }
+#   GROUP_NAME(PASS): { ...rules... }
 #
-# By default, each group has an initial weight of zero when the
+# By default, each subgroup has an initial weight of zero when the
 # survey starts (so will not be scheduled), unless it has an explicit
 # start rule:
 #
@@ -24,74 +27,93 @@
 #
 # Additional rules of the form:
 #
-#   GROUP_NAME[PASS]: NEW_WEIGHT
+#   GROUP_NAME(PASS): NEW_WEIGHT
 #
-# specify the group weight that will be assigned when the specified
-# pass of the other group has been completely observed.
+# specify the subgroup weight that will be assigned when the specified
+# subgroup has been completely observed. Forward references to subgroups
+# that have not been defined yet are ok.
 #-------------------------------------------------------------------
 
-N16:
-    cap: N
-    dec_min: 12
-    dec_max: 28
-    dec_order: +0.2
-    passes: 0,5
-    rules:
-        N16(0): { START: 1.0 }
-        N16(5): { START: 1.0 }
-N16LO:
-    cap: N
-    dec_max: 12
-    dec_order: -0.2
-    passes: 0,5
-    rules:
-        N16LO(0): { START: 0.6, N10(1): 1.0 }
-        N16LO(5): { START: 0.6, N10(6): 1.0 }
-N16HI:
-    cap: N
-    dec_min: 28
-    dec_order: +0.2
-    passes: 0,5
-    rules:
-        N16HI(0): { START: 0.3, N10(1): 0.8, N16LO(0): 1.0 }
-        N16HI(5): { START: 0.3, N10(6): 0.8, N16LO(5): 1.0 }
+# 15 < DEC < 25 stripe in NGC.
 N10:
     cap: N
     dec_min: 15
     dec_max: 25
     dec_order: +0.2
-    passes: 1,2,3,4,6,7
+    passes: 2,3,4,7
     rules:
-        N10(1): { START: 0.8, N16(0): 1.0 }
-        N10(2): { N16HI(0): 1.0 }
-        N10(3): { N16HI(0): 0.8, N10(2): 1.0 }
+        N10(2): { START: 1.0 }
+        N10(3): { START: 1.0 }
         N10(4): { START: 1.0 }
-        N10(6): { START: 0.8, N16(5): 1.0 }
-        N10(7): { N16HI(5): 0.8, N10(6): 1.0 }
+        N10(7): { START: 1.0 }
+
+# Pass-1 tiles in N10 need to cover passes 2, 3 for fiber assignment.
+N10P1:
+    covers: N10(2)+N10(3)
+    dec_order: +0.2
+    passes: 1
+    rules:
+        N10P1(1): { START: 0.8, N10P0(0): 1.0 }
+
+# Pass-0 tiles in N10 need to cover passes 1, 2, 3 for fiber assignment.
+N10P0:
+    covers: N10P1(1)+N10(2)+N10(3)
+    dec_order: +0.2
+    passes: 0
+    rules:
+        N10P0(0): { START: 1.0 }
+
+# Pass-6 tiles in N10 need to cover pass 7 for fiber assignment.
+N10P6:
+    covers: N10(7)
+    dec_order: +0.2
+    passes: 6
+    rules:
+        N10P6(6): { START: 0.8, N10P5(5): 1.0 }
+
+# Pass-5 tiles in N10 need to cover pass 6 for fiber assignment.
+N10P5:
+    covers: N10P6(6)+N10(7)
+    dec_order: +0.2
+    passes: 5
+    rules:
+        N10P5(5): { START: 1.0 }
+
+# NGC below DEC=15.  Tiles with DEC < 15 already assigned in the covering
+# regions defined above will not be reassigned here.
 N10LO:
     cap: N
-    dec_max: 15
+    dec_max: 20
     dec_order: -0.2
-    passes: 1,2,3,4,6,7
+    passes: 0,1,2,3,4,5,6,7
     rules:
-        N10LO(1): { N10(1): 1.0 }
+        N10LO(0): { START: 0.6, N10P1(1): 1.0 }
+        N10LO(1): { N10P0(0): 0.6, N10P1(1): 1.0 }
         N10LO(2): { N10(2): 1.0 }
         N10LO(3): { N10(3): 1.0 }
-        N10LO(4): { N10(4): 1.0 }
-        N10LO(6): { N10(6): 1.0 }
-        N10LO(7): { N10(7): 1.0 }
+        N10LO(4): { START: 0.6, N10(4): 1.0 }
+        N10LO(5): { START: 0.6, N10P6(6): 1.0 }
+        N10LO(6): { N10P5(5): 0.6, N10P6(6): 1.0 }
+        N10LO(7): { N10P6(6): 0.6, N10(7): 1.0 }
+
+# NGC above DEC=25.  Tiles with DEC > 25 already assigned in the covering
+# regions defined above will not be reassigned here.
 N10HI:
     cap: N
-    dec_min: 25
+    dec_min: 20
     dec_order: +0.2
-    passes: 1,2,3,4,6,7
+    passes: 0,1,2,3,4,5,6,7
     rules:
-        N10HI(1): { N10LO(1): 1.0 }
-        N10HI(2): { N10LO(2): 1.0 }
-        N10HI(3): { N10LO(3): 1.0 }
-        N10HI(4): { N10LO(4): 1.0 }
-        N10HI(6): { N10LO(6): 1.0 }
-        N10HI(7): { N10LO(7): 1.0 }
+        N10HI(0): { START: 1 }
+        N10HI(1): { START: 1 }
+        N10HI(2): { START: 1 }
+        N10HI(3): { START: 1 }
+        N10HI(4): { START: 1 }
+        N10HI(5): { START: 1 }
+        N10HI(6): { START: 1 }
+        N10HI(7): { START: 1 }
+
+# SGC below DEC=5
 SLO:
     cap: S
     dec_max: 5
@@ -106,6 +128,8 @@ SLO:
         SLO(5): { START: 1.0 }
         SLO(6): { START: 0.5, SLO(5): 1.0 }
         SLO(7): { SLO(5): 0.5, SLO(6): 1.0 }
+
+# SGC above DEC=5
 SHI:
     cap: S
     dec_min: 5
@@ -120,3 +144,13 @@ SHI:
         SHI(5): { START: 0.5, SLO(5): 1.0 }
         SHI(6): { SLO(5): 0.5, SLO(6): 1.0 }
         SHI(7): { SLO(6): 0.5, SLO(7): 1.0 }
+
+#-------------------------------------------------------------------
+# Fiber assignment coverage rules specify which overlapping
+# tiles in earlier passes need to be observed before fiber
+# assignment can be performed.
+#-------------------------------------------------------------------
+#FiberAssignment:
+#    DARK: pass0 > pass1 > pass2 + pass3
+#    GRAY: pass4
+#    BRIGHT: pass5 > pass6 > pass7

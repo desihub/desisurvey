@@ -11,8 +11,11 @@ import numpy as np
 
 import astropy.table
 import astropy.utils.data
+import astropy.units as u
 
 import desimodel.io
+
+import desisurvey.config
 
 
 class Rules(object):
@@ -22,11 +25,15 @@ class Rules(object):
     YAML file.
     """
     def __init__(self, file_name='rules.yaml', restore=None):
+        tile_radius = (
+            desisurvey.config.Configuration().tile_radius().to(u.deg).value)
+
         # Load the table of tiles in the DESI footprint.
         tiles = astropy.table.Table(
             desimodel.io.load_tiles(onlydesi=True, extra=False))
         num_tiles = len(tiles)
         passnum = tiles['PASS']
+        ra = tiles['RA']
         dec = tiles['DEC']
         NGC = (tiles['RA'] > 75.0) & (tiles['RA'] < 300.0)
         SGC = ~NGC
@@ -44,16 +51,16 @@ class Rules(object):
 
         # Read the YAML file into memory.
         with open(full_path) as f:
-            config = yaml.safe_load(f)
+            rules_dict = yaml.safe_load(f)
 
         group_names = []
         group_ids = np.zeros(num_tiles, int)
         dec_priority = np.ones(num_tiles, float)
         group_rules = {}
 
-        for group_name in config:
+        for group_name in rules_dict:
             group_sel = np.ones(num_tiles, bool)
-            node = config[group_name]
+            node = rules_dict[group_name]
 
             # Parse optional geographical attribute.
             cap = node.get('cap')
@@ -67,6 +74,17 @@ class Rules(object):
             dec_max = node.get('dec_max')
             if dec_max is not None:
                 group_sel[dec >= float(dec_max)] = False
+            covers = node.get('covers')
+            if covers is not None:
+                # Build the set of all tiles that must be covered.
+                under = np.zeros(num_tiles, bool)
+                for name in covers.split('+'):
+                    try:
+                        group_id = group_names.index(name) + 1
+                    except ValueError:
+                        raise RuntimeError('Invalid covers target: {0}.'
+                                           .format(name))
+                    under |= (group_ids == group_id)
 
             # Parse required "passes" attribute.
             passes = node.get('passes')
@@ -77,6 +95,31 @@ class Rules(object):
             for p in np.unique(passnum):
                 if p not in passes:
                     group_sel[passnum == p] = False
+
+            # Create GROUP(PASS) subgroup combinations.
+            final_group_sel = np.zeros(num_tiles, bool)
+            for p in passes:
+                pass_name = '{0}({1:d})'.format(group_name, p)
+                group_names.append(pass_name)
+                group_id = len(group_names)
+                pass_sel = group_sel & (passnum == p)
+                if covers is not None:
+                    # Limit to tiles covering at least one tile in "under".
+                    matrix = desisurvey.utils.separation_matrix(
+                        ra[pass_sel], dec[pass_sel], ra[under], dec[under])
+                    overlapping = np.any(matrix < tile_radius, axis=1)
+                    pass_sel[pass_sel] &= overlapping
+                # Remove any tiles in this pass that have already been assigned
+                # to a previously defined subgroup.
+                pass_sel[pass_sel] &= ~(group_ids[pass_sel] != 0)
+                final_group_sel |= pass_sel
+                group_ids[pass_sel] = group_id
+                group_rules[pass_name] = {'START': 0.0}
+
+            # Some tiles may be dropped by covering requirements in this
+            # or previous groups.
+            assert not np.any(~group_sel & final_group_sel)
+            group_sel = final_group_sel
 
             # Calculate priority multipliers to implement optional DEC ordering.
             dec_order = node.get('dec_order')
@@ -92,20 +135,6 @@ class Rules(object):
                         1 - slope * (dec_group - lo) / (hi - lo))
             else:
                 assert np.all(dec_priority[group_sel] == 1)
-
-            # Create GROUP(PASS) combinations.
-            for p in passes:
-                pass_name = '{0}({1:d})'.format(group_name, p)
-                group_names.append(pass_name)
-                group_id = len(group_names)
-                pass_sel = group_sel & (passnum == p)
-                if np.any(group_ids[pass_sel] != 0):
-                    other_id = np.unique(group_ids[pass_sel])[-1]
-                    raise RuntimeError(
-                        'Some tiles assigned to multiple groups: {0}, {1}.'
-                        .format(group_names[other_id - 1], pass_name))
-                group_ids[pass_sel] = group_id
-                group_rules[pass_name] = {'START': 0.0}
 
             # Parse rules for this group.
             rules = node.get('rules')
@@ -128,6 +157,7 @@ class Rules(object):
                         raise RuntimeError(
                             'Invalid new weight for trigger {0}: {1}.'
                             .format(trigger, rules[target][trigger]))
+                    assert target in group_rules
                     group_rules[target][trigger] = new_weight
 
         # Check that all tiles are assigned to exactly one group.
@@ -138,7 +168,7 @@ class Rules(object):
                 '{0} tiles in passes {1} not assigned to any group.'
                 .format(np.count_nonzero(orphans), passes))
 
-        # Check that all rule targets are valid groups.
+        # Check that all rule triggers are valid subgroup names.
         for name in group_names:
             for target in group_rules[name]:
                 if target == 'START':
