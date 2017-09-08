@@ -34,7 +34,9 @@
 # that have not been defined yet are ok.
 #-------------------------------------------------------------------
 
-# 15 < DEC < 25 stripe in NGC.
+# 15 < DEC < 25 stripe in NGC. Our goal is to observe this strip in DARK-0,1
+# GRAY-4 and BRIGHT-5,6 in year-1, then observe DARK-2,3 and BRIGHT-7 in year-2,
+# resulting in full depth for all programs by the end of year-2.
 N10:
     cap: N
     dec_min: 15
@@ -42,10 +44,10 @@ N10:
     dec_order: +0.2
     passes: 2,3,4,7
     rules:
-        N10(2): { START: 1.0 }
-        N10(3): { START: 1.0 }
+        N10(2): { N10LO(0): 0.8, N10HI(0): 1.0 }
+        N10(3): { N10LO(0): 0.6, N10HI(0): 0.8, N10(2): 1.0 }
         N10(4): { START: 1.0 }
-        N10(7): { START: 1.0 }
+        N10(7): { N10LO(5): 0.8, N10HI(5): 1.0 }
 
 # Pass-1 tiles in N10 need to cover passes 2, 3 for fiber assignment.
 N10P1:
@@ -88,13 +90,13 @@ N10LO:
     passes: 0,1,2,3,4,5,6,7
     rules:
         N10LO(0): { START: 0.6, N10P1(1): 1.0 }
-        N10LO(1): { N10P0(0): 0.6, N10P1(1): 1.0 }
-        N10LO(2): { N10(2): 1.0 }
-        N10LO(3): { N10(3): 1.0 }
+        N10LO(1): { N10HI(0): 0.6, N10(3): 1.0 }
+        N10LO(2): { N10HI(1): 1.0 }
+        N10LO(3): { N10HI(1): 1.0 }
         N10LO(4): { START: 0.6, N10(4): 1.0 }
         N10LO(5): { START: 0.6, N10P6(6): 1.0 }
-        N10LO(6): { N10P5(5): 0.6, N10P6(6): 1.0 }
-        N10LO(7): { N10P6(6): 0.6, N10(7): 1.0 }
+        N10LO(6): { N10HI(5): 0.6, N10(7): 1.0 }
+        N10LO(7): { N10HI(6): 1.0 }
 
 # NGC above DEC=25.  Tiles with DEC > 25 already assigned in the covering
 # regions defined above will not be reassigned here.
@@ -104,14 +106,14 @@ N10HI:
     dec_order: +0.2
     passes: 0,1,2,3,4,5,6,7
     rules:
-        N10HI(0): { START: 1 }
-        N10HI(1): { START: 1 }
-        N10HI(2): { START: 1 }
-        N10HI(3): { START: 1 }
-        N10HI(4): { START: 1 }
-        N10HI(5): { START: 1 }
-        N10HI(6): { START: 1 }
-        N10HI(7): { START: 1 }
+        N10HI(0): { START: 0.4, N10LO(0): 1.0 }
+        N10HI(1): { N10(3): 0.8, N10LO(1): 1.0 }
+        N10HI(2): { N10HI(1): 0.8, N10LO(2): 1.0 }
+        N10HI(3): { N10HI(1): 0.8, N10LO(3): 1.0 }
+        N10HI(4): { START: 0.4, N10(4): 0.8, N10LO(4): 1.0 }
+        N10HI(5): { START: 0.4, N10P6(6): 0.8, N10LO(4): 1.0 }
+        N10HI(6): { N10(7): 0.8, N10LO(6): 1.0 }
+        N10HI(7): { N10HI(6): 0.8, N10LO(7): 1.0 }
 
 # SGC below DEC=5
 SLO:
@@ -144,13 +146,3 @@ SHI:
         SHI(5): { START: 0.5, SLO(5): 1.0 }
         SHI(6): { SLO(5): 0.5, SLO(6): 1.0 }
         SHI(7): { SLO(6): 0.5, SLO(7): 1.0 }
-
-#-------------------------------------------------------------------
-# Fiber assignment coverage rules specify which overlapping
-# tiles in earlier passes need to be observed before fiber
-# assignment can be performed.
-#-------------------------------------------------------------------
-#FiberAssignment:
-#    DARK: pass0 > pass1 > pass2 + pass3
-#    GRAY: pass4
-#    BRIGHT: pass5 > pass6 > pass7
