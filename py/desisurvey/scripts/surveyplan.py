@@ -7,9 +7,11 @@ command search path.
 from __future__ import print_function, division, absolute_import
 
 import argparse
-import os.path
+import os
 import datetime
 import sys
+
+import numpy as np
 
 import astropy.time
 import astropy.table
@@ -110,26 +112,48 @@ def main(args):
     # Save a backup of the progress so far.
     progress.save('progress_{0}.fits'.format(start))
 
+    num_complete, num_total, pct = progress.completed(as_tuple=True)
+
+    # Already observed all tiles?
+    if num_complete == num_total:
+        log.info('All tiles observed!')
+        # Return a shell exit code so scripts can detect this condition.
+        sys.exit(9)
+
     # Reached end of the survey?
     if start >= config.last_day():
         log.info('Reached survey end date!')
         # Return a shell exit code so scripts can detect this condition.
         sys.exit(9)
 
-    log.info('Planning observations for night of {0}.'.format(start))
+    log.info('Planning night of {0} with {1} / {2} ({3:.1f}%) completed.'
+             .format(start, num_complete, num_total, pct))
 
+    bookmarked = False
     if not args.create:
 
-        # Update the plan.
+        # Update the priorities for the progress so far.
+        new_priority = rules.apply(progress)
+        changed_priority = (new_priority != plan['priority'])
+        if np.any(changed_priority):
+            changed_passes = np.unique(plan['pass'][changed_priority])
+            log.info('Priorities changed in pass(es) {0}.'
+                     .format(', '.join([str(p) for p in changed_passes])))
+            plan['priority'] = new_priority
+            bookmarked = True
+
+        # Identify any new tiles that are available for fiber assignment.
+        # TODO: do this monthly, during full moon, by default.
         plan = desisurvey.plan.update_available(plan, progress)
 
-        # All done?
-        if plan is None:
-            log.info('All tiles observed!')
-            # Return a shell exit code so scripts can detect this condition.
-            sys.exit(9)
+        # Will update design HA assignments here...
+        pass
 
     # Save the plan and a backup.
     plan.write(config.get_path('plan.fits'), overwrite=True)
-    plan.write(
-        config.get_path('plan_{0}.fits'.format(start)), overwrite=True)
+    backup_name = config.get_path('plan_{0}.fits'.format(start))
+    plan.write(backup_name, overwrite=True)
+    if bookmarked:
+        # Make a symbolic link to bookmark this plan.
+        bookmark_name = config.get_path('plan_{0}_bookmark.fits'.format(start))
+        os.symlink(backup_name, bookmark_name)
