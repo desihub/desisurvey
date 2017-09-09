@@ -167,6 +167,7 @@ class Animator(object):
         bgcolor = matplotlib.colors.to_rgba('lightblue')
         avoidcolor = matplotlib.colors.to_rgba('red')
         self.completecolor = np.array([0., 0.5, 0., 1.])
+        self.unavailcolor = np.array([0.65, 0.65, 0.65, 1.])
         self.nowcolor = np.array([0., 0.7, 0., 1.])
         pcolors = desisurvey.plots.program_color
         passnum = 0
@@ -211,7 +212,7 @@ class Animator(object):
                 fc = np.zeros((ntiles, 4))
                 fc[:, 1] = 1.0
                 fc[:, 3] = 0.5
-                s = np.full(ntiles, 85.)
+                s = np.full(ntiles, 90.)
                 self.scatters.append(ax.scatter(
                     self.ra[sel], self.dec[sel], s=s, facecolors=fc,
                     edgecolors='none', lw=1))
@@ -302,6 +303,11 @@ class Animator(object):
                 yprog = iplot.get_ydata()
                 yprog[week_num] = 1.0 * ndone / nprog
                 iplot.set_ydata(yprog)
+        # Lookup tonight's plan.
+        plan_name = self.config.get_path('plan_{0}.fits'.format(date))
+        plan = astropy.table.Table.read(plan_name)
+        self.available = plan['available']
+        self.priority = plan['priority']
         self.last_date = date
 
     def draw_exposure(self, idx, last_date=None, scores=None, idx0=0):
@@ -339,9 +345,14 @@ class Animator(object):
             sel = (self.passnum == passnum)
             fc = self.scorecmap(score[sel] / max_score)
             done = self.status[sel] == 2
-            scatter.get_sizes()[~done] = 85.
-            scatter.get_sizes()[done] = 30.
+            inplan = self.priority[sel] > 0
+            avail = self.available[sel]
+            sizes = scatter.get_sizes()
+            sizes[~inplan] = 20.
+            sizes[~done & inplan] = 90.
+            sizes[done] = 30.
             fc[done] = self.completecolor
+            fc[~avail] = self.unavailcolor
             if info['pass'] == passnum:
                 # Highlight the tile being observed now.
                 jdx = np.where(self.tileid[sel] == info['tileid'])[0][0]
@@ -375,7 +386,7 @@ class Animator(object):
 
 
 def main(args):
-    """Command-line driver for updating the survey plan.
+    """Command-line driver to visualize survey scheduling and progress.
     """
     # Set up the logger
     if args.debug:
