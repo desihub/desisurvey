@@ -124,7 +124,7 @@ avoid_bodies:
 # to 1 for observing a tile from the nominal program.
 fallback_weights:
     # DARK program fallback weights.
-    gray_in_dark: 0.5
+    gray_in_dark: 0.4
     bright_in_dark: 0.3
     # GRAY program fallback weights.
     dark_in_gray: 0.0

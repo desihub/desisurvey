@@ -87,9 +87,10 @@ N10LO:
     cap: N
     dec_max: 20
     dec_order: -0.2
+    max_orphans: 4
     passes: 0,1,2,3,4,5,6,7
     rules:
-        N10LO(0): { START: 0.6, N10P1(1): 1.0 }
+        N10LO(0): { START: 0.7, N10P1(1): 1.0 }
         N10LO(1): { N10HI(0): 0.6, N10(3): 1.0 }
         N10LO(2): { N10HI(1): 1.0 }
         N10LO(3): { N10HI(1): 1.0 }
@@ -106,7 +107,7 @@ N10HI:
     dec_order: +0.2
     passes: 0,1,2,3,4,5,6,7
     rules:
-        N10HI(0): { START: 0.4, N10LO(0): 0.6, N10P1(1): 1.0 }
+        N10HI(0): { START: 0.3, N10LO(0): 0.6, N10P1(1): 1.0 }
         N10HI(1): { N10HI(0): 0.4, N10(3): 0.8, N10LO(1): 1.0 }
         N10HI(2): { N10HI(1): 0.8, N10LO(2): 1.0 }
         N10HI(3): { N10HI(1): 0.8, N10LO(3): 1.0 }
