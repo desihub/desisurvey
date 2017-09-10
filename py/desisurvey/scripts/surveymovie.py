@@ -45,6 +45,8 @@ def parse(options=None):
         help='display log messages with severity >= info')
     parser.add_argument('--debug', action='store_true',
         help='display log messages with severity >= debug (implies verbose)')
+    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
+        help='interval for logging periodic info messages')
     parser.add_argument('--progress', default='progress.fits', metavar='FITS',
         help='name of FITS file with progress record')
     parser.add_argument(
@@ -431,7 +433,9 @@ def main(args):
         def init():
             return animator.artists
         def update(idx):
-            log.info('Drawing frame {0}/{1}'.format(idx + 1, animator.num_exp))
+            if (idx + 1) % args.log_interval == 0:
+                log.info('Drawing frame {0}/{1}.'
+                         .format(idx + 1, animator.num_exp))
             animator.draw_exposure(idx)
             return animator.artists
         animation = matplotlib.animation.FuncAnimation(
