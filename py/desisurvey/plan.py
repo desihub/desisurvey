@@ -80,7 +80,7 @@ def update_available(plan, progress):
                         .format(overpass))
                 over |= (plan['pass'] == int(overpass[1]))
             overlapping = desisurvey.utils.separation_matrix(
-                ra[under], dec[under], ra[over], dec[over]) < 2 * tile_radius
+                ra[under], dec[under], ra[over], dec[over], 2 * tile_radius)
             avail = np.all(~overlapping | complete[over], axis=1)
             new_avail = avail & ~plan['available'][under]
             if np.any(new_avail):

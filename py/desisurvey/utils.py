@@ -539,12 +539,18 @@ def get_date(date):
     return date
 
 
-def separation_matrix(ra1, dec1, ra2, dec2):
+def separation_matrix(ra1, dec1, ra2, dec2, max_separation=None):
     """Build a matrix of pair-wise separation between (ra,dec) pointings.
 
     The ra1 and dec1 arrays must have the same shape. The ra2 and dec2 arrays
     must also have the same shape, but it can be different from the (ra1,dec1)
     shape, resulting in a non-square return matrix.
+
+    Uses the Haversine formula for better accuracy at low separations. See
+    https://en.wikipedia.org/wiki/Haversine_formula for details.
+
+    Equivalent to using the separations() method of astropy.coordinates.ICRS,
+    but faster since it bypasses any units.
 
     Parameters
     ----------
@@ -556,28 +562,33 @@ def separation_matrix(ra1, dec1, ra2, dec2):
         1D array of n2 RA coordinates in degrees (without units attached).
     dec2 : array
         1D array of n2 DEC coordinates in degrees (without units attached).
+    max_separation : float or None
+        When present, the matrix elements are replaced with booleans given
+        by (value <= max_separation), which saves some computation.
 
     Returns
     -------
     array
         Array with shape (n1,n2) with element [i1,i2] giving the 3D separation
-        angle between (ra1[i1],dec1[i1]) and (ra2[i2],dec2[i2]) in degrees.
+        angle between (ra1[i1],dec1[i1]) and (ra2[i2],dec2[i2]) in degrees
+        or, if max_separation is not None, booleans (value <= max_separation).
     """
-    ra1 = np.asarray(ra1)
-    dec1 = np.asarray(dec1)
+    ra1, ra2 = np.deg2rad(ra1), np.deg2rad(ra2)
+    dec1, dec2 = np.deg2rad(dec1), np.deg2rad(dec2)
     if ra1.shape != dec1.shape:
         raise ValueError('Arrays ra1, dec1 must have the same shape.')
     if len(ra1.shape) != 1:
         raise ValueError('Arrays ra1, dec1 must be 1D.')
-    ra2 = np.asarray(ra2)
-    dec2 = np.asarray(dec2)
     if ra2.shape != dec2.shape:
         raise ValueError('Arrays ra2, dec2 must have the same shape.')
     if len(ra2.shape) != 1:
         raise ValueError('Arrays ra2, dec2 must be 1D.')
-    # Build unit vectors for (ra1,dec1) and (ra2,dec2).
-    units1 = astropy.coordinates.ICRS(ra=ra1 * u.deg, dec=dec1 * u.deg)
-    units2 = astropy.coordinates.ICRS(ra=ra2 * u.deg, dec=dec2 * u.deg)
-    # Calculate separation angles in degrees.
-    separations = units1[:, np.newaxis].separation(units2)
-    return separations.to(u.deg).value
+    havRA12 = 0.5 * (1 - np.cos(ra2 - ra1[:, np.newaxis]))
+    havDEC12 = 0.5 * (1 - np.cos(dec2 - dec1[:, np.newaxis]))
+    havPHI = havDEC12 + np.cos(dec1)[:, np.newaxis] * np.cos(dec2) * havRA12
+    if max_separation is not None:
+        # Replace n1 x n2 arccos calls with a single sin call.
+        threshold = np.sin(0.5 * np.deg2rad(max_separation)) ** 2
+        return havPHI <= threshold
+    else:
+        return np.rad2deg(np.arccos(1 - 2 * havPHI))
