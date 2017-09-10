@@ -55,33 +55,38 @@ def update_available(plan, progress):
     """
     log = desiutil.log.get_logger()
     # Look up the nominal tile radius for determining overlaps.
-    tile_radius = (
-        desisurvey.config.Configuration().tile_radius().to(u.deg).value)
+    config = desisurvey.config.Configuration()
+    tile_radius = config.tile_radius().to(u.deg).value
     # Find complete tiles.
     complete = (progress._table['status'] == 2)
     # Loop over passes.
+    ra = plan['ra']
+    dec = plan['dec']
     for passnum in range(8):
-        sel = (plan['pass'] == passnum)
-        ra = plan['ra'][sel]
-        dec = plan['dec'][sel]
-        if passnum in (0, 4, 5):
+        under = (plan['pass'] == passnum)
+        over = np.zeros_like(under)
+        overattr = 'P'+str(passnum)
+        if not hasattr(config.fiber_assignment_order, overattr):
             # These tiles should be available from the start of the survey.
-            if not np.all(plan['available'][sel]):
+            if not np.all(plan['available'][under]):
                 raise RuntimeError('Expected all tiles available in pass {0}.'
                                    .format(passnum))
         else:
-            # Check for tiles fully covered by the previous pass.
-            overlapping = (desisurvey.utils.separation_matrix(
-                ra, dec, ra_prev, dec_prev) < 2 * tile_radius)
-            avail = np.all(~overlapping | complete[sel_prev], axis=1)
-            new_avail = avail & ~plan['available'][sel]
+            overpasses = getattr(config.fiber_assignment_order, overattr)()
+            for overpass in overpasses.split('+'):
+                if not len(overpass) == 2 and overpass[0] == 'P':
+                    raise RuntimeError(
+                        'Invalid pass in fiber_assignment_order: {0}.'
+                        .format(overpass))
+                over |= (plan['pass'] == int(overpass[1]))
+            overlapping = desisurvey.utils.separation_matrix(
+                ra[under], dec[under], ra[over], dec[over]) < 2 * tile_radius
+            avail = np.all(~overlapping | complete[over], axis=1)
+            new_avail = avail & ~plan['available'][under]
             if np.any(new_avail):
-                new_tiles = plan['tileid'][sel][new_avail]
+                new_tiles = plan['tileid'][under][new_avail]
                 log.info(
                     'New tiles available in pass {0}: {1}.'
                     .format(passnum, ','.join([str(tid) for tid in new_tiles])))
-                plan['available'][sel] = avail
-        ra_prev = ra
-        dec_prev = dec
-        sel_prev = sel
+                plan['available'][under] = avail
     return plan
