@@ -57,6 +57,7 @@ class Rules(object):
         group_ids = np.zeros(num_tiles, int)
         dec_priority = np.ones(num_tiles, float)
         group_rules = {}
+        group_max_orphans = {}
 
         for group_name in rules_dict:
             group_sel = np.ones(num_tiles, bool)
@@ -74,6 +75,7 @@ class Rules(object):
             dec_max = node.get('dec_max')
             if dec_max is not None:
                 group_sel[dec >= float(dec_max)] = False
+            max_orphans = node.get('max_orphans') or 0
             covers = node.get('covers')
             if covers is not None:
                 # Build the set of all tiles that must be covered.
@@ -115,6 +117,7 @@ class Rules(object):
                 final_group_sel |= pass_sel
                 group_ids[pass_sel] = group_id
                 group_rules[pass_name] = {'START': 0.0}
+                group_max_orphans[pass_name] = max_orphans
 
             # Some tiles may be dropped by covering requirements in this
             # or previous groups.
@@ -182,6 +185,7 @@ class Rules(object):
         self.group_ids = group_ids
         self.group_rules = group_rules
         self.dec_priority = dec_priority
+        self.group_max_orphans = group_max_orphans
 
     def apply(self, progress):
         """Apply the priority rules given the observing progress so far.
@@ -197,7 +201,11 @@ class Rules(object):
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
         for gid, name in zip(np.unique(self.group_ids), self.group_names):
-            triggered[name] = np.all(completed[self.group_ids == gid])
+            group_sel = self.group_ids == gid
+            ngroup = np.count_nonzero(group_sel)
+            ndone = np.count_nonzero(completed[group_sel])
+            max_orphans = self.group_max_orphans[name]
+            triggered[name] = (ndone + max_orphans >= ngroup)
         # Second pass through groups to apply rules.
         priorities = np.zeros(len(self.tileid))
         for gid, name in zip(np.unique(self.group_ids), self.group_names):
