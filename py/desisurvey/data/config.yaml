@@ -137,6 +137,13 @@ fallback_weights:
 # https://github.com/desihub/desimodel/pull/37#issuecomment-270788581
 tile_radius: 1.62 deg
 
+fiber_assignment_order:
+    P1: P0
+    P2: P0+P1
+    P3: P0+P1
+    P6: P5
+    P7: P5+P6
+
 #-------------------------------------------------------------------
 # Base path to pre-pended to all non-absolute paths used for writing
 # output files. The pattern {...} will be expanded using environment
