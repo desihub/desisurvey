@@ -109,9 +109,6 @@ def main(args):
         with open(config.get_path('last_date.txt'), 'r') as f:
             start = desisurvey.utils.get_date(f.read().rstrip())
 
-    # Save a backup of the progress so far.
-    progress.save('progress_{0}.fits'.format(start))
-
     num_complete, num_total, pct = progress.completed(as_tuple=True)
 
     # Already observed all tiles?
@@ -157,3 +154,5 @@ def main(args):
         # Make a symbolic link to bookmark this plan.
         bookmark_name = config.get_path('plan_{0}_bookmark.fits'.format(start))
         os.symlink(backup_name, bookmark_name)
+        # Save a backup of the progress so far.
+        progress.save('progress_{0}_bookmark.fits'.format(start))
