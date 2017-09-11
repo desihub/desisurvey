@@ -108,8 +108,9 @@ class Rules(object):
                 if covers is not None:
                     # Limit to tiles covering at least one tile in "under".
                     matrix = desisurvey.utils.separation_matrix(
-                        ra[pass_sel], dec[pass_sel], ra[under], dec[under])
-                    overlapping = np.any(matrix < 2 * tile_radius, axis=1)
+                        ra[pass_sel], dec[pass_sel], ra[under], dec[under],
+                        2 * tile_radius)
+                    overlapping = np.any(matrix, axis=1)
                     pass_sel[pass_sel] &= overlapping
                 # Remove any tiles in this pass that have already been assigned
                 # to a previously defined subgroup.
