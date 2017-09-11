@@ -15,7 +15,6 @@ from __future__ import print_function, division, absolute_import
 
 import os
 import argparse
-import cProfile
 
 import numpy as np
 

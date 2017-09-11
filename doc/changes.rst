@@ -2,7 +2,7 @@
 desisurvey change log
 =====================
 
-1.0.0 (2017-09-11)
+0.9.0 (2017-09-11)
 ------------------
 
 * Create surveyinit script to calculate initial HA assignments.
