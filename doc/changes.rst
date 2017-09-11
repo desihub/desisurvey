@@ -12,6 +12,13 @@ desisurvey change log
 * Validate a set of observing rules consistent with the baseline strategy
   described in DESI-doc-1767-v3.
 
+0.8.2 (2017-07-12)
+------------------
+
+* Fix flat vs. flatten for older versions of numpy (PR `#52`_).
+
+.. _`#52`: https://github.com/desihub/desisurvey/pull/52
+
 0.8.1 (2017-06-19)
 ------------------
 
