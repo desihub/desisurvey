@@ -2,11 +2,15 @@
 desisurvey change log
 =====================
 
-0.8.2 (unreleased)
+1.0.0 (2017-09-11)
 ------------------
 
 * Create surveyinit script to calculate initial HA assignments.
 * Improve Optimizer algorithms (~10x faster, better initialization).
+* Create surveymovie to visualize survey scheduling and progress.
+* Rework surveyplan to track fiber assignment availability.
+* Validate a set of observing rules consistent with the baseline strategy
+  described in DESI-doc-1767-v3.
 
 0.8.1 (2017-06-19)
 ------------------
