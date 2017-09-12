@@ -591,4 +591,4 @@ def separation_matrix(ra1, dec1, ra2, dec2, max_separation=None):
         threshold = np.sin(0.5 * np.deg2rad(max_separation)) ** 2
         return havPHI <= threshold
     else:
-        return np.rad2deg(np.arccos(1 - 2 * havPHI))
+        return np.rad2deg(np.arccos(np.clip(1 - 2 * havPHI, -1, +1)))
