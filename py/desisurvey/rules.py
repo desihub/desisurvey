@@ -4,6 +4,7 @@ from __future__ import print_function, division
 
 import os
 import re
+import collections
 
 import yaml
 
@@ -16,6 +17,22 @@ import astropy.units as u
 import desimodel.io
 
 import desisurvey.config
+
+
+# Loads a YAML file with dictionary key ordering preserved.
+# https://stackoverflow.com/questions/5121931/
+# in-python-how-can-you-load-yaml-mappings-as-ordereddicts/21048064#21048064
+def _ordered_load(stream, Loader=yaml.Loader,
+                  object_pairs_hook=collections.OrderedDict):
+    class OrderedLoader(Loader):
+        pass
+    def construct_mapping(loader, node):
+        loader.flatten_mapping(node)
+        return object_pairs_hook(loader.construct_pairs(node))
+    OrderedLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        construct_mapping)
+    return yaml.load(stream, OrderedLoader)
 
 
 class Rules(object):
@@ -51,7 +68,7 @@ class Rules(object):
 
         # Read the YAML file into memory.
         with open(full_path) as f:
-            rules_dict = yaml.safe_load(f)
+            rules_dict = _ordered_load(f, yaml.SafeLoader)
 
         group_names = []
         group_ids = np.zeros(num_tiles, int)
