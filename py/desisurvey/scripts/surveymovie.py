@@ -163,7 +163,7 @@ class Animator(object):
         self.avoids = []
         self.avoid_names = list(self.config.avoid_bodies.keys)
         navoids = len(self.avoid_names)
-        assert self.avoid_names[0] == 'moon'
+        self.moon_index = self.avoid_names.index('moon')
         self.xy_avoid = np.zeros((navoids, 2))
         self.f_obj = [None] * navoids
         bgcolor = matplotlib.colors.to_rgba('lightblue')
@@ -384,7 +384,8 @@ class Animator(object):
             self.xy_avoid[i] = wrap(obj_ra), obj_dec
         for scatter in self.avoids:
             scatter.set_offsets(self.xy_avoid)
-            scatter.get_facecolors()[0] = [moon_frac, moon_frac, moon_frac, 1.]
+            scatter.get_facecolors()[self.moon_index] = [
+                moon_frac, moon_frac, moon_frac, 1.]
 
 
 def main(args):

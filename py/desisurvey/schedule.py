@@ -95,7 +95,7 @@ class Scheduler(object):
 
         # Initialize calculation of moon, planet positions.
         self.avoid_names = list(config.avoid_bodies.keys)
-        assert self.avoid_names[0] == 'moon'
+        self.moon_index = self.avoid_names.index('moon')
         self.avoid_ra = np.empty(len(self.avoid_names))
         self.avoid_dec = np.empty(len(self.avoid_names))
         self.avoid_min = np.empty(len(self.avoid_names))
@@ -498,7 +498,7 @@ class Scheduler(object):
             return None
         # Calculate separation angle in degrees between the best tile
         # and the moon.
-        moon_sky = avoid_sky[0]
+        moon_sky = avoid_sky[self.moon_index]
         moon_sep = tile_sky.separation(moon_sky).to(u.deg).value
         # Calculate the moon altitude and illuminated fraction.
         moon_alt = (90 * u.deg - moon_sky.separation(zenith)).to(u.deg).value
