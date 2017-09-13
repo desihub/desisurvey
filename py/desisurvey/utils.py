@@ -332,10 +332,10 @@ def cos_zenith_to_airmass(cosZ):
     Returns
     -------
     float or array
-        Airmass value(s)
+        Airmass value(s) >= 1.
     """
     cosZ = np.clip(np.asarray(cosZ), 0., 1.)
-    return 1. / (cosZ + 0.025 * np.exp(-11 * cosZ))
+    return np.clip(1. / (cosZ + 0.025 * np.exp(-11 * cosZ)), 1., None)
 
 
 def get_airmass(when, ra, dec):
@@ -539,142 +539,56 @@ def get_date(date):
     return date
 
 
-def earthOrientation(MJD):
+def separation_matrix(ra1, dec1, ra2, dec2, max_separation=None):
+    """Build a matrix of pair-wise separation between (ra,dec) pointings.
+
+    The ra1 and dec1 arrays must have the same shape. The ra2 and dec2 arrays
+    must also have the same shape, but it can be different from the (ra1,dec1)
+    shape, resulting in a non-square return matrix.
+
+    Uses the Haversine formula for better accuracy at low separations. See
+    https://en.wikipedia.org/wiki/Haversine_formula for details.
+
+    Equivalent to using the separations() method of astropy.coordinates.ICRS,
+    but faster since it bypasses any units.
+
+    Parameters
+    ----------
+    ra1 : array
+        1D array of n1 RA coordinates in degrees (without units attached).
+    dec1 : array
+        1D array of n1 DEC coordinates in degrees (without units attached).
+    ra2 : array
+        1D array of n2 RA coordinates in degrees (without units attached).
+    dec2 : array
+        1D array of n2 DEC coordinates in degrees (without units attached).
+    max_separation : float or None
+        When present, the matrix elements are replaced with booleans given
+        by (value <= max_separation), which saves some computation.
+
+    Returns
+    -------
+    array
+        Array with shape (n1,n2) with element [i1,i2] giving the 3D separation
+        angle between (ra1[i1],dec1[i1]) and (ra2[i2],dec2[i2]) in degrees
+        or, if max_separation is not None, booleans (value <= max_separation).
     """
-    This is an approximate formula because the ser7.dat file's range
-    is not long enough for the duration of the survey.
-    All formulae are from the Naval Observatory.
-
-    Used by mjd2lst (below). Not unit tested.
-
-    Args:
-        MJD: float
-
-    Returns:
-        x: float (arcseconds)
-        y: float (arcseconds)
-        UT1-UTC: float (seconds)
-    """
-
-    T = 2000.0 + (MJD - 51544.03) / 365.2422
-    UT2_UT1 = 0.022*np.sin(2.0*np.pi*T) - 0.012*np.cos(2.0*np.pi*T) \
-            - 0.006*np.sin(4.0*np.pi*T) + 0.007*np.cos(4.0*np.pi*T)
-    A = 2.0*np.pi*(MJD-57681.0)/365.25
-    C = 2.0*np.pi*(MJD-57681.0)/435.0
-    x =  0.1042 + 0.0809*np.cos(A) - 0.0636*np.sin(A) + 0.0229*np.cos(C) - 0.0156*np.sin(C)
-    y =  0.3713 - 0.0593*np.cos(A) - 0.0798*np.sin(A) - 0.0156*np.cos(C) - 0.0229*np.sin(C)
-    UT1_UTC = -0.3259 - 0.00138*(MJD - 57689.0) - (UT2_UT1)
-    return x, y, UT1_UTC
-
-
-def mjd2lst(mjd):
-    """
-    Converts decimal MJD to LST in decimal degrees
-
-    Used in afternoonplan and nextobservation.
-    Not unit tested.
-
-    Generates astropy ErfaWarnings for times in the future.
-
-    Args:
-        mjd: float
-
-    Returns:
-        lst: float (degrees)
-    """
-
-    t = astropy.time.Time(mjd, format = 'mjd', location=get_location())
-    lst_tmp = t.copy()
-
-    #try:
-    #    lst_str = str(lst_tmp.sidereal_time('apparent'))
-    #except IndexError:
-    #    lst_tmp.delta_ut1_utc = -0.1225
-    #    lst_str = str(lst_tmp.sidereal_time('apparent'))
-
-    x, y, dut = earthOrientation(mjd)
-    lst_tmp.delta_ut1_utc = dut
-    lst_str = str(lst_tmp.sidereal_time('apparent'))
-    # 23h09m35.9586s
-    # 01234567890123
-    if lst_str[2] == 'h':
-        lst_hr = float(lst_str[0:2])
-        lst_mn = float(lst_str[3:5])
-        lst_sc = float(lst_str[6:-1])
+    ra1, ra2 = np.deg2rad(ra1), np.deg2rad(ra2)
+    dec1, dec2 = np.deg2rad(dec1), np.deg2rad(dec2)
+    if ra1.shape != dec1.shape:
+        raise ValueError('Arrays ra1, dec1 must have the same shape.')
+    if len(ra1.shape) != 1:
+        raise ValueError('Arrays ra1, dec1 must be 1D.')
+    if ra2.shape != dec2.shape:
+        raise ValueError('Arrays ra2, dec2 must have the same shape.')
+    if len(ra2.shape) != 1:
+        raise ValueError('Arrays ra2, dec2 must be 1D.')
+    havRA12 = 0.5 * (1 - np.cos(ra2 - ra1[:, np.newaxis]))
+    havDEC12 = 0.5 * (1 - np.cos(dec2 - dec1[:, np.newaxis]))
+    havPHI = havDEC12 + np.cos(dec1)[:, np.newaxis] * np.cos(dec2) * havRA12
+    if max_separation is not None:
+        # Replace n1 x n2 arccos calls with a single sin call.
+        threshold = np.sin(0.5 * np.deg2rad(max_separation)) ** 2
+        return havPHI <= threshold
     else:
-        lst_hr = float(lst_str[0:1])
-        lst_mn = float(lst_str[2:4])
-        lst_sc = float(lst_str[5:-1])
-    lst = lst_hr + lst_mn/60.0 + lst_sc/3600.0
-    lst *= 15.0 # Convert from hours to degrees
-    return lst
-
-
-def equ2gal_J2000(ra_deg, dec_deg):
-    """Input and output in degrees.
-       Matrix elements obtained from
-       https://casper.berkeley.edu/astrobaki/index.php/Coordinates
-       Used in afternoonplan (but commented out)
-    """
-    ra = np.radians(ra_deg)
-    dec = np.radians(dec_deg)
-
-    x = np.empty(3, dtype='f8')
-    x[0] = np.cos(dec) * np.cos(ra)
-    x[1] = np.cos(dec) * np.sin(ra)
-    x[2] = np.sin(dec)
-
-    M = np.array([ [-0.054876, -0.873437, -0.483835],
-                   [ 0.494109, -0.444830,  0.746982],
-                   [-0.867666, -0.198076,  0.455984] ])
-
-    y = M.dot(x)
-    b = np.arcsin(y[2])
-    l = np.arctan2(y[1], y[0])
-
-    l_deg = np.degrees(l)
-    b_deg = np.degrees(b)
-
-    if l_deg < 0.0:
-        l_deg += 360.0
-
-    return l_deg, b_deg
-
-
-def sort2arr(a, b):
-    """Sorts array a according to the values of array b
-    Used in afternoonplan.
-    """
-    if len(a) != len(b):
-        raise ValueError("error: a and b are not of the same length.")
-
-    a = np.asarray(a)
-    return a[np.argsort(b)]
-
-
-def inLSTwindow(lst, begin, end):
-    """Determines if LST is within the given window.
-       Assumes that all values are between 0 and 360.
-       Used in afternoonplan.
-    """
-    if np.isscalar(lst):
-        answer = False
-        if begin == end:
-            return False
-        elif begin < end:
-            if lst > begin and lst < end:
-                answer = True
-        else:
-            if lst > begin or lst < end:
-                answer = True
-    elif isinstance(lst, np.ndarray):
-        answer = np.zeros(len(lst), dtype=bool)
-        if begin == end:
-            return answer
-        elif begin < end:
-            answer[(lst > begin) & (lst < end)] = True
-        else:
-            answer[(lst > begin) | (lst < end)] = True
-    else:
-        print("Error[desisurvey.utils.inLSTwindow]: container not supporter")
-    return answer
+        return np.rad2deg(np.arccos(np.clip(1 - 2 * havPHI, -1, +1)))

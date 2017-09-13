@@ -7,9 +7,11 @@ command search path.
 from __future__ import print_function, division, absolute_import
 
 import argparse
-import os.path
+import os
 import datetime
 import sys
+
+import numpy as np
 
 import astropy.time
 import astropy.table
@@ -21,6 +23,8 @@ import desisurvey.schedule
 import desisurvey.plan
 import desisurvey.utils
 import desisurvey.config
+import desisurvey.rules
+import desisurvey.progress
 
 
 def parse(options=None):
@@ -35,14 +39,8 @@ def parse(options=None):
     parser.add_argument(
         '--create', action='store_true', help='create an initial plan')
     parser.add_argument(
-        '--duration', type=int, metavar='DAYS', default=None,
-        help='duration of plan in days (or plan rest of the survey)')
-    parser.add_argument(
-        '--nopts', type=int, metavar='N', default=5000,
-        help='number of hour-angle optimization iterations to perform')
-    parser.add_argument(
-        '--plots', action='store_true',
-        help='save diagnostic plots of the plan optimzation for each program')
+        '--rules', metavar='YAML', default='rules.yaml',
+        help='name of YAML file with observing priority rules')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
@@ -56,7 +54,7 @@ def parse(options=None):
 
 
 def main(args):
-    """Command-line driver for running survey simulations.
+    """Command-line driver for updating the survey plan.
     """
     # Set up the logger
     if args.debug:
@@ -75,18 +73,26 @@ def main(args):
     if args.output_path is not None:
         config.set_output_path(args.output_path)
 
-    # Tabulate emphemerides if necessary.
-    ephem = desisurvey.ephemerides.Ephemerides()
-
+    # Initialize scheduler.
     if not os.path.exists(config.get_path('scheduler.fits')):
-        # Tabulate data used the the scheduler.
+        # Load ephemerides.
+        ephem = desisurvey.ephemerides.Ephemerides()
+        # Tabulate data used by the scheduler if necessary.
         desisurvey.schedule.initialize(ephem)
     scheduler = desisurvey.schedule.Scheduler()
 
+    # Read priority rules.
+    rules = desisurvey.rules.Rules(args.rules)
+
     if args.create:
-        # Create a new plan and empty progress record.
-        plan = desisurvey.plan.create()
+        # Load initial design hour angles for each tile.
+        design = astropy.table.Table.read(config.get_path('surveyinit.fits'))
+        # Create an empty progress record.
         progress = desisurvey.progress.Progress()
+        # Initialize the observing priorities.
+        priorities = rules.apply(progress)
+        # Create the initial plan.
+        plan = desisurvey.plan.create(design['HA'], priorities)
         # Start the survey from scratch.
         start = scheduler.start_date
     else:
@@ -103,42 +109,50 @@ def main(args):
         with open(config.get_path('last_date.txt'), 'r') as f:
             start = desisurvey.utils.get_date(f.read().rstrip())
 
-    # Save a backup of the progress so far.
-    progress.save('progress_{0}.fits'.format(start))
+    num_complete, num_total, pct = progress.completed(as_tuple=True)
+
+    # Already observed all tiles?
+    if num_complete == num_total:
+        log.info('All tiles observed!')
+        # Return a shell exit code so scripts can detect this condition.
+        sys.exit(9)
 
     # Reached end of the survey?
     if start >= config.last_day():
         log.info('Reached survey end date!')
+        # Return a shell exit code so scripts can detect this condition.
         sys.exit(9)
 
-    # Calculate the end date of the plan.
-    if args.duration is not None:
-        stop = start + datetime.timedelta(days=args.duration)
-    else:
-        stop = config.last_day()
+    log.info('Planning night of {0} with {1} / {2} ({3:.1f}%) completed.'
+             .format(start, num_complete, num_total, pct))
 
-    log.info('Planning observations for {0} to {1}.'
-             .format(start, stop))
+    bookmarked = False
+    if not args.create:
 
-    # Save plots?
-    if args.plots:
-        import matplotlib
-        matplotlib.use('Agg')
-        plots = config.get_path('plan_{0}'.format(start))
-    else:
-        plots = None
+        # Update the priorities for the progress so far.
+        new_priority = rules.apply(progress)
+        changed_priority = (new_priority != plan['priority'])
+        if np.any(changed_priority):
+            changed_passes = np.unique(plan['pass'][changed_priority])
+            log.info('Priorities changed in pass(es) {0}.'
+                     .format(', '.join([str(p) for p in changed_passes])))
+            plan['priority'] = new_priority
+            bookmarked = True
 
-    # Update the plan.
-    plan = desisurvey.plan.update(
-        plan, progress, scheduler, start, stop,
-        nopts=(args.nopts,), plot_basename=plots)
+        # Identify any new tiles that are available for fiber assignment.
+        # TODO: do this monthly, during full moon, by default.
+        plan = desisurvey.plan.update_available(plan, progress)
 
-    # All done?
-    if plan is None:
-        log.info('All tiles observed!')
-        # Return a shell exit code to allow scripts to detect this condition.
-        sys.exit(9)
+        # Will update design HA assignments here...
+        pass
 
     # Save the plan and a backup.
     plan.write(config.get_path('plan.fits'), overwrite=True)
-    plan.write(config.get_path('plan_{0}.fits'.format(start)), overwrite=True)
+    backup_name = config.get_path('plan_{0}.fits'.format(start))
+    plan.write(backup_name, overwrite=True)
+    if bookmarked:
+        # Make a symbolic link to bookmark this plan.
+        bookmark_name = config.get_path('plan_{0}_bookmark.fits'.format(start))
+        os.symlink(backup_name, bookmark_name)
+        # Save a backup of the progress so far.
+        progress.save('progress_{0}_bookmark.fits'.format(start))

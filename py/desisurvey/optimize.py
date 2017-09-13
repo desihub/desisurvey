@@ -8,6 +8,7 @@ import numpy as np
 import scipy.special
 
 import astropy.table
+import astropy.coordinates
 import astropy.units as u
 
 import desiutil.log
@@ -43,10 +44,18 @@ class Optimizer(object):
     nbins : int
         Number of LST histogram bins to use when calculating the optimization
         metrics.
-    init : 'zero', 'info' or 'flat'
+    init : 'zero', 'flat' or 'array'
         Method for initializing tile hour angles: 'zero' sets all hour angles
-        to zero, 'init' reads 'tile-info.fits' and 'flat' matches the CDF of
-        available LST to planned LST (without accounting for exposure time).
+        to zero, 'flat' matches the CDF of available LST to planned LST (without
+        accounting for exposure time), 'array' initializes from the initial_ha
+        argument.
+    initial_ha : array or None
+        Only used when init is 'array'. The subset arg must also be provided
+        to specify which tile each HA applies to.
+    stretch : float
+        Factor to stretch all exposure times by.
+    smoothing_radius : astropy.units.Quantity
+        Gaussian sigma for calculating smoothing weights with angular units.
     origin : float
         Rotate DEC values in plots so that the left edge is at this value
         in degrees.
@@ -58,9 +67,6 @@ class Optimizer(object):
     seed : int or None
         Random number seed to use for stochastic elements of the optimizer.
         Do not use None if reproducible results are required.
-    oversampling : int
-        Oversampling of the LST histogram (relative to nbins) to use when
-        spreading each planned observation over its estimated exposure time.
     weights : array
         Array of relative weights to use when selecting which LST bin to
         optimize next.  Candidate bins are ordered by an estimated improvement.
@@ -69,8 +75,9 @@ class Optimizer(object):
         relative weight. The next bin to optimize is then selected at random.
     """
     def __init__(self, sched, program, subset=None, start=None, stop=None,
-                 nbins=90, init='info', origin=-60, center=220, seed=123,
-                 oversampling=32, weights=[5, 4, 3, 2, 1]):
+                 nbins=192, init='info', initial_ha=None, stretch=1.0,
+                 smoothing_radius=10 * u.deg,
+                 origin=-60, center=None, seed=123, weights=[5, 4, 3, 2, 1]):
 
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
@@ -104,13 +111,18 @@ class Optimizer(object):
         dt = sched.step_size.to(u.hour).value
         wgt = dt * np.ones((sched.num_nights, sched.num_times))
         # Weight nights for weather availability.
-        lst = wrap(e['lst'][sel.flatten()], origin)
+        sel_flat = sel.flatten()
+        lst = wrap(e['lst'][sel_flat], origin)
         wgt *= sched.calendar['weather'][:, np.newaxis]
         wgt = wgt[sel].flatten()
         self.lst_hist, self.lst_edges = np.histogram(
             lst, bins=nbins, range=(origin, origin + 360), weights=wgt)
         self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
         self.nbins = nbins
+        self.origin = origin
+        self.stretch = stretch
+        self.lst_hist_sum = self.lst_hist.sum()
+        self.binsize = 360. / self.nbins
 
         # Get nominal exposure time for this program,
         # converted to LST equivalent in degrees.
@@ -121,10 +133,13 @@ class Optimizer(object):
         p_tiles = sched.tiles[sched.tiles['program'] == p_index]
         # Restrict to a subset of tiles in this program, if requested.
         if subset is not None:
+            subset = np.asarray(subset)
             idx = np.searchsorted(p_tiles['tileid'], subset)
             if not np.all(p_tiles['tileid'][idx] == subset):
+                bad = set(subset) - set(p_tiles['tileid'])
                 raise ValueError(
-                    'Invalid subset for {0} program.'.format(program))
+                    'Subset contains non-{0} tiles: {1}.'
+                    .format(program, ','.join([str(n) for n in bad])))
             p_tiles = p_tiles[idx]
 
         self.ra = wrap(p_tiles['ra'].data, origin)
@@ -148,89 +163,105 @@ class Optimizer(object):
         # Calculate static dust exposure factors for each tile.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(p_tiles['EBV'])
 
+        # Initialize smoothing weights.
+        self.init_smoothing(smoothing_radius)
+
         self.log.info(
-            '{0} program: {1:.1f}h to observe {2} tiles (texp_nom {3:.1f}).'
-            .format(program, self.lst_hist.sum(), len(p_tiles), texp_nom))
+            '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}, stretch {4:.3f}).'
+            .format(program, self.lst_hist_sum, self.ntiles, texp_nom, stretch))
 
         # Precompute coefficients for exposure time calculations.
         latitude = np.radians(config.location.latitude())
         self.A = np.sin(np.radians(self.dec)) * np.sin(latitude)
         self.B = np.cos(np.radians(self.dec)) * np.cos(latitude)
 
-        # Initialize oversampled schedule planning calculations.
-        lst_edges_os = np.linspace(
-            origin, origin + 360, self.nbins * oversampling + 1)
-        self.lst_centers_os = 0.5 * (lst_edges_os[1:] + lst_edges_os[:-1])
-        self.oversampling = oversampling
+        # Initialize metric histories.
         self.scale_history = []
-        self.MSE_history = []
+        self.loss_history = []
+        self.RMSE_history = []
 
         # Initialize improve() counters.
         self.nslow = 0
-        self.nstuck = 0
         self.nimprove = 0
+        self.nsmooth = 0
+
+        # Calculate schedule plan with HA=0 asignments to establish
+        # the smallest possible total exposure time.
+        self.plan_tiles = self.get_plan(np.zeros(self.ntiles))
+        self.use_plan(save_history=False)
+        self.min_total_time = self.plan_hist.sum()
 
         # Initialize HA assignments for each tile.
         if init == 'zero':
             self.ha = np.zeros(self.ntiles)
-        elif init == 'info':
-            info = astropy.table.Table.read(
-                pkg_resources.resource_filename(
-                    'desisurvey', 'data/tile-info.fits'), hdu=1)
-            # Lookup each tile ID.
-            assert np.all(np.diff(info['TILEID']) > 0)
-            idx = np.searchsorted(info['TILEID'], self.tid)
-            assert np.all(info['TILEID'][idx] == self.tid)
-            self.ha = info['HA'][idx]
-            ha_clipped = np.clip(self.ha, -self.max_abs_ha, +self.max_abs_ha)
-            if not np.all(self.ha == ha_clipped):
-                self.log.warn('Clipping info HA assignments to airmass limits.')
-                self.ha = ha_clipped
+        elif init == 'array':
+            if subset is None:
+                raise ValueError('Must specify subset when init is "array".')
+            if len(initial_ha) != self.ntiles:
+                raise ValueError('Array initial_ha has wrong length.')
+            self.ha = np.asarray(initial_ha)
         elif init == 'flat':
             if center is None:
-                centers = np.arange(0, 360, 5)
+                centers = np.arange(-180, 180, 5)
             else:
                 centers = [center]
-            MSE_min = np.inf
+            min_score = np.inf
+            scores = []
             for center in centers:
-                # Histogram LST values relative to the specified center.
-                lst = wrap(e['lst'][sel.flatten()], center)
+                # Histogram available LST relative to the specified center.
+                lst = wrap(e['lst'][sel_flat], center)
                 hist, edges = np.histogram(
                     lst, bins=nbins, range=(center, center + 360), weights=wgt)
+                # Calculate the CDF of available LST.
                 lst_cdf = np.zeros_like(edges)
                 lst_cdf[1:] = np.cumsum(hist)
                 lst_cdf /= lst_cdf[-1]
-                idx = np.argsort(np.argsort(wrap(self.ra, center)))
-                tile_cdf = (0.5 + idx) / self.ntiles
-                ra = wrap(p_tiles['ra'].data, center)
-                tile_lst = np.interp(tile_cdf, lst_cdf, edges)
-                ha = np.fmod(tile_lst - ra, 360)
+                # Calculate the CDF of planned LST usage relative to the same
+                # central LST, assuming HA=0. Instead of spreading each exposure
+                # over multiple LST bins, add its entire HA=0 exposure time at
+                # LST=RA.
+                exptime, _ = self.get_exptime(ha=np.zeros(self.ntiles))
+                tile_ra = wrap(p_tiles['ra'].data, center)
+                sort_idx = np.argsort(tile_ra)
+                tile_cdf = np.cumsum(exptime[sort_idx])
+                tile_cdf /= tile_cdf[-1]
+                # Use linear interpolation to find an LST for each tile that
+                # matches the plan CDF to the available LST CDF.
+                new_lst = np.interp(tile_cdf, lst_cdf, edges)
+                # Calculate each tile's HA as the difference between its HA=0
+                # LST and its new LST after CDF matching.
+                ha = np.empty(self.ntiles)
+                ha[sort_idx] = np.fmod(new_lst - tile_ra[sort_idx], 360)
                 # Clip tiles to their airmass limits.
                 ha = np.clip(ha, -self.max_abs_ha, +self.max_abs_ha)
-                self.plan_tiles_os = self.get_plan(ha)
-                self.use_plan()
-                if  self.MSE_history[-1] < MSE_min:
+                # Calculate the score for this HA assignment.
+                self.plan_tiles = self.get_plan(ha)
+                self.use_plan(save_history=False)
+                scores.append(self.eval_score(self.plan_hist))
+                # Keep track of the best score found so far.
+                if scores[-1] < min_score:
                     self.ha = ha.copy()
-                    MSE_min = self.MSE_history[-1]
+                    min_score = scores[-1]
                     center_best = center
-            if len(centers) > 1:
-                import matplotlib.pyplot as plt
-                plt.plot(centers, self.scale_history, 'r-')
-                plt.xlabel('Central RA [deg]')
-                plt.ylabel('Efficiency')
-                plt.axvline(center_best)
-                rhs = plt.twinx()
-                rhs.plot(centers, self.MSE_history, 'bx')
-                rhs.set_ylabel('MSE')
-                plt.xlim(0, 360)
-                plt.show()
-            self.scale_history = []
-            self.MSE_history = []
+            self.log.info(
+                'Center flat initial HA assignments at LST {:.0f} deg.'
+                .format(center_best))
         else:
             raise ValueError('Invalid init option: {0}.'.format(init))
 
+        # Check initial HA assignments against airmass limits.
+        ha_clipped = np.clip(self.ha, -self.max_abs_ha, +self.max_abs_ha)
+        if not np.all(self.ha == ha_clipped):
+            delta = np.abs(self.ha - ha_clipped)
+            idx = np.argmax(delta)
+            self.log.warn('Clipped {0} HA assignments to airmass limits.'
+                          .format(np.count_nonzero(delta)))
+            self.log.warn('Max clip is {0:.1f} deg for tile {1}.'
+                          .format(delta[idx], self.tid[idx]))
+            self.ha = ha_clipped
+
         # Calculate schedule plan with initial HA asignments.
-        self.plan_tiles_os = self.get_plan(self.ha)
+        self.plan_tiles = self.get_plan(self.ha)
         self.use_plan()
         self.ha_initial = self.ha.copy()
         self.num_adjustments = np.zeros(self.ntiles, int)
@@ -264,13 +295,11 @@ class Optimizer(object):
         cosZ = self.A[subset] + self.B[subset] * np.cos(np.radians(ha))
         X = desisurvey.utils.cos_zenith_to_airmass(cosZ)
         exptime = (self.dlst_nom * desisurvey.etc.airmass_exposure_factor(X) *
-                   self.dust_factor[subset])
+                   self.dust_factor[subset]) * self.stretch
         return exptime, subset
 
     def get_plan(self, ha, subset=None):
         """Calculate an LST usage plan for specified hour angle assignments.
-
-        The plan is calculated on the oversampled LST grid.
 
         Parameters
         ----------
@@ -284,25 +313,52 @@ class Optimizer(object):
         Returns
         -------
         array
-            Array of shape (ntiles, nbins * oversampling) giving the exposure time in hours that each tile needs in each oversampled LST bin.
-            When a subset is specified, ntiles only indexes tiles in the subset.
+            Array of shape (ntiles, nbins) giving the exposure time in hours
+            that each tile needs in each LST bin. When a subset is specified,
+            ntiles only indexes tiles in the subset.
         """
         exptime, subset = self.get_exptime(ha, subset)
         # Calculate LST windows for each tile's exposure.
         lst_mid = self.ra[subset] + ha
-        lst_min = lst_mid - 0.5 * exptime
-        lst_max = lst_mid + 0.5 * exptime
-        # Sample each tile's exposure on the oversampled LST grid.
-        dlo = np.fmod(
-            self.lst_centers_os - lst_min[:, np.newaxis] + 540, 360) - 180
-        dhi = np.fmod(
-            self.lst_centers_os - lst_max[:, np.newaxis] + 540, 360) - 180
-        # Normalize to hours per LST bin. Factor of 2 sharpens the erf() edges.
-        return 24. / self.nbins * np.maximum(
-            0, 0.5 * (scipy.special.erf(2.0 * dlo) -
-                      scipy.special.erf(2.0 * dhi)))
+        lst_min = np.fmod(
+            lst_mid - 0.5 * exptime - self.origin + 360, 360) + self.origin
+        ##assert np.all(lst_min >= self.origin)
+        ##assert np.all(lst_min < self.origin + 360)
+        lst_max = np.fmod(
+            lst_mid + 0.5 * exptime - self.origin + 360, 360) + self.origin
+        ##assert np.all(lst_max >= self.origin)
+        ##assert np.all(lst_max < self.origin + 360)
+        # Calculate each exposure's overlap with each LST bin.
+        lo = np.clip(
+            self.lst_edges[1:] - lst_min[:, np.newaxis], 0, self.binsize)
+        hi = np.clip(
+            lst_max[:, np.newaxis] - self.lst_edges[:-1], 0, self.binsize)
+        plan = lo + hi
+        plan[lst_max > lst_min] -= self.binsize
+        ##assert np.allclose(plan.sum(axis=1), exptime)
+        # Convert from degrees to hours.
+        return plan * 24. / 360.
 
-    def eval_MSE(self, plan_hist):
+    def eval_score(self, plan_hist):
+        """Evaluate the score that improve() tries to minimize.
+
+        Score is calculated as 100 * RMSE + 100 * loss.
+
+        Parameters
+        ----------
+        plan_hist : array
+            Histogram of planned LST usage for all tiles.
+
+        Returns
+        -------
+        float
+            Score value.
+        """
+        return (
+            100 * self.eval_RMSE(plan_hist) +
+            100 * self.eval_loss(plan_hist))
+
+    def eval_RMSE(self, plan_hist):
         """Evaluate the mean-squared error metric for the specified plan.
 
         This is the metric that :meth:`optimize` attempts to improve. It
@@ -312,6 +368,9 @@ class Optimizer(object):
 
         The histogram of available LST is rescaled to the same total time (area)
         before calculating residuals relative to the planned LST usage.
+
+        RMSE values are scaled by (10K / ntiles) so the absolute metric value
+        is more consistent when ntiles is varied.
 
         Parameters
         ----------
@@ -324,8 +383,28 @@ class Optimizer(object):
             Mean squared error value.
         """
         # Rescale the available LST total time to the plan total time.
-        scale = plan_hist.sum() / self.lst_hist.sum()
-        return np.sum((plan_hist - scale * self.lst_hist) ** 2)
+        plan_sum = plan_hist.sum()
+        scale = plan_sum / self.lst_hist_sum
+        residuals = plan_hist - scale * self.lst_hist
+        return np.sqrt(residuals.dot(residuals) * self.nbins) / plan_sum
+
+    def eval_loss(self, plan_hist):
+        """Evaluate relative loss of current plan relative to HA=0 plan.
+
+        Calculated as (T-T0)/T0 where T is the total exposure time of the
+        current plan and T0 is the total exposure time of an HA=0 plan.
+
+        Parameters
+        ----------
+        plan_hist : array
+            Histogram of planned LST usage for all tiles.
+
+        Returns
+        -------
+        float
+            Loss factor.
+        """
+        return plan_hist.sum() / self.min_total_time - 1.0
 
     def eval_scale(self, plan_hist):
         """Evaluate the efficiency of the specified plan.
@@ -335,7 +414,7 @@ class Optimizer(object):
         available LST histogram.  This value can be intepreted as the fraction
         of the available time required to complete all tiles.
 
-        This metric is only loosely correlated with the MSE metric, so provides
+        This metric is only loosely correlated with the RMSE metric, so provides
         a useful independent check that the optimization is producing the
         desired results.
 
@@ -357,28 +436,23 @@ class Optimizer(object):
         nonzero = self.lst_hist > 0
         return (plan_hist[nonzero] / self.lst_hist[nonzero]).max()
 
-    def use_plan(self):
-        """Use the current oversampled plan and update internal arrays.
+    def use_plan(self, save_history=True):
+        """Use the current plan and update internal arrays.
 
-        Calculates the downsampled `plan_tiles` and `plan_hist` arrays from
-        the oversampled per-tile `plan_tiles_os` array, and records the
-        current values of the MSE and scale metrics.
+        Calculates the `plan_hist` arrays from the per-tile `plan_tiles` array,
+        and records the current values of the RMSE and scale metrics.
         """
-        # Downsample the high resolution plan to the LST bins.
-        self.plan_tiles = self.plan_tiles_os.reshape(
-            self.ntiles, self.nbins, self.oversampling).mean(axis=-1)
-        # Sum over tiles at low resolution.
         self.plan_hist = self.plan_tiles.sum(axis=0)
-        # Calculate the amount that the nominal LST budget needs to be rescaled
-        # to accomodate this plan.
-        self.scale_history.append(self.eval_scale(self.plan_hist))
-        self.MSE_history.append(self.eval_MSE(self.plan_hist))
+        if save_history:
+            self.scale_history.append(self.eval_scale(self.plan_hist))
+            self.loss_history.append(self.eval_loss(self.plan_hist))
+            self.RMSE_history.append(self.eval_RMSE(self.plan_hist))
 
     def next_bin(self):
         """Select which LST bin to adjust next.
 
         The algorithm determines which bin of the planned LST usage histogram
-        should be decreased in order to maximize the decrease of the MSE metric,
+        should be decreased in order to maximize the decrease of the score,
         assuming that the decrease is moved to one of the neighboring bins.
 
         Since each tile's contribution to the plan can, in general, span several
@@ -398,7 +472,7 @@ class Optimizer(object):
             dha_sign gives the sign +/-1 of the HA adjustment required.
         """
         # Rescale the available LST total time to the current plan total time.
-        A = self.lst_hist * self.plan_hist.sum() / self.lst_hist.sum()
+        A = self.lst_hist * self.plan_hist.sum() / self.lst_hist_sum
         # Calculate residuals in each LST bin.
         P = self.plan_hist
         res = P - A
@@ -410,14 +484,14 @@ class Optimizer(object):
         empty = (P == 0)
         dres[empty & (dres < 0)] = 0.
         dres[empty[adjacent] & (dres > 0)] = 0.
-        # Select the movements that reduce the MSE between A and P by
+        # Select the movements that reduce the RMSE between A and P by
         # the largest amounts.
         order = np.argsort(np.abs(dres))[::-1][:len(self.cum_weights)]
         # Randomly select one of these moments, according to our weights.
         which = np.searchsorted(self.cum_weights, self.gen.uniform())
         idx = order[which]
         if dres[idx] == 0:
-            raise RuntimeError('Cannot improve MSE.')
+            raise RuntimeError('Cannot improve RMSE.')
         elif dres[idx] > 0:
             idx = adjacent[idx]
             dha_sign = -1
@@ -442,8 +516,8 @@ class Optimizer(object):
         # noise but also makes it possible to get out of dead ends.
         frac = np.minimum(2., self.gen.rayleigh(
             scale=np.sqrt(2 / np.pi) * frac))
-        # Calculate the initial MSE.
-        initial_MSE = self.eval_MSE(self.plan_hist)
+        # Calculate the initial score.
+        initial_score = self.eval_score(self.plan_hist)
         # Try a fast method first, then fall back to a slower method.
         for method in 'next_bin', 'any_bin':
             if method == 'next_bin':
@@ -481,37 +555,68 @@ class Optimizer(object):
                 nsel = np.count_nonzero(sel)
             subset = np.where(sel)[0]
             # Calculate how the plan changes by moving each selected tile.
-            scenario_os = self.get_plan(self.ha[subset] + dha, subset)
-            scenario = scenario_os.reshape(
-                nsel, self.nbins, self.oversampling).mean(axis=-1)
-            new_MSE = np.zeros(nsel)
+            scenario = self.get_plan(self.ha[subset] + dha, subset)
+            new_score = np.zeros(nsel)
             for i, itile in enumerate(subset):
                 # Calculate the (downsampled) plan when this tile is moved.
                 new_plan_hist = (
                     self.plan_hist - self.plan_tiles[itile] + scenario[i])
-                new_MSE[i]= self.eval_MSE(new_plan_hist)
-            i = np.argmin(new_MSE)
-            if new_MSE[i] > initial_MSE:
-                # All candidate adjustments give a worse MSE.
+                new_score[i]= self.eval_score(new_plan_hist)
+            i = np.argmin(new_score)
+            if new_score[i] > initial_score:
+                # All candidate adjustments give a worse score.
                 continue
-            # Accept the tile that gives the smallest MSE.
+            # Accept the tile that gives the smallest score.
             itile = subset[i]
             self.num_adjustments[itile] += 1
-            self.log.debug(
-                'Moving tile {0} in bin {1} by dHA = {2:.3f}h'
-                .format(self.tid[itile], ibin, dha))
             # Update the plan.
             self.ha[itile] = self.ha[itile] + dha
             assert np.abs(self.ha[itile]) < self.max_abs_ha[itile]
-            self.plan_tiles_os[itile] = scenario_os[i]
+            self.plan_tiles[itile] = scenario[i]
             # No need to try additional methods.
             break
         self.use_plan()
-        if self.MSE_history[-1] >= initial_MSE:
-            self.nstuck += 1
         self.nimprove += 1
 
-    def plot(self, save=None):
+    def init_smoothing(self, radius):
+        """Calculate and save smoothing weights.
+
+        Weights for each pair of tiles [i,j] are calculated as::
+
+            wgt[i,j] = exp(-0.5 * (sep[i,j]/radius) ** 2)
+
+        where sep[i,j] is the separation angle between the tile centers.
+
+        Parameters
+        ----------
+        radius : astropy.units.Quantity
+            Gaussian sigma for calculating weights with angular units.
+        """
+        separations = desisurvey.utils.separation_matrix(
+            self.ra, self.dec, self.ra, self.dec)
+        ratio = separations / radius.to(u.deg).value
+        self.smoothing_weights = np.exp(-0.5 * ratio ** 2)
+        # Set self weight to zero.
+        self_weights = np.diag(self.smoothing_weights)
+        assert np.allclose(self_weights, 1.)
+        self.smoothing_weights -= np.diag(self_weights)
+        self.smoothing_sums = self.smoothing_weights.sum(axis=1)
+
+    def smooth(self, alpha=0.1):
+        """Smooth the current HA assignments.
+
+        Each HA is replaced with a smoothed value::
+
+            (1-alpha) * HA + alpha * HA[avg]
+
+        where HA[avg] is the weighted average of all other tile HA assignments.
+        """
+        avg_ha = self.smoothing_weights.dot(self.ha) / self.smoothing_sums
+        self.ha = (1 - alpha) * self.ha + alpha * avg_ha
+        self.plan_tiles = self.get_plan(self.ha)
+        self.use_plan()
+
+    def plot(self, save=None, relative=True):
         """Plot the current optimzation status.
 
         Requires that matplotlib is installed.
@@ -531,13 +636,10 @@ class Optimizer(object):
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
                  weights=self.plan_hist, histtype='stepfilled',
                  fc=(0.7,0.7,1), ec='b')
-        MSE_scale = self.plan_hist.sum() / self.lst_hist.sum()
+        RMSE_scale = self.plan_hist.sum() / self.lst_hist_sum
         ax[0].hist(self.lst_centers, bins=self.lst_edges,
-                 weights=self.lst_hist * MSE_scale, histtype='step',
+                 weights=self.lst_hist * RMSE_scale, histtype='step',
                  fc=(1,0,0,0.25), ec='r', ls='--')
-        # Superimpose the high-resolution plan.
-        plan_os = self.plan_tiles_os.sum(axis=0)
-        ax[0].plot(self.lst_centers_os, plan_os, 'b-', alpha=0.5, lw=1)
 
         nbins = len(self.lst_centers)
         idx, dha = self.next_bin()
@@ -550,22 +652,28 @@ class Optimizer(object):
         ax[0].set_xlabel('Local Sidereal Time [deg]')
         ax[0].set_ylabel('Hours / LST Bin')
 
-        ax[1].plot(self.MSE_history, 'r.', ms=10, label='MSE')
+        ax[1].plot(self.RMSE_history, 'r.', ms=10, label='RMSE')
         ax[1].legend(loc='lower left', numpoints=1)
         rhs = ax[1].twinx()
         rhs.plot(self.scale_history, 'kx', ms=5, label='Scale')
+        #rhs.plot(self.loss_history, 'g+', ms=5, label='Loss')
         rhs.legend(loc='upper right', numpoints=1)
-        ax[1].set_xlim(-0.1, len(self.MSE_history) - 0.9)
+        ax[1].set_xlim(-0.1, len(self.RMSE_history) - 0.9)
         ax[1].set_xlabel('Iterations')
 
         ax[2].hist(self.ha, bins=50, histtype='stepfilled')
         ax[2].set_xlabel('Tile Design Hour Angle [deg]')
 
-        s = ax[3].scatter(self.ra, self.dec, c=self.ha - self.ha_initial,
-                          s=12, lw=0, cmap='jet')
+        if relative:
+            c = self.ha - self.ha_initial
+            clabel = 'Tile Hour Angle Adjustments [deg]'
+        else:
+            c = self.ha
+            clabel = 'Tile Hour Angle [deg]'
+        s = ax[3].scatter(self.ra, self.dec, c=c, s=12, lw=0, cmap='jet')
         ax[3].set_xlim(self.lst_edges[0] - 5, self.lst_edges[-1] + 5)
         ax[3].set_xticks([])
-        ax[3].set_xlabel('Tile Hour Angle Adjustments [deg]')
+        ax[3].set_xlabel(clabel)
         ax[3].set_ylim(-20, 80)
         ax[3].set_yticks([])
         cbar = plt.colorbar(s, ax=ax[3], orientation='vertical',

@@ -17,6 +17,7 @@ import desiutil.log
 import desisurvey.config
 import desisurvey.utils
 import desisurvey.etc
+import desisurvey.ephemerides
 
 
 class Scheduler(object):
@@ -32,9 +33,9 @@ class Scheduler(object):
 
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
-        output_file = config.get_path(name)
+        input_file = config.get_path(name)
 
-        hdus = astropy.io.fits.open(output_file)
+        hdus = astropy.io.fits.open(input_file)
         header = hdus[0].header
         self.start_date = desisurvey.utils.get_date(header['START'])
         self.stop_date = desisurvey.utils.get_date(header['STOP'])
@@ -44,18 +45,18 @@ class Scheduler(object):
         self.npix = 12 * self.nside ** 2
         self.pix_area = 360. ** 2 / np.pi / self.npix * u.deg ** 2
 
-        self.tiles = astropy.table.Table.read(output_file, hdu='TILES')
+        self.tiles = astropy.table.Table.read(input_file, hdu='TILES')
         self.tile_coords = astropy.coordinates.ICRS(
             ra=self.tiles['ra'] * u.deg, dec=self.tiles['dec'] * u.deg)
 
-        self.calendar = astropy.table.Table.read(output_file, hdu='CALENDAR')
-        self.etable = astropy.table.Table.read(output_file, hdu='EPHEM')
+        self.calendar = astropy.table.Table.read(input_file, hdu='CALENDAR')
+        self.etable = astropy.table.Table.read(input_file, hdu='EPHEM')
 
         self.t_edges = hdus['GRID'].data
         self.t_centers = 0.5 * (self.t_edges[1:] + self.t_edges[:-1])
         self.num_times = len(self.t_centers)
 
-        static = astropy.table.Table.read(output_file, hdu='STATIC')
+        static = astropy.table.Table.read(input_file, hdu='STATIC')
         self.footprint_pixels = static['pixel'].data
         self.footprint = np.zeros(self.npix, bool)
         self.footprint[self.footprint_pixels] = True
@@ -68,13 +69,14 @@ class Scheduler(object):
         assert self.fexp.shape == (
             self.num_nights * self.num_times, len(self.footprint_pixels))
 
-        # Load fallback weights into a (3,3) matrix with row, column
-        # indices 0=DARK, 1=GRAY, 2=BRIGHT. The row index specifies the
-        # current nominal program, and the column index specifies the
-        # alternate fall back program.  Weights are relative to 1 for
-        # staying within the nominal program.
+        # Load fallback weights into a (4,3) matrix with row, column
+        # indices 0=DARK, 1=GRAY, 2=BRIGHT, 3=DAYTIME. The row index specifies
+        # the current program based on the observing time, and the column index
+        # specifies the alternate fall back program.  Weights are relative to 1
+        # for staying within the nominal program.
         fb = config.fallback_weights
-        self.fallback_weights = np.identity(3)
+        self.fallback_weights = np.zeros((4, 3))
+        self.fallback_weights[:3] = np.identity(3)
         self.fallback_weights[0, 1] = fb.gray_in_dark()
         self.fallback_weights[0, 2] = fb.bright_in_dark()
         self.fallback_weights[1, 0] = fb.dark_in_gray()
@@ -90,6 +92,17 @@ class Scheduler(object):
             sel = self.tiles['program'] == i + 1
             self.tnom[sel] = getattr(
                 config.nominal_exposure_time, program)().to(u.s).value
+
+        # Initialize calculation of moon, planet positions.
+        self.avoid_names = list(config.avoid_bodies.keys)
+        self.moon_index = self.avoid_names.index('moon')
+        self.avoid_ra = np.empty(len(self.avoid_names))
+        self.avoid_dec = np.empty(len(self.avoid_names))
+        self.avoid_min = np.empty(len(self.avoid_names))
+        for i, name in enumerate(self.avoid_names):
+            self.avoid_min[i] = getattr(
+                config.avoid_bodies, name)().to(u.deg).value
+        self.last_date = None
 
     def index_of_time(self, when):
         """Calculate the temporal bin index of the specified time.
@@ -232,6 +245,12 @@ class Scheduler(object):
         # Estimate the required exposure time.
         texp[mask] = tnom[mask] / eff[mask]
 
+        # Clip to the maximum exposure time.
+        tmax = config.max_exposure_length().to(u.s).value
+        too_long = texp > tmax
+        texp[too_long] = 0.
+        mask = mask & ~too_long
+
         # Determine the previous pointing if we need to include slew time
         # in the overhead calcluations.
         if progress.last_tile is None:
@@ -277,7 +296,7 @@ class Scheduler(object):
 
         return ieff, toh_initial, t_midpt, previous
 
-    def hourangle_score(self, when, tmid, design_HA, sigma=7.5):
+    def hourangle_score(self, when, tmid, design_HA, sigma=15.0):
         """
         """
         # Get the current apparent local sidereal time.
@@ -334,71 +353,16 @@ class Scheduler(object):
         ratio = self.fexp[ij] / fexp_max
         return ratio
 
-    def plot_scores(self, when, cutoff, score, mask, ephem, prev, offset=-60):
-        """
-        """
-        # Get the current apparent local sidereal time.
-        when.location = desisurvey.utils.get_location()
-        LST = when.sidereal_time('apparent').to(u.deg).value
-        LSTmax = LST + 360 * (cutoff - when).to(u.day).value
-        ra0 = np.fmod(LST - offset + 360, 360) + offset
-        ra0max = np.fmod(LSTmax - offset + 360, 360) + offset
-        if ephem['moon_alt'] > 0:
-            moon_ra = np.fmod(ephem['moon_ra'] - offset + 360, 360) + offset
-            moon_dec = ephem['moon_dec']
-            moon_size = 10 + 90 * ephem['moon_frac']
-        else:
-            moon_size = 0
-        if prev is not None:
-            prev_ra = np.fmod(
-                prev.ra.to(u.deg).value - offset + 360, 360) + offset
-            prev_dec = prev.dec.to(u.deg).value
-        best = np.argmax(score)
-        best_ra = np.fmod(self.tiles['ra'][best] - offset + 360, 360) + offset
-        best_dec = self.tiles['dec'][best]
-
-        import matplotlib.pyplot as plt
-        fig, axes = plt.subplots(
-            3, 1, figsize=(7, 10), sharex=True, sharey=True)
-        axes[0].set_xlim(-60, 300)
-        axes[0].set_ylim(-20, 80)
-        axes[0].set_xticks([])
-        axes[0].set_yticks([])
-        plt.subplots_adjust(left=0.01, right=0.99, bottom=0.01, top=0.99,
-                            wspace=0.01, hspace=0.01)
-        vmax = max(0.1, np.max(score))
-        for i in range(3):
-            ax = axes[i]
-            psel = mask & (self.tiles['program'] == i+1)
-            ra = np.fmod(self.tiles['ra'][psel] - offset + 360, 360) + offset
-            dec = self.tiles['dec'][psel]
-            s = ax.scatter(ra, dec, c=score[psel], s=15,
-                           vmin=0., vmax=vmax, cmap='viridis', lw=0)
-            ax.axvline(ra0, color='k', ls='-', lw=4, alpha=0.25)
-            ax.axvline(ra0max, color='r', ls='-', lw=1)
-            if moon_size > 0:
-                ax.scatter(moon_ra, moon_dec, s=moon_size,
-                           marker='s', facecolors='none', edgecolors='r')
-            if prev is not None:
-                ax.scatter(prev_ra, prev_dec,
-                           marker='+', color='r', lw=3, s=150, alpha=0.5)
-            if psel[best]:
-                ax.scatter(best_ra, best_dec, facecolors='none',
-                           edgecolors='r', lw=1, s=150, alpha=0.5)
-        plt.colorbar(s, ax=axes[2], orientation='horizontal',
-                     fraction=0.10, aspect=40, pad=0.01)
-        plt.show()
-
-    def next_tile(self, when, cutoff, seeing, transparency, progress,
-                  strategy, plan, plot=False):
+    def next_tile(self, when, ephem, seeing, transparency, progress,
+                  strategy, plan):
         """Return the next tile to observe.
 
         Parameters
         ----------
         when : astropy.time.Time
             Time at which the next tile decision is being made.
-        cutoff : astropy.time.Time
-            Time by which observing must stop tonight.
+        ephem : desisurvey.ephemerides.Ephemerides
+            Tabulated ephemerides data to use.
         seeing : float or array
             FWHM seeing value in arcseconds.
         transparency : float or array
@@ -410,9 +374,6 @@ class Scheduler(object):
             Strategy to use for scheduling tiles during each night.
         plan : astropy.table.Table
             Table that specifies active tiles and design hour angles.
-        plot : bool
-            Display a diagnostic plot, which requires that matplotlib is
-            installed. Not intended for production use.
 
         Returns
         -------
@@ -424,49 +385,87 @@ class Scheduler(object):
             units) before the shutter can be opened due to slewing and reading
             out any previous exposure.
         """
+        self.log.debug('when={0}, seeing={1:.1f}", transp={2:.3f}'
+                       .format(when.datetime, seeing, transparency))
         config = desisurvey.config.Configuration()
         # Look up the night number for this time.
-        night = desisurvey.utils.get_date(when)
-        i = (night - self.start_date).days
+        date = desisurvey.utils.get_date(when)
+        i = (date - self.start_date).days
         if i < 0 or i >= self.num_nights:
             raise ValueError('Time out of range: {0} - {1}.'
                              .format(self.start_date, self.stop_date))
-        # Lookup the current ephemerides.
-        dt = when.mjd - desisurvey.utils.local_noon_on_date(night).mjd - 0.5
-        ij0 = (i * self.num_times + np.digitize(dt, self.t_edges) - 1)
-        ephem0 = self.etable[ij0]
+        # Lookup the ephemerides for this night.
+        night = ephem.get_night(when)
+        cutoff = astropy.time.Time(night['brightdawn'], format='mjd')
         # Only schedule active tiles.
-        mask = plan['active']
+        mask = (plan['priority'] > 0) & plan['available']
         # Do not re-schedule tiles that have reached their min SNR**2 fraction.
-        snr2frac = progress._table['snr2frac'].data.sum(axis=1)
-        mask = mask & (snr2frac < config.min_snr2_fraction())
+        mask = mask & (progress._table['status'] < 2)
         if not np.any(mask):
             self.log.warn('No active tiles at {0}.'.format(when.datetime))
             return None
         # Calculate instantaneous efficiencies, initial overhead times,
         # and estimated exposure midpoints.
+        snr2frac = progress._table['snr2frac'].data.sum(axis=1)
         ieff, toh, tmid, prev = self.instantaneous_efficiency(
             when, cutoff, seeing, transparency, progress, snr2frac, mask)
-        # Lookup the temporal bin index that each tile's estimated exposure
-        # midpoint lands in.
-        dt = when.mjd - desisurvey.utils.local_noon_on_date(night).mjd - 0.5
-        ij = (i * self.num_times +
-              np.digitize(dt + tmid[mask] / 86400., self.t_edges) - 1)
-        # Lookup the program during each tile's estimated exposure midpoint:
-        # 1 = DARK, 2 = GRAY, 3 = BRIGHT.
-        obs_program = self.etable['program'][ij]
-        # Program might be zero at begin/end of night: set this to BRIGHT.
-        obs_program[obs_program == 0] = 3
+        # Do not schedule tiles that are not observable (below the horizon
+        # or requiring an exposure that extends beyond dawn).
+        mask &= (ieff > 0)
+        if not np.any(mask):
+            self.log.warn('No observable tiles at {0}.'.format(when.datetime))
+            return None
+        # Lookup positions of the moon and planets at the current time.
+        # We assume they don't move enough during the exposure to matter
+        # for scheduling.
+        if date != self.last_date:
+            self.f_obj = []
+            for i, name in enumerate(self.avoid_names):
+                decra = desisurvey.ephemerides.get_object_interpolator(
+                    night, name, altaz=False)
+                self.f_obj.append(decra)
+            self.last_date = date
+        for i, decra in enumerate(self.f_obj):
+            self.avoid_dec[i], self.avoid_ra[i] = decra(when.mjd)
+        # Calculate separation matrix (in degrees) between observable tiles
+        # and bodies to avoid (moon, planets).
+        avoid_sky = astropy.coordinates.ICRS(
+            ra=self.avoid_ra * u.deg, dec=self.avoid_dec * u.deg)
+        avoid_matrix = avoid_sky.separation(
+            self.tile_coords[mask, np.newaxis]).to(u.deg).value
+        # Do not schedule any tiles that are too close to the moon or planets.
+        too_close = np.any(avoid_matrix < self.avoid_min, axis=1)
+        mask[mask] &= ~too_close
+        # Delete avoid_matrix now since its rows refer to the old mask.
+        del avoid_matrix
+        if not np.any(mask):
+            self.log.warn('No tiles after avoidances at {0}.'
+                          .format(when.datetime))
+            return None
+        # Lookup the program code during each tile's estimated exposure start,
+        # midpoint and endpoint: 1=DARK, 2=GRAY, 3=BRIGHT, 4=DAYTIME.
+        timestamps = np.empty((3, np.count_nonzero(mask)))
+        # Initialize with start/midpt/stop times in seconds relative to when.
+        timestamps[0] = toh[mask]
+        timestamps[1] = tmid[mask]
+        timestamps[2] = 2 * tmid[mask] - toh[mask]
+        # Convert to MJDs.
+        timestamps /= 86400.
+        timestamps += when.mjd
+        # Get brightest program at each timestamp:
+        # 1=DARK < 2=GRAY < 3=BRIGHT < 4=DAYTIME.
+        obs_programs = ephem.get_program(timestamps, as_tuple=False)
+        obs_program = np.max(obs_programs, axis=0)
         # Lookup the program each candidate tile is assigned to.
-        tile_program = self.tiles['program'][mask]
-        # Calculate each tile's score using the requested strategy.
-        score = np.ones(len(self.tiles))
+        tile_program = self.tiles['program'][mask].data
+        # Initialize score = priority for observable tiles.
+        score = plan['priority'].data.copy()
+        score[~mask] = 0.
+        # Apply multiplicative factors to each tile's score using
+        # the requested strategies.
         strategy = strategy.split('+')
         if 'greedy' in strategy:
             score *= ieff
-        else:
-            # Zero the score of unobservable tiles.
-            score[ieff == 0] = 0.
         if 'fallback' in strategy:
             score[mask] *= (
                 self.fallback_weights[obs_program - 1, tile_program - 1])
@@ -479,8 +478,6 @@ class Scheduler(object):
             score *= self.ratio_score(when)[self.tiles['map']]
         if 'rank' in strategy:
             score *= self.rank_score(when)[self.tiles['map']]
-        if plot:
-            self.plot_scores(when, cutoff, score, mask, ephem0, prev)
         if np.max(score) <= 0:
             self.log.debug('Found max score {0} at {1}.'
                            .format(np.max(score), when.datetime))
@@ -488,31 +485,31 @@ class Scheduler(object):
         # Pick the tile with the highest score.
         best = np.argmax(score)
         tile = self.tiles[best]
-        # Calculate separation angle in degrees between the selected tile
-        # and the moon.
-        ephem = self.etable[ij[np.argmax(score[mask])]]
-        moon = astropy.coordinates.ICRS(
-            ra=ephem['moon_ra'] * u.deg, dec=ephem['moon_dec'] * u.deg)
-        moon_sep = self.tile_coords[best].separation(moon).to(u.deg)
-        if ephem['moon_alt'] > 0 and moon_sep < config.avoid_bodies.moon():
-            self.log.debug('Best tile has moon_sep {0}.'.format(moon_sep))
-            return None
-        # Should also check planet separation vetos here
-        # ...
+        tile_sky = self.tile_coords[best]
+        # Need a different index into previously masked arrays.
+        ##mbest = np.argmax(score[mask])
         # Calculate the altitude angle of the selected tile.
         zenith = desisurvey.utils.get_observer(
             when, alt=90 * u.deg, az=0 * u.deg
             ).transform_to(astropy.coordinates.ICRS)
-        alt = 90 * u.deg - self.tile_coords[best].separation(zenith)
+        alt = 90 * u.deg - tile_sky.separation(zenith)
         if alt < config.min_altitude():
             self.log.debug('Best tile has altitude {0:.1f}.'.format(alt))
             return None
-        # Prepare the dictionary to return.
+        # Calculate separation angle in degrees between the best tile
+        # and the moon.
+        moon_sky = avoid_sky[self.moon_index]
+        moon_sep = tile_sky.separation(moon_sky).to(u.deg).value
+        # Calculate the moon altitude and illuminated fraction.
+        moon_alt = (90 * u.deg - moon_sky.separation(zenith)).to(u.deg).value
+        moon_frac = ephem.get_moon_illuminated_fraction(when.mjd)
+        # Prepare the dictionary to return. Dictionary keys used here are
+        # mostly historical and might change.
         target = dict(tileID=tile['tileid'], RA=tile['ra'], DEC=tile['dec'],
                       Program=('DARK', 'GRAY', 'BRIGHT')[tile['program'] - 1],
-                      Ebmv=tile['EBV'], moon_illum_frac=ephem['moon_frac'],
-                      MoonDist=moon_sep.value, MoonAlt=ephem['moon_alt'],
-                      overhead=toh[best] * u.s)
+                      Ebmv=tile['EBV'], moon_illum_frac=moon_frac,
+                      MoonDist=moon_sep, MoonAlt=moon_alt,
+                      overhead=toh[best] * u.s, score=score)
         return target
 
 
@@ -520,8 +517,6 @@ class Scheduler(object):
 import specsim.atmosphere
 
 import desimodel.io
-
-import desisurvey.ephemerides
 
 
 def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
@@ -535,7 +530,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 
     Parameters
     ----------
-    ephem : `desisurvey.ephem.Ephemerides`
+    ephem : desisurvey.ephemerides.Ephemerides
         Tabulated ephemerides data to use for planning.
     start_date : date or None
         Survey planning starts on the evening of this date. Must be convertible
@@ -632,8 +627,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     mapper = np.zeros(npix, int)
     mapper[footprint_pixels] = np.arange(len(footprint_pixels))
     table['map'] = mapper[pixels].astype(np.int16)
-    # Use a small int to identify the program.
-    table['program'] = np.zeros(len(tiles), np.int16)
+    # Use a small int to identify the program, ordered by sky brightness:
+    # 1=DARK, 2=GRAY, 3=BRIGHT.
+    table['program'] = np.full(len(tiles), 4, np.int16)
     for i, program in enumerate(('DARK', 'GRAY', 'BRIGHT')):
         table['program'][tiles['PROGRAM'] == program] = i + 1
     assert np.all(table['program'] > 0)
@@ -669,7 +665,9 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
 
     # Prepare a table of ephemeris data.
     etable = astropy.table.Table()
-    etable['program'] = np.zeros(num_nights * num_points, dtype=np.int16)
+    # Program codes ordered by increasing sky brightness:
+    # 1=DARK, 2=GRAY, 3=BRIGHT, 4=DAYTIME.
+    etable['program'] = np.full(num_nights * num_points, 4, dtype=np.int16)
     etable['moon_frac'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['moon_ra'] = np.zeros(num_nights * num_points, dtype=np.float32)
     etable['moon_dec'] = np.zeros(num_nights * num_points, dtype=np.float32)
@@ -711,14 +709,15 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         calendar[i]['fullmoon'] = ephem.is_full_moon(midnight[i])
         # Look up expected dome-open fraction due to weather.
         calendar[i]['weather'] = weather_weights[date.month - 1]
-        # Calculate the program during this night.
+        # Calculate the program during this night (default is 4=DAYTIME).
         mjd = midnight[i] + t_centers
         dark, gray, bright = ephem.get_program(mjd)
         etable['program'][sl][dark] = 1
         etable['program'][sl][gray] = 2
         etable['program'][sl][bright] = 3
         # Zero the exposure factor whenever we are not oberving.
-        fexp[sl] = (dark | gray | bright)[:, np.newaxis]
+        ##fexp[sl] = (dark | gray | bright)[:, np.newaxis]
+        fexp[sl] = 1.
         # Transform the local zenith to (ra,dec).
         zenith = desisurvey.utils.get_observer(
             times[i], alt=alt, az=az).transform_to(astropy.coordinates.ICRS)
@@ -760,7 +759,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 # Calculate scattered moon V-band brightness at each pixel.
                 V = specsim.atmosphere.krisciunas_schaefer(
                     pix_sep, moon_zenith, obj_sep,
-                    moon_phase, vband_extinction).value
+                    moon_phase, desisurvey.etc._vband_extinction).value
                 # Estimate the exposure time factor from V.
                 X = np.dstack((one, np.exp(-V), 1/V, 1/V**2, 1/V**3))
                 T = X.dot(desisurvey.etc._moonCoefficients)
@@ -780,7 +779,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
                 size = getattr(config.avoid_bodies, name)()
                 # Penalize the exposure-time with a factor
                 # 1 - exp(-0.5*(obj_sep/size)**2)
-                penalty = 1. - np.exp(-0.5 * (obj_sep / size) ** 2)
+                penalty = 1. - np.exp(-0.5 * (obj_sep / size).to(1).value ** 2)
                 fexp[sl] *= penalty
 
     # Save calendar table.

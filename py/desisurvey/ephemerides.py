@@ -311,7 +311,7 @@ class Ephemerides(object):
                 kind='linear', fill_value='extrapolate', assume_sorted=True)
         return self._moon_illum_frac_interpolator(mjd)
 
-    def get_program(self, mjd):
+    def get_program(self, mjd, as_tuple=True):
         """Tabulate the program during one night.
 
         The program definitions are taken from
@@ -323,13 +323,18 @@ class Ephemerides(object):
         mjd : float or array
             MJD values during a single night where the program should be
             tabulated.
+        as_tuple : bool
+            Return a tuple (dark, gray, bright) or else a vector of int16
+            values.
 
         Returns
         -------
-        tuple
+        tuple or array
             Tuple (dark, gray, bright) of boolean arrays that tabulates the
-            program at each input MJD.  Each output array has the same
-            shape as the input ``mjd`` array.
+            program at each input MJD or array of np.int16 values that encode
+            the program at each time slice using 1=DARK, 2=GRAY, 3=BRIGHT,
+            4=DAYTIME. All output array has the same shape as the input
+            ``mjd`` array.
         """
         # Get the night of the earliest time.
         mjd = np.asarray(mjd)
@@ -363,7 +368,15 @@ class Ephemerides(object):
 
         assert not np.any(dark & gray | dark & bright | gray & bright)
 
-        return dark, gray, bright
+        if as_tuple:
+            return dark, gray, bright
+        else:
+            # Default value 4=DAYTIME.
+            program = np.full(mjd.shape, 4, np.int16)
+            program[dark] = 1
+            program[gray] = 2
+            program[bright] = 3
+            return program
 
     def is_full_moon(self, night, num_nights=None):
         """Test if a night occurs during a full-moon break.

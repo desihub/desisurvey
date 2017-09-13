@@ -93,7 +93,8 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     ax[0, 2].set_xlabel(label)
     ax[0, 2].get_yaxis().set_ticks([])
 
-    plt.subplots_adjust(wspace=0.1, hspace=0.2)
+    plt.subplots_adjust(
+        wspace=0.1, hspace=0.2, left=0.01, right=0.99, bottom=0.01, top=0.99)
     # Make extra room for the histogram x-axis label.
     hist_rect = ax[0, 2].get_position(original=True)
     hist_rect.y0 = 0.70
