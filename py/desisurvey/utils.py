@@ -16,13 +16,7 @@ import astropy.utils.iers
 import astropy.utils.data
 import astropy.utils.exceptions
 import astropy._erfa.core
-try:
-    import astropy.units as u
-except ImportError:
-    class u(object):
-        """Dummy class needed because of function defaults.
-        """
-        s = 0
+import astropy.units as u
 
 import desiutil.log
 
@@ -208,7 +202,7 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
     print('Wrote updated table to {0}.'.format(save_name))
 
 
-def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
+def get_overhead_time(current_pointing, new_pointing, deadtime=0):
     """
     Compute the instrument overhead time between exposures.
 
@@ -239,6 +233,8 @@ def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
     :class:`astropy.units.Quantity`
         Overhead time(s) for each new_pointing.
     """
+    if not isinstance(deadtime, u.Quantity):
+        deadtime = deadtime * u.s
     if deadtime.to(u.s).value < 0:
         raise ValueError('Expected deadtime >= 0 (got {0}).'.format(deadtime))
     config = desisurvey.config.Configuration()
