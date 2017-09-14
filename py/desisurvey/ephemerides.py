@@ -497,8 +497,7 @@ def get_object_interpolator(row, object_name, altaz=False):
     return wrapper
 
 
-def get_grid(step_size = 1 * u.min,
-             night_start = -6 * u.hour, night_stop = 7 * u.hour):
+def get_grid(step_size=1, night_start=-6, night_stop=7):
     """Calculate a grid of equally spaced times covering one night.
 
     In case the requested step size does not evenly divide the requested
@@ -508,12 +507,12 @@ def get_grid(step_size = 1 * u.min,
 
     Parameters
     ----------
-    step_size : astropy.units.Quantity
-        Size of each grid step with time units.
-    night_start : astropy.units.Quantity
-        First grid point relative to local midnight with time units.
-    night_stop : astropy.units.Quantity
-        Last grid point relative to local midnight with time units.
+    step_size : :class:`astropy.units.Quantity`, optional
+        Size of each grid step with time units, default 1 min.
+    night_start : :class:`astropy.units.Quantity`, optional
+        First grid point relative to local midnight with time units, default -6 h.
+    night_stop : :class:`astropy.units.Quantity`, optional
+        Last grid point relative to local midnight with time units, default 7 h.
 
     Returns
     -------
@@ -521,6 +520,12 @@ def get_grid(step_size = 1 * u.min,
         Numpy array of dimensionless offsets relative to local midnight
         in units of days.
     """
+    if not isinstance(step_size, u.Quantity):
+        step_size = step_size * u.min
+    if not isinstance(night_start, u.Quantity):
+        night_start = night_start * u.hour
+    if not isinstance(night_stop, u.Quantity):
+        night_stop = night_stop * u.hour
     num_points = int(round(((night_stop - night_start) / step_size).to(1).value))
     night_stop = night_start + num_points * step_size
     return (night_start.to(u.day).value +
