@@ -65,7 +65,7 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
     :meth:`astropy.utils.iers.IERS._check_interpolate_indices` to prevent
     any IERSRangeError being raised.
 
-    See `http://docs.astropy.org/en/stable/utils/iers.html`_ for details.
+    See http://docs.astropy.org/en/stable/utils/iers.html for details.
 
     This function returns immediately after the first time it is called,
     so it it safe to insert anywhere that consistent IERS models are
@@ -202,9 +202,8 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
     print('Wrote updated table to {0}.'.format(save_name))
 
 
-def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
-    """
-    Compute the instrument overhead time between exposures.
+def get_overhead_time(current_pointing, new_pointing, deadtime=0):
+    """Compute the instrument overhead time between exposures.
 
     Use a model of the time required to slew and focus, in parallel with
     reading out the previous exposure.
@@ -217,21 +216,24 @@ def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
 
     Parameters
     ----------
-    current_pointing : astropy.coordinates.SkyCoord or None
+    current_pointing : :class:`astropy.coordinates.SkyCoord` or None
         Current pointing of the telescope.  Do not include any slew overhead
         when None.
-    new_pointing : astropy.coordinates.SkyCoord
+    new_pointing : :class:`astropy.coordinates.SkyCoord`
         New pointing(s) of the telescope.
-    deadtime : astropy.units.Quantity
+    deadtime : :class:`astropy.units.Quantity`, optional
         Amount of deadtime elapsed since end of any previous exposure.
         Used to ensure that the overhead time is sufficient to finish
         reading out the previous exposure. Must be >= 0.
+        Defaults to zero seconds.
 
     Returns
     -------
-    astropy.units.Quantity
+    :class:`astropy.units.Quantity`
         Overhead time(s) for each new_pointing.
     """
+    if not isinstance(deadtime, u.Quantity):
+        deadtime = deadtime * u.s
     if deadtime.to(u.s).value < 0:
         raise ValueError('Expected deadtime >= 0 (got {0}).'.format(deadtime))
     config = desisurvey.config.Configuration()

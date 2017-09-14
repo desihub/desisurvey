@@ -54,7 +54,7 @@ class Optimizer(object):
         to specify which tile each HA applies to.
     stretch : float
         Factor to stretch all exposure times by.
-    smoothing_radius : astropy.units.Quantity
+    smoothing_radius : :class:`astropy.units.Quantity`
         Gaussian sigma for calculating smoothing weights with angular units.
     origin : float
         Rotate DEC values in plots so that the left edge is at this value
@@ -76,9 +76,11 @@ class Optimizer(object):
     """
     def __init__(self, sched, program, subset=None, start=None, stop=None,
                  nbins=192, init='info', initial_ha=None, stretch=1.0,
-                 smoothing_radius=10 * u.deg,
+                 smoothing_radius=10,
                  origin=-60, center=None, seed=123, weights=[5, 4, 3, 2, 1]):
 
+        if not isinstance(smoothing_radius, u.Quantity):
+            smoothing_radius = smoothing_radius * u.deg
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         self.gen = np.random.RandomState(seed)
@@ -502,7 +504,7 @@ class Optimizer(object):
     def improve(self, frac=1.):
         """Perform one iteration of improving the hour angle assignments.
 
-        Each call will adjust the HA of a single tile with a magnitude |dHA|
+        Each call will adjust the HA of a single tile with a magnitude \|dHA\|
         specified by the `frac` parameter.
 
         Parameters

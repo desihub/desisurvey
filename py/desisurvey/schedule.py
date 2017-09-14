@@ -519,7 +519,7 @@ import specsim.atmosphere
 import desimodel.io
 
 
-def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
+def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
                healpix_nside=16, output_name='scheduler.fits'):
     """Calculate exposure-time factors over a grid of times and pointings.
 
@@ -540,7 +540,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
         Survey planning stops on the morning of this date. Must be convertible
         to a date using :func:`desisurvey.utils.get_date`.  Use the first night
         of the ephemerides when None.
-    step_size : astropy.units.Quantity
+    step_size : :class:`astropy.units.Quantity`
         Exposure-time factors are tabulated at this interval during each night.
     healpix_nside : int
         Healpix NSIDE parameter to use for binning the sky. Must be a power of
@@ -553,6 +553,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.*u.min,
     """
     import healpy
 
+    if not isinstance(step_size, u.Quantity):
+        step_size = step_size * u.min
     log = desiutil.log.get_logger()
 
     # Freeze IERS table for consistent results.
