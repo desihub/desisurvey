@@ -134,6 +134,7 @@ napoleon_include_private_with_doc = True
 # some external dependencies are not met at build time and break the
 # building process.
 autodoc_mock_imports = ['astropy',
+                        'astropy.coordinates',
                         'astropy.io',
                         'astropy.io.fits',
                         'astropy.modeling',
