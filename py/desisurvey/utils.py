@@ -16,7 +16,13 @@ import astropy.utils.iers
 import astropy.utils.data
 import astropy.utils.exceptions
 import astropy._erfa.core
-import astropy.units as u
+try:
+    import astropy.units as u
+except ImportError:
+    class u(object):
+        """Dummy class needed because of function defaults.
+        """
+        s = 0
 
 import desiutil.log
 
@@ -217,19 +223,20 @@ def get_overhead_time(current_pointing, new_pointing, deadtime=0 * u.s):
 
     Parameters
     ----------
-    current_pointing : astropy.coordinates.SkyCoord or None
+    current_pointing : :class:`astropy.coordinates.SkyCoord`or None
         Current pointing of the telescope.  Do not include any slew overhead
         when None.
-    new_pointing : astropy.coordinates.SkyCoord
+    new_pointing : :class:`astropy.coordinates.SkyCoord`
         New pointing(s) of the telescope.
-    deadtime : astropy.units.Quantity
+    deadtime : :class:`astropy.units.Quantity`, optional
         Amount of deadtime elapsed since end of any previous exposure.
         Used to ensure that the overhead time is sufficient to finish
         reading out the previous exposure. Must be >= 0.
+        Defaults to zero seconds.
 
     Returns
     -------
-    astropy.units.Quantity
+    :class:`astropy.units.Quantity`
         Overhead time(s) for each new_pointing.
     """
     if deadtime.to(u.s).value < 0:
