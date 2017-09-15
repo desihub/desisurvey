@@ -5,7 +5,8 @@ desisurvey change log
 0.9.1 (unreleased)
 ------------------
 
-* No changes yet.
+* Remove astropy units from function signatures (for readthedocs).
+* Add travis, coveralls and readthedocs automation.
 
 0.9.0 (2017-09-11)
 ------------------
