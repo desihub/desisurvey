@@ -16,9 +16,28 @@ import desisurvey.utils
 
 def create(hourangles, priorities):
     """Create a new plan for the start of the survey.
+
+    Parameters
+    ----------
+    hourangles : array
+        1D array of floats with design hour angles in degrees to use for
+        each tile.
+    priorities : array
+        1D array of non-negative floats with initial priorities to use for each
+        tile. Priority normalization is arbitrary, but higher values correspond
+        to higher priority observing.
     """
     tiles = astropy.table.Table(
         desimodel.io.load_tiles(onlydesi=True, extra=False))
+    ntiles = len(tiles)
+
+    hourangles = np.asarray(hourangles)
+    if len(hourangles.shape) != 1 or len(hourangles) != ntiles:
+        raise ValueError('Invalid hourangles parameter.')
+
+    priorities = np.asarray(priorities)
+    if len(priorities.shape) != 1 or len(priorities) != ntiles:
+        raise ValueError('Invalid priorities parameter.')
 
     plan = astropy.table.Table()
     plan['tileid'] = tiles['TILEID']
@@ -28,13 +47,27 @@ def create(hourangles, priorities):
 
     plan['priority'] = priorities
     plan['hourangle'] = hourangles
-    # Assume that all first-layer tiles have targets assigned to fibers.
-    plan['available'] = (
-        (plan['pass'] == 0) | (plan['pass'] == 4) | (plan['pass'] == 5))
+
+    # Record day-number (relative to config.first_day) when a tile is first
+    # covered by any tiles in passes that must be completed before
+    # fiber assignment can be run.
+    config = desisurvey.config.Configuration()
+    num_nights = (config.last_day() - config.first_day()).days
+    plan['covered'] = np.full(ntiles, num_nights, int)
+
+    # Any passes with no fiber-assignment dependency are initially available.
+    dependent = config.fiber_assignment_order.keys
+    plan['available'] = np.zeros(ntiles, bool)
+    for passnum in range(8):
+        if 'P' + str(passnum) not in dependent:
+            sel = plan['pass'] == passnum
+            plan['covered'][sel] = -1
+            plan['available'][sel] = True
+
     return plan
 
 
-def update_available(plan, progress):
+def update_available(plan, progress, night, fiber_assignment_delay):
     """Update list of available tiles.
 
     A tile becomes available when all overlapping tiles in the previous pass
@@ -47,16 +80,24 @@ def update_available(plan, progress):
         A table created and updated using functions in this package.
     progress : desisurvey.progress.Progress
         A record of observing progress so far.
+    night : datetime.date
+        Date when planning is being performed, used to interpret the
+        next parameter.
+    fiber_assignment_delay : int
+        Number of nights delay between when a tile is covered and then
+        subsequently made available for observing.
 
     Returns
     -------
     plan
-        The input plan with the 'available' column updated.
+        The input plan with the 'covered' and 'available' columns updated.
     """
     log = desiutil.log.get_logger()
     # Look up the nominal tile radius for determining overlaps.
     config = desisurvey.config.Configuration()
     tile_radius = config.tile_radius().to(u.deg).value
+    # Look up the current night number.
+    night_number = (night - config.first_day()).days
     # Find complete tiles.
     complete = (progress._table['status'] == 2)
     # Loop over passes.
@@ -81,12 +122,26 @@ def update_available(plan, progress):
                 over |= (plan['pass'] == int(overpass[1]))
             overlapping = desisurvey.utils.separation_matrix(
                 ra[under], dec[under], ra[over], dec[over], 2 * tile_radius)
-            avail = np.all(~overlapping | complete[over], axis=1)
-            new_avail = avail & ~plan['available'][under]
+            covered = np.all(~overlapping | complete[over], axis=1)
+            new_covered = covered & (plan['covered'][under] > night_number)
+            if np.any(new_covered):
+                new_tiles = plan['tileid'][under][new_covered]
+                log.info(
+                    'New tiles covered in pass {0}: {1}.'
+                    .format(passnum, ','.join([str(tid) for tid in new_tiles])))
+                # Record the night number when these tiles were first covered.
+                new = under.copy()
+                new[under] = new_covered
+                plan['covered'][new] = night_number
+            # Check if any tiles are newly available now.
+            avail = plan['available'][under] | (
+                plan['covered'][under] + fiber_assignment_delay <= night_number)
+            new_avail = avail & ~(plan['available'][under])
             if np.any(new_avail):
                 new_tiles = plan['tileid'][under][new_avail]
                 log.info(
                     'New tiles available in pass {0}: {1}.'
                     .format(passnum, ','.join([str(tid) for tid in new_tiles])))
-                plan['available'][under] = avail
+                # Record the night number when these tiles were first covered.
+                plan['available'][under] |= new_avail
     return plan

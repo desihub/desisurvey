@@ -42,6 +42,9 @@ def parse(options=None):
         '--rules', metavar='YAML', default='rules.yaml',
         help='name of YAML file with observing priority rules')
     parser.add_argument(
+        '--fa-delay', metavar='DAYS', type=int, default=7,
+        help='fiber assignment delay in days')
+    parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
 
@@ -123,7 +126,7 @@ def main(args):
         # Return a shell exit code so scripts can detect this condition.
         sys.exit(9)
 
-    log.info('Planning night of {0} with {1} / {2} ({3:.1f}%) completed.'
+    log.info('Planning night of {0} with {1:.1f} / {2} ({3:.1f}%) completed.'
              .format(start, num_complete, num_total, pct))
 
     bookmarked = False
@@ -141,7 +144,8 @@ def main(args):
 
         # Identify any new tiles that are available for fiber assignment.
         # TODO: do this monthly, during full moon, by default.
-        plan = desisurvey.plan.update_available(plan, progress)
+        plan = desisurvey.plan.update_available(
+            plan, progress, start, args.fa_delay)
 
         # Will update design HA assignments here...
         pass
