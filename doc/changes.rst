@@ -5,6 +5,7 @@ desisurvey change log
 0.9.1 (unreleased)
 ------------------
 
+* Implement fiber assignment delay policy.
 * Remove astropy units from function signatures (for readthedocs).
 * Add travis, coveralls and readthedocs automation.
 
