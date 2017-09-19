@@ -3,6 +3,13 @@
 To run this script from the command line, use the ``surveyplan`` entry point
 that is created when this package is installed, and should be in your shell
 command search path.
+
+Note that the fiber-assignment delay parameter (--fa-delay) has two forms
+that are interpreted differently. A value ending with 'd' specifies the delay
+in days for a rolling fiber assignment that is performed every afternoon.
+A value ending with 'm' specifies the delay in full moons (months) for a
+fiber assignment that is performed once each full moon (so with a variable
+delay in days, depending on the lunar phase when the tile is covered).
 """
 from __future__ import print_function, division, absolute_import
 
@@ -42,8 +49,8 @@ def parse(options=None):
         '--rules', metavar='YAML', default='rules.yaml',
         help='name of YAML file with observing priority rules')
     parser.add_argument(
-        '--fa-delay', metavar='DAYS', type=int, default=28,
-        help='fiber assignment delay in days')
+        '--fa-delay', metavar='DELAY', type=str, default='1m',
+        help='fiber assignment delay in days (e.g. 7d) or months (1m)')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
@@ -59,6 +66,17 @@ def parse(options=None):
 def main(args):
     """Command-line driver for updating the survey plan.
     """
+    # Check for a valid fa-delay value.
+    if args.fa_delay[-1] not in ('d', 'm'):
+        raise ValueError('fa-delay must have the form Nd or Nm.')
+    fa_delay_type = args.fa_delay[-1]
+    try:
+        fa_delay = int(args.fa_delay[:-1])
+    except ValueError:
+        raise ValueError('invalid number in fa-delay.')
+    if fa_delay < 0:
+        raise ValueError('fa-delay value must be >= 0.')
+
     # Set up the logger
     if args.debug:
         log = desiutil.log.get_logger(desiutil.log.DEBUG)
@@ -145,7 +163,7 @@ def main(args):
         # Identify any new tiles that are available for fiber assignment.
         # TODO: do this monthly, during full moon, by default.
         plan = desisurvey.plan.update_available(
-            plan, progress, start, args.fa_delay)
+            plan, progress, start, fa_delay, fa_delay_type)
 
         # Will update design HA assignments here...
         pass

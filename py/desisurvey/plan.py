@@ -67,7 +67,7 @@ def create(hourangles, priorities):
     return plan
 
 
-def update_available(plan, progress, night, fiber_assignment_delay):
+def update_available(plan, progress, night, fa_delay, fa_delay_type):
     """Update list of available tiles.
 
     A tile becomes available when all overlapping tiles in the previous pass
@@ -83,15 +83,20 @@ def update_available(plan, progress, night, fiber_assignment_delay):
     night : datetime.date
         Date when planning is being performed, used to interpret the
         next parameter.
-    fiber_assignment_delay : int
-        Number of nights delay between when a tile is covered and then
-        subsequently made available for observing.
+    fa_delay : int
+        Number of nights / full moons delay between when a tile is covered and
+        then subsequently made available for observing by having fibers
+        assigned.
+    fa_delay_type : 'd' or 'm'
+        Interpret ``fa_delay`` as a delay in days ('d') or full moons ('m').
+        Currently ignored and 'd' is assumed.
 
     Returns
     -------
     plan
         The input plan with the 'covered' and 'available' columns updated.
     """
+    assert (fa_delay >= 0) and (fa_delay_type in ('d', 'm'))
     log = desiutil.log.get_logger()
     # Look up the nominal tile radius for determining overlaps.
     config = desisurvey.config.Configuration()
@@ -135,7 +140,7 @@ def update_available(plan, progress, night, fiber_assignment_delay):
                 plan['covered'][new] = night_number
             # Check if any tiles are newly available now.
             avail = plan['available'][under] | (
-                plan['covered'][under] + fiber_assignment_delay <= night_number)
+                plan['covered'][under] + fa_delay <= night_number)
             new_avail = avail & ~(plan['available'][under])
             if np.any(new_avail):
                 new_tiles = plan['tileid'][under][new_avail]
