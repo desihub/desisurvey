@@ -594,7 +594,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
 
     # Load the list of tiles to observe.
     tiles = astropy.table.Table(
-        desimodel.io.load_tiles(onlydesi=True, extra=False))
+        desimodel.io.load_tiles(onlydesi=True, extra=False,
+            tilesfile=config.tiles_file()))
 
     # Build the footprint as a healpix map of the requested size.
     # The footprint includes any pixel containing at least one tile center.

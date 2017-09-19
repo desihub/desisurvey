@@ -15,8 +15,10 @@ import astropy.utils.data
 import astropy.units as u
 
 import desimodel.io
+import desiutil.log
 
 import desisurvey.config
+import desisurvey.utils
 
 
 # Loads a YAML file with dictionary key ordering preserved.
@@ -42,12 +44,13 @@ class Rules(object):
     YAML file.
     """
     def __init__(self, file_name='rules.yaml', restore=None):
-        tile_radius = (
-            desisurvey.config.Configuration().tile_radius().to(u.deg).value)
+        config = desisurvey.config.Configuration()
+        tile_radius = config.tile_radius().to(u.deg).value
 
         # Load the table of tiles in the DESI footprint.
         tiles = astropy.table.Table(
-            desimodel.io.load_tiles(onlydesi=True, extra=False))
+            desimodel.io.load_tiles(onlydesi=True, extra=False,
+                tilesfile=config.tiles_file() ))
         num_tiles = len(tiles)
         passnum = tiles['PASS']
         ra = tiles['RA']
@@ -144,16 +147,18 @@ class Rules(object):
 
             # Calculate priority multipliers to implement optional DEC ordering.
             dec_order = node.get('dec_order')
-            if dec_order is not None:
+            if dec_order is not None and np.any(group_sel):
                 dec_group = dec[group_sel]
                 lo, hi = np.min(dec_group), np.max(dec_group)
+
                 slope = float(dec_order)
+                epsilon = float(hi>lo)  #- used to avoid 0.0 / 0.0
                 if slope > 0:
                     dec_priority[group_sel] = (
-                        1 + slope * (hi - dec_group) / (hi - lo))
+                        1 + slope * (hi-dec_group+epsilon) / (hi-lo+epsilon))
                 else:
                     dec_priority[group_sel] = (
-                        1 - slope * (dec_group - lo) / (hi - lo))
+                        1 - slope * (dec_group-lo+epsilon) / (hi-lo+epsilon))
             else:
                 assert np.all(dec_priority[group_sel] == 1)
 
@@ -215,11 +220,16 @@ class Rules(object):
         """
         # Find all completed tiles.
         assert np.all(progress._table['tileid'] == self.tileid)
+        log = desiutil.log.get_logger()
         completed = progress._table['status'] == 2
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
-        for gid, name in zip(np.unique(self.group_ids), self.group_names):
+        # for gid, name in zip(np.unique(self.group_ids), self.group_names):
+        for i, name in enumerate(self.group_names):
+            gid = i+1
             group_sel = self.group_ids == gid
+            if not np.any(group_sel):
+                log.error('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]

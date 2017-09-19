@@ -56,7 +56,8 @@ class Progress(object):
         if restore is None:
             # Load the list of tiles to observe.
             tiles = astropy.table.Table(
-                desimodel.io.load_tiles(onlydesi=True, extra=False))
+                desimodel.io.load_tiles(onlydesi=True, extra=False,
+                    tilesfile=config.tiles_file() ))
             num_tiles = len(tiles)
             # Initialize a new progress table.
             meta = dict(VERSION=_version)

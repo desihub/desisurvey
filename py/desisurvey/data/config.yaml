@@ -144,10 +144,15 @@ fiber_assignment_order:
     P6: P5
     P7: P5+P6
 
+# Name of file defining DESI tiles for desimodel.io.load_tiles(tiles_file).
+# Without path this will look in $DESIMODEL/data/footprint/; otherwise with
+# a path (relative or absolute) it will read that file.
+tiles_file: desi-tiles.fits
+
 #-------------------------------------------------------------------
 # Base path to pre-pended to all non-absolute paths used for writing
 # output files. The pattern {...} will be expanded using environment
 # variables.
 #-------------------------------------------------------------------
 
-output_path: '{DESISURVEY}'
+output_path: '{DESISURVEY_OUTPUT}'

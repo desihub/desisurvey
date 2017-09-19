@@ -38,7 +38,7 @@ class TestProgress(unittest.TestCase):
         self.assertEqual(p.last_tile, None)
         self.assertEqual(p.num_exp, 0)
         self.assertEqual(p.completed(), 0.)
-        self.assertEqual(type(p.get_tile(10)), astropy.table.Row)
+        self.assertEqual(type(p.get_tile(260)), astropy.table.Row)
         with self.assertRaises(ValueError):
             p.get_tile(-1)
         t = p._table

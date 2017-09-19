@@ -83,6 +83,9 @@ def parse(options=None):
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
+    parser.add_argument(
+        '--config-file', default='config.yaml', metavar='CONFIG',
+        help='input configuration file')
 
     if options is None:
         args = parser.parse_args()
@@ -96,10 +99,11 @@ def calculate_initial_plan(args, scheduler, fullname):
     """Calculate initial hour-angle assignments for all tiles.
     """
     log = desiutil.log.get_logger()
+    config = desisurvey.config.Configuration()
 
     # Initialize the output results table.
     tiles = astropy.table.Table(desimodel.io.load_tiles(
-        onlydesi=True, extra=False))
+        onlydesi=True, extra=False, tilesfile=config.tiles_file()))
     out = tiles[['TILEID', 'RA', 'DEC', 'PASS']]
     out['HA'] = np.zeros(len(out))
     out['OBSTIME'] = np.zeros(len(out))
@@ -171,7 +175,7 @@ def main(args):
         log = desiutil.log.get_logger(desiutil.log.WARNING)
 
     # Set the output path if requested.
-    config = desisurvey.config.Configuration()
+    config = desisurvey.config.Configuration(file_name=args.config_file)
     if args.output_path is not None:
         config.set_output_path(args.output_path)
 

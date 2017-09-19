@@ -2,12 +2,7 @@
 desisurvey change log
 =====================
 
-0.9.1 (unreleased)
-------------------
-
-* No changes yet.
-
-0.9.0 (2017-09-11)
+0.9.0 (unreleased)
 ------------------
 
 * Create surveyinit script to calculate initial HA assignments.
@@ -16,6 +11,8 @@ desisurvey change log
 * Rework surveyplan to track fiber assignment availability.
 * Validate a set of observing rules consistent with the baseline strategy
   described in DESI-doc-1767-v3.
+* Command line scripts --config-file option to override default config file.
+* Fixes for bugs that occur when testing with a small subset of tiles.
 
 0.8.2 (2017-07-12)
 ------------------
