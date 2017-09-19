@@ -42,7 +42,7 @@ def parse(options=None):
         '--rules', metavar='YAML', default='rules.yaml',
         help='name of YAML file with observing priority rules')
     parser.add_argument(
-        '--fa-delay', metavar='DAYS', type=int, default=7,
+        '--fa-delay', metavar='DAYS', type=int, default=14,
         help='fiber assignment delay in days')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
