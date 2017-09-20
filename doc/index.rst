@@ -9,6 +9,7 @@ Contents
     :maxdepth: 1
 
     changes.rst
+    rules.rst
     api.rst
 
 

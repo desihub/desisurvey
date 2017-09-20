@@ -5,7 +5,8 @@ desisurvey change log
 0.9.1 (unreleased)
 ------------------
 
-* No changes yet.
+* Command line scripts --config-file option to override default config file.
+* Fixes for bugs that occur when testing with a small subset of tiles.
 
 0.9.0 (2017-09-11)
 ------------------

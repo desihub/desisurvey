@@ -35,7 +35,7 @@ class Scheduler(object):
         config = desisurvey.config.Configuration()
         input_file = config.get_path(name)
 
-        hdus = astropy.io.fits.open(input_file)
+        hdus = astropy.io.fits.open(input_file, memmap=False)
         header = hdus[0].header
         self.start_date = desisurvey.utils.get_date(header['START'])
         self.stop_date = desisurvey.utils.get_date(header['STOP'])
@@ -103,6 +103,7 @@ class Scheduler(object):
             self.avoid_min[i] = getattr(
                 config.avoid_bodies, name)().to(u.deg).value
         self.last_date = None
+        hdus.close()
 
     def index_of_time(self, when):
         """Calculate the temporal bin index of the specified time.
@@ -594,7 +595,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
 
     # Load the list of tiles to observe.
     tiles = astropy.table.Table(
-        desimodel.io.load_tiles(onlydesi=True, extra=False))
+        desimodel.io.load_tiles(onlydesi=True, extra=False,
+            tilesfile=config.tiles_file()))
 
     # Build the footprint as a healpix map of the requested size.
     # The footprint includes any pixel containing at least one tile center.

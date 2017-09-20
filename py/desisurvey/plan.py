@@ -17,8 +17,10 @@ import desisurvey.utils
 def create(hourangles, priorities):
     """Create a new plan for the start of the survey.
     """
+    config = desisurvey.config.Configuration()
     tiles = astropy.table.Table(
-        desimodel.io.load_tiles(onlydesi=True, extra=False))
+        desimodel.io.load_tiles(
+            onlydesi=True, extra=False, tilesfile=config.tiles_file() ) )
 
     plan = astropy.table.Table()
     plan['tileid'] = tiles['TILEID']

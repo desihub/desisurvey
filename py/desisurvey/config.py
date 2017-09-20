@@ -110,13 +110,13 @@ class Configuration(Node):
         Configuration.__instance = None
 
 
-    def __new__(cls, file_name='config.yaml'):
+    def __new__(cls, file_name=None):
         """Implement a singleton access pattern.
         """
         if Configuration.__instance is None:
             Configuration.__instance = object.__new__(cls)
             Configuration.__instance._initialize(file_name)
-        elif file_name != Configuration.__instance.file_name:
+        elif file_name is not None and file_name != Configuration.__instance.file_name:
             raise RuntimeError('Configuration already loaded from {0}'
                                .format(Configuration.__instance.file_name))
         return Configuration.__instance
@@ -134,23 +134,26 @@ class Configuration(Node):
         file_name : string
             Name of a YAML file including a valid YAML extension.  The file
             is assumed to be under this package's data/ directory unless
-            an absolute path is specified.
+            a path is included (either relative or absolute).
         """
         pass
 
 
-    def _initialize(self, file_name):
+    def _initialize(self, file_name=None):
         """Initialize a configuration data structure from a YAML file.
         """
+        if file_name is None:
+            file_name = 'config.yaml'
+
         # Remember the file name since it is not allowed to change.
         self.file_name = file_name
 
-        if os.path.isabs(file_name):
-            full_path = file_name
-        else:
-            # Locate the config file in our package data/ directory.
+        # Locate the config file in our pkg data/ directory if no path is given.
+        if os.path.split(file_name)[0] == '':
             full_path = astropy.utils.data._find_pkg_data_path(
                 os.path.join('data', file_name))
+        else:
+            full_path = file_name
 
         # Validate that all mapping keys are valid python identifiers
         # and that there are no embedded sequences.
