@@ -67,7 +67,7 @@ def create(hourangles, priorities):
     return plan
 
 
-def update_available(plan, progress, night, fa_delay, fa_delay_type):
+def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
     """Update list of available tiles.
 
     A tile becomes available when all overlapping tiles in the previous pass
@@ -83,6 +83,8 @@ def update_available(plan, progress, night, fa_delay, fa_delay_type):
     night : datetime.date
         Date when planning is being performed, used to interpret the
         next parameter.
+    ephem : desisurvey.ephemerides.Ephemerides
+        Tabulated ephemerides data to use.
     fa_delay : int
         Number of nights / full moons delay between when a tile is covered and
         then subsequently made available for observing by having fibers
@@ -105,6 +107,10 @@ def update_available(plan, progress, night, fa_delay, fa_delay_type):
     night_number = (night - config.first_day()).days
     # Find complete tiles.
     complete = (progress._table['status'] == 2)
+    # Run monthly fiber assignment?
+    fa_monthly = ephem.is_full_moon(night, num_nights=1)
+    if (fa_delay_type == 'm') and fa_monthly:
+        log.info('Will run monthly fiber assignment.')
     # Loop over passes.
     ra = plan['ra']
     dec = plan['dec']
@@ -139,8 +145,19 @@ def update_available(plan, progress, night, fa_delay, fa_delay_type):
                 new[under] = new_covered
                 plan['covered'][new] = night_number
             # Check if any tiles are newly available now.
-            avail = plan['available'][under] | (
-                plan['covered'][under] + fa_delay <= night_number)
+            if fa_delay_type == 'd':
+                avail = plan['available'][under] | (
+                    plan['covered'][under] + fa_delay <= night_number)
+            else:
+                assert fa_delay_type == 'm'
+                if fa_monthly:
+                    # Calculate delay since each was covered in lunar cycles.
+                    # 29.53 ~ average length of synodic month in days.
+                    delay = np.floor(
+                        (night_number - plan['covered'][under]) / 29.53)
+                    avail = plan['available'][under] | (delay >= fa_delay)
+                else:
+                    avail = plan['available'][under]
             new_avail = avail & ~(plan['available'][under])
             if np.any(new_avail):
                 new_tiles = plan['tileid'][under][new_avail]

@@ -94,10 +94,11 @@ def main(args):
     if args.output_path is not None:
         config.set_output_path(args.output_path)
 
+    # Load ephemerides.
+    ephem = desisurvey.ephemerides.Ephemerides()
+
     # Initialize scheduler.
     if not os.path.exists(config.get_path('scheduler.fits')):
-        # Load ephemerides.
-        ephem = desisurvey.ephemerides.Ephemerides()
         # Tabulate data used by the scheduler if necessary.
         desisurvey.schedule.initialize(ephem)
     scheduler = desisurvey.schedule.Scheduler()
@@ -163,7 +164,7 @@ def main(args):
         # Identify any new tiles that are available for fiber assignment.
         # TODO: do this monthly, during full moon, by default.
         plan = desisurvey.plan.update_available(
-            plan, progress, start, fa_delay, fa_delay_type)
+            plan, progress, start, ephem, fa_delay, fa_delay_type)
 
         # Will update design HA assignments here...
         pass
