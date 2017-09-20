@@ -152,13 +152,14 @@ class Rules(object):
                 lo, hi = np.min(dec_group), np.max(dec_group)
 
                 slope = float(dec_order)
-                epsilon = float(hi>lo)  #- used to avoid 0.0 / 0.0
-                if slope > 0:
+                if lo == hi:
+                    dec_priority[group_sel] = 1.0
+                elif slope > 0:
                     dec_priority[group_sel] = (
-                        1 + slope * (hi-dec_group+epsilon) / (hi-lo+epsilon))
+                        1 + slope * (hi-dec_group) / (hi-lo))
                 else:
                     dec_priority[group_sel] = (
-                        1 - slope * (dec_group-lo+epsilon) / (hi-lo+epsilon))
+                        1 - slope * (dec_group-lo) / (hi-lo))
             else:
                 assert np.all(dec_priority[group_sel] == 1)
 
