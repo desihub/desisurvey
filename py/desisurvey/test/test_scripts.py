@@ -1,5 +1,8 @@
 import tempfile, unittest, os, shutil, uuid, datetime
 import numpy as np
+from astropy.table import Table
+
+import desimodel.io
 
 import desisurvey.config
 from desisurvey.scripts import surveyinit, surveyplan
@@ -12,11 +15,19 @@ class TestScripts(unittest.TestCase):
         cls.tmpdir = tempfile.mkdtemp()
         # Write output files to this temporary directory.
         config = desisurvey.config.Configuration()
+        config.set_output_path(cls.tmpdir)
+        # Just run for 2 days for testing
         start = datetime.date(2019,12,1)
         stop = datetime.date(2019,12,3)
         config.first_day._value = start
         config.last_day._value = stop
-        config.set_output_path(cls.tmpdir)
+        # Use just a subset of the tiles for faster testing
+        tiles = Table(desimodel.io.load_tiles())
+        subset = (35 < tiles['RA']) & (tiles['RA'] < 55) & \
+                 (-10 < tiles['DEC']) & (tiles['DEC'] < 20)
+        tiles_file = os.path.join(cls.tmpdir, 'tiles-subset.fits')
+        tiles[subset].write(tiles_file)
+        config.tiles_file._value = tiles_file
 
     @classmethod
     def tearDownClass(cls):
