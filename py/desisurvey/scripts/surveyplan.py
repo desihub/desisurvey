@@ -50,7 +50,7 @@ def parse(options=None):
         help='name of YAML file with observing priority rules')
     parser.add_argument(
         '--fa-delay', metavar='DELAY', type=str, default='1m',
-        help='fiber assignment delay in days (e.g. 7d) or full moons (1m)')
+        help='FA delay in days (7d), full moons (1m) or quarters (0q)')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
@@ -67,8 +67,8 @@ def main(args):
     """Command-line driver for updating the survey plan.
     """
     # Check for a valid fa-delay value.
-    if args.fa_delay[-1] not in ('d', 'm'):
-        raise ValueError('fa-delay must have the form Nd or Nm.')
+    if args.fa_delay[-1] not in ('d', 'm', 'q'):
+        raise ValueError('fa-delay must have the form Nd, Nm or Nq.')
     fa_delay_type = args.fa_delay[-1]
     try:
         fa_delay = int(args.fa_delay[:-1])
