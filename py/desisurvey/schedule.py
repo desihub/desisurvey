@@ -35,7 +35,7 @@ class Scheduler(object):
         config = desisurvey.config.Configuration()
         input_file = config.get_path(name)
 
-        hdus = astropy.io.fits.open(input_file)
+        hdus = astropy.io.fits.open(input_file, memmap=False)
         header = hdus[0].header
         self.start_date = desisurvey.utils.get_date(header['START'])
         self.stop_date = desisurvey.utils.get_date(header['STOP'])
@@ -103,6 +103,7 @@ class Scheduler(object):
             self.avoid_min[i] = getattr(
                 config.avoid_bodies, name)().to(u.deg).value
         self.last_date = None
+        hdus.close()
 
     def index_of_time(self, when):
         """Calculate the temporal bin index of the specified time.
