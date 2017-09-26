@@ -1,0 +1,30 @@
+#-------------------------------------------------------------------
+# Definition of tile groups that are separately scheduled
+# and prioritized. See doc/rules.rst for an explanation for the format.
+#-------------------------------------------------------------------
+
+# This is a simplified set of rules that just does pass N before N+1 within
+# each of the DARK, GRAY, BRIGHT subset of layers.
+
+DARK:
+    dec_order: +0.2
+    passes: 0,1,2,3
+    rules:
+        DARK(0): { START: 1.0 }
+        DARK(1): { DARK(0): 1.0 }
+        DARK(2): { DARK(1): 1.0 }
+        DARK(3): { DARK(2): 1.0 }
+
+GRAY:
+    dec_order: +0.2
+    passes: 4
+    rules:
+        GRAY(4): { START: 1.0 }
+
+BRIGHT:
+    dec_order: +0.2
+    passes: 5,6,7
+    rules:
+        BRIGHT(5): { START: 1.0 }
+        BRIGHT(6): { BRIGHT(5): 1.0 }
+        BRIGHT(7): { BRIGHT(6): 1.0 }

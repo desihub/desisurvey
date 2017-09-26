@@ -27,8 +27,10 @@ def create(hourangles, priorities):
         tile. Priority normalization is arbitrary, but higher values correspond
         to higher priority observing.
     """
+    config = desisurvey.config.Configuration()
     tiles = astropy.table.Table(
-        desimodel.io.load_tiles(onlydesi=True, extra=False))
+        desimodel.io.load_tiles(onlydesi=True, extra=False,
+                                tilesfile=config.tiles_file()))
     ntiles = len(tiles)
 
     hourangles = np.asarray(hourangles)
