@@ -5,7 +5,7 @@ desisurvey change log
 0.9.2 (unreleased)
 ------------------
 
-* No changes yet
+* Implement fiber assignment policy via --fa-delay option to surveyplan.
 
 0.9.1 (2017-09-20)
 ------------------
@@ -13,6 +13,8 @@ desisurvey change log
 * Command line scripts --config-file option to override default config file.
 * Fixes for bugs that occur when testing with a small subset of tiles.
 * Changes $DESISURVEY -> $DESISURVEY_OUTPUT as output dir envvar name
+* Remove astropy units from function signatures (for readthedocs).
+* Add travis, coveralls and readthedocs automation.
 
 0.9.0 (2017-09-11)
 ------------------

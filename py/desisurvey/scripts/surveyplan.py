@@ -3,6 +3,8 @@
 To run this script from the command line, use the ``surveyplan`` entry point
 that is created when this package is installed, and should be in your shell
 command search path.
+
+Note that the fiber-assignment (FA) delay specified via --fa-delay encodes two related parameters: the FA delay (integer >= 0) and the FA cadence (d=daily, m=monthy, q=quarterly). See DESI-doc-3194 for details and the justification for the default "1q" setting.
 """
 from __future__ import print_function, division, absolute_import
 
@@ -42,6 +44,9 @@ def parse(options=None):
         '--rules', metavar='YAML', default='rules.yaml',
         help='name of YAML file with observing priority rules')
     parser.add_argument(
+        '--fa-delay', metavar='DELAY', type=str, default='1m',
+        help='FA delay in days (7d), full moons (1m) or quarters (0q)')
+    parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
     parser.add_argument(
@@ -59,6 +64,17 @@ def parse(options=None):
 def main(args):
     """Command-line driver for updating the survey plan.
     """
+    # Check for a valid fa-delay value.
+    if args.fa_delay[-1] not in ('d', 'm', 'q'):
+        raise ValueError('fa-delay must have the form Nd, Nm or Nq.')
+    fa_delay_type = args.fa_delay[-1]
+    try:
+        fa_delay = int(args.fa_delay[:-1])
+    except ValueError:
+        raise ValueError('invalid number in fa-delay.')
+    if fa_delay < 0:
+        raise ValueError('fa-delay value must be >= 0.')
+
     # Set up the logger
     if args.debug:
         log = desiutil.log.get_logger(desiutil.log.DEBUG)
@@ -76,10 +92,11 @@ def main(args):
     if args.output_path is not None:
         config.set_output_path(args.output_path)
 
+    # Load ephemerides.
+    ephem = desisurvey.ephemerides.Ephemerides()
+
     # Initialize scheduler.
     if not os.path.exists(config.get_path('scheduler.fits')):
-        # Load ephemerides.
-        ephem = desisurvey.ephemerides.Ephemerides()
         # Tabulate data used by the scheduler if necessary.
         desisurvey.schedule.initialize(ephem)
     scheduler = desisurvey.schedule.Scheduler()
@@ -126,7 +143,7 @@ def main(args):
         # Return a shell exit code so scripts can detect this condition.
         sys.exit(9)
 
-    log.info('Planning night of {0} with {1} / {2} ({3:.1f}%) completed.'
+    log.info('Planning night of {0} with {1:.1f} / {2} ({3:.1f}%) completed.'
              .format(start, num_complete, num_total, pct))
 
     bookmarked = False
@@ -144,7 +161,8 @@ def main(args):
 
         # Identify any new tiles that are available for fiber assignment.
         # TODO: do this monthly, during full moon, by default.
-        plan = desisurvey.plan.update_available(plan, progress)
+        plan = desisurvey.plan.update_available(
+            plan, progress, start, ephem, fa_delay, fa_delay_type)
 
         # Will update design HA assignments here...
         pass
