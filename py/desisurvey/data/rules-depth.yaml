@@ -60,7 +60,7 @@ SLO:
     cap: S
     passes: 0,1,2,3,4,5,6,7
     dec_max: 2
-    dec_order: +0.2
+    dec_order: -0.2
     rules:
         SLO(0): { START: 1.0 }
         SLO(1): { START: 1.0 }
