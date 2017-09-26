@@ -4,12 +4,7 @@ To run this script from the command line, use the ``surveyplan`` entry point
 that is created when this package is installed, and should be in your shell
 command search path.
 
-Note that the fiber-assignment delay parameter (--fa-delay) has two forms
-that are interpreted differently. A value ending with 'd' specifies the delay
-in days for a rolling fiber assignment that is performed every afternoon.
-A value ending with 'm' specifies the delay in full moons (months) for a
-fiber assignment that is performed once each full moon (so with a variable
-delay in days, depending on the lunar phase when the tile is covered).
+Note that the fiber-assignment (FA) delay specified via --fa-delay encodes two related parameters: the FA delay (integer >= 0) and the FA cadence (d=daily, m=monthy, q=quarterly). See DESI-doc-3194 for details and the justification for the default "1q" setting.
 """
 from __future__ import print_function, division, absolute_import
 
