@@ -7,6 +7,7 @@ command search path.
 The optional matplotlib python package must be installed to use this script.
 
 The external program ffmpeg must be installed to use this script.
+At nersc, try ``module add ffmpeg``.
 """
 from __future__ import print_function, division, absolute_import
 
@@ -301,7 +302,8 @@ class Animator(object):
                 self.scores = hdus[0].data
                 hdus.close()
                 # Save index of first exposure on this date.
-                self.idx0 = np.argmax(self.exposures['night'] == str(date))
+                noon = desisurvey.utils.local_noon_on_date(date)
+                self.idx0 = np.argmax(self.exposures['mjd'] > noon.mjd)
             else:
                 self.warn('Missing scores file: {0}.'.format(scores_name))
         # Get interpolator for moon, planet positions during this night.
