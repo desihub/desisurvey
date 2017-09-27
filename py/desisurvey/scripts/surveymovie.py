@@ -111,7 +111,7 @@ class Animator(object):
     """Manage animation of survey progress.
     """
     def __init__(self, ephem, progress, start, stop, label, show_scores):
-        self.log = desiutil.log.logger()
+        self.log = desiutil.log.get_logger()
         self.ephem = ephem
         self.progress = progress
         self.label = label
