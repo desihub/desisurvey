@@ -122,8 +122,11 @@ class Animator(object):
         self.dec = tiles['dec']
         self.passnum = tiles['pass']
         self.tileid = tiles['tileid']
-        self.tiles_per_pass = np.count_nonzero(
-            self.passnum == np.arange(8).reshape(8, 1), axis=1)
+        npass = np.max(self.passnum)
+        self.tiles_per_pass = np.zeros(npass, int)
+        for passnum in np.unique(self.passnum):
+            self.tiles_per_pass[passnum] = np.count_nonzero(
+                self.passnum == passnum)
         self.prognames = ['DARK', 'DARK', 'DARK', 'DARK', 'GRAY',
                           'BRIGHT', 'BRIGHT', 'BRIGHT']
         self.psels = [
@@ -173,7 +176,7 @@ class Animator(object):
         self.f_obj = [None] * navoids
         bgcolor = matplotlib.colors.to_rgba('lightblue')
         avoidcolor = matplotlib.colors.to_rgba('red')
-        self.defaultcolor = np.array([[1., 0., 0., 0.5]])
+        self.defaultcolor = np.array([[1., 1., 1., 1.]])
         self.completecolor = np.array([0., 0.5, 0., 1.])
         self.unavailcolor = np.array([0.65, 0.65, 0.65, 1.])
         self.nowcolor = np.array([0., 0.7, 0., 1.])
