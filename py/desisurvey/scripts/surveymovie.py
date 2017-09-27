@@ -122,7 +122,7 @@ class Animator(object):
         self.dec = tiles['dec']
         self.passnum = tiles['pass']
         self.tileid = tiles['tileid']
-        npass = np.max(self.passnum)
+        npass = np.max(self.passnum) + 1
         self.tiles_per_pass = np.zeros(npass, int)
         for passnum in np.unique(self.passnum):
             self.tiles_per_pass[passnum] = np.count_nonzero(
