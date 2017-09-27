@@ -59,6 +59,8 @@ def parse(options=None):
         '--expid', type=int, default=None, metavar='ID',
         help='index of single exposure to display')
     parser.add_argument(
+        '--scores', action='store_true', help='display scheduler scores')
+    parser.add_argument(
         '--save', type=str, default='surveymovie', metavar='NAME',
         help='base name (without extension) of output file to write')
     parser.add_argument(
@@ -108,12 +110,12 @@ def wrap(angle, offset=-60):
 class Animator(object):
     """Manage animation of survey progress.
     """
-    def __init__(self, ephem, progress, start, stop, label):
-        """
-        """
+    def __init__(self, ephem, progress, start, stop, label, show_scores):
+        self.log = desiutil.log.logger()
         self.ephem = ephem
         self.progress = progress
         self.label = label
+        self.show_scores = show_scores
         self.config = desisurvey.config.Configuration()
         tiles = progress._table
         self.ra = wrap(tiles['ra'])
@@ -171,6 +173,7 @@ class Animator(object):
         self.f_obj = [None] * navoids
         bgcolor = matplotlib.colors.to_rgba('lightblue')
         avoidcolor = matplotlib.colors.to_rgba('red')
+        self.defaultcolor = np.array([[1., 0., 0., 0.5]])
         self.completecolor = np.array([0., 0.5, 0., 1.])
         self.unavailcolor = np.array([0.65, 0.65, 0.65, 1.])
         self.nowcolor = np.array([0., 0.7, 0., 1.])
@@ -214,9 +217,8 @@ class Animator(object):
                 # Draw the tile outlines for this pass.
                 sel = (self.passnum == passnum)
                 ntiles = np.count_nonzero(sel)
-                fc = np.zeros((ntiles, 4))
-                fc[:, 1] = 1.0
-                fc[:, 3] = 0.5
+                fc = np.empty((ntiles, 4))
+                fc[:] = self.defaultcolor
                 s = np.full(ntiles, 90.)
                 self.scatters.append(ax.scatter(
                     self.ra[sel], self.dec[sel], s=s, facecolors=fc,
@@ -236,8 +238,9 @@ class Animator(object):
                 self.lstlines.append((line1, line2))
                 passnum += 1
 
-        # Initialize scheduler score colormap.
-        self.scorecmap = matplotlib.cm.get_cmap('hot_r')
+        if self.show_scores:
+            # Initialize scheduler score colormap.
+            self.scorecmap = matplotlib.cm.get_cmap('hot_r')
 
         # Add axis above plot to display programs during the night.
         paxes = plt.axes([0, 0.97, 0.66667, 0.03], facecolor='y')
@@ -287,14 +290,17 @@ class Animator(object):
         self.pdata[gray] = 2
         self.pdata[bright] = 3
         self.programs.set_data(self.pdata.reshape(1, -1))
-        # Load new scheduler scores for this night.
-        scores_name = self.config.get_path('scores_{0}.fits'.format(date))
-        if os.path.exists(scores_name):
-            hdus = astropy.io.fits.open(scores_name, memmap=False)
-            self.scores = hdus[0].data
-            hdus.close()
-            # Save index of first exposure on this date.
-            self.idx0 = np.argmax(self.exposures['night'] == str(date))
+        if self.show_scores:
+            # Load new scheduler scores for this night.
+            scores_name = self.config.get_path('scores_{0}.fits'.format(date))
+            if os.path.exists(scores_name):
+                hdus = astropy.io.fits.open(scores_name, memmap=False)
+                self.scores = hdus[0].data
+                hdus.close()
+                # Save index of first exposure on this date.
+                self.idx0 = np.argmax(self.exposures['night'] == str(date))
+            else:
+                self.warn('Missing scores file: {0}.'.format(scores_name))
         # Get interpolator for moon, planet positions during this night.
         for i, name in enumerate(self.avoid_names):
             self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
@@ -315,13 +321,13 @@ class Animator(object):
         self.priority = plan['priority']
         self.last_date = date
 
-    def draw_exposure(self, idx, last_date=None, scores=None, idx0=0):
+    def draw_exposure(self, idx):
         """
         """
         info = self.exposures[idx]
         mjd = info['mjd']
         date = desisurvey.utils.get_date(mjd)
-        assert str(date) == info['night']
+        assert date == desisurvey.utils.get_date(info['night'])
         night = self.ephem.get_night(date)
         # Initialize status if necessary.
         if self.status is None:
@@ -343,12 +349,16 @@ class Animator(object):
         dt2 = dt1 + info['exptime'] / 86400.
         self.pline1.set_xdata([dt1, dt1])
         self.pline2.set_xdata([dt2, dt2])
-        # Update scores display for this exposure.
-        score = self.scores[idx - self.idx0]
-        max_score = np.max(score)
+        if self.show_scores:
+            # Update scores display for this exposure.
+            score = self.scores[idx - self.idx0]
+            max_score = np.max(score)
         for passnum, scatter in enumerate(self.scatters):
             sel = (self.passnum == passnum)
-            fc = self.scorecmap(score[sel] / max_score)
+            if self.show_scores:
+                fc = self.scorecmap(score[sel] / max_score)
+            else:
+                fc[:] = self.defaultcolor
             done = self.status[sel] == 2
             inplan = self.priority[sel] > 0
             avail = self.available[sel]
@@ -418,7 +428,8 @@ def main(args):
     progress = desisurvey.progress.Progress(args.progress)
 
     # Initialize.
-    animator = Animator(ephem, progress, args.start, args.stop, args.label)
+    animator = Animator(
+        ephem, progress, args.start, args.stop, args.label, args.scores)
     log.info('Found {0} exposures from {1} to {2}.'
              .format(animator.num_exp, args.start, args.stop))
     animator.init_figure()
