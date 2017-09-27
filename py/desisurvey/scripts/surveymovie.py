@@ -358,7 +358,7 @@ class Animator(object):
             if self.show_scores:
                 fc = self.scorecmap(score[sel] / max_score)
             else:
-                fc[:] = self.defaultcolor
+                fc = scatter.get_facecolors()
             done = self.status[sel] == 2
             inplan = self.priority[sel] > 0
             avail = self.available[sel]
