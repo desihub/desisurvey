@@ -500,6 +500,11 @@ def get_date(date):
     input_date = date
     # valid types: string, number, Time, datetime, date
     try:
+        # Convert bytes to str.
+        date = date.decode()
+    except AttributeError:
+        pass
+    try:
         # Convert a string of the form YYYY-MM-DD into a date.
         # This will raise a ValueError for a badly formatted string
         # or invalid date such as 2019-13-01.
