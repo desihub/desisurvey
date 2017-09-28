@@ -232,7 +232,7 @@ class Animator(object):
                 ec = np.zeros((navoids, 4))
                 ec[:] = avoidcolor
                 s = np.full(navoids, 500.)
-                s[0] = 2500.
+                s[self.moon_index] = 2500.
                 self.avoids.append(ax.scatter(
                     self.xy_avoid[:, 0], self.xy_avoid[:, 1], facecolors=fc,
                     edgecolors=ec, s=s, lw=2))
