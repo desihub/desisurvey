@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.9.2 (unreleased)
+0.9.3 (unreleased)
+------------------
+
+* No changes yet.
+
+0.9.2 (2017-09-29)
 ------------------
 
 * Implement fiber assignment policy via --fa-delay option to surveyplan.
