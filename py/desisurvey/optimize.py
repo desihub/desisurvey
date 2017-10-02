@@ -286,7 +286,7 @@ class Optimizer(object):
         -------
         tuple
             Tuple (exptime, subset) where exptime is an array of estimated
-            exposure times in seconds and subset is the input subset or
+            exposure times in degrees and subset is the input subset or
             else a slice initialized for all tiles.
         """
         # Calculate for all tiles if no subset is specified.
