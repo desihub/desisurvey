@@ -120,7 +120,7 @@ class Progress(object):
             # Initialize other columns.
             table['status'] = 0
             table['covered'] = -1
-            table['assigned'] = -1
+            table['available'] = -1
             table['mjd'] = 0.
             table['exptime'] = 0.
             table['snr2frac'] = 0.

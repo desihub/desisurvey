@@ -114,7 +114,7 @@ def main(args):
         # Create the initial plan.
         plan = desisurvey.plan.create(design['HA'], priorities)
         # Start the survey from scratch.
-        start = scheduler.start_date
+        start = config.first_day()
     else:
         # Load an existing plan and progress record.
         if not os.path.exists(config.get_path('plan.fits')):
@@ -143,8 +143,9 @@ def main(args):
         # Return a shell exit code so scripts can detect this condition.
         sys.exit(9)
 
-    log.info('Planning night of {0} with {1:.1f} / {2} ({3:.1f}%) completed.'
-             .format(start, num_complete, num_total, pct))
+    day_number = desisurvey.utils.day_number(start)
+    log.info('Planning night[{0}] {1} with {2:.1f} / {3} ({4:.1f}%) completed.'
+             .format(day_number, start, num_complete, num_total, pct))
 
     bookmarked = False
     if not args.create:
@@ -162,16 +163,19 @@ def main(args):
         # Identify any new tiles that are available for fiber assignment.
         plan = desisurvey.plan.update_available(
             plan, progress, start, ephem, fa_delay, fa_delay_type)
-        # Update covered, available columns in the progress table.
-        day_number = desisurvey.utils.day_number(start)
-        new_cover = ((progress._table['covered'] < 0) &
-                     (plan['covered'] <= day_number))
-        progress._table['covered'][new_cover] = day_number
-        new_avail = (progress._table['available'] < 0) & plan['available']
-        progress._table['available'][new_avail] = day_number
 
         # Will update design HA assignments here...
         pass
+
+    # Update covered, available columns in the progress table.
+    new_cover = ((progress._table['covered'] < 0) &
+                 (plan['covered'] <= day_number))
+    progress._table['covered'][new_cover] = day_number
+    new_avail = (progress._table['available'] < 0) & plan['available']
+    progress._table['available'][new_avail] = day_number
+
+    # Save updated progress.
+    progress.save('progress.fits')
 
     # Save the plan and a backup.
     plan.write(config.get_path('plan.fits'), overwrite=True)
