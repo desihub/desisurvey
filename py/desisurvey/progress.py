@@ -462,7 +462,7 @@ class Progress(object):
         row['status'] = 1 if row['snr2frac'].sum() < self.min_snr2 else 2
 
     def get_exposures(self, start=None, stop=None,
-                      tile_fields='tileid,pass,ra,dec',
+                      tile_fields='tileid,pass,ra,dec,ebmv',
                       exp_fields='night,mjd,exptime,seeing,transparency,'
                       +'airmass,moonfrac,moonalt,moonsep'):
         """Create a table listing exposures in time order.
@@ -478,6 +478,8 @@ class Progress(object):
         tile_fields : str
             Comma-separated list of per-tile field names to include. The
             special name 'index' denotes the index into the visible tile array.
+            The special name 'ebmv' adds median E(B-V) values for each tile
+            from the tile design file.
         exp_fields : str
             Comma-separated list of per-exposure field names to include. The
             special name 'snr2cum' denotes the cummulative snr2frac on each
@@ -524,10 +526,19 @@ class Progress(object):
         assert np.all(expid[order] >= 0)
 
         # Create the output table.
+        tileinfo = None
         output = astropy.table.Table()
         for name in tile_fields.split(','):
             if name == 'index':
                 output[name] = tile_index
+            elif name == 'ebmv':
+                if tileinfo is None:
+                    config = desisurvey.config.Configuration()
+                    tileinfo = astropy.table.Table(
+                        desimodel.io.load_tiles(onlydesi=True, extra=False,
+                        tilesfile=config.tiles_file()))
+                    assert np.all(tileinfo['TILEID'] == table['tileid'])
+                output[name] = tileinfo['EBV_MED'][tile_index]
             else:
                 if name not in table.colnames or len(table[name].shape) != 1:
                     raise ValueError(
