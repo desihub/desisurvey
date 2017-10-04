@@ -18,7 +18,7 @@ import desisurvey.utils
 
 # Increment this value whenever a non-backwards compatible change to the
 # table schema is introduced.
-_version = 3
+_version = 4
 
 class Progress(object):
     """Initialize a progress tracking object.
@@ -77,6 +77,12 @@ class Progress(object):
             table['status'] = astropy.table.Column(
                 length=num_tiles, dtype=np.int32,
                 description='Observing status: 0=none, 1=partial, 2=done')
+            table['covered'] = astropy.table.Column(
+                length=num_tiles, dtype=np.int32,
+                description='Tile covered on this day number >=0 (or -1)')
+            table['available'] = astropy.table.Column(
+                length=num_tiles, dtype=np.int32,
+                description='Tile available on this day number >=0 (or -1)')
             # Add per-exposure columns.
             table['mjd'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.5f',
@@ -113,6 +119,8 @@ class Progress(object):
             table['dec'] = tiles['DEC']
             # Initialize other columns.
             table['status'] = 0
+            table['covered'] = -1
+            table['assigned'] = -1
             table['mjd'] = 0.
             table['exptime'] = 0.
             table['snr2frac'] = 0.
