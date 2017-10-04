@@ -107,13 +107,13 @@ def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
     config = desisurvey.config.Configuration()
     tile_radius = config.tile_radius().to(u.deg).value
     # Look up the current night number.
-    night_number = desisurvey.utils.day_number(night)
+    day_number = desisurvey.utils.day_number(night)
     # Find complete tiles.
     complete = (progress._table['status'] == 2)
     # Average length of synodic month in days.
     synodic = 29.53
     # Run monthly / quarterly fiber assignment?
-    month_number = int(np.floor(night_number / synodic))
+    month_number = int(np.floor(day_number / synodic))
     full_moon = ephem.is_full_moon(night, num_nights=1)
     do_monthly = do_quarterly = False
     if full_moon:
@@ -146,7 +146,7 @@ def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
             overlapping = desisurvey.utils.separation_matrix(
                 ra[under], dec[under], ra[over], dec[over], 2 * tile_radius)
             covered = np.all(~overlapping | complete[over], axis=1)
-            new_covered = covered & (plan['covered'][under] > night_number)
+            new_covered = covered & (plan['covered'][under] > day_number)
             if np.any(new_covered):
                 new_tiles = plan['tileid'][under][new_covered]
                 log.info(
@@ -155,17 +155,17 @@ def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
                 # Record the night number when these tiles were first covered.
                 new = under.copy()
                 new[under] = new_covered
-                plan['covered'][new] = night_number
+                plan['covered'][new] = day_number
             # Check if any tiles are newly available now.
             if fa_delay_type == 'd':
                 avail = plan['available'][under] | (
-                    plan['covered'][under] + fa_delay <= night_number)
+                    plan['covered'][under] + fa_delay <= day_number)
             elif do_monthly or do_quarterly:
                 # Calculate delay since each tile was covered in units of
                 # lunar cycles ("months") or 3 lunar cycles ("quarters").
                 period = 3 * synodic if do_quarterly else synodic
                 delay = np.floor(
-                    (night_number - plan['covered'][under]) / period)
+                    (day_number - plan['covered'][under]) / period)
                 avail = plan['available'][under] | (delay >= fa_delay)
             else:
                 # No new available tiles.
