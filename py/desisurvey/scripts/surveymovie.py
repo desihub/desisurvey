@@ -284,11 +284,18 @@ class Animator(object):
         self.idx0 = None
         self.status = None
 
-    def init_date(self, date, night):
-        """
+    def init_date(self, date, ephem):
+        """Initialize before drawing frames for a new night.
+
+        Parameters
+        ----------
+        date : datetime.date
+            Date on which this night's observing starts.
+        night : astropy.table.Column
+            Ephemerides data for this night.
         """
         # Update the observing program for this night.
-        dark, gray, bright = self.ephem.get_program(night['noon'] + self.dmjd)
+        dark, gray, bright = self.ephem.get_program(ephem['noon'] + self.dmjd)
         self.pdata[:] = 0
         self.pdata[dark] = 1
         self.pdata[gray] = 2
@@ -309,7 +316,7 @@ class Animator(object):
         # Get interpolator for moon, planet positions during this night.
         for i, name in enumerate(self.avoid_names):
             self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
-                night, name)
+                ephem, name)
         if self.last_date is not None:
             week_num = int(np.floor((date - self.start_date).days / 7.))
             # Update progress graphs for each program.
@@ -327,7 +334,15 @@ class Animator(object):
         self.last_date = date
 
     def draw_exposure(self, idx):
-        """
+        """Draw the frame for a single exposure.
+
+        Calls :meth:`init_date` if this is the first exposure of the night
+        that we have seen.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the exposure to draw.
         """
         info = self.exposures[idx]
         mjd = info['mjd']
