@@ -160,9 +160,15 @@ def main(args):
             bookmarked = True
 
         # Identify any new tiles that are available for fiber assignment.
-        # TODO: do this monthly, during full moon, by default.
         plan = desisurvey.plan.update_available(
             plan, progress, start, ephem, fa_delay, fa_delay_type)
+        # Update covered, available columns in the progress table.
+        day_number = desisurvey.utils.day_number(start)
+        new_cover = ((progress._table['covered'] < 0) &
+                     (plan['covered'] <= day_number))
+        progress._table['covered'][new_cover] = day_number
+        new_avail = (progress._table['available'] < 0) & plan['available']
+        progress._table['available'][new_avail] = day_number
 
         # Will update design HA assignments here...
         pass
