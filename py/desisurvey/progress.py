@@ -327,7 +327,8 @@ class Progress(object):
 
         # Start a new summary table with the selected rows.
         sel = self._table['status'] >= min_status[include]
-        summary = self._table[sel][['tileid', 'pass', 'ra', 'dec', 'status']]
+        summary = self._table[sel][[
+            'tileid', 'pass', 'ra', 'dec', 'status', 'covered', 'available']]
 
         # Summarize exposure start times.
         col = self._table['mjd']
@@ -398,6 +399,12 @@ class Progress(object):
         table['status'] = 1
         table['status'][snr2sum == 0] = 0
         table['status'][snr2sum >= self.min_snr2] = 2
+        if mjd_max is not None:
+            # Rewind the covered and available columns.
+            config = desisurvey.config.Configuration()
+            max_day_number = desisurvey.utils.day_number(mjd_max)
+            table['covered'][table['covered'] > max_day_number] = -1
+            table['available'][table['available'] > max_day_number] = -1
         # Return a new progress object with this table.
         return Progress(restore=table)
 
