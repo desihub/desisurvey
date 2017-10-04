@@ -54,7 +54,7 @@ def create(hourangles, priorities):
     # covered by any tiles in passes that must be completed before
     # fiber assignment can be run.
     config = desisurvey.config.Configuration()
-    num_nights = (config.last_day() - config.first_day()).days
+    num_nights = desisurvey.utils.day_number(config.last_day())
     plan['covered'] = np.full(ntiles, num_nights, int)
 
     # Any passes with no fiber-assignment dependency are initially available.
@@ -107,7 +107,7 @@ def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
     config = desisurvey.config.Configuration()
     tile_radius = config.tile_radius().to(u.deg).value
     # Look up the current night number.
-    night_number = (night - config.first_day()).days
+    night_number = desisurvey.utils.day_number(night)
     # Find complete tiles.
     complete = (progress._table['status'] == 2)
     # Average length of synodic month in days.
