@@ -269,6 +269,13 @@ class TestUtils(unittest.TestCase):
                 # MJD -> astropy time -> datetime -> date
                 self.assertEqual(utils.get_date(t.mjd), local_answer)
 
+    def test_day_number(self):
+        """Number of days since start of survey"""
+        first = config.Configuration().first_day()
+        self.assertEqual(0, utils.day_number(first))
+        self.assertEqual(
+            100, utils.day_number(first + datetime.timedelta(days=100)))
+
     def test_monsoon(self):
         """Monsoon based on (month, day) comparisons"""
         for year in range(2019, 2025):

@@ -546,6 +546,26 @@ def get_date(date):
     return date
 
 
+def day_number(date):
+    """Return the number of elapsed days since the start of the survey.
+
+    Does not perform any range check that the date is within the nominal
+    survey schedule.
+
+    Parameters
+    ----------
+    date : astropy.time.Time, datetime.date, datetime.datetime, string or number
+        Converted to a date using :func:`get_date`.
+
+    Returns
+    -------
+    int
+        Number of elapsed days since the start of the survey.
+    """
+    config = desisurvey.config.Configuration()
+    return (get_date(date) - config.first_day()).days
+
+
 def separation_matrix(ra1, dec1, ra2, dec2, max_separation=None):
     """Build a matrix of pair-wise separation between (ra,dec) pointings.
 
