@@ -5,7 +5,8 @@ desisurvey change log
 0.9.3 (unreleased)
 ------------------
 
-* No changes yet.
+* Add support for optional depth-first survey strategy.
+* Docs now auto-generated at http://desisurvey.readthedocs.io/en/latest/
 
 0.9.2 (2017-09-29)
 ------------------
