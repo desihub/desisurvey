@@ -83,6 +83,9 @@ class Progress(object):
             table['available'] = astropy.table.Column(
                 length=num_tiles, dtype=np.int32,
                 description='Tile available on this day number >=0 (or -1)')
+            table['planned'] = astropy.table.Column(
+                length=num_tiles, dtype=np.int32,
+                description='Tile first planned on this day number >=0 (or -1)')
             # Add per-exposure columns.
             table['mjd'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.5f',
@@ -121,6 +124,7 @@ class Progress(object):
             table['status'] = 0
             table['covered'] = -1
             table['available'] = -1
+            table['planned'] = -1
             table['mjd'] = 0.
             table['exptime'] = 0.
             table['snr2frac'] = 0.
@@ -328,7 +332,8 @@ class Progress(object):
         # Start a new summary table with the selected rows.
         sel = self._table['status'] >= min_status[include]
         summary = self._table[sel][[
-            'tileid', 'pass', 'ra', 'dec', 'status', 'covered', 'available']]
+            'tileid', 'pass', 'ra', 'dec', 'status',
+            'covered', 'available', 'planned']]
 
         # Summarize exposure start times.
         col = self._table['mjd']
@@ -405,6 +410,7 @@ class Progress(object):
             max_day_number = desisurvey.utils.day_number(mjd_max)
             table['covered'][table['covered'] > max_day_number] = -1
             table['available'][table['available'] > max_day_number] = -1
+            table['planned'][table['planned'] > max_day_number] = -1
         # Return a new progress object with this table.
         return Progress(restore=table)
 

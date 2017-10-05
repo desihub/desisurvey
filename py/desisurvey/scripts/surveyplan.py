@@ -167,12 +167,14 @@ def main(args):
         # Will update design HA assignments here...
         pass
 
-    # Update covered, available columns in the progress table.
-    new_cover = ((progress._table['covered'] < 0) &
-                 (plan['covered'] <= day_number))
-    progress._table['covered'][new_cover] = day_number
-    new_avail = (progress._table['available'] < 0) & plan['available']
-    progress._table['available'][new_avail] = day_number
+    # Update the progress table for the new plan.
+    ptable = progress._table
+    new_cover = (ptable['covered'] < 0) & (plan['covered'] <= day_number)
+    ptable['covered'][new_cover] = day_number
+    new_avail = (ptable['available'] < 0) & plan['available']
+    ptable['available'][new_avail] = day_number
+    new_plan = (ptable['planned'] < 0) & (plan['priority'] > 0)
+    ptable['planned'][new_plan] = day_number
 
     # Save updated progress.
     progress.save('progress.fits')
