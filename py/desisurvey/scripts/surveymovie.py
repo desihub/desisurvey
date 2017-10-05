@@ -65,6 +65,9 @@ def parse(options=None):
         '--save', type=str, default='surveymovie', metavar='NAME',
         help='base name (without extension) of output file to write')
     parser.add_argument(
+        '--fps', type=float, default=10., metavar='FPS',
+        help='frames per second to render')
+    parser.add_argument(
         '--label', type=str, default='DESI', metavar='TEXT',
         help='label to display on each frame')
     parser.add_argument(
@@ -333,8 +336,6 @@ class Animator(object):
         self.available = (avail >= 0) & (avail <= day_number)
         planned = self.progress._table['planned']
         self.planned = (planned >= 0) & (planned <= day_number)
-        print('avail', np.count_nonzero(self.available))
-        print('planned', np.count_nonzero(self.planned))
         self.last_date = date
 
     def draw_exposure(self, idx):
@@ -478,11 +479,13 @@ def main(args):
                          .format(idx + 1, animator.num_exp))
             animator.draw_exposure(idx)
             return animator.artists
+        log.info('Movie will be {:.1f} mins long at {:.1f} frames/sec.'
+                 .format(animator.num_exp / (60 * args.fps), args.fps))
         animation = matplotlib.animation.FuncAnimation(
-            animator.figure, update, init_func=init, interval=100,
+            animator.figure, update, init_func=init,
             blit=True, frames=animator.num_exp)
         writer = matplotlib.animation.writers['ffmpeg'](
-            bitrate=2400, metadata=dict(artist='surveymovie'))
+            bitrate=2400, fps=args.fps, metadata=dict(artist='surveymovie'))
         save_name = args.save + '.mp4'
         animation.save(save_name, writer=writer, dpi=animator.dpi)
         log.info('Saved {0}.'.format(save_name))
