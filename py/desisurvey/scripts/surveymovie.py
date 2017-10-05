@@ -179,6 +179,7 @@ class Animator(object):
         avoidcolor = matplotlib.colors.to_rgba('red')
         self.defaultcolor = np.array([[1., 1., 1., 1.]])
         self.completecolor = np.array([0., 0.5, 0., 1.])
+        self.availcolor = np.array([1., 1., 1., 1.])
         self.unavailcolor = np.array([0.65, 0.65, 0.65, 1.])
         self.nowcolor = np.array([0., 0.7, 0., 1.])
         pcolors = desisurvey.plots.program_color
@@ -326,11 +327,14 @@ class Animator(object):
                 yprog = iplot.get_ydata()
                 yprog[week_num] = 1.0 * ndone / nprog
                 iplot.set_ydata(yprog)
-        # Lookup tonight's plan.
-        plan_name = self.config.get_path('plan_{0}.fits'.format(date))
-        plan = astropy.table.Table.read(plan_name)
-        self.available = plan['available']
-        self.priority = plan['priority']
+        # Lookup which tiles are available and planned for tonight.
+        day_number = desisurvey.utils.day_number(date)
+        avail = self.progress._table['available']
+        self.available = (avail >= 0) & (avail <= day_number)
+        planned = self.progress._table['planned']
+        self.planned = (planned >= 0) & (planned <= day_number)
+        print('avail', np.count_nonzero(self.available))
+        print('planned', np.count_nonzero(self.planned))
         self.last_date = date
 
     def draw_exposure(self, idx):
@@ -375,13 +379,14 @@ class Animator(object):
             max_score = np.max(score)
         for passnum, scatter in enumerate(self.scatters):
             sel = (self.passnum == passnum)
+            done = self.status[sel] == 2
+            avail = self.available[sel]
+            inplan = self.planned[sel]
             if self.show_scores:
                 fc = self.scorecmap(score[sel] / max_score)
             else:
                 fc = scatter.get_facecolors()
-            done = self.status[sel] == 2
-            inplan = self.priority[sel] > 0
-            avail = self.available[sel]
+                fc[avail] = self.availcolor
             sizes = scatter.get_sizes()
             sizes[~inplan] = 20.
             sizes[~done & inplan] = 90.
