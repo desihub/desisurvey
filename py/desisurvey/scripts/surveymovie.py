@@ -370,7 +370,7 @@ class Animator(object):
         assert date == desisurvey.utils.get_date(info['night'])
         night = self.ephem.get_night(date)
         # Initialize status if necessary.
-        if self.status is None:
+        if (self.status is None) or nightly:
             snapshot = self.progress.copy_range(mjd_max=mjd)
             self.status = np.array(snapshot._table['status'])
         if date != self.last_date:
@@ -382,10 +382,10 @@ class Animator(object):
         complete = info['snr2cum'] >= self.config.min_snr2_fraction()
         self.status[info['index']] = 2 if complete else 1
         # Update the top-right label.
-        label = '{0} {1}'.format(self.label, date)
+        label = '{} {} #{:06d}'.format(self.label, date, info['expid'])
         if not nightly:
-            label += ' #{0:06d} ({1:.1f}",{2:.2f})'.format(
-                info['expid'], info['seeing'], info['transparency'])
+            label += ' ({:.1f}",{:.2f})'.format(
+                info['seeing'], info['transparency'])
         self.text.set_text(label)
         if not nightly:
             # Update current time in program.
@@ -500,7 +500,7 @@ def main(args):
         def update(iframe):
             if (iframe + 1) % args.log_interval == 0:
                 log.info('Drawing frame {0}/{1}.'
-                         .format(iframe + 1, animator.num_exp))
+                         .format(iframe + 1, nframes))
             if args.nightly:
                 while not animator.draw_exposure(iexp[0], nightly=True):
                     iexp[0] += 1
