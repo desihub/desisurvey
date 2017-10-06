@@ -5,6 +5,8 @@ desisurvey change log
 0.9.3 (unreleased)
 ------------------
 
+* Fixes #18, #49, #54.
+* Add progress columns to track fiber assignment and planning.
 * Add support for optional depth-first survey strategy.
 * Docs now auto-generated at http://desisurvey.readthedocs.io/en/latest/
 

@@ -65,12 +65,25 @@ class TestConfig(unittest.TestCase):
         self.assertEqual(c.const.pi(), 3.141)
         self.assertEqual(c.output_path(), '.')
 
+    def test_set_value(self):
+        """Terminal node values changed with set_value()"""
+        Configuration.reset()
+        c = Configuration(self.simple)
+        c.const.pi.set_value(4.0)
+        self.assertEqual(c.const.pi(), 4.0)
+        with self.assertRaises(RuntimeError):
+            c.const.pi.set_value(4) # type(4) != float
+        with self.assertRaises(RuntimeError):
+            c.const.gravity.set_value(9.81) # type(9.81) != u.Quantity
+
     def test_non_terminal_value(self):
         """Non-terminal nodes do not have an associated value"""
         Configuration.reset()
         c = Configuration(self.simple)
         with self.assertRaises(RuntimeError):
             c.const()
+        with self.assertRaises(RuntimeError):
+            c.const.set_value(123)
 
     def test_node_path(self):
         """Config nodes have associated paths"""

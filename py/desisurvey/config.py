@@ -14,6 +14,18 @@ containing a number followed by valid astropy units are subsequently converted
 to astropy quantities.  Strings of the form YYYY-MM-DD are converted to
 datetime.date objects.
 
+To change a value after the configuration has been loaded into memory use,
+for example::
+
+    >>> config.full_moon_nights.set_value(5)
+
+Assigned values must have the appropriate converted types, for example::
+
+    >>> import datetime
+    >>> config.last_day.set_value(datetime.date(2024, 1, 1))
+    >>> import astropy.units as u
+    >>> config.location.temperature.set_value(-5 * u.deg_C)
+
 The configuration is implemented as a singleton so the YAML file is only
 loaded and parsed the first time a Configuration() is built.  Subsequent
 calls to Configuration() always return the same object.
@@ -94,6 +106,21 @@ class Node(object):
         """
         try:
             return self._value
+        except AttributeError:
+            raise RuntimeError(
+                '{0} is a non-terminal config node.'.format(self.path))
+
+    def set_value(self, new_value):
+        """Set a terminal node's value or raise a RuntimeError for
+        a non-terminal node.
+        """
+        try:
+            old_value = self._value
+            if not isinstance(new_value, type(old_value)):
+                raise RuntimeError(
+                'new type ({}) does not match old type ({}).'
+                .format(type(new_value), type(old_value)))
+            self._value = new_value
         except AttributeError:
             raise RuntimeError(
                 '{0} is a non-terminal config node.'.format(self.path))
