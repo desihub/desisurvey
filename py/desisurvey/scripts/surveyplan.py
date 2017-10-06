@@ -179,13 +179,9 @@ def main(args):
     # Save updated progress.
     progress.save('progress.fits')
 
-    # Save the plan and a backup.
+    # Save the plan.
     plan.write(config.get_path('plan.fits'), overwrite=True)
-    backup_name = config.get_path('plan_{0}.fits'.format(start))
-    plan.write(backup_name, overwrite=True)
     if bookmarked:
-        # Make a symbolic link to bookmark this plan.
-        bookmark_name = config.get_path('plan_{0}_bookmark.fits'.format(start))
-        os.symlink(backup_name, bookmark_name)
-        # Save a backup of the progress so far.
-        progress.save('progress_{0}_bookmark.fits'.format(start))
+        # Save a backup of the plan and progress at this point.
+        plan.write(config.get_path('plan_{0}.fits'.format(start)))
+        progress.save('progress_{0}.fits'.format(start))
