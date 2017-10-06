@@ -55,7 +55,7 @@ class TestScripts(unittest.TestCase):
         for filename in [
             'ephem_2019-12-01_2019-12-03.fits',
             'plan.fits',
-            'plan_2019-12-01.fits',
+            'plan.fits',
             'scheduler.fits',
             'surveyinit.fits',
             ]:
