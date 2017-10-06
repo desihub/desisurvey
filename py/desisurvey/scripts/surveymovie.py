@@ -60,6 +60,9 @@ def parse(options=None):
         '--expid', type=int, default=None, metavar='ID',
         help='index of single exposure to display')
     parser.add_argument(
+        '--nightly', action='store_true',
+        help='output one summary frame per night')
+    parser.add_argument(
         '--scores', action='store_true', help='display scheduler scores')
     parser.add_argument(
         '--save', type=str, default='surveymovie', metavar='NAME',
@@ -81,6 +84,10 @@ def parse(options=None):
         args = parser.parse_args()
     else:
         args = parser.parse_args(options)
+
+    if args.nightly and args.scores:
+        log.warn('Cannot display scores in nightly summary.')
+        args.scores = False
 
     # Validate start/stop date args and covert to datetime objects.
     # Unspecified values are taken from our config.
@@ -145,6 +152,7 @@ class Animator(object):
             start, stop, tile_fields='tileid,index,ra,dec,pass',
             exp_fields='expid,mjd,night,exptime,snr2cum,seeing,transparency')
         self.num_exp = len(self.exposures)
+        self.num_nights = len(np.unique(self.exposures['night']))
 
         # Calculate each exposure's LST window.
         exp_midpt = astropy.time.Time(
@@ -157,8 +165,8 @@ class Animator(object):
         self.lst[:, 0] = wrap(lst_midpt - 0.5 * lst_len)
         self.lst[:, 1] = wrap(lst_midpt + 0.5 * lst_len)
 
-    def init_figure(self, width=1920, height=1080, dpi=32):
-        """
+    def init_figure(self, nightly, width=1920, height=1080, dpi=32):
+        """Initialize matplot artists for drawing each frame.
         """
         self.dpi = float(dpi)
         # Initialize figure and axes.
@@ -277,15 +285,17 @@ class Animator(object):
 
         # List all animated artists.
         self.artists = (
-            self.scatters + self.avoids + self.labels + self.iplots + [
-            self.programs, self.pline1, self.pline2, self.text])
-        for l1, l2 in self.lstlines:
-            self.artists += [l1, l2]
+            self.scatters + self.avoids + self.labels + self.iplots +
+            [self.programs, self.text])
+        if not nightly:
+            self.artists += [self.pline1, self.pline2]
+            for l1, l2 in self.lstlines:
+                self.artists += [l1, l2]
 
         # Initialize internal tracking vars.
         self.last_date = None
         self.scores = None
-        self.idx0 = None
+        self.iexp0 = None
         self.status = None
 
     def init_date(self, date, ephem):
@@ -314,7 +324,7 @@ class Animator(object):
                 hdus.close()
                 # Save index of first exposure on this date.
                 noon = desisurvey.utils.local_noon_on_date(date)
-                self.idx0 = np.argmax(self.exposures['mjd'] > noon.mjd)
+                self.iexp0 = np.argmax(self.exposures['mjd'] > noon.mjd)
             else:
                 self.warn('Missing scores file: {0}.'.format(scores_name))
         # Get interpolator for moon, planet positions during this night.
@@ -338,7 +348,7 @@ class Animator(object):
         self.planned = (planned >= 0) & (planned <= day_number)
         self.last_date = date
 
-    def draw_exposure(self, idx):
+    def draw_exposure(self, iexp, nightly):
         """Draw the frame for a single exposure.
 
         Calls :meth:`init_date` if this is the first exposure of the night
@@ -346,10 +356,15 @@ class Animator(object):
 
         Parameters
         ----------
-        idx : int
+        iexp : int
             Index of the exposure to draw.
+
+        Returns
+        -------
+        bool
+            True if a new frame was drawn.
         """
-        info = self.exposures[idx]
+        info = self.exposures[iexp]
         mjd = info['mjd']
         date = desisurvey.utils.get_date(mjd)
         assert date == desisurvey.utils.get_date(info['night'])
@@ -361,22 +376,26 @@ class Animator(object):
         if date != self.last_date:
             # Initialize for this night.
             self.init_date(date, night)
+        elif nightly:
+            return False
         # Update the status for the current exposure.
         complete = info['snr2cum'] >= self.config.min_snr2_fraction()
         self.status[info['index']] = 2 if complete else 1
         # Update the top-right label.
-        self.text.set_text(
-            '{0} {1} #{2:06d} ({3:.1f}",{4:.2f})'
-            .format(self.label, date, info['expid'], info['seeing'],
-                    info['transparency']))
-        # Update current time in program.
-        dt1 = mjd - night['noon']
-        dt2 = dt1 + info['exptime'] / 86400.
-        self.pline1.set_xdata([dt1, dt1])
-        self.pline2.set_xdata([dt2, dt2])
+        label = '{0} {1}'.format(self.label, date)
+        if not nightly:
+            label += ' #{0:06d} ({1:.1f}",{2:.2f})'.format(
+                info['expid'], info['seeing'], info['transparency'])
+        self.text.set_text(label)
+        if not nightly:
+            # Update current time in program.
+            dt1 = mjd - night['noon']
+            dt2 = dt1 + info['exptime'] / 86400.
+            self.pline1.set_xdata([dt1, dt1])
+            self.pline2.set_xdata([dt2, dt2])
         if self.show_scores:
             # Update scores display for this exposure.
-            score = self.scores[idx - self.idx0]
+            score = self.scores[iexp - self.iexp0]
             max_score = np.max(score)
         for passnum, scatter in enumerate(self.scatters):
             sel = (self.passnum == passnum)
@@ -394,7 +413,7 @@ class Animator(object):
             sizes[done] = 30.
             fc[done] = self.completecolor
             fc[~avail] = self.unavailcolor
-            if info['pass'] == passnum:
+            if not nightly and (info['pass'] == passnum):
                 # Highlight the tile being observed now.
                 jdx = np.where(self.tileid[sel] == info['tileid'])[0][0]
                 fc[jdx] = self.nowcolor
@@ -405,14 +424,15 @@ class Animator(object):
                    self.tiles_per_pass[passnum])
             self.labels[passnum].set_text('{0}-{1} {2:5.1f}%'.format(
                 self.prognames[passnum], passnum, pct))
-        # Update LST lines.
-        x1, x2 = self.lst[idx]
-        for passnum, (line1, line2) in enumerate(self.lstlines):
-            ls = '-' if info['pass'] == passnum else '--'
-            line1.set_linestyle(ls)
-            line2.set_linestyle(ls)
-            line1.set_xdata([x1, x1])
-            line2.set_xdata([x2, x2])
+        if not nightly:
+            # Update LST lines.
+            x1, x2 = self.lst[iexp]
+            for passnum, (line1, line2) in enumerate(self.lstlines):
+                ls = '-' if info['pass'] == passnum else '--'
+                line1.set_linestyle(ls)
+                line2.set_linestyle(ls)
+                line1.set_xdata([x1, x1])
+                line2.set_xdata([x2, x2])
         # Fill the moon with a shade of gray corresponding to its illuminated
         # fraction during this exposure.
         moon_frac = self.ephem.get_moon_illuminated_fraction(mjd)
@@ -425,6 +445,7 @@ class Animator(object):
             scatter.set_offsets(self.xy_avoid)
             scatter.get_facecolors()[self.moon_index] = [
                 moon_frac, moon_frac, moon_frac, 1.]
+        return True
 
 
 def main(args):
@@ -456,9 +477,10 @@ def main(args):
     # Initialize.
     animator = Animator(
         ephem, progress, args.start, args.stop, args.label, args.scores)
-    log.info('Found {0} exposures from {1} to {2}.'
-             .format(animator.num_exp, args.start, args.stop))
-    animator.init_figure()
+    log.info('Found {0} exposures from {1} to {2} ({3} nights).'
+             .format(animator.num_exp, args.start, args.stop,
+                     animator.num_nights))
+    animator.init_figure(args.nightly)
 
     if args.expid is not None:
         expid = animator.exposures['expid']
@@ -466,24 +488,29 @@ def main(args):
         if (args.expid < expid[0]) or (args.expid > expid[-1]):
             raise RuntimeError('Requested exposure ID {0} not available.'
                                .format(args.expid))
-        animator.draw_exposure(args.expid - expid[0])
+        animator.draw_exposure(args.expid - expid[0], args.nightly)
         save_name = args.save + '.png'
         plt.savefig(save_name)
         log.info('Saved {0}.'.format(save_name))
     else:
+        nframes = animator.num_nights if args.nightly else animator.num_exp
+        iexp = [0]
         def init():
             return animator.artists
-        def update(idx):
-            if (idx + 1) % args.log_interval == 0:
+        def update(iframe):
+            if (iframe + 1) % args.log_interval == 0:
                 log.info('Drawing frame {0}/{1}.'
-                         .format(idx + 1, animator.num_exp))
-            animator.draw_exposure(idx)
+                         .format(iframe + 1, animator.num_exp))
+            if args.nightly:
+                while not animator.draw_exposure(iexp[0], nightly=True):
+                    iexp[0] += 1
+            else:
+                animator.draw_exposure(iexp=iframe, nightly=False)
             return animator.artists
         log.info('Movie will be {:.1f} mins long at {:.1f} frames/sec.'
-                 .format(animator.num_exp / (60 * args.fps), args.fps))
+                 .format(nframes / (60 * args.fps), args.fps))
         animation = matplotlib.animation.FuncAnimation(
-            animator.figure, update, init_func=init,
-            blit=True, frames=animator.num_exp)
+            animator.figure, update, init_func=init, blit=True, frames=nframes)
         writer = matplotlib.animation.writers['ffmpeg'](
             bitrate=2400, fps=args.fps, metadata=dict(artist='surveymovie'))
         save_name = args.save + '.mp4'
