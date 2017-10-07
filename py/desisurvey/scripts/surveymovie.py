@@ -248,10 +248,11 @@ class Animator(object):
                 self.avoids.append(ax.scatter(
                     self.xy_avoid[:, 0], self.xy_avoid[:, 1], facecolors=fc,
                     edgecolors=ec, s=s, lw=2))
-                # Draw LST lines for the current exposure.
-                line1 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
-                line2 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
-                self.lstlines.append((line1, line2))
+                if not nightly:
+                    # Draw LST lines for the current exposure.
+                    line1 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
+                    line2 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
+                    self.lstlines.append((line1, line2))
                 passnum += 1
 
         if self.show_scores:
@@ -274,8 +275,9 @@ class Animator(object):
             self.pdata.reshape(1, -1), interpolation='none', aspect='auto',
             extent=(edges[0], edges[-1], 0., 1.),
             vmin=-0.5, vmax=3.5, cmap=pcmap)
-        self.pline1 = paxes.axvline(0., lw=4, ls='-', color=self.nowcolor)
-        self.pline2 = paxes.axvline(0., lw=4, ls='-', color=self.nowcolor)
+        if not nightly:
+            self.pline1 = paxes.axvline(0., lw=4, ls='-', color=self.nowcolor)
+            self.pline2 = paxes.axvline(0., lw=4, ls='-', color=self.nowcolor)
 
         # Add text label in the top-right corner.
         self.text = plt.annotate(
