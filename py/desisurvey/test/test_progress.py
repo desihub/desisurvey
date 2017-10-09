@@ -110,12 +110,9 @@ class TestProgress(unittest.TestCase):
             p.get_exposures(exp_fields='pass')
         explist = p.get_exposures(exp_fields='mjd,night')
         for row in explist:
+            self.assertEqual(desisurvey.utils.get_date(row['mjd']),
+                             desisurvey.utils.get_date(row['night']))
             night = str(desisurvey.utils.get_date(row['mjd']))
-            try:
-                self.assertEqual(row['night'], night)
-            except AssertionError:
-                # Necessary if column dtype is bytes.
-                self.assertEqual(row['night'].decode(), night)
             self.assertEqual(night, str(desisurvey.utils.get_date(night)))
 
     def test_exposures_incrementing(self):

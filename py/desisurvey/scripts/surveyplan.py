@@ -114,7 +114,7 @@ def main(args):
         # Create the initial plan.
         plan = desisurvey.plan.create(design['HA'], priorities)
         # Start the survey from scratch.
-        start = scheduler.start_date
+        start = config.first_day()
     else:
         # Load an existing plan and progress record.
         if not os.path.exists(config.get_path('plan.fits')):
@@ -143,8 +143,9 @@ def main(args):
         # Return a shell exit code so scripts can detect this condition.
         sys.exit(9)
 
-    log.info('Planning night of {0} with {1:.1f} / {2} ({3:.1f}%) completed.'
-             .format(start, num_complete, num_total, pct))
+    day_number = desisurvey.utils.day_number(start)
+    log.info('Planning night[{0}] {1} with {2:.1f} / {3} ({4:.1f}%) completed.'
+             .format(day_number, start, num_complete, num_total, pct))
 
     bookmarked = False
     if not args.create:
@@ -160,20 +161,27 @@ def main(args):
             bookmarked = True
 
         # Identify any new tiles that are available for fiber assignment.
-        # TODO: do this monthly, during full moon, by default.
         plan = desisurvey.plan.update_available(
             plan, progress, start, ephem, fa_delay, fa_delay_type)
 
         # Will update design HA assignments here...
         pass
 
-    # Save the plan and a backup.
+    # Update the progress table for the new plan.
+    ptable = progress._table
+    new_cover = (ptable['covered'] < 0) & (plan['covered'] <= day_number)
+    ptable['covered'][new_cover] = day_number
+    new_avail = (ptable['available'] < 0) & plan['available']
+    ptable['available'][new_avail] = day_number
+    new_plan = (ptable['planned'] < 0) & (plan['priority'] > 0)
+    ptable['planned'][new_plan] = day_number
+
+    # Save updated progress.
+    progress.save('progress.fits')
+
+    # Save the plan.
     plan.write(config.get_path('plan.fits'), overwrite=True)
-    backup_name = config.get_path('plan_{0}.fits'.format(start))
-    plan.write(backup_name, overwrite=True)
     if bookmarked:
-        # Make a symbolic link to bookmark this plan.
-        bookmark_name = config.get_path('plan_{0}_bookmark.fits'.format(start))
-        os.symlink(backup_name, bookmark_name)
-        # Save a backup of the progress so far.
-        progress.save('progress_{0}_bookmark.fits'.format(start))
+        # Save a backup of the plan and progress at this point.
+        plan.write(config.get_path('plan_{0}.fits'.format(start)))
+        progress.save('progress_{0}.fits'.format(start))

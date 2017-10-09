@@ -1,0 +1,72 @@
+#-------------------------------------------------------------------
+# Definition of tile groups that are separately scheduled
+# and prioritized. See doc/rules.rst for an explanation for the format.
+#-------------------------------------------------------------------
+
+# Implement a simple depth-first survey strategy that expands out from
+# DEC=18deg (2deg) in the NGC (SGC), with all tiles included in the
+# schedule as soon as they have fibers assigned.
+
+NHI:
+    # Expand upwards from DEC=18deg in all passes.
+    cap: N
+    passes: 0,1,2,3,4,5,6,7
+    dec_min: 18
+    dec_order: +0.2
+    rules:
+        NHI(0): { START: 1.0 }
+        NHI(1): { START: 1.0 }
+        NHI(2): { START: 1.0 }
+        NHI(3): { START: 1.0 }
+        NHI(4): { START: 1.0 }
+        NHI(5): { START: 1.0 }
+        NHI(6): { START: 1.0 }
+        NHI(7): { START: 1.0 }
+
+NLO:
+    # Expand downwards from DEC=18deg in all passes.
+    cap: N
+    passes: 0,1,2,3,4,5,6,7
+    dec_max: 18
+    dec_order: -0.2
+    rules:
+        NLO(0): { START: 1.0 }
+        NLO(1): { START: 1.0 }
+        NLO(2): { START: 1.0 }
+        NLO(3): { START: 1.0 }
+        NLO(4): { START: 1.0 }
+        NLO(5): { START: 1.0 }
+        NLO(6): { START: 1.0 }
+        NLO(7): { START: 1.0 }
+
+SHI:
+    # Expand upwards from DEC=2deg in all passes.
+    cap: S
+    passes: 0,1,2,3,4,5,6,7
+    dec_min: 2
+    dec_order: +0.2
+    rules:
+        SHI(0): { START: 1.0 }
+        SHI(1): { START: 1.0 }
+        SHI(2): { START: 1.0 }
+        SHI(3): { START: 1.0 }
+        SHI(4): { START: 1.0 }
+        SHI(5): { START: 1.0 }
+        SHI(6): { START: 1.0 }
+        SHI(7): { START: 1.0 }
+
+SLO:
+    # Expand upwards from DEC=2deg in all passes.
+    cap: S
+    passes: 0,1,2,3,4,5,6,7
+    dec_max: 2
+    dec_order: -0.2
+    rules:
+        SLO(0): { START: 1.0 }
+        SLO(1): { START: 1.0 }
+        SLO(2): { START: 1.0 }
+        SLO(3): { START: 1.0 }
+        SLO(4): { START: 1.0 }
+        SLO(5): { START: 1.0 }
+        SLO(6): { START: 1.0 }
+        SLO(7): { START: 1.0 }

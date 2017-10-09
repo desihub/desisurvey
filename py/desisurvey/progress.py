@@ -18,7 +18,7 @@ import desisurvey.utils
 
 # Increment this value whenever a non-backwards compatible change to the
 # table schema is introduced.
-_version = 3
+_version = 4
 
 class Progress(object):
     """Initialize a progress tracking object.
@@ -77,6 +77,15 @@ class Progress(object):
             table['status'] = astropy.table.Column(
                 length=num_tiles, dtype=np.int32,
                 description='Observing status: 0=none, 1=partial, 2=done')
+            table['covered'] = astropy.table.Column(
+                length=num_tiles, dtype=np.int32,
+                description='Tile covered on this day number >=0 (or -1)')
+            table['available'] = astropy.table.Column(
+                length=num_tiles, dtype=np.int32,
+                description='Tile available on this day number >=0 (or -1)')
+            table['planned'] = astropy.table.Column(
+                length=num_tiles, dtype=np.int32,
+                description='Tile first planned on this day number >=0 (or -1)')
             # Add per-exposure columns.
             table['mjd'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.5f',
@@ -113,6 +122,9 @@ class Progress(object):
             table['dec'] = tiles['DEC']
             # Initialize other columns.
             table['status'] = 0
+            table['covered'] = -1
+            table['available'] = -1
+            table['planned'] = -1
             table['mjd'] = 0.
             table['exptime'] = 0.
             table['snr2frac'] = 0.
@@ -319,7 +331,9 @@ class Progress(object):
 
         # Start a new summary table with the selected rows.
         sel = self._table['status'] >= min_status[include]
-        summary = self._table[sel][['tileid', 'pass', 'ra', 'dec', 'status']]
+        summary = self._table[sel][[
+            'tileid', 'pass', 'ra', 'dec', 'status',
+            'covered', 'available', 'planned']]
 
         # Summarize exposure start times.
         col = self._table['mjd']
@@ -390,6 +404,13 @@ class Progress(object):
         table['status'] = 1
         table['status'][snr2sum == 0] = 0
         table['status'][snr2sum >= self.min_snr2] = 2
+        if mjd_max is not None:
+            # Rewind the covered and available columns.
+            config = desisurvey.config.Configuration()
+            max_day_number = desisurvey.utils.day_number(mjd_max)
+            table['covered'][table['covered'] > max_day_number] = -1
+            table['available'][table['available'] > max_day_number] = -1
+            table['planned'][table['planned'] > max_day_number] = -1
         # Return a new progress object with this table.
         return Progress(restore=table)
 
@@ -462,7 +483,7 @@ class Progress(object):
         row['status'] = 1 if row['snr2frac'].sum() < self.min_snr2 else 2
 
     def get_exposures(self, start=None, stop=None,
-                      tile_fields='tileid,pass,ra,dec',
+                      tile_fields='tileid,pass,ra,dec,ebmv',
                       exp_fields='night,mjd,exptime,seeing,transparency,'
                       +'airmass,moonfrac,moonalt,moonsep'):
         """Create a table listing exposures in time order.
@@ -478,6 +499,8 @@ class Progress(object):
         tile_fields : str
             Comma-separated list of per-tile field names to include. The
             special name 'index' denotes the index into the visible tile array.
+            The special name 'ebmv' adds median E(B-V) values for each tile
+            from the tile design file.
         exp_fields : str
             Comma-separated list of per-exposure field names to include. The
             special name 'snr2cum' denotes the cummulative snr2frac on each
@@ -524,10 +547,19 @@ class Progress(object):
         assert np.all(expid[order] >= 0)
 
         # Create the output table.
+        tileinfo = None
         output = astropy.table.Table()
         for name in tile_fields.split(','):
             if name == 'index':
                 output[name] = tile_index
+            elif name == 'ebmv':
+                if tileinfo is None:
+                    config = desisurvey.config.Configuration()
+                    tileinfo = astropy.table.Table(
+                        desimodel.io.load_tiles(onlydesi=True, extra=False,
+                        tilesfile=config.tiles_file()))
+                    assert np.all(tileinfo['TILEID'] == table['tileid'])
+                output[name] = tileinfo['EBV_MED'][tile_index]
             else:
                 if name not in table.colnames or len(table[name].shape) != 1:
                     raise ValueError(

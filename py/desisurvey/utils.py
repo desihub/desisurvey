@@ -500,6 +500,11 @@ def get_date(date):
     input_date = date
     # valid types: string, number, Time, datetime, date
     try:
+        # Convert bytes to str.
+        date = date.decode()
+    except AttributeError:
+        pass
+    try:
         # Convert a string of the form YYYY-MM-DD into a date.
         # This will raise a ValueError for a badly formatted string
         # or invalid date such as 2019-13-01.
@@ -539,6 +544,26 @@ def get_date(date):
     if not isinstance(date, datetime.date):
         raise ValueError('Invalid date specification: {0}.'.format(input_date))
     return date
+
+
+def day_number(date):
+    """Return the number of elapsed days since the start of the survey.
+
+    Does not perform any range check that the date is within the nominal
+    survey schedule.
+
+    Parameters
+    ----------
+    date : astropy.time.Time, datetime.date, datetime.datetime, string or number
+        Converted to a date using :func:`get_date`.
+
+    Returns
+    -------
+    int
+        Number of elapsed days since the start of the survey.
+    """
+    config = desisurvey.config.Configuration()
+    return (get_date(date) - config.first_day()).days
 
 
 def separation_matrix(ra1, dec1, ra2, dec2, max_separation=None):
