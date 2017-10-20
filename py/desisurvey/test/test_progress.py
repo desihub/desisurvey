@@ -113,7 +113,7 @@ class TestProgress(unittest.TestCase):
             self.assertEqual(desisurvey.utils.get_date(row['MJD']),
                              desisurvey.utils.get_date(row['NIGHT']))
             night = str(desisurvey.utils.get_date(row['MJD']))
-            self.assertEqual(night, str(desisurvey.utils.get_date(night)).replace('-', ''))
+            self.assertEqual(night, str(desisurvey.utils.get_date(night)))
 
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""
