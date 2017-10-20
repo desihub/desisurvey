@@ -97,11 +97,11 @@ class TestProgress(unittest.TestCase):
             p.add_exposure(
                 tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
         explist = p.get_exposures()
-        self.assertTrue(np.all(np.diff(explist['mjd']) > 0))
+        self.assertTrue(np.all(np.diff(explist['MJD']) > 0))
         explist = p.get_exposures(tile_fields='index', exp_fields='lst')
-        self.assertTrue(np.all(np.diff(explist['lst']) > 0))
-        self.assertTrue(np.min(explist['lst'] >= 0))
-        self.assertTrue(np.max(explist['lst'] < 360))
+        self.assertTrue(np.all(np.diff(explist['LST']) > 0))
+        self.assertTrue(np.min(explist['LST'] >= 0))
+        self.assertTrue(np.max(explist['LST'] < 360))
         with self.assertRaises(ValueError):
             p.get_exposures(tile_fields='mjd')
         with self.assertRaises(ValueError):
@@ -110,10 +110,10 @@ class TestProgress(unittest.TestCase):
             p.get_exposures(exp_fields='pass')
         explist = p.get_exposures(exp_fields='mjd,night')
         for row in explist:
-            self.assertEqual(desisurvey.utils.get_date(row['mjd']),
-                             desisurvey.utils.get_date(row['night']))
-            night = str(desisurvey.utils.get_date(row['mjd']))
-            self.assertEqual(night, str(desisurvey.utils.get_date(night)))
+            self.assertEqual(desisurvey.utils.get_date(row['MJD']),
+                             desisurvey.utils.get_date(row['NIGHT']))
+            night = str(desisurvey.utils.get_date(row['MJD']))
+            self.assertEqual(night, str(desisurvey.utils.get_date(night)).replace('-', ''))
 
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""
