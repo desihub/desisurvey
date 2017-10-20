@@ -576,9 +576,9 @@ class Progress(object):
                 mjd = table['mjd'].flatten()[order]
                 night = np.empty(len(mjd), dtype='S8')
                 for i in range(len(mjd)):
-                    night[i] = str(desisurvey.utils.get_date(mjd[i]))
+                    night[i] = str(desisurvey.utils.get_date(mjd[i])).replace('-', '')
                 output[name.upper()] = astropy.table.Column(
-                    np.char.replace(night, '-', ''),
+                    night,
                     description='Date at start of night when exposure taken')
             elif name == 'lst':
                 mjd = table['mjd'].flatten()[order]
