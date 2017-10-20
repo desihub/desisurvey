@@ -106,8 +106,8 @@ class TestProgress(unittest.TestCase):
             p.get_exposures(tile_fields='mjd')
         with self.assertRaises(ValueError):
             p.get_exposures(tile_fields='nonexistent')
-        with self.assertRaises(ValueError):
-            p.get_exposures(exp_fields='pass')
+        # with self.assertRaises(ValueError):
+        #     p.get_exposures(exp_fields='pass')
         explist = p.get_exposures(exp_fields='mjd,night')
         for row in explist:
             self.assertEqual(desisurvey.utils.get_date(row['MJD']),

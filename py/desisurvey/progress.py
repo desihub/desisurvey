@@ -588,6 +588,14 @@ class Progress(object):
                 output[name.upper()] = astropy.table.Column(
                     lst, format='%.1f', unit='deg',
                     description='Apparent local sidereal time in degrees')
+            elif name == 'program':
+                exppass = table['pass'].flatten()[order]
+                program = np.empty(len(mjd), dtype='S6')
+                program[:] = 'BRIGHT'
+                program[exppass < 4] = 'DARK'
+                program[exppass == 4] = 'GRAY'
+                output[name.upper()] = astropy.table.Column(program,
+                                                            description='Program name')
             elif name == 'expid':
                 output[name.upper()] = astropy.table.Column(
                     expid[order], description='Exposure index')
