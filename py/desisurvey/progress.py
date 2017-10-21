@@ -485,7 +485,7 @@ class Progress(object):
     def get_exposures(self, start=None, stop=None,
                       tile_fields='tileid,pass,ra,dec,ebmv',
                       exp_fields='night,mjd,exptime,seeing,transparency,'
-                      +'airmass,moonfrac,moonalt,moonsep'):
+                      +'airmass,moonfrac,moonalt,moonsep,program'):
         """Create a table listing exposures in time order.
 
         Parameters
@@ -505,7 +505,7 @@ class Progress(object):
             Comma-separated list of per-exposure field names to include. The
             special name 'snr2cum' denotes the cummulative snr2frac on each
             tile, since the start of the survey.  The special name 'night'
-            denotes a string YYYY-MM-DD specifying the date on which each
+            denotes a string YYYYMMDD specifying the date on which each
             night starts. The special name 'lst' denotes the apparent local
             sidereal time of the shutter open timestamp. The special name
             'expid' denotes the index of each exposure in the full progress
@@ -514,7 +514,7 @@ class Progress(object):
         Returns
         -------
         astropy.table.Table
-            Table with the specified columns and one row per exposure.
+            Table with the specified columns as uppercase and one row per exposure.
         """
         # Get MJD range to show.
         if start is None:
@@ -550,8 +550,9 @@ class Progress(object):
         tileinfo = None
         output = astropy.table.Table()
         for name in tile_fields.split(','):
+            name = name.lower()
             if name == 'index':
-                output[name] = tile_index
+                output[name.upper()] = tile_index
             elif name == 'ebmv':
                 if tileinfo is None:
                     config = desisurvey.config.Configuration()
@@ -559,25 +560,26 @@ class Progress(object):
                         desimodel.io.load_tiles(onlydesi=True, extra=False,
                         tilesfile=config.tiles_file()))
                     assert np.all(tileinfo['TILEID'] == table['tileid'])
-                output[name] = tileinfo['EBV_MED'][tile_index]
+                output[name.upper()] = tileinfo['EBV_MED'][tile_index]
             else:
                 if name not in table.colnames or len(table[name].shape) != 1:
                     raise ValueError(
                         'Invalid tile field name: {0}.'.format(name))
-                output[name] = table[name][tile_index]
+                output[name.upper()] = table[name][tile_index]
         for name in exp_fields.split(','):
+            name = name.lower()
             if name == 'snr2cum':
                 snr2cum = np.cumsum(
                     table['snr2frac'], axis=1).flatten()[order]
-                output[name] = astropy.table.Column(
+                output[name.upper()] = astropy.table.Column(
                     snr2cum, format='%.3f',
                     description='Cummulative fraction of target S/N**2')
             elif name == 'night':
                 mjd = table['mjd'].flatten()[order]
-                night = np.empty(len(mjd), dtype='S10')
+                night = np.empty(len(mjd), dtype='S8')
                 for i in range(len(mjd)):
-                    night[i] = str(desisurvey.utils.get_date(mjd[i]))
-                output[name] = astropy.table.Column(
+                    night[i] = str(desisurvey.utils.get_date(mjd[i])).replace('-', '')
+                output[name.upper()] = astropy.table.Column(
                     night,
                     description='Date at start of night when exposure taken')
             elif name == 'lst':
@@ -585,16 +587,24 @@ class Progress(object):
                 times = astropy.time.Time(
                     mjd, format='mjd', location=desisurvey.utils.get_location())
                 lst = times.sidereal_time('apparent').to(u.deg).value
-                output[name] = astropy.table.Column(
+                output[name.upper()] = astropy.table.Column(
                     lst, format='%.1f', unit='deg',
                     description='Apparent local sidereal time in degrees')
+            elif name == 'program':
+                exppass = table['pass'][tile_index]
+                program = np.empty(len(exppass), dtype='S6')
+                program[:] = 'BRIGHT'
+                program[exppass < 4] = 'DARK'
+                program[exppass == 4] = 'GRAY'
+                output[name.upper()] = astropy.table.Column(program,
+                                                            description='Program name')
             elif name == 'expid':
-                output[name] = astropy.table.Column(
+                output[name.upper()] = astropy.table.Column(
                     expid[order], description='Exposure index')
             else:
                 if name not in table.colnames or len(table[name].shape) != 2:
                     raise ValueError(
                         'Invalid exposure field name: {0}.'.format(name))
-                output[name] = table[name].flatten()[order]
+                output[name.upper()] = table[name].flatten()[order]
 
         return output
