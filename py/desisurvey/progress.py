@@ -514,7 +514,7 @@ class Progress(object):
         Returns
         -------
         astropy.table.Table
-            Table with the specified columns and one row per exposure.
+            Table with the specified columns as uppercase and one row per exposure.
         """
         # Get MJD range to show.
         if start is None:
@@ -550,6 +550,7 @@ class Progress(object):
         tileinfo = None
         output = astropy.table.Table()
         for name in tile_fields.split(','):
+            name = name.lower()
             if name == 'index':
                 output[name.upper()] = tile_index
             elif name == 'ebmv':
@@ -566,6 +567,7 @@ class Progress(object):
                         'Invalid tile field name: {0}.'.format(name))
                 output[name.upper()] = table[name][tile_index]
         for name in exp_fields.split(','):
+            name = name.lower()
             if name == 'snr2cum':
                 snr2cum = np.cumsum(
                     table['snr2frac'], axis=1).flatten()[order]
