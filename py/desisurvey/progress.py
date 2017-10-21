@@ -485,7 +485,7 @@ class Progress(object):
     def get_exposures(self, start=None, stop=None,
                       tile_fields='tileid,pass,ra,dec,ebmv',
                       exp_fields='night,mjd,exptime,seeing,transparency,'
-                      +'airmass,moonfrac,moonalt,moonsep,program,expid'):
+                      +'airmass,moonfrac,moonalt,moonsep,program'):
         """Create a table listing exposures in time order.
 
         Parameters
