@@ -589,8 +589,8 @@ class Progress(object):
                     lst, format='%.1f', unit='deg',
                     description='Apparent local sidereal time in degrees')
             elif name == 'program':
-                exppass = table['pass'].flatten()[order]
-                program = np.empty(len(mjd), dtype='S6')
+                exppass = table['pass'][tile_index]
+                program = np.empty(len(exppass), dtype='S6')
                 program[:] = 'BRIGHT'
                 program[exppass < 4] = 'DARK'
                 program[exppass == 4] = 'GRAY'
