@@ -592,10 +592,17 @@ class Progress(object):
                     description='Apparent local sidereal time in degrees')
             elif name == 'program':
                 exppass = table['pass'][tile_index]
-                program = np.empty(len(exppass), dtype='S6')
-                program[:] = 'BRIGHT'
-                program[exppass < 4] = 'DARK'
-                program[exppass == 4] = 'GRAY'
+                try:
+                    from desimodel.footprint import pass2program
+                    program = pass2program(exppass)
+                except ImportError:
+                    #- desimodel < 0.9.1 doesn't have pass2program, so
+                    #- hardcode the mapping that it did have
+                    program = np.empty(len(exppass), dtype='S6')
+                    program[:] = 'BRIGHT'
+                    program[exppass < 4] = 'DARK'
+                    program[exppass == 4] = 'GRAY'
+
                 output[name.upper()] = astropy.table.Column(program,
                                                             description='Program name')
             elif name == 'expid':
