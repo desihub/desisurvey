@@ -6,6 +6,7 @@ desisurvey change log
 ------------------
 
 * Progress.get_exposures() uses desimodel.footprint.pass2program if available.
+* Progress.get_exposures() includes a flavor column.
 
 0.9.3 (2017-10-09)
 ------------------
