@@ -6,6 +6,7 @@ import os
 import numpy as np
 
 import astropy.units as u
+from astropy.table import Table
 
 import desisurvey.config
 
@@ -108,12 +109,22 @@ class TestProgress(unittest.TestCase):
             p.get_exposures(tile_fields='nonexistent')
         # with self.assertRaises(ValueError):
         #     p.get_exposures(exp_fields='pass')
-        explist = p.get_exposures(exp_fields='mjd,night')
+        explist = p.get_exposures(exp_fields='mjd,night,program')
         for row in explist:
             self.assertEqual(desisurvey.utils.get_date(row['MJD']),
                              desisurvey.utils.get_date(row['NIGHT']))
             night = str(desisurvey.utils.get_date(row['MJD']))
             self.assertEqual(night, str(desisurvey.utils.get_date(night)))
+
+        #- Test roundtrip to disk
+        expfile = os.path.join(self.tmpdir, 'test-exposures.fits')
+        explist.write(expfile)
+        newexp = Table.read(expfile)
+
+        self.assertEqual(explist['PROGRAM'].dtype, newexp['PROGRAM'].dtype)
+        self.assertEqual(explist['NIGHT'].dtype, newexp['NIGHT'].dtype)
+        self.assertTrue(np.all(explist['PROGRAM'] == newexp['PROGRAM']))
+        self.assertTrue(np.all(explist['NIGHT'] == newexp['NIGHT']))
 
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""
