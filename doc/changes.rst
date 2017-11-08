@@ -5,7 +5,7 @@ desisurvey change log
 0.9.4 (unreleased)
 ------------------
 
-* No changes yet.
+* Progress.get_exposures() uses desimodel.footprint.pass2program if available.
 
 0.9.3 (2017-10-09)
 ------------------

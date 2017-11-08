@@ -576,7 +576,7 @@ class Progress(object):
                     description='Cummulative fraction of target S/N**2')
             elif name == 'night':
                 mjd = table['mjd'].flatten()[order]
-                night = np.empty(len(mjd), dtype='S8')
+                night = np.empty(len(mjd), dtype=(str, 8))
                 for i in range(len(mjd)):
                     night[i] = str(desisurvey.utils.get_date(mjd[i])).replace('-', '')
                 output[name.upper()] = astropy.table.Column(
@@ -592,10 +592,17 @@ class Progress(object):
                     description='Apparent local sidereal time in degrees')
             elif name == 'program':
                 exppass = table['pass'][tile_index]
-                program = np.empty(len(exppass), dtype='S6')
-                program[:] = 'BRIGHT'
-                program[exppass < 4] = 'DARK'
-                program[exppass == 4] = 'GRAY'
+                try:
+                    from desimodel.footprint import pass2program
+                    program = pass2program(exppass)
+                except ImportError:
+                    #- desimodel < 0.9.1 doesn't have pass2program, so
+                    #- hardcode the mapping that it did have
+                    program = np.empty(len(exppass), dtype=(str, 6))
+                    program[:] = 'BRIGHT'
+                    program[exppass < 4] = 'DARK'
+                    program[exppass == 4] = 'GRAY'
+
                 output[name.upper()] = astropy.table.Column(program,
                                                             description='Program name')
             elif name == 'expid':
