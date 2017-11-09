@@ -484,8 +484,9 @@ class Progress(object):
 
     def get_exposures(self, start=None, stop=None,
                       tile_fields='tileid,pass,ra,dec,ebmv',
-                      exp_fields='night,mjd,exptime,seeing,transparency,'
-                      +'airmass,moonfrac,moonalt,moonsep,program'):
+                      exp_fields=('night,mjd,exptime,seeing,transparency,' +
+                                  'airmass,moonfrac,moonalt,moonsep,' +
+                                  'program,flavor')):
         """Create a table listing exposures in time order.
 
         Parameters
@@ -605,6 +606,11 @@ class Progress(object):
 
                 output[name.upper()] = astropy.table.Column(program,
                                                             description='Program name')
+            elif name == 'flavor':
+                flavor = np.empty(len(exppass), dtype=(str, 7))
+                flavor[:] = 'science'
+                output[name.upper()] = astropy.table.Column(flavor,
+                    description='Exposure flavor')
             elif name == 'expid':
                 output[name.upper()] = astropy.table.Column(
                     expid[order], description='Exposure index')
