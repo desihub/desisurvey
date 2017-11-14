@@ -550,6 +550,7 @@ class Progress(object):
         # Create the output table.
         tileinfo = None
         output = astropy.table.Table()
+        output.meta['EXTNAME'] = 'EXPOSURES'
         for name in tile_fields.split(','):
             name = name.lower()
             if name == 'index':
