@@ -98,6 +98,7 @@ class TestProgress(unittest.TestCase):
             p.add_exposure(
                 tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
         explist = p.get_exposures()
+        self.assertEqual(explist.meta['EXTNAME'], 'EXPOSURES')
         self.assertTrue(np.all(np.diff(explist['MJD']) > 0))
         explist = p.get_exposures(tile_fields='index', exp_fields='lst')
         self.assertTrue(np.all(np.diff(explist['LST']) > 0))
@@ -121,6 +122,7 @@ class TestProgress(unittest.TestCase):
         explist.write(expfile)
         newexp = Table.read(expfile)
 
+        self.assertEqual(newexp.meta['EXTNAME'], 'EXPOSURES')
         self.assertEqual(explist['PROGRAM'].dtype, newexp['PROGRAM'].dtype)
         self.assertEqual(explist['NIGHT'].dtype, newexp['NIGHT'].dtype)
         self.assertTrue(np.all(explist['PROGRAM'] == newexp['PROGRAM']))
