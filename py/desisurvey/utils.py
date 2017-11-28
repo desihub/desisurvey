@@ -508,7 +508,13 @@ def get_date(date):
         # Convert a string of the form YYYY-MM-DD into a date.
         # This will raise a ValueError for a badly formatted string
         # or invalid date such as 2019-13-01.
-        date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+        try:
+            date = datetime.datetime.strptime(date, '%Y-%m-%d').date()
+        except ValueError:
+            try:
+                date = datetime.datetime.strptime(date, '%Y%m%d').date()
+            except ValueError:
+                raise
     except TypeError:
         pass
     # valid types: number, Time, datetime, date

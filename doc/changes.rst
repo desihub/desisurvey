@@ -2,10 +2,19 @@
 desisurvey change log
 =====================
 
-0.9.4 (unreleased)
-------------------
+0.10.1 (unreleased)
+-------------------
 
-* No changes yet.
+* Set the ``EXTNAME`` keyword on the Table returned by ``Progress.get_exposures()``.
+
+0.10.0 (2017-11-09)
+-------------------
+
+* Progress.get_exposures() updates:
+
+  * includes FLAVOR and PROGRAM columns.
+  * uses desimodel.footprint.pass2program if available.
+  * standardized on UPPERCASE column names and NIGHT=YEARMMDD not YEAR-MM-DD.
 
 0.9.3 (2017-10-09)
 ------------------

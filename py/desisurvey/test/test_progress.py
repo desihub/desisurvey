@@ -6,6 +6,7 @@ import os
 import numpy as np
 
 import astropy.units as u
+from astropy.table import Table
 
 import desisurvey.config
 
@@ -97,23 +98,35 @@ class TestProgress(unittest.TestCase):
             p.add_exposure(
                 tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
         explist = p.get_exposures()
-        self.assertTrue(np.all(np.diff(explist['mjd']) > 0))
+        self.assertEqual(explist.meta['EXTNAME'], 'EXPOSURES')
+        self.assertTrue(np.all(np.diff(explist['MJD']) > 0))
         explist = p.get_exposures(tile_fields='index', exp_fields='lst')
-        self.assertTrue(np.all(np.diff(explist['lst']) > 0))
-        self.assertTrue(np.min(explist['lst'] >= 0))
-        self.assertTrue(np.max(explist['lst'] < 360))
+        self.assertTrue(np.all(np.diff(explist['LST']) > 0))
+        self.assertTrue(np.min(explist['LST'] >= 0))
+        self.assertTrue(np.max(explist['LST'] < 360))
         with self.assertRaises(ValueError):
             p.get_exposures(tile_fields='mjd')
         with self.assertRaises(ValueError):
             p.get_exposures(tile_fields='nonexistent')
-        with self.assertRaises(ValueError):
-            p.get_exposures(exp_fields='pass')
-        explist = p.get_exposures(exp_fields='mjd,night')
+        # with self.assertRaises(ValueError):
+        #     p.get_exposures(exp_fields='pass')
+        explist = p.get_exposures(exp_fields='mjd,night,program')
         for row in explist:
-            self.assertEqual(desisurvey.utils.get_date(row['mjd']),
-                             desisurvey.utils.get_date(row['night']))
-            night = str(desisurvey.utils.get_date(row['mjd']))
+            self.assertEqual(desisurvey.utils.get_date(row['MJD']),
+                             desisurvey.utils.get_date(row['NIGHT']))
+            night = str(desisurvey.utils.get_date(row['MJD']))
             self.assertEqual(night, str(desisurvey.utils.get_date(night)))
+
+        #- Test roundtrip to disk
+        expfile = os.path.join(self.tmpdir, 'test-exposures.fits')
+        explist.write(expfile)
+        newexp = Table.read(expfile)
+
+        self.assertEqual(newexp.meta['EXTNAME'], 'EXPOSURES')
+        self.assertEqual(explist['PROGRAM'].dtype, newexp['PROGRAM'].dtype)
+        self.assertEqual(explist['NIGHT'].dtype, newexp['NIGHT'].dtype)
+        self.assertTrue(np.all(explist['PROGRAM'] == newexp['PROGRAM']))
+        self.assertTrue(np.all(explist['NIGHT'] == newexp['NIGHT']))
 
     def test_exposures_incrementing(self):
         """Successive exposures of the same tile must be time ordered"""
