@@ -169,6 +169,16 @@ class Ephemerides(object):
         # tabulating the (ra,dec) of objects to avoid.
         t_obj = np.linspace(0., 1., num_obj_steps)
 
+        # Lookup sun altitude thresholds.
+        bright_max_alt = (
+            config.programs.BRIGHT.max_sun_altitude().to(u.rad).value)
+        dark_max_alt = (
+            config.programs.DARK.max_sun_altitude().to(u.rad).value)
+
+        rng = np.rad2deg(bright_max_alt - dark_max_alt)
+        print('limits', rng)
+        max_err = 0.
+
         # Calculate ephmerides for each night.
         for day_offset in range(num_nights):
             day = self.start + day_offset * u.day
@@ -177,19 +187,34 @@ class Ephemerides(object):
             # Store local noon for this day.
             row['noon'] = day.mjd
             # Calculate bright twilight.
-            mayall.horizon = (
-                config.programs.BRIGHT.max_sun_altitude().to(u.rad).value)
+            mayall.horizon = bright_max_alt
             row['brightdusk'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
             row['brightdawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
             # Calculate dark / gray twilight.
-            mayall.horizon = (
-                config.programs.DARK.max_sun_altitude().to(u.rad).value)
+            mayall.horizon = dark_max_alt
             row['dusk'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
             row['dawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
+            # Calculate the midpoint between BRIGHT/DARK twilight.
+            mayall.horizon = 0.5 * (
+                config.programs.BRIGHT.max_sun_altitude().to(u.rad).value +
+                config.programs.DARK.max_sun_altitude().to(u.rad).value)
+            middusk = mayall.next_setting(
+                ephem.Sun(), use_center=True) + mjd0
+            middawn = mayall.next_rising(
+                ephem.Sun(), use_center=True) + mjd0
+            # Compare with linear extrapolations.
+            middusk_pred = 0.5 * (row['brightdusk'] + row['dusk'])
+            middawn_pred = 0.5 * (row['brightdawn'] + row['dawn'])
+            dawn = (row['brightdawn'] - row['dawn'])
+            dusk = (row['dusk'] - row['brightdusk'])
+            dusk_err = (middusk_pred - middusk) / dusk * rng
+            dawn_err = (middusk_pred - middusk) / dawn * rng
+            #print('dawn/dusk (arcsec)', dusk_err * 3600, dawn_err * 360)
+            max_err = max(max_err, abs(dusk_err), abs(dawn_err))
             # Calculate the moonrise/set for any moon visible tonight.
             m0 = ephem.Moon()
             mayall.horizon = '-0:34' # the value that the USNO uses.
@@ -211,6 +236,8 @@ class Ephemerides(object):
                     model.compute(mayall_no_ar)
                     row[name + '_ra'][i] = math.degrees(float(model.ra))
                     row[name + '_dec'][i] = math.degrees(float(model.dec))
+
+        print('max_err', max_err * 3600, 'arcsec')
 
         # Initialize a grid covering each night with 15sec resolution
         # for tabulating the night program.
@@ -291,8 +318,7 @@ class Ephemerides(object):
         Parameters
         ----------
         mjd : float or array
-            MJD values during a single night where the program should be
-            tabulated.
+            MJD values where the illuminated fraction should be tabulated.
 
         Returns
         -------
@@ -421,6 +447,60 @@ class Ephemerides(object):
         sort_order = np.argsort(cycle)
         # Return True if tonight's illumination is in the top num_nights.
         return index - lo in sort_order[-num_nights:]
+
+
+def get_sun_altitude(row, mjd):
+    """Return the sun altitude at the specified time for twilight modeling.
+
+    This function only returns values in the range [-10, -20] deg
+    since values outside this range are either never used for observing
+    or else considered completely dark.
+
+    The calculation uses linear interpolation of the tabulated times when the
+    sun passes through the bright and dark maximum altitudes, nominally -13
+    and -15 deg, which provides an altitude accurate to better than 30"
+    between these limits.
+
+    Parameters
+    ----------
+    row : astropy.table.Row
+        A single row from the ephemerides astropy Table corresponding to the
+        night in question.
+    mjd : float
+        MJD value(s) during a single night where the sun altitude should be
+        calculated.
+
+    Returns
+    -------
+    astropy.units.Quantity
+        Sun altitude(s) in degrees at each input mjd value, clipped to
+        the range [-10, -20].
+    """
+    # Lookup the bright, dark threshold altitudes.
+    config = desisurvey.config.Configuration()
+    bright_max_alt = config.programs.BRIGHT.max_sun_altitude()
+    dark_max_alt = config.programs.DARK.max_sun_altitude()
+
+    # Validate input timestamp(s)
+    mjd = np.asarray(mjd)
+    scalar = mjd.ndim == 0
+    mjd = np.atleast1d(mjd)
+    midnight = 0.5 * (row['dusk'] + row['dawn'])
+    if np.any(np.abs(mjd - midnight) > 0.5):
+        raise ValueError('mjd is not associated with the specified night')
+
+    # Use linear interpolation on the dusk timestamps for times before midnight.
+    sun_alt = np.empty_like(mjd)
+    at_dusk = mjd < midnight
+    sun_alt[at_dusk] = bright_max_alt + (bright_max_alt - dark_max_alt) * (
+        mjd[at_dusk] - row['brightdusk']) / (row['dusk'] - row['brightdusk'])
+
+    # Use linear interpolation on the dawn timestamps after midnight.
+    at_dawn = ~at_dusk
+    sun_alt[at_dawn] = bright_max_alt + (bright_max_alt - dark_max_alt) * (
+        mjd[at_dawn] - row['brightdawn']) / (row['dusk'] - row['brightdusk'])
+
+    return sun_alt
 
 
 def get_object_interpolator(row, object_name, altaz=False):
