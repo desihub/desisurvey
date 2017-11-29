@@ -5,6 +5,7 @@ desisurvey change log
 0.10.1 (unreleased)
 -------------------
 
+* Add Ephemerides method to calculate sun altitude during twilight.
 * Set the ``EXTNAME`` keyword on the Table returned by ``Progress.get_exposures()``.
 
 0.10.0 (2017-11-09)

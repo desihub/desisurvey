@@ -175,10 +175,6 @@ class Ephemerides(object):
         dark_max_alt = (
             config.programs.DARK.max_sun_altitude().to(u.rad).value)
 
-        rng = np.rad2deg(bright_max_alt - dark_max_alt)
-        print('limits', rng)
-        max_err = 0.
-
         # Calculate ephmerides for each night.
         for day_offset in range(num_nights):
             day = self.start + day_offset * u.day
@@ -198,23 +194,6 @@ class Ephemerides(object):
                 ephem.Sun(), use_center=True) + mjd0
             row['dawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
-            # Calculate the midpoint between BRIGHT/DARK twilight.
-            mayall.horizon = 0.5 * (
-                config.programs.BRIGHT.max_sun_altitude().to(u.rad).value +
-                config.programs.DARK.max_sun_altitude().to(u.rad).value)
-            middusk = mayall.next_setting(
-                ephem.Sun(), use_center=True) + mjd0
-            middawn = mayall.next_rising(
-                ephem.Sun(), use_center=True) + mjd0
-            # Compare with linear extrapolations.
-            middusk_pred = 0.5 * (row['brightdusk'] + row['dusk'])
-            middawn_pred = 0.5 * (row['brightdawn'] + row['dawn'])
-            dawn = (row['brightdawn'] - row['dawn'])
-            dusk = (row['dusk'] - row['brightdusk'])
-            dusk_err = (middusk_pred - middusk) / dusk * rng
-            dawn_err = (middusk_pred - middusk) / dawn * rng
-            #print('dawn/dusk (arcsec)', dusk_err * 3600, dawn_err * 360)
-            max_err = max(max_err, abs(dusk_err), abs(dawn_err))
             # Calculate the moonrise/set for any moon visible tonight.
             m0 = ephem.Moon()
             mayall.horizon = '-0:34' # the value that the USNO uses.
@@ -236,8 +215,6 @@ class Ephemerides(object):
                     model.compute(mayall_no_ar)
                     row[name + '_ra'][i] = math.degrees(float(model.ra))
                     row[name + '_dec'][i] = math.degrees(float(model.dec))
-
-        print('max_err', max_err * 3600, 'arcsec')
 
         # Initialize a grid covering each night with 15sec resolution
         # for tabulating the night program.
@@ -484,23 +461,23 @@ def get_sun_altitude(row, mjd):
     # Validate input timestamp(s)
     mjd = np.asarray(mjd)
     scalar = mjd.ndim == 0
-    mjd = np.atleast1d(mjd)
+    mjd = np.atleast_1d(mjd)
     midnight = 0.5 * (row['dusk'] + row['dawn'])
     if np.any(np.abs(mjd - midnight) > 0.5):
         raise ValueError('mjd is not associated with the specified night')
 
-    # Use linear interpolation on the dusk timestamps for times before midnight.
-    sun_alt = np.empty_like(mjd)
+    # Use linear interpolation on the dusk data for times before midnight.
+    sun_alt = np.empty_like(mjd) * u.degree
     at_dusk = mjd < midnight
-    sun_alt[at_dusk] = bright_max_alt + (bright_max_alt - dark_max_alt) * (
+    sun_alt[at_dusk] = bright_max_alt + (dark_max_alt - bright_max_alt) * (
         mjd[at_dusk] - row['brightdusk']) / (row['dusk'] - row['brightdusk'])
 
-    # Use linear interpolation on the dawn timestamps after midnight.
+    # Use linear interpolation on the dawn data for times after midnight.
     at_dawn = ~at_dusk
     sun_alt[at_dawn] = bright_max_alt + (bright_max_alt - dark_max_alt) * (
-        mjd[at_dawn] - row['brightdawn']) / (row['dusk'] - row['brightdusk'])
+        mjd[at_dawn] - row['brightdawn']) / (row['brightdawn'] - row['dawn'])
 
-    return sun_alt
+    return np.clip(sun_alt, -20 * u.deg, -10 * u.deg)
 
 
 def get_object_interpolator(row, object_name, altaz=False):

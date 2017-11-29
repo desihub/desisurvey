@@ -12,8 +12,8 @@ import astropy.units as u
 import astropy.io
 
 import desisurvey.config
-from desisurvey.ephemerides import Ephemerides, get_grid, get_object_interpolator
-from desisurvey.utils import get_date, get_location
+from desisurvey.ephemerides import *
+from desisurvey import utils
 
 
 class TestEphemerides(unittest.TestCase):
@@ -49,6 +49,12 @@ class TestEphemerides(unittest.TestCase):
         shutil.rmtree(cls.tmpdir)
         # Reset our configuration.
         desisurvey.config.Configuration.reset()
+
+    def setUp(self):
+        utils.freeze_iers()
+
+    def tearDown(self):
+        utils._iers_is_frozen = False
 
     def test_getephem(self):
         """Tabulate one month of ephemerides"""
@@ -117,7 +123,7 @@ class TestEphemerides(unittest.TestCase):
     def test_moon_phase(self):
         """Verfify moon illuminated fraction for first week of 2020"""
         ephem = Ephemerides(
-            get_date('2019-12-31'), get_date('2020-02-02'),
+            utils.get_date('2019-12-31'), utils.get_date('2020-02-02'),
             use_cache=False, write_cache=False)
         for i, jd in enumerate(self.table['jd']):
             t = Time(jd, format='jd')
@@ -128,7 +134,7 @@ class TestEphemerides(unittest.TestCase):
     def test_moon_radec(self):
         """Verify moon (ra,dec) for first week of 2020"""
         ephem = Ephemerides(
-            get_date('2019-12-31'), get_date('2020-02-02'),
+            utils.get_date('2019-12-31'), utils.get_date('2020-02-02'),
             use_cache=False, write_cache=False)
         for i, jd in enumerate(self.table['jd']):
             t = Time(jd, format='jd')
@@ -144,9 +150,9 @@ class TestEphemerides(unittest.TestCase):
     def test_moon_altaz(self):
         """Verify moon (alt,az) for first week of 2020"""
         ephem = Ephemerides(
-            get_date('2019-12-31'), get_date('2020-02-02'),
+            utils.get_date('2019-12-31'), utils.get_date('2020-02-02'),
             use_cache=False, write_cache=False)
-        location = get_location()
+        location = utils.get_location()
         for i, jd in enumerate(self.table['jd']):
             t = Time(jd, format='jd')
             night = ephem.get_night(t)
@@ -159,6 +165,34 @@ class TestEphemerides(unittest.TestCase):
                          obstime=t, location=location, pressure=0)
             sep = truth.separation(calc)
             self.assertTrue(abs(sep.to(u.deg).value) < 0.3)
+
+    def test_sun_alt(self):
+        """Test interpolated sun altitude"""
+        start = datetime.date(2019, 9, 1)
+        stop = datetime.date(2019, 10, 1)
+        ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
+        config = desisurvey.config.Configuration()
+        balt = config.programs.BRIGHT.max_sun_altitude().to(u.deg).value
+        dalt = config.programs.DARK.max_sun_altitude().to(u.deg).value
+        for i in range(ephem.num_nights):
+            row = ephem.get_row(i)
+            dusk1, dusk2 = row['brightdusk'], row['dusk']
+            dawn1, dawn2 = row['dawn'], row['brightdawn']
+            assert (dusk1 < dusk2) and (dawn1 < dawn2)
+            sun_alt = get_sun_altitude(
+                row, [dusk1, 0.5 * (dusk1 + dusk2), dusk2,
+                      dawn1, 0.5 * (dawn1 + dawn2), dawn2,
+                      dusk1 - 0.2, dusk2 + 0.2, dawn1 - 0.2, dawn2 + 0.2]
+                ).to(u.deg).value
+            assert np.allclose(
+                sun_alt, [
+                    balt, 0.5 * (balt + dalt), dalt,
+                    dalt, 0.5 * (dalt + balt), balt,
+                    -10, -20, -20, -10])
+            with self.assertRaises(ValueError):
+                get_sun_altitude(row, dusk1 - 1.)
+            with self.assertRaises(ValueError):
+                get_sun_altitude(row, [dusk1, dusk1 - 1.])
 
 
 def test_suite():
