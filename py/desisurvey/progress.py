@@ -115,6 +115,20 @@ class Progress(object):
             table['moonsep'] = astropy.table.Column(
                 length=num_tiles, shape=(max_exposures,), format='%.1f',
                 description='Moon-tile separation angle in degrees', unit='deg')
+            table['moonv'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='V-band magnitude of scattered moonlight')
+            table['sunalt'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='Sun altitude angle in degrees, clipped below -20',
+                unit='deg')
+            table['sundaz'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='Sun-tile relative azimuth angle in degrees',
+                unit='deg')
+            table['sunr'] = astropy.table.Column(
+                length=num_tiles, shape=(max_exposures,), format='%.1f',
+                description='r-band magnitude of twilight scattered sun')
             # Copy tile data.
             table['tileid'] = tiles['TILEID']
             table['pass'] = tiles['PASS']
@@ -415,7 +429,8 @@ class Progress(object):
         return Progress(restore=table)
 
     def add_exposure(self, tile_id, start, exptime, snr2frac, airmass, seeing,
-                     transparency, moonfrac, moonalt, moonsep):
+                     transparency, moonfrac, moonalt, moonsep, moonv,
+                     sunalt, sundaz, sunr):
         """Add a single exposure to the progress.
 
         Parameters
@@ -440,6 +455,16 @@ class Progress(object):
             Moon altitude angle in degrees.
         moonsep : float
             Moon-tile separation angle in degrees.
+        moonv : float
+            The V-band magnitude of scattered moonlight, or -np.inf if
+            the moon is below the horizon.
+        sunalt : float
+            Sun altitude angle in degrees, clipped below -20.
+        sundaz : float
+            Sun-tile relative azimuth angle in degrees.
+        sunr : float
+            The r-band magnitude of twilight scattered sun, or -np.inf
+            if the sun is below -18 deg altitude.
         """
         mjd = start.mjd
         self.log.info(
@@ -478,6 +503,10 @@ class Progress(object):
         row['moonfrac'][num_exp] = moonfrac
         row['moonalt'][num_exp] = moonalt
         row['moonsep'][num_exp] = moonsep
+        row['moonv'][num_exp] = moonv
+        row['sunalt'][num_exp] = sunalt
+        row['sundaz'][num_exp] = sundaz
+        row['sunr'][num_exp] = sunr
 
         # Update this tile's status.
         row['status'] = 1 if row['snr2frac'].sum() < self.min_snr2 else 2
@@ -486,7 +515,7 @@ class Progress(object):
                       tile_fields='tileid,pass,ra,dec,ebmv',
                       exp_fields=('night,mjd,exptime,seeing,transparency,' +
                                   'airmass,moonfrac,moonalt,moonsep,' +
-                                  'program,flavor')):
+                                  'moonv,sunalt,sundaz,sunr,program,flavor')):
         """Create a table listing exposures in time order.
 
         Parameters
@@ -515,7 +544,8 @@ class Progress(object):
         Returns
         -------
         astropy.table.Table
-            Table with the specified columns as uppercase and one row per exposure.
+            Table with the specified columns as uppercase and one row
+            per exposure.
         """
         # Get MJD range to show.
         if start is None:
@@ -580,7 +610,8 @@ class Progress(object):
                 mjd = table['mjd'].flatten()[order]
                 night = np.empty(len(mjd), dtype=(str, 8))
                 for i in range(len(mjd)):
-                    night[i] = str(desisurvey.utils.get_date(mjd[i])).replace('-', '')
+                    night[i] = str(desisurvey.utils.get_date(mjd[i])
+                                   ).replace('-', '')
                 output[name.upper()] = astropy.table.Column(
                     night,
                     description='Date at start of night when exposure taken')
@@ -605,8 +636,8 @@ class Progress(object):
                     program[exppass < 4] = 'DARK'
                     program[exppass == 4] = 'GRAY'
 
-                output[name.upper()] = astropy.table.Column(program,
-                                                            description='Program name')
+                output[name.upper()] = astropy.table.Column(
+                    program, description='Program name')
             elif name == 'flavor':
                 flavor = np.empty(len(exppass), dtype=(str, 7))
                 flavor[:] = 'science'

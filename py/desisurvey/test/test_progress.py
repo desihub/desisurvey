@@ -63,7 +63,8 @@ class TestProgress(unittest.TestCase):
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
             p.add_exposure(
-                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                0, 0, 0, 0, 0, 0, 0)
             self.assertTrue(p.get_tile(tile_id)['snr2frac'][0] == 0.5)
             last_tile = p.get_tile(tile_id)
             self.assertTrue(np.array_equal(
@@ -82,7 +83,8 @@ class TestProgress(unittest.TestCase):
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
             p.add_exposure(
-                tile_id, t0 + i * u.hour, 1e3 * u.s, 2.0, 1.5, 1.1, 1, 0, 0, 0)
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 2.0, 1.5, 1.1, 1,
+                0, 0, 0, 0, 0, 0, 0)
         good_status = p._table['status'].copy()
         p._table['status'] = 0
         p2 = Progress(p._table)
@@ -96,7 +98,8 @@ class TestProgress(unittest.TestCase):
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
             p.add_exposure(
-                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                0, 0, 0, 0, 0, 0, 0)
         explist = p.get_exposures()
         self.assertEqual(explist.meta['EXTNAME'], 'EXPOSURES')
         self.assertTrue(np.all(np.diff(explist['MJD']) > 0))
@@ -135,13 +138,16 @@ class TestProgress(unittest.TestCase):
         tile_id = t['tileid'][0]
         t0 = astropy.time.Time('2020-01-01 07:00')
         t1 = t0 + 1 * u.hour
-        p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
-        p.add_exposure(tile_id, t1, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+        p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                       0, 0, 0, 0, 0, 0, 0)
+        p.add_exposure(tile_id, t1, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                       0, 0, 0, 0, 0, 0, 0)
         self.assertEqual(p.first_mjd, t0.mjd)
         self.assertEqual(p.last_mjd, t1.mjd)
         self.assertEqual(p.num_exp, 2)
         with self.assertRaises(ValueError):
-            p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+            p.add_exposure(tile_id, t0, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                           0, 0, 0, 0, 0, 0, 0)
 
     def test_save_read(self):
         """Create, save and read a progress table"""
@@ -150,7 +156,8 @@ class TestProgress(unittest.TestCase):
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
             p1.add_exposure(
-                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                0, 0, 0, 0, 0, 0, 0)
         p1.save('p1.fits')
         p2 = Progress('p1.fits')
         self.assertEqual(p2.completed(include_partial=True), 5.)
@@ -166,7 +173,8 @@ class TestProgress(unittest.TestCase):
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
             p1.add_exposure(
-                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                0, 0, 0, 0, 0, 0, 0)
         p2 = Progress(p1._table)
         self.assertEqual(p2.completed(include_partial=True), 5.)
         self.assertEqual(p2.completed(include_partial=False), 0.)
@@ -185,11 +193,14 @@ class TestProgress(unittest.TestCase):
         tile_id = p._table['tileid'][0]
         t0 = astropy.time.Time('2020-01-01 07:00')
         p.add_exposure(
-            tile_id, t0 + 1 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+            tile_id, t0 + 1 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+            0, 0, 0, 0, 0, 0, 0)
         p.add_exposure(
-            tile_id, t0 + 2 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+            tile_id, t0 + 2 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+            0, 0, 0, 0, 0, 0, 0)
         p.add_exposure(
-            tile_id, t0 + 3 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+            tile_id, t0 + 3 * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+            0, 0, 0, 0, 0, 0, 0)
         self.assertEqual(p.completed(include_partial=True), 1.)
         self.assertEqual(p.completed(include_partial=False), 1.)
 
@@ -210,7 +221,8 @@ class TestProgress(unittest.TestCase):
         tiles = p._table['tileid'][list(pass1[:n]) + list(pass7[:n])]
         t0 = astropy.time.Time('2020-01-01 07:00')
         for tile_id in tiles:
-            p.add_exposure(tile_id, t0, 1e3 * u.s, 1.5, 1.5, 1.1, 1, 0, 0, 0)
+            p.add_exposure(tile_id, t0, 1e3 * u.s, 1.5, 1.5, 1.1, 1,
+                           0, 0, 0, 0, 0, 0, 0)
             t0 += 0.1 * u.day
         self.assertEqual(p.completed(only_passes=(7, 1)), 2 * n)
         self.assertEqual(p.completed(only_passes=7), n)
@@ -230,10 +242,11 @@ class TestProgress(unittest.TestCase):
         mjds = 58849. + np.arange(n)
         tt = astropy.time.Time('2020-01-01 07:00') + np.arange(n) * u.hour
         for t in tt[:-1]:
-            p.add_exposure(tile_id, t, 1e3 * u.s, 0.2, 1.5, 1.1, 1, 0, 0, 0)
+            p.add_exposure(tile_id, t, 1e3 * u.s, 0.2, 1.5, 1.1, 1,
+                           0, 0, 0, 0, 0, 0, 0)
         with self.assertRaises(RuntimeError):
             p.add_exposure(tile_id, tt[-1], 1e3 * u.s,
-                           0.2, 1.5, 1.1, 1, 0, 0, 0)
+                           0.2, 1.5, 1.1, 1, 0, 0, 0, 0, 0, 0, 0)
 
     def test_summary(self):
         """Summary contains one row per tile"""
@@ -247,9 +260,9 @@ class TestProgress(unittest.TestCase):
         for i, t in enumerate(p._table['tileid'][:n]):
             p.add_exposure(
                 t, t0 + i * u.hour, 1e3 * u.s, 0.25, airmass, seeing,
-                transp, 0, 0, 0)
+                transp, 0, 0, 0, 0, 0, 0, 0)
             p.add_exposure(t, t0 + (i + 0.5) * u.hour, 1e3 * u.s, 0.25,
-                           airmass, seeing, transp, 0, 0, 0)
+                           airmass, seeing, transp, 0, 0, 0, 0, 0, 0, 0)
         self.assertEqual(len(p.get_summary('observed')), 100)
         self.assertEqual(len(p.get_summary('completed')), 0)
         self.assertTrue(np.all(p.get_summary('observed')['nexp'] == 2))
@@ -278,7 +291,8 @@ class TestProgress(unittest.TestCase):
         t0 = astropy.time.Time('2020-01-01 07:00')
         for i, tile_id in enumerate(tiles):
             p1.add_exposure(
-                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+                tile_id, t0 + i * u.hour, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                0, 0, 0, 0, 0, 0, 0)
         p2 = p1.copy_range()
         self.assertTrue(np.all(np.array(p1._table) == np.array(p2._table)))
 
@@ -289,10 +303,12 @@ class TestProgress(unittest.TestCase):
         tiles = p1._table['tileid'][:n].data
         tt = astropy.time.Time('2020-01-01 07:00') + np.arange(n) * u.hour
         for t, tile_id in zip(tt, tiles):
-            p1.add_exposure(tile_id, t, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+            p1.add_exposure(tile_id, t, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                            0, 0, 0, 0, 0, 0, 0)
         for t, tile_id in zip(tt, tiles):
             p1.add_exposure(
-                tile_id, t + 100 * u.day, 1e3 * u.s, 0.5, 1.5, 1.1, 1, 0, 0, 0)
+                tile_id, t + 100 * u.day, 1e3 * u.s, 0.5, 1.5, 1.1, 1,
+                0, 0, 0, 0, 0, 0, 0)
         self.assertEqual(p1.completed(), n)
         # Selects everything.
         mjd0 = tt[0].mjd
