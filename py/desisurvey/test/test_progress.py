@@ -120,6 +120,11 @@ class TestProgress(unittest.TestCase):
             night = str(desisurvey.utils.get_date(row['MJD']))
             self.assertEqual(night, str(desisurvey.utils.get_date(night)))
 
+        # Test empty tile_fields or exp_fields.
+        p.get_exposures(tile_fields='')
+        p.get_exposures(exp_fields='')
+        p.get_exposures(tile_fields='', exp_fields='')
+
         #- Test roundtrip to disk
         expfile = os.path.join(self.tmpdir, 'test-exposures.fits')
         explist.write(expfile)

@@ -582,6 +582,8 @@ class Progress(object):
         output = astropy.table.Table()
         output.meta['EXTNAME'] = 'EXPOSURES'
         for name in tile_fields.split(','):
+            if name == '':
+                continue # handle tile_fields=''
             name = name.lower()
             if name == 'index':
                 output[name.upper()] = tile_index
@@ -599,6 +601,8 @@ class Progress(object):
                         'Invalid tile field name: {0}.'.format(name))
                 output[name.upper()] = table[name][tile_index]
         for name in exp_fields.split(','):
+            if name == '':
+                continue # handle exp_fields=''
             name = name.lower()
             if name == 'snr2cum':
                 snr2cum = np.cumsum(
