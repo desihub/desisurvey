@@ -180,8 +180,8 @@ def twilight_exposure_factor(sun_alt, sun_daz, airmass):
 # Linear regression coefficients for converting scattered moon V-band
 # magnitude into an exposure-time correction factor.
 _moonCoefficients = np.array([
-    -8.83964463188, -7372368.5041596508, 775.17763895781638,
-    -20185.959363990656, 174143.69095766739])
+    -9.6827757062, -5454732.2391116023, 805.44541757440129,
+    -20274.598621708101, 170436.98267100245])
 
 # V-band extinction coefficient to use in the scattered moonlight model.
 # See specsim.atmosphere.krisciunas_schaefer for details.
@@ -247,8 +247,10 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
         moon_phase, _vband_extinction).value
 
     # Evaluate the linear regression model.
-    X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
-    return _moonCoefficients.dot(X)
+    X = np.array((1., np.exp(-V), 1/V, 1/V**2, 1/V**3))
+
+    # Clip result to 1 since fits goes just below 1 at the faint end (V>26).
+    return np.maximum(1., _moonCoefficients.dot(X))
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,

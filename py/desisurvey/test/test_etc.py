@@ -65,11 +65,10 @@ class TestExpCalc(unittest.TestCase):
             moon_frac=0.5, moon_sep=60, moon_alt=-30, airmass=1.2)
         self.assertAlmostEqual(x, 1.0, 4)
 
-        #- New moon above horizon still has some impact
+        #- New moon above horizon still no impact
         x = moon_exposure_factor(
             moon_frac=0.0, moon_sep=60, moon_alt=30, airmass=1.2)
-        self.assertGreater(x, 1.0)
-        self.assertLess(x, 1.1)
+        self.assertAlmostEqual(x, 1.0, 4)
 
         #- Partial moon takes more time
         x1 = moon_exposure_factor(
