@@ -152,15 +152,15 @@ class Animator(object):
             start, stop, tile_fields='tileid,index,ra,dec,pass',
             exp_fields='expid,mjd,night,exptime,snr2cum,seeing,transparency')
         self.num_exp = len(self.exposures)
-        self.num_nights = len(np.unique(self.exposures['night']))
+        self.num_nights = len(np.unique(self.exposures['NIGHT']))
 
         # Calculate each exposure's LST window.
         exp_midpt = astropy.time.Time(
-            self.exposures['mjd'] + self.exposures['exptime'] / 86400.,
+            self.exposures['MJD'] + self.exposures['EXPTIME'] / 86400.,
             format='mjd', location=desisurvey.utils.get_location())
         lst_midpt = exp_midpt.sidereal_time('apparent').to(u.deg).value
         # convert from seconds to degrees.
-        lst_len = self.exposures['exptime'] / 240.
+        lst_len = self.exposures['EXPTIME'] / 240.
         self.lst = np.empty((self.num_exp, 2))
         self.lst[:, 0] = wrap(lst_midpt - 0.5 * lst_len)
         self.lst[:, 1] = wrap(lst_midpt + 0.5 * lst_len)
@@ -326,7 +326,7 @@ class Animator(object):
                 hdus.close()
                 # Save index of first exposure on this date.
                 noon = desisurvey.utils.local_noon_on_date(date)
-                self.iexp0 = np.argmax(self.exposures['mjd'] > noon.mjd)
+                self.iexp0 = np.argmax(self.exposures['MJD'] > noon.mjd)
             else:
                 self.warn('Missing scores file: {0}.'.format(scores_name))
         # Get interpolator for moon, planet positions during this night.
