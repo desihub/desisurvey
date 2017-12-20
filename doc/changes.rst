@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.10.1 (unreleased)
+0.10.2 (unreleased)
+-------------------
+
+* No changes yet.
+
+0.10.1 (2017-12-20)
 -------------------
 
 * Set the ``EXTNAME`` keyword on the Table returned by ``Progress.get_exposures()``.
