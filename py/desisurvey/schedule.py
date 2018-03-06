@@ -462,6 +462,9 @@ class Scheduler(object):
         # Initialize score = priority for observable tiles.
         score = plan['priority'].data.copy()
         score[~mask] = 0.
+
+        # UPDATE API HERE
+
         # Apply multiplicative factors to each tile's score using
         # the requested strategies.
         strategy = strategy.split('+')
