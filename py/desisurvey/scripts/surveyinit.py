@@ -115,48 +115,49 @@ def calculate_initial_plan(args, scheduler, fullname):
         BRIGHT=args.bright_stretch)
     for program in 'DARK', 'GRAY', 'BRIGHT':
         sel = tiles['PROGRAM'] == program
-        opt = desisurvey.optimize.Optimizer(
-            scheduler, program, init=args.init, center=None, nbins=args.nbins,
-            subset=tiles['TILEID'][sel], stretch=stretches[program])
-        # Initialize annealing cycles.
-        ncycles = 0
-        binsize = 360. / args.nbins
-        frac = args.adjust / binsize
-        smoothing = args.smooth
-        # Loop over annealing cycles.
-        while ncycles < args.max_cycles:
-            start_score = opt.eval_score(opt.plan_hist)
-            for i in range(opt.ntiles):
-                opt.improve(frac)
-            if smoothing > 0:
-                opt.smooth(alpha=smoothing)
-            stop_score = opt.eval_score(opt.plan_hist)
-            delta = (stop_score - start_score) / start_score
-            RMSE = opt.RMSE_history[-1]
-            loss = opt.loss_history[-1]
-            log.info(
-                '[{:03d}] dHA={:5.3f}deg '.format(ncycles + 1, frac * binsize) +
-                'RMSE={:6.2f}% LOSS={:5.2f}% delta(score)={:+5.1f}%'
-                .format(1e2*RMSE, 1e2*loss, 1e2*delta))
-            # Both conditions must be satisfied to terminate.
-            if RMSE < args.max_rmse and delta > -args.epsilon:
-                break
-            # Anneal parameters for next cycle.
-            frac *= args.anneal
-            smoothing *= args.anneal
-            ncycles += 1
-        plan_sum = opt.plan_hist.sum()
-        avail_sum = opt.lst_hist_sum
-        margin = (avail_sum - plan_sum) / plan_sum
-        log.info('{} plan uses {:.1f}h with {:.1f}h avail ({:.1f}% margin).'
-                 .format(program, plan_sum, avail_sum, 1e2 * margin))
+        if np.count_nonzero(sel) > 0:
+            opt = desisurvey.optimize.Optimizer(
+                scheduler, program, init=args.init, center=None, nbins=args.nbins,
+                subset=tiles['TILEID'][sel], stretch=stretches[program])
+            # Initialize annealing cycles.
+            ncycles = 0
+            binsize = 360. / args.nbins
+            frac = args.adjust / binsize
+            smoothing = args.smooth
+            # Loop over annealing cycles.
+            while ncycles < args.max_cycles:
+                start_score = opt.eval_score(opt.plan_hist)
+                for i in range(opt.ntiles):
+                    opt.improve(frac)
+                if smoothing > 0:
+                    opt.smooth(alpha=smoothing)
+                stop_score = opt.eval_score(opt.plan_hist)
+                delta = (stop_score - start_score) / start_score
+                RMSE = opt.RMSE_history[-1]
+                loss = opt.loss_history[-1]
+                log.info(
+                    '[{:03d}] dHA={:5.3f}deg '.format(ncycles + 1, frac * binsize) +
+                    'RMSE={:6.2f}% LOSS={:5.2f}% delta(score)={:+5.1f}%'
+                    .format(1e2*RMSE, 1e2*loss, 1e2*delta))
+                # Both conditions must be satisfied to terminate.
+                if RMSE < args.max_rmse and delta > -args.epsilon:
+                    break
+                # Anneal parameters for next cycle.
+                frac *= args.anneal
+                smoothing *= args.anneal
+                ncycles += 1
+            plan_sum = opt.plan_hist.sum()
+            avail_sum = opt.lst_hist_sum
+            margin = (avail_sum - plan_sum) / plan_sum
+            log.info('{} plan uses {:.1f}h with {:.1f}h avail ({:.1f}% margin).'
+                     .format(program, plan_sum, avail_sum, 1e2 * margin))
 
-        # Calculate exposure times in seconds.
-        texp, _ = opt.get_exptime(opt.ha)
-        texp *= 24. * 3600. / 360.
-        # Save results for this program.
-        out['HA'][sel] = opt.ha
-        out['OBSTIME'][sel] = texp
+            # Calculate exposure times in seconds.
+            texp, _ = opt.get_exptime(opt.ha)
+            texp *= 24. * 3600. / 360.
+            # Save results for this program.
+            out['HA'][sel] = opt.ha
+            out['OBSTIME'][sel] = texp
 
     log.info('Saving results to {0}'.format(fullname))
     out.write(fullname, overwrite=True)

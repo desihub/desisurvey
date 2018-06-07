@@ -5,7 +5,10 @@ desisurvey change log
 0.10.2 (unreleased)
 -------------------
 
-* No changes yet.
+* Do not assume that input tile file includes all of DARK, BRIGHT, and GRAY
+  tiles (PR `#83`_). 
+
+.. _`#83`: https://github.com/desihub/desisurvey/pull/83
 
 0.10.1 (2017-12-20)
 -------------------
