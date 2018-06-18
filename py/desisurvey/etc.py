@@ -121,11 +121,67 @@ def airmass_exposure_factor(airmass):
     return np.power((X / X0), 1.25)
 
 
+# Linear regression coefficients for converting scattered twilight r-band
+# magnitude into an exposure-time correction factor.
+_twilightCoefficients = np.array([
+    -8.70618444805, 64323409.928312987, 739.2405272968557,
+    -18763.675456604633, 158813.46020567254])
+
+def twilight_exposure_factor(sun_alt, sun_daz, airmass):
+    """Calculate exposure time factor due to scattered twilight.
+
+    The returned factor is relative to dark conditions when the moon is
+    below the local horizon.
+
+    This factor is based on a study of SNR for BGS threshold targets.
+    See ``surveysim:doc/nb/BGS_ETC_Study.ipynb`` for details.
+
+    Parameters
+    ----------
+    sun_alt : float
+        Altitude angle of the sun above the horizon in degrees. Must be in the
+        range [-90, -12] deg. Values below -18 deg are considered dark, with
+        no scattered sun.
+    sun_daz : float
+        Relative azimuth angle in degrees between the pointing and the sun.
+    airmass : float
+        Airmass used for observing this tile, must be >= 1.
+
+    Returns
+    -------
+    float
+        Dimensionless factor that exposure time should be increased to
+        account for increased sky brightness due to scattered twilight.
+        Will be 1 when the sun is below -18 degrees.
+    """
+    if (sun_alt < -90) or (sun_alt > -12):
+        raise ValueError('Got invalid sun_alt outside [-90,-12].')
+    if airmass < 1:
+        raise ValueError('Got invalid airmass < 1.')
+
+    # No exposure penalty when the sun is far enough below the horizon.
+    if sun_alt < -18:
+        return 1.
+
+    # Estimate the altitude angle corresponding to this observing airmass.
+    # We invert eqn.3 of KS1991 for this (instead of eqn.14).
+    obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
+    obj_altitude = 90 * u.deg - obs_zenith.to(u.deg)
+
+    # Calculate scattered twilight r-band brightness.
+    r = specsim.atmosphere.twilight_surface_brightness(
+        obj_altitude, sun_alt * u.deg, sun_daz * u.deg).value
+
+    # Evaluate the linear regression model.
+    X = np.array((1, np.exp(-r), 1/r, 1/r**2, 1/r**3))
+    return _twilightCoefficients.dot(X)
+
+
 # Linear regression coefficients for converting scattered moon V-band
 # magnitude into an exposure-time correction factor.
 _moonCoefficients = np.array([
-    -8.83964463188, -7372368.5041596508, 775.17763895781638,
-    -20185.959363990656, 174143.69095766739])
+    -9.6827757062, -5454732.2391116023, 805.44541757440129,
+    -20274.598621708101, 170436.98267100245])
 
 # V-band extinction coefficient to use in the scattered moonlight model.
 # See specsim.atmosphere.krisciunas_schaefer for details.
@@ -140,14 +196,8 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     This factor is based on a study of SNR for ELG targets and designed to
     achieve a median SNR of 7 for a typical ELG [OII] doublet at the lower
     flux limit of 8e-17 erg/(cm2 s A), averaged over the expected ELG target
-    redshift distribution 0.6 < z < 1.7.
-
-    TODO:
-    - Check the assumption that exposure time scales with SNR ** -0.5.
-    - Check if this ELG-based analysis is also valid for BGS targets.
-
-    For details, see the jupyter notebook doc/nb/ScatteredMoon.ipynb in
-    this package.
+    redshift distribution 0.6 < z < 1.7. See
+    ``surveysim:doc/nb/ScatteredMoon.ipynb`` for details.
 
     Parameters
     ----------
@@ -191,14 +241,16 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     # We invert eqn.3 of KS1991 for this (instead of eqn.14).
     obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
 
-    # Calculate scattered moon V-band brightness at each pixel.
+    # Calculate scattered moon V-band brightness.
     V = specsim.atmosphere.krisciunas_schaefer(
         obs_zenith, moon_zenith, separation_angle,
         moon_phase, _vband_extinction).value
 
     # Evaluate the linear regression model.
-    X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
-    return _moonCoefficients.dot(X)
+    X = np.array((1., np.exp(-V), 1/V, 1/V**2, 1/V**3))
+
+    # Clip result to 1 since fits goes just below 1 at the faint end (V>26).
+    return np.maximum(1., _moonCoefficients.dot(X))
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,

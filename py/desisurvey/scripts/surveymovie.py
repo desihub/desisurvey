@@ -367,9 +367,9 @@ class Animator(object):
             True if a new frame was drawn.
         """
         info = self.exposures[iexp]
-        mjd = info['mjd']
+        mjd = info['MJD']
         date = desisurvey.utils.get_date(mjd)
-        assert date == desisurvey.utils.get_date(info['night'])
+        assert date == desisurvey.utils.get_date(info['NIGHT'])
         night = self.ephem.get_night(date)
         # Initialize status if necessary.
         if (self.status is None) or nightly:
@@ -381,18 +381,18 @@ class Animator(object):
         elif nightly:
             return False
         # Update the status for the current exposure.
-        complete = info['snr2cum'] >= self.config.min_snr2_fraction()
-        self.status[info['index']] = 2 if complete else 1
+        complete = info['SNR2CUM'] >= self.config.min_snr2_fraction()
+        self.status[info['INDEX']] = 2 if complete else 1
         # Update the top-right label.
-        label = '{} {} #{:06d}'.format(self.label, date, info['expid'])
+        label = '{} {} #{:06d}'.format(self.label, date, info['EXPID'])
         if not nightly:
             label += ' ({:.1f}",{:.2f})'.format(
-                info['seeing'], info['transparency'])
+                info['SEEING'], info['TRANSPARENCY'])
         self.text.set_text(label)
         if not nightly:
             # Update current time in program.
             dt1 = mjd - night['noon']
-            dt2 = dt1 + info['exptime'] / 86400.
+            dt2 = dt1 + info['EXPTIME'] / 86400.
             self.pline1.set_xdata([dt1, dt1])
             self.pline2.set_xdata([dt2, dt2])
         if self.show_scores:
@@ -415,9 +415,9 @@ class Animator(object):
             sizes[done] = 30.
             fc[done] = self.completecolor
             fc[~avail] = self.unavailcolor
-            if not nightly and (info['pass'] == passnum):
+            if not nightly and (info['PASS'] == passnum):
                 # Highlight the tile being observed now.
-                jdx = np.where(self.tileid[sel] == info['tileid'])[0][0]
+                jdx = np.where(self.tileid[sel] == info['TILEID'])[0][0]
                 fc[jdx] = self.nowcolor
                 scatter.get_sizes()[jdx] = 600.
             scatter.set_facecolors(fc)
@@ -430,7 +430,7 @@ class Animator(object):
             # Update LST lines.
             x1, x2 = self.lst[iexp]
             for passnum, (line1, line2) in enumerate(self.lstlines):
-                ls = '-' if info['pass'] == passnum else '--'
+                ls = '-' if info['PASS'] == passnum else '--'
                 line1.set_linestyle(ls)
                 line2.set_linestyle(ls)
                 line1.set_xdata([x1, x1])

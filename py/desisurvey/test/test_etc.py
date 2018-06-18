@@ -4,7 +4,7 @@ import numpy as np
 
 import astropy.units as u
 
-from desisurvey.etc import exposure_time, moon_exposure_factor
+from desisurvey.etc import *
 
 
 class TestExpCalc(unittest.TestCase):
@@ -44,17 +44,31 @@ class TestExpCalc(unittest.TestCase):
                            EBV, moon_frac, moon_sep, moon_alt)
         self.assertGreater(t2, t1)
 
+    def test_twilight(self):
+        # Sun below the horizon
+        x = twilight_exposure_factor(sun_alt=-20., sun_daz=0., airmass=1.2)
+        self.assertAlmostEqual(x, 1.0, 4)
+
+        # Exposure times increase as the dawn sun rises, for many daz values.
+        for daz in (0, 90, 270, -10):
+            efac = np.empty(7)
+            for i, alt in enumerate(np.linspace(-18, -12, 7)):
+                efac[i] = twilight_exposure_factor(
+                    sun_alt=alt, sun_daz=daz, airmass=1.)
+            self.assertTrue(np.all(efac >= 1.0))
+            self.assertTrue(np.all(efac < 1.2))
+            self.assertTrue(np.all(np.diff(efac) > 0))
+
     def test_moon(self):
         #- Moon below horizon
         x = moon_exposure_factor(
             moon_frac=0.5, moon_sep=60, moon_alt=-30, airmass=1.2)
         self.assertAlmostEqual(x, 1.0, 4)
 
-        #- New moon above horizon still has some impact
+        #- New moon above horizon still no impact
         x = moon_exposure_factor(
             moon_frac=0.0, moon_sep=60, moon_alt=30, airmass=1.2)
-        self.assertGreater(x, 1.0)
-        self.assertLess(x, 1.1)
+        self.assertAlmostEqual(x, 1.0, 4)
 
         #- Partial moon takes more time
         x1 = moon_exposure_factor(
