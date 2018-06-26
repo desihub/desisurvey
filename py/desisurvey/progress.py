@@ -604,8 +604,13 @@ class Progress(object):
                     program[:] = 'BRIGHT'
                     program[exppass < 4] = 'DARK'
                     program[exppass == 4] = 'GRAY'
+                    
+                proglen = len(max(program, key=len))
+                if proglen < 6: # need at least six characters for 'CALIB' program
+                    proglen = 6
 
                 output[name.upper()] = astropy.table.Column(program,
+                                                            dtype='S{}'.format(proglen),
                                                             description='Program name')
             elif name == 'flavor':
                 flavor = np.empty(len(exppass), dtype=(str, 7))
