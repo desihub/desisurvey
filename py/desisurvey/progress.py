@@ -610,7 +610,7 @@ class Progress(object):
                     proglen = 6
 
                 output[name.upper()] = astropy.table.Column(program,
-                                                            dtype='S{}'.format(proglen),
+                                                            dtype='<U{}'.format(proglen),
                                                             description='Program name')
             elif name == 'flavor':
                 flavor = np.empty(len(exppass), dtype=(str, 7))
