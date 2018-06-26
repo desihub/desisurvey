@@ -7,8 +7,10 @@ desisurvey change log
 
 * Do not assume that input tile file includes all of DARK, BRIGHT, and GRAY
   tiles (PR `#83`_). 
+* Enforce at least six characters in program name in exposures table (PR `#86`_). 
 
 .. _`#83`: https://github.com/desihub/desisurvey/pull/83
+.. _`#86`: https://github.com/desihub/desisurvey/pull/86
 
 0.10.1 (2017-12-20)
 -------------------
