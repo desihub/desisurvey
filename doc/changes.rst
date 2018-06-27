@@ -2,7 +2,7 @@
 desisurvey change log
 =====================
 
-0.10.2 (unreleased)
+0.10.2 (2018-06-27)
 -------------------
 
 * Do not assume that input tile file includes all of DARK, BRIGHT, and GRAY
