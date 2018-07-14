@@ -1,9 +1,7 @@
 import os
 import numpy
 from desimodel import focalplane
-import util_efs
-import pdb
-import orthographic
+
 
 def match2d(x1, y1, x2, y2, rad):
     """Find all matches between x1, y1 and x2, y2 within radius rad."""
@@ -23,25 +21,97 @@ def match2d(x1, y1, x2, y2, rad):
     return m1, m2, d12
 
 
+def lb2uv(r, d):
+    return tp2uv(*lb2tp(r, d))
+
+
+def lb2tp(l, b):
+    return (90.-b)*numpy.pi/180., l*numpy.pi/180.
+
+
+def tp2uv(t, p):
+    z = numpy.cos(t)
+    x = numpy.cos(p)*numpy.sin(t)
+    y = numpy.sin(p)*numpy.sin(t)
+    return numpy.concatenate([q[...,numpy.newaxis] for q in (x, y, z)],
+                             axis=-1)
+
+
+
+def match_radec(r1, d1, r2, d2, rad=1./60./60., nneighbor=0, notself=False):
+    """Match r1, d1, to r2, d2, within radius rad."""
+    if notself and nneighbor > 0:
+        nneighbor += 1
+    uv1 = lb2uv(r1, d1)
+    uv2 = lb2uv(r2, d2)
+    from scipy.spatial import cKDTree
+    tree = cKDTree(uv2)
+    dub = 2*numpy.sin(numpy.radians(rad)/2)
+    if nneighbor > 0:
+        d12, m2 = tree.query(uv1, nneighbor, distance_upper_bound=dub)
+        if nneighbor > 1:
+            m2 = m1.reshape(-1)
+            d12 = d12.reshape(-1)
+
+        m1 = numpy.arange(len(r1)*nneighbor, dtype='i4') // nneighbor
+        d12 = 2*numpy.arcsin(numpy.clip(d12 / 2, 0, 1))*180/numpy.pi
+        m = m2 < len(r2)
+    else:
+        tree1 = cKDTree(uv1)
+        res = tree.query_ball_tree(tree1, dub)
+        lens = [len(r) for r in res]
+        m2 = numpy.repeat(numpy.arange(len(r2), dtype='i4'), lens)
+        m1 = numpy.concatenate([r for r in res if len(r) > 0])
+        d12 = gc_dist(r1[m1], d1[m1], r2[m2], d2[m2])
+        m = numpy.ones(len(m1), dtype='bool')
+    if notself:
+        m = m & (m1 != m2)
+    return m1[m], m2[m], d12[m]
+
+
+class subslices:
+    "Iterator for looping over subsets of an array"
+    def __init__(self, data, uind=None):
+        if uind is None:
+            self.uind = numpy.unique(data, return_index=True)[1]
+        else:
+            self.uind = uind.copy()
+        self.ind = 0
+        self.length = len(data)
+    def __iter__(self):
+        return self
+    def __len__(self):
+        return len(self.uind)
+    def next(self):
+        if self.ind == len(self.uind):
+            raise StopIteration
+        if self.ind == len(self.uind)-1:
+            last = self.length
+        else:
+            last = self.uind[self.ind+1]
+        first = self.uind[self.ind]
+        self.ind += 1
+        return first, last
+
+
 def render(ra, dec, tilera, tiledec, fiberposfile=None):
     """Return number of possible observations of ra, dec, given focal
     plane centers tilera, tiledec."""
     out = numpy.zeros_like(ra, dtype='i4')
-    mg, mt, dgt = util_efs.match_radec(ra, dec, tilera, tiledec, 1.65)
+    mg, mt, dgt = match_radec(ra, dec, tilera, tiledec, 1.65)
     s = numpy.argsort(mt)
     if fiberposfile is None:
         fiberposfile = os.path.join(os.environ['DESIMODEL'], 'data', 
                                     'focalplane', 'fiberpos.fits')
     from astropy.io import fits
     fpos = fits.getdata(fiberposfile)
-    for f, l in util_efs.subslices(mt[s]):
+    for f, l in subslices(mt[s]):
         tileno = mt[s[f]]
         ind = mg[s[f:l]]
         x, y = focalplane.radec2xy(tilera[tileno], tiledec[tileno],
                                    ra[ind], dec[ind])
         mx, mf, dxf = match2d(x, y, fpos['x'], fpos['y'], 6)
-        out = util_efs.add_arr_at_ind(out, numpy.ones(len(mx), dtype='i4'), 
-                                      ind[mx])
+        out += numpy.bincount(ind[mx], minlength=len(out))
     return out
                                  
 
@@ -57,7 +127,7 @@ def adjacency_matrix(tilera, tiledec, fiberposfile=None):
                                     'focalplane', 'fiberpos.fits')
     from astropy.io import fits
     fpos = fits.getdata(fiberposfile)
-    # really slow
+    # really slow, not vectorized.
     pos = [[focalplane.xy2radec(tra, tdec, fx, fy) 
             for fx, fy in zip(fpos['x'], fpos['y'])]
            for tra, tdec in zip(tilera, tiledec)]
@@ -69,7 +139,7 @@ def adjacency_matrix(tilera, tiledec, fiberposfile=None):
     radbin = numpy.tile(radbin, len(tilera))
     expnum = numpy.repeat(numpy.arange(len(tilera)), len(fpos))
     rad = 1.4/60
-    m1, m2, d12 = util_efs.match_radec(ras, decs, ras, decs, rad, 
+    m1, m2, d12 = match_radec(ras, decs, ras, decs, rad, 
                                        notself=True)
     m = expnum[m1] != expnum[m2]
     m1 = m1[m]
@@ -85,9 +155,9 @@ def adjacency_matrix(tilera, tiledec, fiberposfile=None):
     adjr = numpy.zeros(nradbin**2, dtype='f4')
     ind = slitno[m1]*nslitno+slitno[m2]
     indr = radbin[m1]*nradbin+radbin[m2]
-    adj = util_efs.add_arr_at_ind(adj, area[m1], ind)
+    adj += numpy.bincount(ind, weights=area[m1], minlength=len(adj))
     adj = adj.reshape(nslitno, nslitno)
-    adjr = util_efs.add_arr_at_ind(adjr, area[m1], indr)
+    adjr += numpy.bincount(indr, weights=area[m1], minlength=len(adjr))
     adjr = adjr.reshape(nradbin, nradbin)
     return adj, adjr
 
