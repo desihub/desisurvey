@@ -111,6 +111,7 @@ def render(ra, dec, tilera, tiledec, fiberposfile=None):
         x, y = focalplane.radec2xy(tilera[tileno], tiledec[tileno],
                                    ra[ind], dec[ind])
         mx, mf, dxf = match2d(x, y, fpos['x'], fpos['y'], 6)
+        # much slower than my custom-rolled version!
         out += numpy.bincount(ind[mx], minlength=len(out))
     return out
                                  
