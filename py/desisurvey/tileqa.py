@@ -50,7 +50,7 @@ def match_radec(r1, d1, r2, d2, rad=1./60./60., nneighbor=0, notself=False):
     if nneighbor > 0:
         d12, m2 = tree.query(uv1, nneighbor, distance_upper_bound=dub)
         if nneighbor > 1:
-            m2 = m1.reshape(-1)
+            m2 = m2.reshape(-1)
             d12 = d12.reshape(-1)
 
         m1 = numpy.arange(len(r1)*nneighbor, dtype='i4') // nneighbor
@@ -320,4 +320,90 @@ def qa(desitiles, nside=1024):
         p.title('%s: radial' % name)
         
         
+def maketilefile(desitiles, gaiadensitymapfile, tycho2file):
+    """Make tile file.
     
+    Args:
+        desitiles: original DESI tile file
+        gaiadensitymapfile: file name of healpix map of density of Gaia 
+            stars brighter than 19th mag.
+        tycho2file: file name of list of ra, dec, bt, vt mags of Tycho-2
+            stars.
+    """
+    import healpy
+    nside = 512  # hack: needs to match gaianumdens map below.
+    m0 = desitiles['pass'] == 0
+    ran, decn = logradecoffscheme(desitiles['ra'][m0], 
+                                  desitiles['dec'][m0], dx=0.6, ang=24)
+    # stupid way to make copy of an array, but most other things I tried
+    # ended up with the dtype of desitilesnew being a reference to the dtype
+    # of desitiles, which I didn't want.
+    desitilesnew = numpy.zeros(len(desitiles), dtype=desitiles.dtype.descr)
+    for n in desitilesnew.dtype.names:
+        desitilesnew[n] = desitiles[n]
+    desitilesnew.dtype.names = [n.lower() for n in desitilesnew.dtype.names]
+    desitilesnew['ra'] = ran
+    desitilesnew['dec'] = decn
+    m4 = desitilesnew['pass'] == 4
+    # pass 4: only pass that is identical in original and new schemes
+    desitilesnew['in_desi'] = numpy.concatenate(
+        [desitilesnew['in_desi'][m4]]*10)
+    # just repeat identically for each pass; all passes are close to
+    # pass = 4 'centers'.
+    theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
+    la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
+    try:
+        from desitarget.mock import sfdmap
+        ebva = sfdmap.ebv(la, ba, frame='galactic', 
+                          mapdir=os.getenv('DUST_DIR')+'/maps', scaling=1)
+    except:
+        import dust
+        ebva = dust.getval(la, ba, map='sfd')
+    from astropy.coordinates import SkyCoord
+    from astropy import units as u
+    coord = SkyCoord(ra=ran*u.deg, dec=decn*u.deg, frame='icrs')
+    coordgal = coord.galactic
+    lt, bt = coordgal.l.value, coordgal.b.value
+    uvt = lb2uv(lt, bt)
+    from astropy.io import fits
+    gaiadens = fits.getdata(gaiadensitymapfile).copy()
+    
+    for i in range(len(desitilesnew)):
+        ind = healpy.query_disc(nside, uvt[i], 1.65*numpy.pi/180.)
+        desitilesnew['ebv_med'][i] = numpy.median(ebva[ind])
+        desitilesnew['star_density'][i] = numpy.median(gaiadens[ind])
+
+    brightstars = fits.getdata(tycho2file)
+    mb, mt, dbt = match_radec(brightstars['ra'], brightstars['dec'], 
+                              ran, decn, 1.65)
+    s = numpy.lexsort((brightstars['vtmag'][mb], mt))
+    mt, mb, dbt = mt[s], mb[s], dbt[s]
+    desitilesnew_add = numpy.zeros(len(ran), dtype=[
+            ('brightra', '3f4'), ('brightdec', '3f4'), ('brightvtmag', '3f4'),
+            ('centerid', 'i4')])
+    from numpy.lib import recfunctions
+    desitilesnew = recfunctions.merge_arrays((desitilesnew, desitilesnew_add),
+                                             flatten=True)
+    for f, l in subslices(mt):
+        end = numpy.clip(l-f, 0, 3)
+        l = numpy.clip(l, f, f+3)
+        ind = mt[f]
+        desitilesnew['brightra'][ind, 0:end] = brightstars['ra'][mb[f:l]]
+        desitilesnew['brightdec'][ind, 0:end] = brightstars['dec'][mb[f:l]]
+        desitilesnew['brightvtmag'][ind, 0:end] = brightstars['vtmag'][mb[f:l]]
+
+    # PROGRAM is retained from old desitiles.  
+    # This has 0-3 dark, 4 gray, 5-7 bright, 8-9 extra. This is a good match
+    # to this scheme; pass 4 translates directly and is in some sense
+    # the most regular; most appropriate for a single pass.  The optimization
+    # for no-zero-coverage was done on passes 0-2 (or, equivalently, 5-7);
+    # it makes sense for the dark & bright programs to include these
+    # three passes.  So though PROGRAM is not explicitly addressed here,
+    # the old classifications happen to make good sense.
+    
+    # airmass, exposefac not yet addressed here.
+    desitilesnew['airmass'] = 0.
+    desitilesnew['exposefac'] = 0.
+    return desitilesnew
+        
+
