@@ -104,6 +104,21 @@ class TestEphemerides(unittest.TestCase):
         expected[9:16] = True
         self.assertTrue(np.all(full == expected))
 
+    def test_full_moon_duration(self):
+        """Verify full moon calculations for different durations"""
+        start = datetime.date(2023, 6, 1)
+        stop = datetime.date(2023, 9, 30)
+        full_moon = datetime.date(2023, 8, 1)
+        ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
+        idx = ephem.get_night(full_moon, as_index=True)
+        frac0 = ephem._table['moon_illum_frac'][idx - 14:idx + 15]
+        for num_nights in range(1, 25):
+            full = []
+            for dt in range(-14, +15):
+                night = full_moon + datetime.timedelta(days=dt)
+                full.append(ephem.is_full_moon(night, num_nights=num_nights))
+            assert np.count_nonzero(full) == num_nights
+
     def test_get_grid(self):
         """Verify grid calculations"""
         for step_size in (1 * u.min, 0.3 * u.hour):
