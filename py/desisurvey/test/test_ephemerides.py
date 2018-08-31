@@ -93,16 +93,13 @@ class TestEphemerides(unittest.TestCase):
 
     def test_full_moon(self):
         """Verify that the full moon break in Sep-2019 occurs on days 10-16"""
-        start = datetime.date(2019, 9, 1)
-        stop = datetime.date(2019, 9, 30)
+        start = datetime.date(2019, 8, 1)
+        stop = datetime.date(2019, 11, 1)
         ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
-        full = np.empty(ephem.num_nights, bool)
-        for i in range(ephem.num_nights):
+        for i in range(31, 60):
             night = start + datetime.timedelta(days=i)
-            full[i] = ephem.is_full_moon(night)
-        expected = np.zeros_like(full, bool)
-        expected[9:16] = True
-        self.assertTrue(np.all(full == expected))
+            expected = (night >= datetime.date(2019, 9, 10)) and (night <= datetime.date(2019, 9, 16))
+            self.assertTrue(ephem.is_full_moon(night) is expected)
 
     def test_full_moon_duration(self):
         """Verify full moon calculations for different durations"""
@@ -117,7 +114,7 @@ class TestEphemerides(unittest.TestCase):
             for dt in range(-14, +15):
                 night = full_moon + datetime.timedelta(days=dt)
                 full.append(ephem.is_full_moon(night, num_nights=num_nights))
-            assert np.count_nonzero(full) == num_nights
+            self.assertTrue(np.count_nonzero(full) == num_nights)
 
     def test_get_grid(self):
         """Verify grid calculations"""

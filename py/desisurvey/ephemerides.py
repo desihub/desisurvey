@@ -385,9 +385,9 @@ class Ephemerides(object):
         the moon is most fully illuminated at local midnight.  This method
         should normally be called with ``num_nights`` equal to None, in which
         case the value is taken from our
-        :class:`desisurvey.config.Configuration``. Any partial break at the
-        begining or end of the period where ephemerides are calculated
-        is ignored.
+        :class:`desisurvey.config.Configuration``. Always returns False within
+        15 days of the survey start/stop dates, to ensure that the nearest
+        full moon is within the tabulated ephemerides.
 
         Parameters
         ----------
@@ -404,24 +404,36 @@ class Ephemerides(object):
         # Check the requested length of the full moon break.
         if num_nights is None:
             num_nights = desisurvey.config.Configuration().full_moon_nights()
-        half_cycle = 12
-        if num_nights < 1 or num_nights > 2 * half_cycle:
+        if num_nights < 1 or num_nights > 24:
             raise ValueError('Full moon break must be 1-24 nights.')
         # Look up the index of this night in our table.
         index = self.get_night(night, as_index=True)
-        # Ignore any partial breaks at the ends of our date range.
-        if index < num_nights or index + num_nights >= len(self._table):
+        # Make sure we have tabulated the nearest full moon.
+        if index < 15 or index + 15 >= len(self._table):
             return False
-        # Fetch a single lunar cycle of illumination data centered
-        # on this night (unless we are close to one end of the table).
-        lo = max(0, index - half_cycle)
-        hi = min(self.num_nights, index + half_cycle + 1)
-        cycle = self._table['moon_illum_frac'][lo:hi]
-        # Sort the illumination fractions in this cycle.
-        sort_order = np.argsort(cycle)
-        # Return True if tonight's illumination is in the top num_nights.
-        return index - lo in sort_order[-num_nights:]
-
+        # Is tonight a full moon?
+        dfrac = np.diff(self._table['moon_illum_frac'][index - 1:index + 2].data)
+        if (dfrac[0] >= 0) and (dfrac[1] < 0):
+            # This is a full moon night.
+            return True
+        # Find the nearest full moon within +/-15 nights.
+        step = +1 if dfrac[0] >= 0 else -1
+        dt = np.argmax(self._table['moon_illum_frac'][index:index + step * 15:step])
+        # Rough cut.
+        nhalf = int(np.floor(0.5 * num_nights))
+        if dt > nhalf:
+            return False
+        if (dt < nhalf) or ((dt == nhalf) and (num_nights % 2 == 1)):
+            return True
+        # If we get here, we have to chose between this night and one the same
+        # distance but on the other side of the nearest full moon.
+        dfrac = (self._table['moon_illum_frac'][index] -
+            self._table['moon_illum_frac'][index + 2 * step * dt])
+        if dfrac == 0:
+            # Tie breaker when both nights equally full.
+            return step == -1
+        else:
+            return dfrac > 0
 
 def get_object_interpolator(row, object_name, altaz=False):
     """Build an interpolator for object location during one night.
