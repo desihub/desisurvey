@@ -242,7 +242,7 @@ def logradecoffscheme(ras, decs, dx=0.6, ang=24):
                [dx[2]*sin(ang+2*dang), dx[2]*cos(ang+2*dang)]]
     dithers = numpy.cumsum(numpy.array(dithers), axis=0)
     dithers -= numpy.mean(dithers, axis=0).reshape(1, -1)
-    dithers =  list(dithers) + [[0, 0]]
+    dithers = [[0, 0]] + list(dithers)
     fac = 1./numpy.cos(numpy.radians(decs))
     fac = numpy.clip(fac, 1, 360*5)  # confusion near celestial pole.
     newras = numpy.concatenate([ras+d[0]*fac for d in dithers])
@@ -256,8 +256,16 @@ def logradecoffscheme(ras, decs, dx=0.6, ang=24):
     if numpy.any((newdecs > 90) | (newdecs < -90)):
         raise ValueError('Something is wrong!')
     newras = newras % 360
-    newras = numpy.concatenate([newras, newras])
-    newdecs = numpy.concatenate([newdecs, newdecs])
+    newras2 = numpy.concatenate([
+            newras[len(ras):], newras[:len(ras)]])
+    newdecs2 = numpy.concatenate([
+            newdecs[len(ras):], newdecs[:len(ras)]])
+    # for duplicate 5 passes, change order slightly.
+    # the zeroth and ninth passes are now the passes that are at the centers
+    # of the other 4 passes.  This makes passes 1-4 and passes 5-7 somewhat
+    # better optimized for complete coverage.
+    newras = numpy.concatenate([newras, newras2])
+    newdecs = numpy.concatenate([newdecs, newdecs2])
     return newras, newdecs
 
 
@@ -277,7 +285,7 @@ def qa(desitiles, nside=1024):
     import healpy
     theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
     la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
-    m4pass = desitiles['pass'] <= 3
+    m4pass = (desitiles['pass'] <= 4) & (desitiles['pass'] >= 1)
     m0 = desitiles['pass'] == 0
     ran, decn = logradecoffscheme(desitiles['ra'][m0], 
                                   desitiles['dec'][m0], dx=0.6, ang=24)
@@ -344,12 +352,12 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file):
     desitilesnew.dtype.names = [n.lower() for n in desitilesnew.dtype.names]
     desitilesnew['ra'] = ran
     desitilesnew['dec'] = decn
-    m4 = desitilesnew['pass'] == 4
-    # pass 4: only pass that is identical in original and new schemes
+    m0 = desitilesnew['pass'] == 0
+    # pass 0 & 9: identical to centers in original and new schemes
     desitilesnew['in_desi'] = numpy.concatenate(
-        [desitilesnew['in_desi'][m4]]*10)
+        [desitilesnew['in_desi'][m0]]*10)
     # just repeat identically for each pass; all passes are close to
-    # pass = 4 'centers'.
+    # pass = 0 'centers'.
     theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
     la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
     try:
@@ -367,15 +375,16 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file):
     uvt = lb2uv(lt, bt)
     from astropy.io import fits
     gaiadens = fits.getdata(gaiadensitymapfile).copy()
+    fprad = 1.605
     
     for i in range(len(desitilesnew)):
-        ind = healpy.query_disc(nside, uvt[i], 1.65*numpy.pi/180.)
+        ind = healpy.query_disc(nside, uvt[i], fprad*numpy.pi/180.)
         desitilesnew['ebv_med'][i] = numpy.median(ebva[ind])
         desitilesnew['star_density'][i] = numpy.median(gaiadens[ind])
 
     brightstars = fits.getdata(tycho2file)
     mb, mt, dbt = match_radec(brightstars['ra'], brightstars['dec'], 
-                              ran, decn, 1.65)
+                              ran, decn, fprad)
     s = numpy.lexsort((brightstars['vtmag'][mb], mt))
     mt, mb, dbt = mt[s], mb[s], dbt[s]
     desitilesnew_add = numpy.zeros(len(ran), dtype=[
@@ -392,18 +401,50 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file):
         desitilesnew['brightdec'][ind, 0:end] = brightstars['dec'][mb[f:l]]
         desitilesnew['brightvtmag'][ind, 0:end] = brightstars['vtmag'][mb[f:l]]
 
-    # PROGRAM is retained from old desitiles.  
-    # This has 0-3 dark, 4 gray, 5-7 bright, 8-9 extra. This is a good match
-    # to this scheme; pass 4 translates directly and is in some sense
-    # the most regular; most appropriate for a single pass.  The optimization
-    # for no-zero-coverage was done on passes 0-2 (or, equivalently, 5-7);
-    # it makes sense for the dark & bright programs to include these
-    # three passes.  So though PROGRAM is not explicitly addressed here,
-    # the old classifications happen to make good sense.
+    p = desitilesnew['pass']
+    desitilesnew['program'][p == 0] = 'GRAY'
+    desitilesnew['program'][(p >= 1) & (p <= 4)] = 'DARK'
+    desitilesnew['program'][(p >= 5) & (p <= 7)] = 'BRIGHT'
+    desitilesnew['program'][(p >= 8)] = 'EXTRA'
     
-    # airmass, exposefac not yet addressed here.
-    desitilesnew['airmass'] = 0.
-    desitilesnew['exposefac'] = 0.
+    desitilesnew['airmass'] = airmass(
+        numpy.ones(len(desitilesnew), dtype='f4')*15., desitilesnew['dec'],
+        31.96)
+    signalfac = 10.**(3.303*desitiles['ebv_med']/2.5)
+    desitilesnew['exposefac'] = signalfac**2 * desitilesnew['airmass']**1.25
+    desitilesnew['centerid'] = numpy.concatenate(
+        [desitilesnew['tileid'][m0]]*10)
     return desitilesnew
-        
 
+
+def airmass(ha, dec, lat):
+    az, alt = rotate(ha, dec, 0., lat)
+    sinalt = numpy.clip(numpy.sin(numpy.radians(alt)), 1e-2, numpy.inf)
+    return 1./sinalt
+
+
+def rotate(l, b, l0, b0, phi0=0.):
+    l = numpy.radians(l)
+    b = numpy.radians(b)
+    l0 = numpy.radians(l0)
+    b0 = numpy.radians(b0)
+    ce = numpy.cos(b0)
+    se = numpy.sin(b0)
+    phi0 = numpy.radians(phi0)
+    
+    cb, sb = numpy.cos(b), numpy.sin(b)
+    cl, sl = numpy.cos(l-l0+numpy.pi/2.), numpy.sin(l-l0+numpy.pi/2.)
+    
+    ra  = numpy.arctan2(cb*cl, sb*ce-cb*se*sl) + phi0
+    dec = numpy.arcsin(cb*ce*sl + sb*se)
+    
+    ra = ra % (2*numpy.pi)
+    
+    ra = numpy.degrees(ra)
+    dec = numpy.degrees(dec)
+    
+    return ra, dec
+
+
+def rotate2(l, b, l0, b0, phi0=0.):
+    return rotate(l, b, phi0, b0, phi0=l0)
