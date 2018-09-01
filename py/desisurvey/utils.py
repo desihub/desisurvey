@@ -400,10 +400,8 @@ def cos_zenith(ha, dec, latitude=None):
 def is_monsoon(night):
     """Test if this night's observing falls in the monsoon shutdown.
 
-    Uses the monsoon date range defined in the
-    :class:`desisurvey.config.Configuration`.  Based on (month, day) comparisons
-    rather than day-of-year comparisons, so the monsoon always starts on the
-    same calendar date, even in leap years.
+    Uses the monsoon date ranges defined in the
+    :class:`desisurvey.config.Configuration`.
 
     Parameters
     ----------
@@ -416,20 +414,15 @@ def is_monsoon(night):
         True if this night's observing falls during the monsoon shutdown.
     """
     date = get_date(night)
-
     # Fetch our configuration.
     config = desisurvey.config.Configuration()
-    start = config.monsoon_start()
-    stop = config.monsoon_stop()
-
-    # Not in monsoon if (day < start) or (day >= stop)
-    m, d = date.month, date.day
-    if m < start.month or (m == start.month and d < start.day):
-        return False
-    if m > stop.month or (m == stop.month and d >= stop.day):
-        return False
-
-    return True
+    # Test if date falls within any of the shutdowns.
+    for key in config.monsoon.keys:
+        node = getattr(config.monsoon, key)
+        if date >= node.start() and date < node.stop():
+            return True
+    # If we get here, date does not fall in any of the shutdowns.
+    return False
 
 
 def local_noon_on_date(day):

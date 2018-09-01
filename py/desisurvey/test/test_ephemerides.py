@@ -116,6 +116,15 @@ class TestEphemerides(unittest.TestCase):
                 full.append(ephem.is_full_moon(night, num_nights=num_nights))
             self.assertTrue(np.count_nonzero(full) == num_nights)
 
+    def test_monsoon(self):
+        """Test nominal monsoon shutdown starts/stops on Mon/Fri each year"""
+        config = desisurvey.config.Configuration()
+        for key in config.monsoon.keys:
+            node = getattr(config.monsoon, key)
+            self.assertTrue(node.start().weekday() == 0)
+            self.assertTrue(node.stop().weekday() == 4)
+            self.assertTrue((node.stop() - node.start()).days == 18)
+
     def test_get_grid(self):
         """Verify grid calculations"""
         for step_size in (1 * u.min, 0.3 * u.hour):

@@ -277,12 +277,16 @@ class TestUtils(unittest.TestCase):
             100, utils.day_number(first + datetime.timedelta(days=100)))
 
     def test_monsoon(self):
-        """Monsoon based on (month, day) comparisons"""
-        for year in range(2019, 2025):
-            self.assertFalse(utils.is_monsoon(datetime.date(year, 7, 12)))
-            self.assertTrue(utils.is_monsoon(datetime.date(year, 7, 13)))
-            self.assertTrue(utils.is_monsoon(datetime.date(year, 8, 26)))
-            self.assertFalse(utils.is_monsoon(datetime.date(year, 8, 27)))
+        """Sanity checks on monsoon calculations"""
+        for year in range(2020, 2025):
+            self.assertFalse(utils.is_monsoon(datetime.date(year, 1, 1)))
+            self.assertFalse(utils.is_monsoon(datetime.date(year, 7, 11)))
+            self.assertFalse(utils.is_monsoon(datetime.date(year, 8, 20)))
+            self.assertFalse(utils.is_monsoon(datetime.date(year, 12, 31)))
+        self.assertTrue(utils.is_monsoon(datetime.date(2020, 8, 1)))
+        self.assertFalse(utils.is_monsoon(datetime.date(2021, 8, 1)))
+        self.assertTrue(utils.is_monsoon(datetime.date(2022, 8, 1)))
+        self.assertTrue(utils.is_monsoon(datetime.date(2023, 8, 1)))
 
     def test_local_noon(self):
         """The telescope is 7 hours behind of UTC during winter and summer."""
