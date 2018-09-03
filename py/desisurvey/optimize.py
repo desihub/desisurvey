@@ -117,6 +117,8 @@ class Optimizer(object):
         lst = wrap(e['lst'][sel_flat], origin)
         wgt *= sched.calendar['weather'][:, np.newaxis]
         wgt = wgt[sel].flatten()
+        if np.all(wgt == 0):
+            raise RuntimeError('All weather weights are zero.')
         self.lst_hist, self.lst_edges = np.histogram(
             lst, bins=nbins, range=(origin, origin + 360), weights=wgt)
         self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
@@ -445,6 +447,8 @@ class Optimizer(object):
         and records the current values of the RMSE and scale metrics.
         """
         self.plan_hist = self.plan_tiles.sum(axis=0)
+        if not np.all(np.isfinite(self.plan_hist)):
+            raise RuntimeError('Found invalid plan_tiles in use_plan().')
         if save_history:
             self.scale_history.append(self.eval_scale(self.plan_hist))
             self.loss_history.append(self.eval_loss(self.plan_hist))
