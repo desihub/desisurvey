@@ -51,15 +51,13 @@ class TestUtils(unittest.TestCase):
     def tearDown(self):
         utils._iers_is_frozen = False
 
-    def test_dome_probs(self):
-        """Checks of dome-closed probabilities"""
-        probs = utils.dome_closed_probabilities()
-        self.assertEqual(len(probs), 12)
-        self.assertTrue(np.all(probs > 0))
-        self.assertTrue(np.all(probs < 1))
-        self.assertTrue(np.all(probs > 0))
-        self.assertTrue(probs[6] > 0.5) # July > 50%
-        self.assertTrue(probs[5] < 0.2) # June < 20%
+    def test_dome_fracs(self):
+        """Checks of dome-closed fractions"""
+        probs = utils.dome_closed_fractions()
+        self.assertTrue(np.all(probs >= 0))
+        self.assertTrue(np.all(probs <= 1))
+        mean = probs.mean()
+        self.assertTrue((mean > 0.25) & (mean < 0.35))
 
     def test_update_iers_bad_ext(self):
         """Test save_name extension check"""

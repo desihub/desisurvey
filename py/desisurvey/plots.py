@@ -242,7 +242,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
 
     if apply_weather:
-        weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
+        weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
 
     if night_start >= night_stop:
         raise ValueError('Expected night_start < night_stop.')
@@ -289,8 +289,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         hours[1, i] = dt * np.count_nonzero(gray)
         hours[2, i] = dt * np.count_nonzero(bright)
         if apply_weather:
-            date = desisurvey.utils.get_date(midnight[i])
-            hours[:, i] *= weather_weights[date.month - 1]
+            hours[:, i] *= weather_weights[i]
 
     # Initialize the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
@@ -339,7 +338,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         ax.plot(x, y[1], color=program_color['GRAY'], **opts)
         ax.plot(x, y[2], color=program_color['BRIGHT'], **opts)
 
-        ax.set_axis_bgcolor(bg_color)
+        ax.set_facecolor(bg_color)
         ax.set_ylim(0, 1.07 * y.max())
         if style == 'histogram':
             ax.set_ylabel('Hours / Night')
@@ -878,8 +877,12 @@ def plot_monthly(p, program='DARK', monsoon=False, fullmoon=True,
     """
     import matplotlib.pyplot as plt
 
+    raise RuntimeError('Not updated for daily weather fractions.')
+
     # Tabulate month index for each night.
     month = np.empty_like(p.calendar, np.int16)
+    ##date = desisurvey.utils.get_date(midnight[i])
+
     weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
     for m in range(12):
         sel = np.in1d(p.calendar['weather'], [weather_weights[m],])

@@ -22,30 +22,33 @@ import desiutil.log
 
 import desisurvey.config
 
+import desimodel.weather
+
 
 _telescope_location = None
 _iers_is_frozen = False
-_dome_closed_probabilities = None
+_dome_closed_fractions = None
 
 
-def dome_closed_probabilities():
-    """Return an array of monthly dome-closed probabilities.
+def dome_closed_fractions():
+    """Return daily dome-closed fractions for each night of the survey.
+
+    Uses the config first_day, last_day and weather values.
+
+    Results are cached after the first call to this function.
 
     Returns
     -------
     array
-        Array of 12 probabilities in the range 0-1.
+        Array of N dome-closed fractions in the range 0-1, where N is
+        the number of nights in the survey.
     """
-    global _dome_closed_probabilities
-    if _dome_closed_probabilities is None:
+    global _dome_closed_fractions
+    if _dome_closed_fractions is None:
         config = desisurvey.config.Configuration()
-        _dome_closed_probabilities = np.empty(12)
-        for i, month in enumerate(('jan', 'feb', 'mar', 'apr', 'may', 'jun',
-                                   'jul', 'aug', 'sep', 'oct', 'nov', 'dec')):
-            _dome_closed_probabilities[i] = (
-                # Convert from percentage to fraction.
-                getattr(config.dome_closed_probability, month)() / 100.)
-    return _dome_closed_probabilities
+        _dome_closed_fractions = desimodel.weather.dome_closed_fractions(
+            config.first_day(), config.last_day(), replay=config.weather())
+    return _dome_closed_fractions
 
 
 def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):

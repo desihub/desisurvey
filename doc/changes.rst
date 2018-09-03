@@ -5,7 +5,8 @@ desisurvey change log
 0.10.3 (unreleased)
 -------------------
 
-* No changes yet.
+* Implement realistic 18-day monsoon shutdowns instead of fixed 45-day period.
+* Replay daily Mayall weather history instead of fixed monthly fractions.
 
 0.10.2 (2018-06-27)
 -------------------
