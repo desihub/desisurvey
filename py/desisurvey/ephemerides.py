@@ -349,7 +349,7 @@ class Ephemerides(object):
         interpolator = get_object_interpolator(night, 'moon', altaz=True)
         moon_alt, _ = interpolator(mjd)
 
-        # Lookup the moon illuminated fraction at each time.
+        # Calculate the moon illuminated fraction at each time.
         moon_frac = self.get_moon_illuminated_fraction(mjd)
 
         # Select bright and dark night conditions.
@@ -360,8 +360,9 @@ class Ephemerides(object):
         # Identify program during each MJD.
         GRAY = desisurvey.config.Configuration().programs.GRAY
         max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
+        max_frac = GRAY.max_moon_illumination()
         gray = dark_night & (moon_alt >= 0) & (
-            (moon_frac <= GRAY.max_moon_illumination()) &
+            (moon_frac <= max_frac) &
             (moon_frac * moon_alt <= max_prod))
         dark = dark_night & (moon_alt < 0)
         bright = bright_night & ~(dark | gray)
@@ -542,3 +543,84 @@ def get_grid(step_size=1, night_start=-6, night_stop=7):
     night_stop = night_start + num_points * step_size
     return (night_start.to(u.day).value +
             step_size.to(u.day).value * np.arange(num_points + 1))
+
+
+def get_program_hours(ephem, start_date=None, stop_date=None,
+                      include_monsoon=False, include_full_moon=False,
+                      apply_weather=False, night_start=-6.5, night_stop=7.5,
+                      num_points=500):
+    """Tabulate hours in each program during each night of the survey.
+
+    Use :func:`desisurvey.plots.plot_program` to visualize program hours.
+
+    Parameters
+    ----------
+    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+        Tabulated ephemerides data to use for determining the program.
+    start_date : date or None
+        First night to include in the plot or use the first date of the
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
+        First night to include in the plot or use the last date of the
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    include_monsoon : bool
+        Include nights during the annual monsoon shutdowns.
+    include_fullmoon : bool
+        Include nights during the monthly full-moon breaks.
+    apply_weather : bool
+        Weight each night according to its monthly average dome-open fraction.
+        Only affects the printed totals with the "localtime" style.
+    night_start : float
+        Start of night in hours relative to local midnight used to set
+        y-axis minimum for 'localtime' style and tabulate nightly program.
+    night_stop : float
+        End of night in hours relative to local midnight used to set
+        y-axis maximum for 'localtime' style and tabulate nightly program.
+    num_points : int
+        Number of subdivisions of the vertical axis to use for tabulating
+        the program during each night. The resulting resolution will be
+        ``(night_stop - night_start) / num_points`` hours.
+    """
+    if apply_weather:
+        weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
+
+    if night_start >= night_stop:
+        raise ValueError('Expected night_start < night_stop.')
+
+    # Determine plot date range.
+    start_date = desisurvey.utils.get_date(start_date or ephem.start)
+    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
+    mjd = ephem._table['noon']
+    sel = ((mjd >= desisurvey.utils.local_noon_on_date(start_date).mjd) &
+           (mjd < desisurvey.utils.local_noon_on_date(stop_date).mjd))
+    t = ephem._table[sel]
+    num_nights = len(t)
+
+    # Build a grid of elapsed time relative to local midnight during each night.
+    midnight = t['noon'] + 0.5
+    t_edges = np.linspace(night_start, night_stop, num_points + 1) / 24.
+    t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
+    
+    # Calculate the number of hours for each program during each night.
+    dt = (night_stop - night_start) / num_points
+    hours = np.zeros((3, num_nights))
+    observing_night = np.zeros(num_nights, bool)
+    for i in np.arange(num_nights):
+        if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
+            continue
+        if not include_full_moon and ephem.is_full_moon(midnight[i]):
+            continue
+        observing_night[i] = True
+        mjd_grid = midnight[i] + t_centers
+        dark, gray, bright = ephem.get_program(mjd_grid)
+        hours[0, i] = dt * np.count_nonzero(dark)
+        hours[1, i] = dt * np.count_nonzero(gray)
+        hours[2, i] = dt * np.count_nonzero(bright)
+        if apply_weather:
+            hours[:, i] *= weather_weights[i]
+
+    return hours

@@ -184,6 +184,9 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
                  num_points=500, bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
+    Uses :func:`desisurvey.ephemerides.get_program_hours` to calculate the
+    hours available for each program during each night.
+
     The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
@@ -240,12 +243,11 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     styles = ('localtime', 'histogram', 'cumulative')
     if style not in styles:
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
-
-    if apply_weather:
-        weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
-
-    if night_start >= night_stop:
-        raise ValueError('Expected night_start < night_stop.')
+        
+    hours = get_program_hours(
+        ephem, start_date, stop_date, include_monsoon, include_full_moon,
+        apply_weather, night_start, night_stop, num_points)
+    observing_night = hours.sum(axis=0) > 0
 
     # Determine plot date range.
     start_date = desisurvey.utils.get_date(start_date or ephem.start)
@@ -272,24 +274,6 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     midnight = t['noon'] + 0.5
     t_edges = np.linspace(night_start, night_stop, num_points + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
-
-    # Calculate the number of hours for each program during each night.
-    dt = (night_stop - night_start) / num_points
-    hours = np.zeros((3, num_nights))
-    observing_night = np.zeros(num_nights, bool)
-    for i in np.arange(num_nights):
-        if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
-            continue
-        if not include_full_moon and ephem.is_full_moon(midnight[i]):
-            continue
-        observing_night[i] = True
-        mjd_grid = midnight[i] + t_centers
-        dark, gray, bright = ephem.get_program(mjd_grid)
-        hours[0, i] = dt * np.count_nonzero(dark)
-        hours[1, i] = dt * np.count_nonzero(gray)
-        hours[2, i] = dt * np.count_nonzero(bright)
-        if apply_weather:
-            hours[:, i] *= weather_weights[i]
 
     # Initialize the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
