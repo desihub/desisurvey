@@ -81,7 +81,8 @@ def transparency_exposure_factor(transparency):
 def dust_exposure_factor(EBV):
     """Scaling of exposure time with median E(B-V) relative to nominal.
 
-    The model assumes SDSS g band. Where does this model come from?
+    The model uses the SDSS-g extinction coefficient (3.303) from Table 6
+    of Schlafly & Finkbeiner 2011.
 
     Parameters
     ----------
@@ -97,14 +98,15 @@ def dust_exposure_factor(EBV):
     EBV = np.asarray(EBV)
     config = desisurvey.config.Configuration()
     EBV0 = config.nominal_conditions.EBV()
-    Ag = 3.303 * (EBV - EBV0) # Use g-band
+    Ag = 3.303 * (EBV - EBV0)
     return np.power(10.0, (2.0 * Ag / 2.5))
 
 
 def airmass_exposure_factor(airmass):
     """Scaling of exposure time with airmass relative to nominal.
 
-    Is this model based on SDSS or HETDEX data?
+    The exponent 1.25 is based on empirical fits to BOSS exposure
+    times. See eqn (6) of Dawson 2012 for details.
 
     Parameters
     ----------
