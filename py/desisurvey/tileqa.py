@@ -25,8 +25,24 @@ def lb2uv(r, d):
     return tp2uv(*lb2tp(r, d))
 
 
+def uv2lb(uv):
+    return tp2lb(*uv2tp(uv))
+
+
+def uv2tp(uv):
+    norm = numpy.sqrt(numpy.sum(uv**2., axis=1))
+    uv = uv / norm.reshape(-1, 1)
+    t = numpy.arccos(uv[:,2])
+    p = numpy.arctan2(uv[:,1], uv[:,0])
+    return t, p
+
+
 def lb2tp(l, b):
     return (90.-b)*numpy.pi/180., l*numpy.pi/180.
+
+
+def tp2lb(t, p):
+    return p*180./numpy.pi % 360., 90.-t*180./numpy.pi
 
 
 def tp2uv(t, p):
@@ -210,7 +226,7 @@ def simpleradecoffscheme(ras, decs, dx=0.6, ang=42):
     return newras, newdecs
 
 
-def logradecoffscheme(ras, decs, dx=0.6, ang=24):
+def logradecoffscheme(ras, decs, dx=0.6, ang=24, verbose=False):
     """Log spiraly ra and dec dither scheme, given a base tiling.
 
     Dithers the base tiling by offsets in ra/cos(dec) and dec, by
@@ -243,6 +259,9 @@ def logradecoffscheme(ras, decs, dx=0.6, ang=24):
     dithers = numpy.cumsum(numpy.array(dithers), axis=0)
     dithers -= numpy.mean(dithers, axis=0).reshape(1, -1)
     dithers = [[0, 0]] + list(dithers)
+    if verbose:
+        for dra, ddec in dithers:
+            print(r'%6.3f  &  %6.3f \\' % (dra, ddec))
     fac = 1./numpy.cos(numpy.radians(decs))
     fac = numpy.clip(fac, 1, 360*5)  # confusion near celestial pole.
     newras = numpy.concatenate([ras+d[0]*fac for d in dithers])
@@ -280,52 +299,150 @@ def gc_dist(lon1, lat1, lon2, lat2):
                        cos(lat1)*cos(lat2)*(sin((lon1-lon2)*0.5))**2 )));
 
 
-def qa(desitiles, nside=1024):
+def qa(desitiles, nside=1024, npts=1000, compare=False):
     """Make tiling QA plots; demonstrate usage."""
     import healpy
     theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
     la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
-    m4pass = (desitiles['pass'] <= 4) & (desitiles['pass'] >= 1)
+    m5pass = (desitiles['pass'] <= 4)
     m0 = desitiles['pass'] == 0
     ran, decn = logradecoffscheme(desitiles['ra'][m0], 
                                   desitiles['dec'][m0], dx=0.6, ang=24)
     tilerd = {}
-    tilerd['default'] = (desitiles['ra'], desitiles['dec'])
-    tilerd['new'] = (ran, decn)
-    ims = {name: render(la, ba, rd[0][m4pass], rd[1][m4pass])
+    if compare:
+        tilerd['default'] = (desitiles['ra'], desitiles['dec'])
+    tilerd['Tiles v3'] = (ran, decn)
+    ims = {name: render(la, ba, rd[0][m5pass], rd[1][m5pass])
            for name, rd in tilerd.items()}
     pseudoindesi = ((gc_dist(la, ba, 180, 30) < 40) 
                     | (gc_dist(la, ba, 0, 5) < 30))
     from matplotlib import pyplot as p
+
+    p.figure('One Footprint')
+    setup_print((5, 4), scalefont=1.2)
+    p.subplots_adjust(left=0.15, bottom=0.15)
+    delt = 1.8
+    dg, rg = numpy.meshgrid(numpy.linspace(-delt, delt, npts),
+                            numpy.linspace(-delt, delt, npts))
+    dpts = 4./(npts - 1)
+    p.clf()
+    tim = render(rg.ravel(), dg.ravel(), numpy.zeros(1), numpy.zeros(1))
+    tim = tim.reshape(rg.shape)
+    p.imshow(tim.T, cmap='binary', origin='lower', 
+             extent=[-delt-dpts/2, delt+dpts/2, -delt-dpts/2, delt+dpts/2])
+    p.gca().set_aspect('equal')
+    p.xlabel(r'$\alpha$ ($\degree$)')
+    p.ylabel(r'$\delta$ ($\degree$)')
+    p.savefig('onefootprint.png', dpi=200)
+    p.savefig('onefootprint.pdf', dpi=200)
+
+    p.figure('One Center')
+    setup_print((5, 4), scalefont=1.2)
+    p.subplots_adjust(left=0.15, bottom=0.15)
+    dg, rg = numpy.meshgrid(numpy.linspace(-delt, delt, npts),
+                            numpy.linspace(-delt, delt, npts))
+    dpts = 4./(npts - 1)
+    p.clf()
+    monecen = m5pass & (gc_dist(0, 0, ran, decn) < 1.2)
+    tim = render(rg.ravel(), dg.ravel(), ran[monecen], decn[monecen])
+    tim = tim.reshape(rg.shape)
+    p.imshow(tim.T, cmap='binary', origin='lower', 
+             extent=[-delt-dpts/2, delt+dpts/2, -delt-dpts/2, delt+dpts/2])
+    p.plot(((ran[monecen]+180)%360)-180, decn[monecen], 'ro')
+    p.xlim((-delt, delt))
+    p.ylim((-delt, delt))
+    p.gca().set_aspect('equal')
+    p.xlabel(r'$\alpha$ ($\degree$)')
+    p.ylabel(r'$\delta$ ($\degree$)')
+    p.savefig('onecenter.png', dpi=200)
+    p.savefig('onecenter.pdf', dpi=200)
+
+
+    p.figure('Several Footprints')
+    setup_print((5, 4), scalefont=1.2, )
+    p.subplots_adjust(left=0.15, bottom=0.15)
+    delt = 10
+    dg, rg = numpy.meshgrid(numpy.linspace(-delt, delt, npts),
+                            numpy.linspace(-delt, delt, npts))
+    dpts = 4./(npts - 1)
+    p.clf()
+    tim = render(rg.ravel(), dg.ravel(), ran[m0], decn[m0])
+    tim = tim.reshape(rg.shape)
+    p.imshow(tim.T, cmap='binary', origin='lower', 
+             extent=[-delt-dpts/2, delt+dpts/2, -delt-dpts/2, delt+dpts/2], 
+             vmin=0, vmax=3)
+    p.plot(((ran[m0]+180.) % 360)-180, decn[m0], 'r+')
+    p.xlim(-delt, delt)
+    p.ylim(-delt, delt)
+    p.gca().set_aspect('equal')
+    p.xlabel(r'$\alpha$ ($\degree$)')
+    p.ylabel(r'$\delta$ ($\degree$)')
+    p.savefig('onepass.png', dpi=200)
+    p.savefig('onepass.pdf', dpi=200)
+
+
+    p.figure('Full Sky')
+    setup_print((8, 5), scalefont=1.2)
+    p.subplots_adjust(left=0.125, bottom=0.1)
+    p.clf()
+    tim, xx, yy = heal2cart(ims['Tiles v3'], interp=False, return_pts=True)
+    p.imshow(tim, cmap='binary', origin='lower', extent=[360, 0, -90, 90],
+             vmin=0, vmax=14)
+    p.gca().set_aspect('equal')
+    p.xlabel(r'$\alpha$ ($\degree$)')
+    p.ylabel(r'$\delta$ ($\degree$)')
+    p.savefig('allpass.png', dpi=200)
+    p.savefig('allpass.pdf', dpi=200)
+
     p.figure('Coverage Histogram')
+    setup_print((5, 4), scalefont=1.2)
+    p.subplots_adjust(left=0.15, bottom=0.15)
     p.clf()
     for name, im in ims.items():
-        p.hist(im[pseudoindesi].reshape(-1), range=[0, 20], bins=20, 
-               histtype='step', label=name, normed=True, )
+        p.hist(im[pseudoindesi].reshape(-1), range=[-0.5, 15.5], bins=16,
+               histtype='step', label=name, normed=True)
+        print(r'# coverings  & fraction of area \\')
+        for count in range(16):
+            frac = (numpy.sum(im[pseudoindesi] == count)/
+                    1./numpy.sum(pseudoindesi))
+            print(r'%4d  &  %7.3e \\' % (count, frac))
+    p.xlim(-0.5, 15.5)
+    p.ylim(1e-7, 1e0)
+    p.xlabel('# of coverings')
+    p.ylabel('fraction of area')
     p.gca().set_yscale('log')
-    p.legend()
+    if len(ims) > 1:
+        p.legend()
+    p.savefig('covhist.png', dpi=200)
+    p.savefig('covhist.pdf', dpi=200)
 
     adjs = {}
     for name, rd in tilerd.items():
         # just build adjacency matrix from small region, but needs
         # to at least cover several pointings
-        m = m4pass & (gc_dist(rd[0], rd[1], 0, 0) < 6.)
+        m = m5pass & (gc_dist(rd[0], rd[1], 0, 0) < 6.)
         adjs[name] = adjacency_matrix(rd[0][m], rd[1][m])
     
     p.figure('Adjacency Matrices')
+    setup_print((8, 5), scalefont=1.2)
+    p.subplots_adjust(left=0.125, bottom=0.1)
     p.clf()
-    for i, (name, adjs) in enumerate(adjs.items()):
+    for i, (name, tadj) in enumerate(adjs.items()):
         p.subplot(len(adjs), 2, 2*i+1)
-        p.imshow(adjs[0], origin='lower', aspect='equal',
+        p.imshow(tadj[0], origin='lower', aspect='equal',
                  cmap='binary', vmax=0.2)
         p.title('%s: slit block' % name)
+        p.xlabel('slit block #')
         p.subplot(len(adjs), 2, 2*i+2)
         # scale by area of each bin
         angsizes = numpy.arange(21).astype('f4')+0.5
         angsizes = angsizes.reshape(1, -1)*angsizes.reshape(-1, 1)
-        p.imshow(adjs[1]/angsizes, origin='lower', aspect='equal',
-                 cmap='binary', vmax=0.1)
+        p.imshow(tadj[1]/angsizes, origin='lower', aspect='equal',
+                 cmap='binary', vmax=0.1, extent=[0, 400, 0, 400])
         p.title('%s: radial' % name)
+        p.xlabel('radius (mm)')
+    p.savefig('adjmatrix.png', dpi=200)
+    p.savefig('adjmatrix.pdf', dpi=200)
         
         
 def maketilefile(desitiles, gaiadensitymapfile, tycho2file):
@@ -406,16 +523,117 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file):
     desitilesnew['program'][(p >= 1) & (p <= 4)] = 'DARK'
     desitilesnew['program'][(p >= 5) & (p <= 7)] = 'BRIGHT'
     desitilesnew['program'][(p >= 8)] = 'EXTRA'
+    obscondmapping = {'EXTRA': 0, 'DARK': 1, 'GRAY': 2, 'BRIGHT': 4}
+    for program, obscond in obscondmapping.items():
+        m = desitilesnew['program'] == program
+        desitilesnew['obsconditions'][m] = obscond
     
     desitilesnew['airmass'] = airmass(
         numpy.ones(len(desitilesnew), dtype='f4')*15., desitilesnew['dec'],
         31.96)
-    signalfac = 10.**(3.303*desitiles['ebv_med']/2.5)
+    signalfac = 10.**(3.303*desitilesnew['ebv_med']/2.5)
     desitilesnew['exposefac'] = signalfac**2 * desitilesnew['airmass']**1.25
     desitilesnew['centerid'] = numpy.concatenate(
         [desitilesnew['tileid'][m0]]*10)
     return desitilesnew
 
+
+def writefiles(tiles, fnbase, overwrite=False):
+    from astropy.io import fits
+    from astropy.io import ascii
+    from matplotlib.mlab import rec_drop_fields
+    from astropy import table
+    fits.writeto(fnbase+'.fits', tiles, overwrite=overwrite)
+    tilestab = table.Table(
+        rec_drop_fields(tiles, ['brightra', 'brightdec', 'brightvtmag']))
+    metadata = {'tileid': ('', 'Unique tile ID'),
+                'ra': ('deg', 'Right ascension'),
+                'dec': ('deg', 'Declination'),
+                'pass': ('', 'DESI layer'),
+                'in_desi': ('', '1=within DESI footprint; 0=outside'),
+                'ebv_med':('mag', 'Median Galactic E(B-V) extinction in tile'),
+                'airmass':('', 'Airmass if observed at hour angle 15 deg'),
+                'star_density':('deg^-2', 'median number density of Gaia stars brighter than 19.5 mag in tile'),
+                'exposefac':('', 'Multiplicative exposure time factor from airmass and E(B-V)'),
+                'program':('', 'DARK, GRAY, BRIGHT, or EXTRA'),
+                'obsconditions':('', '1 for DARK, 2 for GRAY, 4 for BRIGHT, 0 for EXTRA'),
+                'brightra':('deg', 'RAs of 3 brightest Tycho-2 stars in tile'),
+                'brightdec':('deg', 'Decs of 3 brightest Tycho-2 stars in tile'),
+                'brightvtmag':('mag', 'V_T magnitudes of 3 brightest Tycho-2 stars in tile'),
+                'centerid':('', 'Unique tile ID of pass 0 tile corresponding to this tile'),
+                }
+    from astropy import units as u
+    unitdict = {'': None, 'deg': u.deg, 'mag': u.mag, 'deg^-2': 1/u.mag/u.mag}
+    for name in tilestab.dtype.names:
+        tilestab[name].unit = unitdict[metadata[name][0]]
+        tilestab[name].description = metadata[name][1]
+    ascii.write(tilestab, fnbase+'.ecsv', format='ecsv', overwrite=overwrite)
+
+
+def extraqa(tiles):
+    from matplotlib import pyplot as p
+    p.figure('Exposure Factor')
+    p.clf()
+    setup_print((5, 4), scalefont=1.2)
+    p.subplots_adjust(left=0.15, bottom=0.15)
+    m = tiles['in_desi'] != 0
+    _ = p.hist(tiles['exposefac'][m], range=[1, 3.5], bins=25, histtype='step')
+    p.ylabel('Number of tiles')
+    p.xlabel('EXPOSEFAC')
+    p.savefig('exposefac.png')
+    p.savefig('exposefac.pdf')
+
+    p.figure('Tile centers')
+    p.clf()
+    setup_print((8, 5), scalefont=1.2)
+    p.subplots_adjust(left=0.125, bottom=0.1)
+    m5 = (tiles['pass'] <= 4) & (tiles['in_desi'] != 0)
+    mef = tiles['exposefac'] < 2.5
+    p.scatter((((tiles['ra']+60)%360)-60)[m5], tiles['dec'][m5], 
+              c=tiles['exposefac'][m5] > 2.5, 
+              s=5*(tiles['exposefac'][m5] > 2.5)+1,
+              cmap='bwr')
+    p.xlabel(r'$\alpha$ ($\degree$)')
+    p.ylabel(r'$\delta$ ($\degree$)')
+    p.xlim(300, -60)
+    p.ylim(-20, 80)
+    p.text(280, -13, 'Red where EXPOSEFAC > 2.5')
+    p.text(280, -18, '%d tiles in 5 passes' % numpy.sum(m5))
+    p.savefig('tilerd.png')
+    p.savefig('tilerd.pdf')
+    
+    p.figure('Stellar Density')
+    p.clf()
+    setup_print((5, 4), scalefont=1.2)
+    p.subplots_adjust(left=0.15, bottom=0.15)
+    from astropy.coordinates import SkyCoord
+    from astropy import units as u
+    coord = SkyCoord(ra=tiles['ra']*u.deg, dec=tiles['dec']*u.deg, 
+                     frame='icrs')
+    coordgal = coord.galactic
+    lt, bt = coordgal.l.value, coordgal.b.value
+    m0 = (tiles['pass'] == 0)
+    mindesi = (tiles['in_desi'] != 0)
+    p.plot(bt[m0 & ~mindesi], tiles['star_density'][m0 & ~mindesi], 'ro', 
+           markersize=0.5)
+    p.plot(bt[m0 & mindesi], tiles['star_density'][m0 & mindesi], 'ko', 
+           markersize=0.5)
+    p.xlabel(r'$b$ ($\degree$)')
+    p.ylabel(r'Number of Gaia stars per sq. deg.')
+    p.xlim(-90, 90)
+    p.yscale('log')
+    p.ylim(1e3, 1e6)
+    p.savefig('stardensity.png')
+    p.savefig('stardensity.pdf')
+    npts = 10**6
+    uv = numpy.random.randn(npts, 3)
+    rr, dd = uv2lb(uv)
+    mr, mt, drt = match_radec(rr, dd, tiles['ra'][m5], tiles['dec'][m5], 1.6)
+    ncover = numpy.bincount(mr, minlength=len(rr))
+    for i in range(10):
+        print(r'%4d  &  %6.0f  \\' % 
+              (i, numpy.sum(ncover >= i)*4*numpy.pi*(180./numpy.pi)**2/npts))
+    
 
 def airmass(ha, dec, lat):
     az, alt = rotate(ha, dec, 0., lat)
@@ -448,3 +666,45 @@ def rotate(l, b, l0, b0, phi0=0.):
 
 def rotate2(l, b, l0, b0, phi0=0.):
     return rotate(l, b, phi0, b0, phi0=l0)
+
+
+def heal2cart(heal, interp=True, return_pts=False):
+    import healpy
+    nside = healpy.get_nside(heal)#*(2 if interp else 1)
+    owidth = 8*nside
+    oheight = 4*nside-1
+    dm,rm = numpy.mgrid[0:oheight,0:owidth]
+    rm = 360.-(rm+0.5) / float(owidth) * 360.
+    dm = -90. + (dm+0.5) / float(oheight) * 180.
+    t, p = lb2tp(rm.ravel(), dm.ravel())
+    if interp:
+        map = healpy.get_interp_val(heal, t, p)
+    else:
+        pix = healpy.ang2pix(nside, t, p)
+        map = heal[pix]
+    map = map.reshape((oheight, owidth))
+    if return_pts:
+        map = (map, numpy.sort(numpy.unique(rm)), numpy.sort(numpy.unique(dm)))
+    return map
+
+def setup_print(size=None, keys=None, scalefont=1., **kw):
+    from matplotlib import pyplot
+    params = {'backend': 'ps',
+              'axes.labelsize': 12*scalefont,
+              'font.size':12*scalefont,
+              'legend.fontsize': 10*scalefont,
+              'xtick.labelsize': 10*scalefont,
+              'ytick.labelsize': 10*scalefont,
+              'axes.titlesize':18*scalefont,
+              }
+    for key in kw:
+        params[key] = kw[key]
+    if keys is not None:
+        for key in keys:
+            params[key] = keys[key]
+    oldparams = dict(pyplot.rcParams.items())
+    pyplot.rcParams.update(params)
+    if size is not None:
+        pyplot.gcf().set_size_inches(*size, forward=True)
+    return oldparams
+
