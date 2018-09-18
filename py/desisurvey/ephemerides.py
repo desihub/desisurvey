@@ -123,12 +123,6 @@ class Ephemerides(object):
         self._table['moon_illum_frac'] = astropy.table.Column(
             length=num_nights, format='%.3f',
             description='Illuminated fraction of moon surface')
-        self._table['brightstart'] = astropy.table.Column(
-            length=num_nights, format=mjd_format,
-            description='MJD when any bright time starts after twilight')
-        self._table['brightstop'] = astropy.table.Column(
-            length=num_nights, format=mjd_format,
-            description='MJD when any bright time stops after twilight')
 
         # Add (ra,dec) arrays for each object that we need to avoid and
         # check that ephem has a model for it.
@@ -211,28 +205,6 @@ class Ephemerides(object):
                     model.compute(mayall_no_ar)
                     row[name + '_ra'][i] = math.degrees(float(model.ra))
                     row[name + '_dec'][i] = math.degrees(float(model.dec))
-
-        # Initialize a grid covering each night with 15sec resolution
-        # for tabulating the night program.
-        t_grid = get_grid(step_size=15 * u.s)
-
-        # Tabulate the observing program for each night to initialize the
-        # brightstart/stop values needed by the afternoonplan module.
-        for day_offset in range(num_nights):
-            row = self._table[day_offset]
-            t_night = row['noon'] + 0.5 + t_grid
-            dark, gray, bright = self.get_program(t_night)
-            # Select BRIGHT times during dark night, i.e., excluding the
-            # bright twilight component of bright time.
-            bright_night = (
-                bright & (t_night > row['dusk']) & (t_night < row['dawn']))
-            if np.any(bright_night):
-                # Record the first/last BRIGHT time during dark night.
-                row['brightstart'] = np.min(t_night[bright_night])
-                row['brightstop'] = np.max(t_night[bright_night])
-            else:
-                # Set brightstart/stop equal to local midnight.
-                row['brightstart'] = row['brightstop'] = row['noon'] + 0.5
 
         if write_cache:
             self.log.info('Saving ephemerides to {0}'.format(filename))
@@ -608,13 +580,11 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
     # Calculate the number of hours for each program during each night.
     dt = (night_stop - night_start) / num_points
     hours = np.zeros((3, num_nights))
-    observing_night = np.zeros(num_nights, bool)
     for i in np.arange(num_nights):
         if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
             continue
         if not include_full_moon and ephem.is_full_moon(midnight[i]):
             continue
-        observing_night[i] = True
         mjd_grid = midnight[i] + t_centers
         dark, gray, bright = ephem.get_program(mjd_grid)
         hours[0, i] = dt * np.count_nonzero(dark)
