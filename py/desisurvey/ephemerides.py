@@ -283,7 +283,7 @@ class Ephemerides(object):
                 kind='linear', fill_value='extrapolate', assume_sorted=True)
         return self._moon_illum_frac_interpolator(mjd)
 
-    def get_program(self, mjd, as_tuple=True):
+    def get_program(self, mjd, include_twilight=True, as_tuple=True):
         """Tabulate the program during one night.
 
         The program definitions are taken from
@@ -295,6 +295,9 @@ class Ephemerides(object):
         mjd : float or array
             MJD values during a single night where the program should be
             tabulated.
+        include_twilight : bool
+            Include twilight time at the start and end of each night in
+            the BRIGHT program.
         as_tuple : bool
             Return a tuple (dark, gray, bright) or else a vector of int16
             values.
@@ -325,9 +328,12 @@ class Ephemerides(object):
         moon_frac = self.get_moon_illuminated_fraction(mjd)
 
         # Select bright and dark night conditions.
-        bright_night = (
-            mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
         dark_night = (mjd >= night['dusk']) & (mjd <= night['dawn'])
+        if include_twilight:
+            bright_night = (
+                mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
+        else:
+            bright_night = dark_night
 
         # Identify program during each MJD.
         GRAY = desisurvey.config.Configuration().programs.GRAY
@@ -519,8 +525,8 @@ def get_grid(step_size=1, night_start=-6, night_stop=7):
 
 def get_program_hours(ephem, start_date=None, stop_date=None,
                       include_monsoon=False, include_full_moon=False,
-                      apply_weather=False, night_start=-6.5, night_stop=7.5,
-                      num_points=500):
+                      apply_weather=False, include_twilight=True,
+                      night_start=-6.5, night_stop=7.5, num_points=500):
     """Tabulate hours in each program during each night of the survey.
 
     Use :func:`desisurvey.plots.plot_program` to visualize program hours.
@@ -544,6 +550,9 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
     apply_weather : bool
         Weight each night according to its monthly average dome-open fraction.
         Only affects the printed totals with the "localtime" style.
+    include_twilight : bool
+        Include twilight time at the start and end of each night in
+        the BRIGHT program.
     night_start : float
         Start of night in hours relative to local midnight used to set
         y-axis minimum for 'localtime' style and tabulate nightly program.
@@ -586,7 +595,8 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
         if not include_full_moon and ephem.is_full_moon(midnight[i]):
             continue
         mjd_grid = midnight[i] + t_centers
-        dark, gray, bright = ephem.get_program(mjd_grid)
+        dark, gray, bright = ephem.get_program(
+            mjd_grid, include_twilight=include_twilight)
         hours[0, i] = dt * np.count_nonzero(dark)
         hours[1, i] = dt * np.count_nonzero(gray)
         hours[2, i] = dt * np.count_nonzero(bright)
