@@ -544,6 +544,9 @@ def writefiles(tiles, fnbase, overwrite=False):
     from matplotlib.mlab import rec_drop_fields
     from astropy import table
     fits.writeto(fnbase+'.fits', tiles, overwrite=overwrite)
+    hdulist = fits.open(fnbase+'.fits', mode='update')
+    hdulist[1].header['EXTNAME'] = 'TILES'
+    hdulist.close()
     tilestab = table.Table(
         rec_drop_fields(tiles, ['brightra', 'brightdec', 'brightvtmag']))
     metadata = {'tileid': ('', 'Unique tile ID'),
