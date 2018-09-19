@@ -5,7 +5,9 @@ desisurvey change log
 0.10.3 (unreleased)
 -------------------
 
-* No changes yet.
+* Added tiling dithering and QA code (PR `#87`).
+
+.. _`#87`: https://github.com/desihub/desisurvey/pull/87
 
 0.10.2 (2018-06-27)
 -------------------
