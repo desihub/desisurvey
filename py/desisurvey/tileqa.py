@@ -505,7 +505,7 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file):
     s = numpy.lexsort((brightstars['vtmag'][mb], mt))
     mt, mb, dbt = mt[s], mb[s], dbt[s]
     desitilesnew_add = numpy.zeros(len(ran), dtype=[
-            ('brightra', '3f4'), ('brightdec', '3f4'), ('brightvtmag', '3f4'),
+            ('brightra', '3f8'), ('brightdec', '3f8'), ('brightvtmag', '3f4'),
             ('centerid', 'i4')])
     from numpy.lib import recfunctions
     desitilesnew = recfunctions.merge_arrays((desitilesnew, desitilesnew_add),
