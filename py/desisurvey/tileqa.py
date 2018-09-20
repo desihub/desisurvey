@@ -543,12 +543,14 @@ def writefiles(tiles, fnbase, overwrite=False):
     from astropy.io import ascii
     from matplotlib.mlab import rec_drop_fields
     from astropy import table
+    # under duress... uppercase
+    tiles.dtype.names = [n.upper() for n in tiles.dtype.names]
     fits.writeto(fnbase+'.fits', tiles, overwrite=overwrite)
     hdulist = fits.open(fnbase+'.fits', mode='update')
     hdulist[1].header['EXTNAME'] = 'TILES'
     hdulist.close()
     tilestab = table.Table(
-        rec_drop_fields(tiles, ['brightra', 'brightdec', 'brightvtmag']))
+        rec_drop_fields(tiles, ['BRIGHTRA', 'BRIGHTDEC', 'BRIGHTVTMAG']))
     metadata = {'tileid': ('', 'Unique tile ID'),
                 'ra': ('deg', 'Right ascension'),
                 'dec': ('deg', 'Declination'),
@@ -565,11 +567,12 @@ def writefiles(tiles, fnbase, overwrite=False):
                 'brightvtmag':('mag', 'V_T magnitudes of 3 brightest Tycho-2 stars in tile'),
                 'centerid':('', 'Unique tile ID of pass 0 tile corresponding to this tile'),
                 }
+    metadatacaps = {k.upper(): v for k, v in metadata.items()}
     from astropy import units as u
     unitdict = {'': None, 'deg': u.deg, 'mag': u.mag, 'deg^-2': 1/u.mag/u.mag}
     for name in tilestab.dtype.names:
-        tilestab[name].unit = unitdict[metadata[name][0]]
-        tilestab[name].description = metadata[name][1]
+        tilestab[name].unit = unitdict[metadatacaps[name][0]]
+        tilestab[name].description = metadatacaps[name][1]
     ascii.write(tilestab, fnbase+'.ecsv', format='ecsv', overwrite=overwrite)
 
 
