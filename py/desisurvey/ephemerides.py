@@ -123,6 +123,12 @@ class Ephemerides(object):
         self._table['moon_illum_frac'] = astropy.table.Column(
             length=num_nights, format='%.3f',
             description='Illuminated fraction of moon surface')
+        self._table['programs'] = astropy.table.Column(
+            length=num_nights, shape=(4,), dtype=np.int16,
+            description='Program sequence between dusk and dawn')
+        self._table['changes'] = astropy.table.Column(
+            length=num_nights, shape=(3,),
+            description='MJD of program changes between dusk and dawn')
 
         # Add (ra,dec) arrays for each object that we need to avoid and
         # check that ephem has a model for it.
@@ -186,7 +192,10 @@ class Ephemerides(object):
                 ephem.Sun(), use_center=True) + mjd0
             # Calculate the moonrise/set for any moon visible tonight.
             m0 = ephem.Moon()
-            mayall.horizon = '-0:34' # the value that the USNO uses.
+            # Use the USNO standard for defining moonrise/set, which means that
+            # it will not exactly correspond to DARK <-> ? program transitions
+            # at an altitude of 0deg.
+            mayall.horizon = '-0:34'
             row['moonrise'] = mayall.next_rising(m0) + mjd0
             if row['moonrise'] > row['brightdawn']:
                 # Any moon visible tonight is from the previous moon rise.
@@ -205,6 +214,33 @@ class Ephemerides(object):
                     model.compute(mayall_no_ar)
                     row[name + '_ra'][i] = math.degrees(float(model.ra))
                     row[name + '_dec'][i] = math.degrees(float(model.dec))
+
+        # Build a 1s grid covering the night.
+        step_size_sec = 1
+        step_size_day = step_size_sec / 86400.
+        dmjd_grid = desisurvey.ephemerides.get_grid(step_size=step_size_sec * u.s)
+        # Loop over nights to calculate the program sequence.
+        self._table['programs'][:] = 0
+        self._table['changes'][:] = 0.
+        for row in self._table:
+            mjd_grid = dmjd_grid + row['noon'] + 0.5
+            pindex = self.get_program(
+                mjd_grid, include_twilight=False, as_tuple=False)
+            assert pindex[0] == 4 and pindex[-1] == 4
+            # Calculate index-1 where new programs starts (-1 because of np.diff)
+            changes = np.where(np.diff(pindex) != 0)[0]
+            # Must have at least DAY -> NIGHT -> DAY changes.
+            assert len(changes) >= 2 and pindex[changes[0]] == 4 and pindex[changes[-1] + 1] == 4
+            # Max possible changes is 5.
+            assert len(changes) <= 6
+            # Check that first change is at dusk.
+            assert np.abs(mjd_grid[changes[0]] + 0.5 * step_size_day - row['dusk']) <= step_size_day
+            # Check that the last change is at dusk.
+            assert np.abs(mjd_grid[changes[-1]] + 0.5 * step_size_day - row['dawn']) <= step_size_day
+            row['programs'][0] = pindex[changes[0] + 1]
+            for k, idx in enumerate(changes[1:-1]):
+                row['programs'][k + 1] = pindex[idx + 1]
+                row['changes'][k] = mjd_grid[idx] + 0.5 * step_size_day
 
         if write_cache:
             self.log.info('Saving ephemerides to {0}'.format(filename))
