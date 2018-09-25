@@ -250,7 +250,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
 
     hours = desisurvey.ephemerides.get_program_hours(
         ephem, start_date, stop_date, include_monsoon, include_full_moon,
-        apply_weather, include_twilight, night_start, night_stop, num_points)
+        apply_weather, include_twilight)
     observing_night = hours.sum(axis=0) > 0
 
     # Determine plot date range.

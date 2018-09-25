@@ -21,6 +21,12 @@ import desiutil.log
 import desisurvey.config
 import desisurvey.utils
 
+# Small integer constants for programs defined by ephemerides.
+DARK = 1
+GRAY = 2
+BRIGHT = 3
+program_name = ['', 'DARK', 'GRAY', 'BRIGHT']
+
 
 class Ephemerides(object):
     """Tabulate sun and moon ephemerides during the survey.
@@ -319,6 +325,58 @@ class Ephemerides(object):
                 kind='linear', fill_value='extrapolate', assume_sorted=True)
         return self._moon_illum_frac_interpolator(mjd)
 
+    def get_night_program(self, night, include_twilight=False, program_as_int=False):
+        """Return the program sequence for one night.
+
+        The program definitions are taken from
+        :class:`desisurvey.config.Configuration` and depend only on
+        sun and moon ephemerides for the night.
+
+        Parameters
+        ----------
+        night : date
+            Converted to a date using :func:`desisurvey.utils.get_date`.
+        include_twilight : bool
+            Include twilight time at the start and end of each night in
+            the BRIGHT program.
+        program_as_int : bool
+            Return program encoded as a small integer instead of a string
+            when True.
+
+        Returns
+        -------
+        tuple
+            Tuple (programs, changes) where programs is a list of N program
+            names and changes is a 1D numpy array of N+1 MJD values that
+            bracket each program during the night.
+        """
+        night_ephem = self.get_night(night)
+        programs = night_ephem['programs']
+        changes = night_ephem['changes']
+        num_programs = np.count_nonzero(programs)
+        programs = programs[:num_programs]
+        changes = changes[:num_programs - 1]
+        if include_twilight:
+            start = night_ephem['brightdusk']
+            stop = night_ephem['brightdawn']
+            if programs[0] != BRIGHT:
+                # Twilight adds a BRIGHT program at the start of the night.
+                programs = np.insert(programs, 0, BRIGHT)
+                changes = np.insert(changes, 0, night_ephem['dusk'])
+            if programs[-1] != BRIGHT:
+                # Twilight adds a BRIGHT program at the end of the night.
+                programs = np.append(programs, BRIGHT)
+                changes = np.append(changes, night_ephem['dawn'])
+        else:
+            start = night_ephem['dusk']
+            stop = night_ephem['dawn']
+        # Add start, stop to the change times.
+        changes = np.concatenate(([start], changes, [stop]))
+        if not program_as_int:
+            # Replace program codes with names.
+            programs = [program_name[p] for p in programs]
+        return programs, changes
+
     def get_program(self, mjd, include_twilight=True, as_tuple=True):
         """Tabulate the program during one night.
 
@@ -561,8 +619,7 @@ def get_grid(step_size=1, night_start=-6, night_stop=7):
 
 def get_program_hours(ephem, start_date=None, stop_date=None,
                       include_monsoon=False, include_full_moon=False,
-                      apply_weather=False, include_twilight=True,
-                      night_start=-6.5, night_stop=7.5, num_points=500):
+                      apply_weather=False, include_twilight=True):
     """Tabulate hours in each program during each night of the survey.
 
     Use :func:`desisurvey.plots.plot_program` to visualize program hours.
@@ -585,20 +642,11 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
         Include nights during the monthly full-moon breaks.
     apply_weather : bool
         Weight each night according to its monthly average dome-open fraction.
-        Only affects the printed totals with the "localtime" style.
+        Requires that the specified dates are covered by
+        :func:`desisurvey.utils.dome_closed_fractions`.
     include_twilight : bool
         Include twilight time at the start and end of each night in
         the BRIGHT program.
-    night_start : float
-        Start of night in hours relative to local midnight used to set
-        y-axis minimum for 'localtime' style and tabulate nightly program.
-    night_stop : float
-        End of night in hours relative to local midnight used to set
-        y-axis maximum for 'localtime' style and tabulate nightly program.
-    num_points : int
-        Number of subdivisions of the vertical axis to use for tabulating
-        the program during each night. The resulting resolution will be
-        ``(night_stop - night_start) / num_points`` hours.
 
     Returns
     -------
@@ -615,35 +663,26 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
     stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
-    mjd = ephem._table['noon']
-    sel = ((mjd >= desisurvey.utils.local_noon_on_date(start_date).mjd) &
-           (mjd < desisurvey.utils.local_noon_on_date(stop_date).mjd))
-    t = ephem._table[sel]
-    num_nights = len(t)
 
-    midnight = t['noon'] + 0.5
+    num_nights = (stop_date - start_date).days
     hours = np.zeros((3, num_nights))
-    max_programs = t['programs'].shape[-1]
-    for i in np.arange(num_nights):
-        if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
+    for i in range(num_nights):
+        tonight = start_date + datetime.timedelta(days=i)
+        if not include_monsoon and desisurvey.utils.is_monsoon(tonight):
             continue
-        if not include_full_moon and ephem.is_full_moon(midnight[i]):
+        if not include_full_moon and ephem.is_full_moon(tonight):
             continue
-        # Loop over programs during this night.
-        programs = t['programs'][i]
-        num_programs = np.count_nonzero(programs)
-        times = np.hstack(([t['dusk'][i]], t['changes'][i, :num_programs - 1], [t['dawn'][i]]))
-        durations = np.diff(times) * 24.
-        assert np.all(durations > 0)
-        for j in range(max_programs):
-            pindex = programs[j]
-            if pindex == 0:
-                break
-            hours[pindex - 1, i] += durations[j]
+        programs, changes = ephem.get_night_program(
+            tonight, include_twilight=include_twilight, program_as_int=True)
+        for p, dt in zip(programs, np.diff(changes)):
+            hours[p - 1, i] += dt
+    hours *= 24
 
     if apply_weather:
         config = desisurvey.config.Configuration()
         first_day = config.first_day()
+        if start_date < first_day or stop_date > config.last_day():
+            raise ValueError('Weather not available for requested dates.')
         weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
         i1 = (start_date - first_day).days
         i2 = (stop_date - first_day).days

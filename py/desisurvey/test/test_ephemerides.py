@@ -79,9 +79,13 @@ class TestEphemerides(unittest.TestCase):
 
         hrs1 = get_program_hours(ephem, include_twilight=True).sum(axis=1)
         hrs2 = get_program_hours(ephem, include_twilight=False).sum(axis=1)
+        hrs3 = get_program_hours(ephem, include_twilight=True, include_full_moon=True).sum(axis=1)
         self.assertEqual(hrs1[0], hrs2[0])
         self.assertEqual(hrs1[1], hrs2[1])
         self.assertGreater(hrs1[2], hrs2[2])
+        self.assertEqual(hrs1[0], hrs3[0])
+        self.assertEqual(hrs1[1], hrs3[1])
+        self.assertLess(hrs1[2], hrs3[2])
 
         for i in range(ephem.num_nights):
 
