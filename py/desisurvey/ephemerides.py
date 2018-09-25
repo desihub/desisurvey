@@ -599,14 +599,18 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
         Number of subdivisions of the vertical axis to use for tabulating
         the program during each night. The resulting resolution will be
         ``(night_stop - night_start) / num_points`` hours.
-    """
-    if apply_weather:
-        weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
 
+    Returns
+    -------
+    array
+        Numpy array of shape (3, num_nights) containing the number of
+        hours in each program (0=DARK, 1=GRAY, 2=BRIGHT) during each
+        night.
+    """
     if night_start >= night_stop:
         raise ValueError('Expected night_start < night_stop.')
 
-    # Determine plot date range.
+    # Determine date range to use.
     start_date = desisurvey.utils.get_date(start_date or ephem.start)
     stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
     if start_date >= stop_date:
@@ -617,26 +621,32 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
     t = ephem._table[sel]
     num_nights = len(t)
 
-    # Build a grid of elapsed time relative to local midnight during each night.
     midnight = t['noon'] + 0.5
-    t_edges = np.linspace(night_start, night_stop, num_points + 1) / 24.
-    t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
-    
-    # Calculate the number of hours for each program during each night.
-    dt = (night_stop - night_start) / num_points
     hours = np.zeros((3, num_nights))
+    max_programs = t['programs'].shape[-1]
     for i in np.arange(num_nights):
         if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
             continue
         if not include_full_moon and ephem.is_full_moon(midnight[i]):
             continue
-        mjd_grid = midnight[i] + t_centers
-        dark, gray, bright = ephem.get_program(
-            mjd_grid, include_twilight=include_twilight)
-        hours[0, i] = dt * np.count_nonzero(dark)
-        hours[1, i] = dt * np.count_nonzero(gray)
-        hours[2, i] = dt * np.count_nonzero(bright)
-        if apply_weather:
-            hours[:, i] *= weather_weights[i]
+        # Loop over programs during this night.
+        programs = t['programs'][i]
+        num_programs = np.count_nonzero(programs)
+        times = np.hstack(([t['dusk'][i]], t['changes'][i, :num_programs - 1], [t['dawn'][i]]))
+        durations = np.diff(times) * 24.
+        assert np.all(durations > 0)
+        for j in range(max_programs):
+            pindex = programs[j]
+            if pindex == 0:
+                break
+            hours[pindex - 1, i] += durations[j]
+
+    if apply_weather:
+        config = desisurvey.config.Configuration()
+        first_day = config.first_day()
+        weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
+        i1 = (start_date - first_day).days
+        i2 = (stop_date - first_day).days
+        hours *= weather_weights[i1:i2]
 
     return hours
