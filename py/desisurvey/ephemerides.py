@@ -86,9 +86,10 @@ class Ephemerides(object):
         # first time it is used.
         self._moon_illum_frac_interpolator = None
 
-        # Build filename for saving the ephemerides.
-        filename = config.get_path(
-            'ephem_{0}_{1}.fits'.format(start_date, stop_date))
+        # Build filename for reading and writing the ephemerides.
+        if use_cache or write_cache:
+            filename = config.get_path(
+                'ephem_{0}_{1}.fits'.format(start_date, stop_date))
 
         # Use cached ephemerides if requested and available.
         if use_cache and os.path.exists(filename):
@@ -129,6 +130,9 @@ class Ephemerides(object):
         self._table['moon_illum_frac'] = astropy.table.Column(
             length=num_nights, format='%.3f',
             description='Illuminated fraction of moon surface')
+        self._table['nearest_full_moon'] = astropy.table.Column(
+            length=num_nights, format='%.5f',
+            description='Nearest full moon - local midnight in days')
         self._table['programs'] = astropy.table.Column(
             length=num_nights, shape=(4,), dtype=np.int16,
             description='Program sequence between dusk and dawn')
@@ -247,6 +251,28 @@ class Ephemerides(object):
             for k, idx in enumerate(changes[1:-1]):
                 row['programs'][k + 1] = pindex[idx + 1]
                 row['changes'][k] = mjd_grid[idx] + 0.5 * step_size_day
+
+        # Tabulate all full moons covering (start, stop) with a 30-day pad.
+        full_moons = []
+        lo, hi = self._table[0]['noon'] - 30 - mjd0, self._table[-1]['noon'] + 30 - mjd0
+        when = lo
+        while when < hi:
+            when = ephem.next_full_moon(when)
+            full_moons.append(when)
+            print('FULL', astropy.time.Time(when + mjd0, format='mjd').datetime)
+        full_moons = np.array(full_moons) + mjd0
+        # Find the first full moon after each midnight.
+        midnight = self._table['noon'] + 0.5
+        idx = np.searchsorted(full_moons, midnight, side='left')
+        assert np.all(midnight <= full_moons[idx])
+        assert np.all(midnight > full_moons[idx - 1])
+        # Calculate time until next full moon and after previous full moon.
+        next_full_moon = full_moons[idx] - midnight
+        prev_full_moon = midnight - full_moons[idx - 1]
+        # Record the nearest full moon to each midnight.
+        next_is_nearest = next_full_moon <= prev_full_moon
+        self._table['nearest_full_moon'][next_is_nearest] = next_full_moon[next_is_nearest]
+        self._table['nearest_full_moon'][~next_is_nearest] = -prev_full_moon[~next_is_nearest]
 
         if write_cache:
             self.log.info('Saving ephemerides to {0}'.format(filename))
