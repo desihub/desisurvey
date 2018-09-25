@@ -259,7 +259,6 @@ class Ephemerides(object):
         while when < hi:
             when = ephem.next_full_moon(when)
             full_moons.append(when)
-            print('FULL', astropy.time.Time(when + mjd0, format='mjd').datetime)
         full_moons = np.array(full_moons) + mjd0
         # Find the first full moon after each midnight.
         midnight = self._table['noon'] + 0.5
@@ -484,16 +483,14 @@ class Ephemerides(object):
         the moon is most fully illuminated at local midnight.  This method
         should normally be called with ``num_nights`` equal to None, in which
         case the value is taken from our
-        :class:`desisurvey.config.Configuration``. Always returns False within
-        15 days of the survey start/stop dates, to ensure that the nearest
-        full moon is within the tabulated ephemerides.
+        :class:`desisurvey.config.Configuration``.
 
         Parameters
         ----------
         night : date
             Converted to a date using :func:`desisurvey.utils.get_date`.
         num_nights : int or None
-            Number of nights reserved for each full-moon break.
+            Number of nights to block out around each full-moon.
 
         Returns
         -------
@@ -503,10 +500,18 @@ class Ephemerides(object):
         # Check the requested length of the full moon break.
         if num_nights is None:
             num_nights = desisurvey.config.Configuration().full_moon_nights()
-        if num_nights < 1 or num_nights > 24:
-            raise ValueError('Full moon break must be 1-24 nights.')
         # Look up the index of this night in our table.
         index = self.get_night(night, as_index=True)
+        # When is the nearest full moon?
+        nearest = self._table['nearest_full_moon'][index]
+        if np.abs(nearest) < 0.5 * num_nights:
+            return True
+        elif nearest == 0.5 * num_nights:
+            # Tie breaker if two nights are equally close.
+            return True
+        else:
+            return False
+        '''
         # Make sure we have tabulated the nearest full moon.
         if index < 15 or index + 15 >= len(self._table):
             return False
@@ -533,6 +538,7 @@ class Ephemerides(object):
             return step == -1
         else:
             return dfrac > 0
+        '''
 
 def get_object_interpolator(row, object_name, altaz=False):
     """Build an interpolator for object location during one night.
@@ -681,9 +687,6 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
         hours in each program (0=DARK, 1=GRAY, 2=BRIGHT) during each
         night.
     """
-    if night_start >= night_stop:
-        raise ValueError('Expected night_start < night_stop.')
-
     # Determine date range to use.
     start_date = desisurvey.utils.get_date(start_date or ephem.start)
     stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)

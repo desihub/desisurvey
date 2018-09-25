@@ -83,7 +83,7 @@ class TestEphemerides(unittest.TestCase):
         self.assertEqual(hrs1[0], hrs2[0])
         self.assertEqual(hrs1[1], hrs2[1])
         self.assertGreater(hrs1[2], hrs2[2])
-        self.assertEqual(hrs1[0], hrs3[0])
+        self.assertLess(hrs1[0], hrs3[0])
         self.assertEqual(hrs1[1], hrs3[1])
         self.assertLess(hrs1[2], hrs3[2])
 
