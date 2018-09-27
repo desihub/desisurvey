@@ -2,19 +2,21 @@
 desisurvey change log
 =====================
 
-0.10.3 (unreleased)
+0.10.3 (2018-09-26)
 -------------------
 
-* Added tiling dithering and QA code (PR `#87`).
+* Added tiling dithering and QA code (PR `#87`_).
+* Allow ``PASS`` to be as large as 99 (PR `#88`_).
 
 .. _`#87`: https://github.com/desihub/desisurvey/pull/87
+.. _`#88`: https://github.com/desihub/desisurvey/pull/88
 
 0.10.2 (2018-06-27)
 -------------------
 
 * Do not assume that input tile file includes all of DARK, BRIGHT, and GRAY
-  tiles (PR `#83`_). 
-* Enforce at least six characters in program name in exposures table (PR `#86`_). 
+  tiles (PR `#83`_).
+* Enforce at least six characters in program name in exposures table (PR `#86`_).
 
 .. _`#83`: https://github.com/desihub/desisurvey/pull/83
 .. _`#86`: https://github.com/desihub/desisurvey/pull/86
