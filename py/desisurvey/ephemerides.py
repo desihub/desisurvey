@@ -121,6 +121,12 @@ class Ephemerides(object):
         self._table['brightdawn'] = astropy.table.Column(
             length=num_nights, format=mjd_format,
             description='MJD of bright sunrise')
+        self._table['brightdusk_LST'] = astropy.table.Column(
+            length=num_nights, format='%.5f',
+            description='Apparent LST at brightdawn in degrees')
+        self._table['brightdawn_LST'] = astropy.table.Column(
+            length=num_nights, format='%.5f',
+            description='Apparent LST at brightdusk in degrees')
         self._table['moonrise'] = astropy.table.Column(
             length=num_nights, format=mjd_format,
             description='MJD of moonrise before/during night')
@@ -272,6 +278,19 @@ class Ephemerides(object):
         next_is_nearest = next_full_moon <= prev_full_moon
         self._table['nearest_full_moon'][next_is_nearest] = next_full_moon[next_is_nearest]
         self._table['nearest_full_moon'][~next_is_nearest] = -prev_full_moon[~next_is_nearest]
+
+        # Calculate apparent LST at each brightdusk/dawn in degrees.
+        dusk_t = astropy.time.Time(self._table['brightdusk'].data, format='mjd')
+        dawn_t = astropy.time.Time(self._table['brightdawn'].data, format='mjd')
+        dusk_t.location = desisurvey.utils.get_location()
+        dawn_t.location = desisurvey.utils.get_location()
+        self._table['brightdusk_LST'] = dusk_t.sidereal_time('apparent').to(u.deg).value
+        self._table['brightdawn_LST'] = dawn_t.sidereal_time('apparent').to(u.deg).value
+        # Subtract 360 deg if LST wraps around during this night, so that the
+        # [dusk, dawn] values can be used for linear interpolation.
+        wrap = self._table['brightdusk_LST'] > self._table['brightdawn_LST']
+        self._table['brightdusk_LST'][wrap] -= 360
+        assert np.all(self._table['brightdawn_LST'] > self._table['brightdusk_LST'])
 
         if write_cache:
             self.log.info('Saving ephemerides to {0}'.format(filename))
