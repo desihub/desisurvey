@@ -9,6 +9,7 @@ desisurvey change log
 * Replay daily Mayall weather history instead of fixed monthly fractions
   (needs desimodel >= 0.9.8)
 * Update exposure-time model for atmospheric seeing.
+* Speed up full-moon, program change and LST calculations in ephemerides module.
 
 0.10.3 (2018-09-26)
 -------------------
