@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.10.4 (unreleased)
+0.11.0 (unreleased)
+-------------------
+
+* No changes yet.
+
+0.10.4 (2018-10-02)
 -------------------
 
 * Implement realistic 18-day monsoon shutdowns instead of fixed 45-day period.
