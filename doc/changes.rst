@@ -10,6 +10,7 @@ desisurvey change log
   (needs desimodel >= 0.9.8)
 * Update exposure-time model for atmospheric seeing.
 * Speed up full-moon, program change and LST calculations in ephemerides module.
+* Requires desimodel >= 0.9.8
 
 0.10.3 (2018-09-26)
 -------------------
