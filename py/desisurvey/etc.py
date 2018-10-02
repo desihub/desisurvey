@@ -24,7 +24,13 @@ import desisurvey.config
 def seeing_exposure_factor(seeing):
     """Scaling of exposure time with seeing, relative to nominal seeing.
 
-    The model is based on SDSS imaging data.
+    The model is based on DESI simulations with convolutions of realistic
+    atmospheric and instrument PSFs, for a nominal sample of DESI ELG
+    targets (including redshift evolution of ELG angular size).
+
+    The simulations predict SNR for the ELG [OII] doublet during dark-sky
+    conditions at airmass X=1.  The exposure factor assumes exposure time
+    scales with SNR ** -0.5.
 
     Parameters
     ----------
@@ -40,13 +46,11 @@ def seeing_exposure_factor(seeing):
     seeing = np.asarray(seeing)
     if np.any(seeing <= 0):
         raise ValueError('Got invalid seeing value <= 0.')
-    a, b, c = 4.6, -1.55, 1.15
-    # Could drop the denominator since it cancels in the ratio.
-    denom = (a - 0.25 * b * b / c)
-    f_seeing =  (a + b * seeing + c * seeing ** 2) / denom
+    a, b, c = 12.95475751, -7.10892892, 1.21068726
+    f_seeing =  (a + b * seeing + c * seeing ** 2) ** -2
     config = desisurvey.config.Configuration()
     nominal = config.nominal_conditions.seeing().to(u.arcsec).value
-    f_nominal = (a + b * nominal + c * nominal ** 2) / denom
+    f_nominal = (a + b * nominal + c * nominal ** 2) ** -2
     return f_seeing / f_nominal
 
 
@@ -77,7 +81,8 @@ def transparency_exposure_factor(transparency):
 def dust_exposure_factor(EBV):
     """Scaling of exposure time with median E(B-V) relative to nominal.
 
-    The model assumes SDSS g band. Where does this model come from?
+    The model uses the SDSS-g extinction coefficient (3.303) from Table 6
+    of Schlafly & Finkbeiner 2011.
 
     Parameters
     ----------
@@ -93,14 +98,15 @@ def dust_exposure_factor(EBV):
     EBV = np.asarray(EBV)
     config = desisurvey.config.Configuration()
     EBV0 = config.nominal_conditions.EBV()
-    Ag = 3.303 * (EBV - EBV0) # Use g-band
+    Ag = 3.303 * (EBV - EBV0)
     return np.power(10.0, (2.0 * Ag / 2.5))
 
 
 def airmass_exposure_factor(airmass):
     """Scaling of exposure time with airmass relative to nominal.
 
-    Is this model based on SDSS or HETDEX data?
+    The exponent 1.25 is based on empirical fits to BOSS exposure
+    times. See eqn (6) of Dawson 2012 for details.
 
     Parameters
     ----------

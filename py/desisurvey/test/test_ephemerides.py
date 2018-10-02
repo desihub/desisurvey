@@ -12,8 +12,8 @@ import astropy.units as u
 import astropy.io
 
 import desisurvey.config
-from desisurvey.ephemerides import Ephemerides, get_grid, get_object_interpolator
-from desisurvey.utils import get_date, get_location
+from desisurvey.ephemerides import Ephemerides, get_grid, get_object_interpolator, get_program_hours
+from desisurvey.utils import get_date, get_location, freeze_iers
 
 
 class TestEphemerides(unittest.TestCase):
@@ -52,6 +52,8 @@ class TestEphemerides(unittest.TestCase):
 
     def test_getephem(self):
         """Tabulate one month of ephemerides"""
+        # Free IERS to avoid noisy warnings.
+        freeze_iers()
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 10, 1)
         ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
@@ -75,6 +77,16 @@ class TestEphemerides(unittest.TestCase):
         self.assertGreaterEqual(np.min(etable['moon_illum_frac']), 0.00)
         self.assertTrue(np.all(etable['moonrise'] < etable['moonset']))
 
+        hrs1 = get_program_hours(ephem, include_twilight=True).sum(axis=1)
+        hrs2 = get_program_hours(ephem, include_twilight=False).sum(axis=1)
+        hrs3 = get_program_hours(ephem, include_twilight=True, include_full_moon=True).sum(axis=1)
+        self.assertEqual(hrs1[0], hrs2[0])
+        self.assertEqual(hrs1[1], hrs2[1])
+        self.assertGreater(hrs1[2], hrs2[2])
+        self.assertLess(hrs1[0], hrs3[0])
+        self.assertEqual(hrs1[1], hrs3[1])
+        self.assertLess(hrs1[2], hrs3[2])
+
         for i in range(ephem.num_nights):
 
             x = ephem.get_row(i)
@@ -93,16 +105,39 @@ class TestEphemerides(unittest.TestCase):
 
     def test_full_moon(self):
         """Verify that the full moon break in Sep-2019 occurs on days 10-16"""
-        start = datetime.date(2019, 9, 1)
-        stop = datetime.date(2019, 9, 30)
+        start = datetime.date(2019, 8, 1)
+        stop = datetime.date(2019, 11, 1)
         ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
-        full = np.empty(ephem.num_nights, bool)
-        for i in range(ephem.num_nights):
+        for i in range(31, 60):
             night = start + datetime.timedelta(days=i)
-            full[i] = ephem.is_full_moon(night)
-        expected = np.zeros_like(full, bool)
-        expected[9:16] = True
-        self.assertTrue(np.all(full == expected))
+            expected = (night >= datetime.date(2019, 9, 10)) and (night <= datetime.date(2019, 9, 16))
+            self.assertTrue(ephem.is_full_moon(night) is expected)
+
+    def test_full_moon_duration(self):
+        """Verify full moon calculations for different durations"""
+        # Free IERS to avoid noisy warnings.
+        freeze_iers()
+        start = datetime.date(2023, 6, 1)
+        stop = datetime.date(2023, 9, 30)
+        full_moon = datetime.date(2023, 8, 1)
+        ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
+        idx = ephem.get_night(full_moon, as_index=True)
+        frac0 = ephem._table['moon_illum_frac'][idx - 14:idx + 15]
+        for num_nights in range(1, 25):
+            full = []
+            for dt in range(-14, +15):
+                night = full_moon + datetime.timedelta(days=dt)
+                full.append(ephem.is_full_moon(night, num_nights=num_nights))
+            self.assertTrue(np.count_nonzero(full) == num_nights)
+
+    def test_monsoon(self):
+        """Test nominal monsoon shutdown starts/stops on Mon/Fri each year"""
+        config = desisurvey.config.Configuration()
+        for key in config.monsoon.keys:
+            node = getattr(config.monsoon, key)
+            self.assertTrue(node.start().weekday() == 0)
+            self.assertTrue(node.stop().weekday() == 4)
+            self.assertTrue((node.stop() - node.start()).days == 18)
 
     def test_get_grid(self):
         """Verify grid calculations"""

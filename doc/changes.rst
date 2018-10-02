@@ -5,7 +5,12 @@ desisurvey change log
 0.10.4 (unreleased)
 -------------------
 
-* No changes yet.
+* Implement realistic 18-day monsoon shutdowns instead of fixed 45-day period.
+* Replay daily Mayall weather history instead of fixed monthly fractions
+  (needs desimodel >= 0.9.8)
+* Update exposure-time model for atmospheric seeing.
+* Speed up full-moon, program change and LST calculations in ephemerides module.
+* Requires desimodel >= 0.9.8
 
 0.10.3 (2018-09-26)
 -------------------

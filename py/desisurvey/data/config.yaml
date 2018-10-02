@@ -24,37 +24,33 @@ first_day: 2019-12-01
 # Survey nominally ends on morning of this date. Format is YYYY-MM-DD.
 last_day: 2024-11-30
 
-# First night of monsoon shutdown is on this date each year.
-# Format is YYYY-MM-DD but the year is ignored.
-monsoon_start: 2019-07-13
-
-# Observing resumes on night of this date each year after monsoon shutdown.
-# Format is YYYY-MM-DD but the year is ignored.
-monsoon_stop: 2019-08-27
+# Nominal monsoon shutdown start/stop dates each year.
+# Start date marks first night of monsoon shutdown each year.
+# Observing resumes on night of the stop date. Format is YYYY-MM-DD.
+monsoon:
+    Y2020:
+        start: 2020-07-27
+        stop:  2020-08-14
+    Y2021:
+        start: 2021-07-12
+        stop:  2021-07-30
+    Y2022:
+        start: 2022-08-01
+        stop:  2022-08-19
+    Y2023:
+        start: 2023-07-24
+        stop:  2023-08-11
 
 # Number of nights reserved for engineering / guest observing
 # during each full moon.
 full_moon_nights: 7
 
-#-------------------------------------------------------------------
-# Weather forecast.
-#-------------------------------------------------------------------
-
-# Percentage probability that the dome is closed during dark time
-# due to weather. TODO: find doc-db reference for these (#1658,730,735,993?)
-dome_closed_probability:
-    jan: 35.24
-    feb: 44.14
-    mar: 27.68
-    apr: 26.73
-    may: 14.22
-    jun: 15.78
-    jul: 55.92
-    aug: 48.75
-    sep: 29.45
-    oct: 24.44
-    nov: 24.86
-    dec: 34.74
+# Replay historical daily lost-time fractions from DESI-3577
+# using the specified years from a comma-separated list.
+# For details, see desimodel.weather.dome_closed_fractions().
+# The default Y2015 is the worst year during 2007-2017, so
+# replaying it each year gives a pessimistic forecast.
+weather: Y2015
 
 #-------------------------------------------------------------------
 # Definition of the DARK / GRAY / BRIGHT nominal programs based on

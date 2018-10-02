@@ -21,6 +21,12 @@ import desiutil.log
 import desisurvey.config
 import desisurvey.utils
 
+# Small integer constants for programs defined by ephemerides.
+DARK = 1
+GRAY = 2
+BRIGHT = 3
+program_name = ['', 'DARK', 'GRAY', 'BRIGHT']
+
 
 class Ephemerides(object):
     """Tabulate sun and moon ephemerides during the survey.
@@ -80,9 +86,10 @@ class Ephemerides(object):
         # first time it is used.
         self._moon_illum_frac_interpolator = None
 
-        # Build filename for saving the ephemerides.
-        filename = config.get_path(
-            'ephem_{0}_{1}.fits'.format(start_date, stop_date))
+        # Build filename for reading and writing the ephemerides.
+        if use_cache or write_cache:
+            filename = config.get_path(
+                'ephem_{0}_{1}.fits'.format(start_date, stop_date))
 
         # Use cached ephemerides if requested and available.
         if use_cache and os.path.exists(filename):
@@ -114,6 +121,12 @@ class Ephemerides(object):
         self._table['brightdawn'] = astropy.table.Column(
             length=num_nights, format=mjd_format,
             description='MJD of bright sunrise')
+        self._table['brightdusk_LST'] = astropy.table.Column(
+            length=num_nights, format='%.5f',
+            description='Apparent LST at brightdawn in degrees')
+        self._table['brightdawn_LST'] = astropy.table.Column(
+            length=num_nights, format='%.5f',
+            description='Apparent LST at brightdusk in degrees')
         self._table['moonrise'] = astropy.table.Column(
             length=num_nights, format=mjd_format,
             description='MJD of moonrise before/during night')
@@ -123,12 +136,15 @@ class Ephemerides(object):
         self._table['moon_illum_frac'] = astropy.table.Column(
             length=num_nights, format='%.3f',
             description='Illuminated fraction of moon surface')
-        self._table['brightstart'] = astropy.table.Column(
-            length=num_nights, format=mjd_format,
-            description='MJD when any bright time starts after twilight')
-        self._table['brightstop'] = astropy.table.Column(
-            length=num_nights, format=mjd_format,
-            description='MJD when any bright time stops after twilight')
+        self._table['nearest_full_moon'] = astropy.table.Column(
+            length=num_nights, format='%.5f',
+            description='Nearest full moon - local midnight in days')
+        self._table['programs'] = astropy.table.Column(
+            length=num_nights, shape=(4,), dtype=np.int16,
+            description='Program sequence between dusk and dawn')
+        self._table['changes'] = astropy.table.Column(
+            length=num_nights, shape=(3,),
+            description='MJD of program changes between dusk and dawn')
 
         # Add (ra,dec) arrays for each object that we need to avoid and
         # check that ephem has a model for it.
@@ -192,7 +208,10 @@ class Ephemerides(object):
                 ephem.Sun(), use_center=True) + mjd0
             # Calculate the moonrise/set for any moon visible tonight.
             m0 = ephem.Moon()
-            mayall.horizon = '-0:34' # the value that the USNO uses.
+            # Use the USNO standard for defining moonrise/set, which means that
+            # it will not exactly correspond to DARK <-> ? program transitions
+            # at an altitude of 0deg.
+            mayall.horizon = '-0:34'
             row['moonrise'] = mayall.next_rising(m0) + mjd0
             if row['moonrise'] > row['brightdawn']:
                 # Any moon visible tonight is from the previous moon rise.
@@ -212,27 +231,66 @@ class Ephemerides(object):
                     row[name + '_ra'][i] = math.degrees(float(model.ra))
                     row[name + '_dec'][i] = math.degrees(float(model.dec))
 
-        # Initialize a grid covering each night with 15sec resolution
-        # for tabulating the night program.
-        t_grid = get_grid(step_size=15 * u.s)
+        # Build a 1s grid covering the night.
+        step_size_sec = 1
+        step_size_day = step_size_sec / 86400.
+        dmjd_grid = desisurvey.ephemerides.get_grid(step_size=step_size_sec * u.s)
+        # Loop over nights to calculate the program sequence.
+        self._table['programs'][:] = 0
+        self._table['changes'][:] = 0.
+        for row in self._table:
+            mjd_grid = dmjd_grid + row['noon'] + 0.5
+            pindex = self.get_program(
+                mjd_grid, include_twilight=False, as_tuple=False)
+            assert pindex[0] == 4 and pindex[-1] == 4
+            # Calculate index-1 where new programs starts (-1 because of np.diff)
+            changes = np.where(np.diff(pindex) != 0)[0]
+            # Must have at least DAY -> NIGHT -> DAY changes.
+            assert len(changes) >= 2 and pindex[changes[0]] == 4 and pindex[changes[-1] + 1] == 4
+            # Max possible changes is 5.
+            assert len(changes) <= 6
+            # Check that first change is at dusk.
+            assert np.abs(mjd_grid[changes[0]] + 0.5 * step_size_day - row['dusk']) <= step_size_day
+            # Check that the last change is at dusk.
+            assert np.abs(mjd_grid[changes[-1]] + 0.5 * step_size_day - row['dawn']) <= step_size_day
+            row['programs'][0] = pindex[changes[0] + 1]
+            for k, idx in enumerate(changes[1:-1]):
+                row['programs'][k + 1] = pindex[idx + 1]
+                row['changes'][k] = mjd_grid[idx] + 0.5 * step_size_day
 
-        # Tabulate the observing program for each night to initialize the
-        # brightstart/stop values needed by the afternoonplan module.
-        for day_offset in range(num_nights):
-            row = self._table[day_offset]
-            t_night = row['noon'] + 0.5 + t_grid
-            dark, gray, bright = self.get_program(t_night)
-            # Select BRIGHT times during dark night, i.e., excluding the
-            # bright twilight component of bright time.
-            bright_night = (
-                bright & (t_night > row['dusk']) & (t_night < row['dawn']))
-            if np.any(bright_night):
-                # Record the first/last BRIGHT time during dark night.
-                row['brightstart'] = np.min(t_night[bright_night])
-                row['brightstop'] = np.max(t_night[bright_night])
-            else:
-                # Set brightstart/stop equal to local midnight.
-                row['brightstart'] = row['brightstop'] = row['noon'] + 0.5
+        # Tabulate all full moons covering (start, stop) with a 30-day pad.
+        full_moons = []
+        lo, hi = self._table[0]['noon'] - 30 - mjd0, self._table[-1]['noon'] + 30 - mjd0
+        when = lo
+        while when < hi:
+            when = ephem.next_full_moon(when)
+            full_moons.append(when)
+        full_moons = np.array(full_moons) + mjd0
+        # Find the first full moon after each midnight.
+        midnight = self._table['noon'] + 0.5
+        idx = np.searchsorted(full_moons, midnight, side='left')
+        assert np.all(midnight <= full_moons[idx])
+        assert np.all(midnight > full_moons[idx - 1])
+        # Calculate time until next full moon and after previous full moon.
+        next_full_moon = full_moons[idx] - midnight
+        prev_full_moon = midnight - full_moons[idx - 1]
+        # Record the nearest full moon to each midnight.
+        next_is_nearest = next_full_moon <= prev_full_moon
+        self._table['nearest_full_moon'][next_is_nearest] = next_full_moon[next_is_nearest]
+        self._table['nearest_full_moon'][~next_is_nearest] = -prev_full_moon[~next_is_nearest]
+
+        # Calculate apparent LST at each brightdusk/dawn in degrees.
+        dusk_t = astropy.time.Time(self._table['brightdusk'].data, format='mjd')
+        dawn_t = astropy.time.Time(self._table['brightdawn'].data, format='mjd')
+        dusk_t.location = desisurvey.utils.get_location()
+        dawn_t.location = desisurvey.utils.get_location()
+        self._table['brightdusk_LST'] = dusk_t.sidereal_time('apparent').to(u.deg).value
+        self._table['brightdawn_LST'] = dawn_t.sidereal_time('apparent').to(u.deg).value
+        # Subtract 360 deg if LST wraps around during this night, so that the
+        # [dusk, dawn] values can be used for linear interpolation.
+        wrap = self._table['brightdusk_LST'] > self._table['brightdawn_LST']
+        self._table['brightdusk_LST'][wrap] -= 360
+        assert np.all(self._table['brightdawn_LST'] > self._table['brightdusk_LST'])
 
         if write_cache:
             self.log.info('Saving ephemerides to {0}'.format(filename))
@@ -311,7 +369,59 @@ class Ephemerides(object):
                 kind='linear', fill_value='extrapolate', assume_sorted=True)
         return self._moon_illum_frac_interpolator(mjd)
 
-    def get_program(self, mjd, as_tuple=True):
+    def get_night_program(self, night, include_twilight=False, program_as_int=False):
+        """Return the program sequence for one night.
+
+        The program definitions are taken from
+        :class:`desisurvey.config.Configuration` and depend only on
+        sun and moon ephemerides for the night.
+
+        Parameters
+        ----------
+        night : date
+            Converted to a date using :func:`desisurvey.utils.get_date`.
+        include_twilight : bool
+            Include twilight time at the start and end of each night in
+            the BRIGHT program.
+        program_as_int : bool
+            Return program encoded as a small integer instead of a string
+            when True.
+
+        Returns
+        -------
+        tuple
+            Tuple (programs, changes) where programs is a list of N program
+            names and changes is a 1D numpy array of N+1 MJD values that
+            bracket each program during the night.
+        """
+        night_ephem = self.get_night(night)
+        programs = night_ephem['programs']
+        changes = night_ephem['changes']
+        num_programs = np.count_nonzero(programs)
+        programs = programs[:num_programs]
+        changes = changes[:num_programs - 1]
+        if include_twilight:
+            start = night_ephem['brightdusk']
+            stop = night_ephem['brightdawn']
+            if programs[0] != BRIGHT:
+                # Twilight adds a BRIGHT program at the start of the night.
+                programs = np.insert(programs, 0, BRIGHT)
+                changes = np.insert(changes, 0, night_ephem['dusk'])
+            if programs[-1] != BRIGHT:
+                # Twilight adds a BRIGHT program at the end of the night.
+                programs = np.append(programs, BRIGHT)
+                changes = np.append(changes, night_ephem['dawn'])
+        else:
+            start = night_ephem['dusk']
+            stop = night_ephem['dawn']
+        # Add start, stop to the change times.
+        changes = np.concatenate(([start], changes, [stop]))
+        if not program_as_int:
+            # Replace program codes with names.
+            programs = [program_name[p] for p in programs]
+        return programs, changes
+
+    def get_program(self, mjd, include_twilight=True, as_tuple=True):
         """Tabulate the program during one night.
 
         The program definitions are taken from
@@ -323,6 +433,9 @@ class Ephemerides(object):
         mjd : float or array
             MJD values during a single night where the program should be
             tabulated.
+        include_twilight : bool
+            Include twilight time at the start and end of each night in
+            the BRIGHT program.
         as_tuple : bool
             Return a tuple (dark, gray, bright) or else a vector of int16
             values.
@@ -349,19 +462,23 @@ class Ephemerides(object):
         interpolator = get_object_interpolator(night, 'moon', altaz=True)
         moon_alt, _ = interpolator(mjd)
 
-        # Lookup the moon illuminated fraction at each time.
+        # Calculate the moon illuminated fraction at each time.
         moon_frac = self.get_moon_illuminated_fraction(mjd)
 
         # Select bright and dark night conditions.
-        bright_night = (
-            mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
         dark_night = (mjd >= night['dusk']) & (mjd <= night['dawn'])
+        if include_twilight:
+            bright_night = (
+                mjd >= night['brightdusk']) & (mjd <= night['brightdawn'])
+        else:
+            bright_night = dark_night
 
         # Identify program during each MJD.
         GRAY = desisurvey.config.Configuration().programs.GRAY
         max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
+        max_frac = GRAY.max_moon_illumination()
         gray = dark_night & (moon_alt >= 0) & (
-            (moon_frac <= GRAY.max_moon_illumination()) &
+            (moon_frac <= max_frac) &
             (moon_frac * moon_alt <= max_prod))
         dark = dark_night & (moon_alt < 0)
         bright = bright_night & ~(dark | gray)
@@ -385,16 +502,14 @@ class Ephemerides(object):
         the moon is most fully illuminated at local midnight.  This method
         should normally be called with ``num_nights`` equal to None, in which
         case the value is taken from our
-        :class:`desisurvey.config.Configuration``. Any partial break at the
-        begining or end of the period where ephemerides are calculated
-        is ignored.
+        :class:`desisurvey.config.Configuration``.
 
         Parameters
         ----------
         night : date
             Converted to a date using :func:`desisurvey.utils.get_date`.
         num_nights : int or None
-            Number of nights reserved for each full-moon break.
+            Number of nights to block out around each full-moon.
 
         Returns
         -------
@@ -404,24 +519,45 @@ class Ephemerides(object):
         # Check the requested length of the full moon break.
         if num_nights is None:
             num_nights = desisurvey.config.Configuration().full_moon_nights()
-        half_cycle = 12
-        if num_nights < 1 or num_nights > 2 * half_cycle:
-            raise ValueError('Full moon break must be 1-24 nights.')
         # Look up the index of this night in our table.
         index = self.get_night(night, as_index=True)
-        # Ignore any partial breaks at the ends of our date range.
-        if index < num_nights or index + num_nights >= len(self._table):
+        # When is the nearest full moon?
+        nearest = self._table['nearest_full_moon'][index]
+        if np.abs(nearest) < 0.5 * num_nights:
+            return True
+        elif nearest == 0.5 * num_nights:
+            # Tie breaker if two nights are equally close.
+            return True
+        else:
             return False
-        # Fetch a single lunar cycle of illumination data centered
-        # on this night (unless we are close to one end of the table).
-        lo = max(0, index - half_cycle)
-        hi = min(self.num_nights, index + half_cycle + 1)
-        cycle = self._table['moon_illum_frac'][lo:hi]
-        # Sort the illumination fractions in this cycle.
-        sort_order = np.argsort(cycle)
-        # Return True if tonight's illumination is in the top num_nights.
-        return index - lo in sort_order[-num_nights:]
-
+        '''
+        # Make sure we have tabulated the nearest full moon.
+        if index < 15 or index + 15 >= len(self._table):
+            return False
+        # Is tonight a full moon?
+        dfrac = np.diff(self._table['moon_illum_frac'][index - 1:index + 2].data)
+        if (dfrac[0] >= 0) and (dfrac[1] < 0):
+            # This is a full moon night.
+            return True
+        # Find the nearest full moon within +/-15 nights.
+        step = +1 if dfrac[0] >= 0 else -1
+        dt = np.argmax(self._table['moon_illum_frac'][index:index + step * 15:step])
+        # Rough cut.
+        nhalf = int(np.floor(0.5 * num_nights))
+        if dt > nhalf:
+            return False
+        if (dt < nhalf) or ((dt == nhalf) and (num_nights % 2 == 1)):
+            return True
+        # If we get here, we have to chose between this night and one the same
+        # distance but on the other side of the nearest full moon.
+        dfrac = (self._table['moon_illum_frac'][index] -
+            self._table['moon_illum_frac'][index + 2 * step * dt])
+        if dfrac == 0:
+            # Tie breaker when both nights equally full.
+            return step == -1
+        else:
+            return dfrac > 0
+        '''
 
 def get_object_interpolator(row, object_name, altaz=False):
     """Build an interpolator for object location during one night.
@@ -530,3 +666,74 @@ def get_grid(step_size=1, night_start=-6, night_stop=7):
     night_stop = night_start + num_points * step_size
     return (night_start.to(u.day).value +
             step_size.to(u.day).value * np.arange(num_points + 1))
+
+
+def get_program_hours(ephem, start_date=None, stop_date=None,
+                      include_monsoon=False, include_full_moon=False,
+                      apply_weather=False, include_twilight=True):
+    """Tabulate hours in each program during each night of the survey.
+
+    Use :func:`desisurvey.plots.plot_program` to visualize program hours.
+
+    Parameters
+    ----------
+    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+        Tabulated ephemerides data to use for determining the program.
+    start_date : date or None
+        First night to include in the plot or use the first date of the
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
+        First night to include in the plot or use the last date of the
+        calculated ephemerides.  Must be convertible to a
+        date using :func:`desisurvey.utils.get_date`.
+    include_monsoon : bool
+        Include nights during the annual monsoon shutdowns.
+    include_fullmoon : bool
+        Include nights during the monthly full-moon breaks.
+    apply_weather : bool
+        Weight each night according to its monthly average dome-open fraction.
+        Requires that the specified dates are covered by
+        :func:`desisurvey.utils.dome_closed_fractions`.
+    include_twilight : bool
+        Include twilight time at the start and end of each night in
+        the BRIGHT program.
+
+    Returns
+    -------
+    array
+        Numpy array of shape (3, num_nights) containing the number of
+        hours in each program (0=DARK, 1=GRAY, 2=BRIGHT) during each
+        night.
+    """
+    # Determine date range to use.
+    start_date = desisurvey.utils.get_date(start_date or ephem.start)
+    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    if start_date >= stop_date:
+        raise ValueError('Expected start_date < stop_date.')
+
+    num_nights = (stop_date - start_date).days
+    hours = np.zeros((3, num_nights))
+    for i in range(num_nights):
+        tonight = start_date + datetime.timedelta(days=i)
+        if not include_monsoon and desisurvey.utils.is_monsoon(tonight):
+            continue
+        if not include_full_moon and ephem.is_full_moon(tonight):
+            continue
+        programs, changes = ephem.get_night_program(
+            tonight, include_twilight=include_twilight, program_as_int=True)
+        for p, dt in zip(programs, np.diff(changes)):
+            hours[p - 1, i] += dt
+    hours *= 24
+
+    if apply_weather:
+        config = desisurvey.config.Configuration()
+        first_day = config.first_day()
+        if start_date < first_day or stop_date > config.last_day():
+            raise ValueError('Weather not available for requested dates.')
+        weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
+        i1 = (start_date - first_day).days
+        i2 = (stop_date - first_day).days
+        hours *= weather_weights[i1:i2]
+
+    return hours

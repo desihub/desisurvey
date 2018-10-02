@@ -21,6 +21,8 @@ class TestScripts(unittest.TestCase):
         stop = datetime.date(2019,12,3)
         config.first_day.set_value(start)
         config.last_day.set_value(stop)
+        # Use weather from 2009, which has some lost time both days.
+        config.weather.set_value('Y2009')
         # Use just a subset of the tiles for faster testing
         tiles = Table(desimodel.io.load_tiles())
         subset = (35 < tiles['RA']) & (tiles['RA'] < 55) & \
