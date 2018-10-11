@@ -5,6 +5,8 @@ from __future__ import print_function, division, absolute_import
 import numpy as np
 import pandas as pd
 
+import astropy.table
+
 import desimodel.io
 
 import desisurvey.config
