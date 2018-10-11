@@ -5,7 +5,7 @@ desisurvey change log
 0.11.0 (unreleased)
 -------------------
 
-* No changes yet.
+* Add new modules: forecast.
 
 0.10.4 (2018-10-02)
 -------------------
