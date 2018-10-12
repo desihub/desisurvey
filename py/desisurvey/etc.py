@@ -262,3 +262,136 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
     assert actual_time > 0 * u.s
 
     return actual_time
+
+
+class ExposureTimeCalculator(object):
+    """Online Exposure Time Calculator.
+
+    This class has no dependencies on other desisurvey classes or functions.
+
+    TODO:
+     - Get constants from config instead of hardcoded.
+     - Scheduler should use weather_factor().
+     - Remove _active, or use it to validate start/stop?
+    """
+    NEW_FIELD_SETUP = 120. / 86400.
+    SAME_FIELD_SETUP = 60. / 86400.
+    TEXP_TOTAL = {
+        'DARK': 1000.0 / 86400,
+        'GRAY': 1000.0 * 1.1 / 86400,
+        'BRIGHT': 300. * 1.33 / 86400,
+    }
+    # Maximum time for a single exposure (days)
+    MAX_EXPTIME = 20 * 60 / 86400.
+    # Minimum number of consecutive exposures of a tile for cosmic splits.
+    # Set to one if cosmic splits are not required for exposures that could complete in MAX_EXPTIME.
+    MIN_NEXP = 2
+    # Time between updates (days)
+    UPDATE_INTERVAL = 10. / 86400.
+
+    def __init__(self, save_history=False):
+        self._snr2frac = 0.
+        self._exptime = 0.
+        self._active = False
+        self.tileid = None
+        # Initialize model of exposure time dependence on seeing.
+        self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
+        self.seeing_coefs /= np.sqrt(self.weather_factor(1.1, 1.0))
+        assert np.allclose(self.weather_factor(1.1, 1.0), 1.)
+        # Initialize optional history tracking.
+        self.save_history = save_history
+        if save_history:
+            self.history = dict(mjd=[], signal=[], background=[], snr2frac=[])
+
+    def weather_factor(self, seeing, transp):
+        return transp * (self.seeing_coefs[0] + seeing * (self.seeing_coefs[1] + seeing * self.seeing_coefs[2])) ** 2
+
+    def estimate_exposure(self, program, snr2frac, exposure_factor, nexp_completed=0):
+        """snr2frac can be an array or scalar.
+        """
+        # Estimate total exposure time required under current conditions.
+        texp_total = ExposureTimeCalculator.TEXP_TOTAL[program] * exposure_factor
+        # Estimate time remaining to reach snr2frac = 1.
+        texp_remaining = texp_total * (1 - snr2frac)
+        # Estimate the number of exposures required.
+        nexp = np.ceil(texp_remaining / ExposureTimeCalculator.MAX_EXPTIME).astype(int)
+        nexp = np.maximum(nexp, ExposureTimeCalculator.MIN_NEXP - nexp_completed)
+        return texp_total, texp_remaining, nexp
+
+    def could_complete(self, t_remaining, program, snr2frac, exposure_factor):
+        texp_total, texp_remaining, nexp = self.estimate_exposure(program, snr2frac, exposure_factor)
+        # Estimate total time required for all exposures.
+        t_required = ExposureTimeCalculator.NEW_FIELD_SETUP + ExposureTimeCalculator.SAME_FIELD_SETUP * (nexp - 1) + texp_remaining
+        return t_required <= t_remaining
+
+    def start(self, mjd_now, tileid, program, snr2frac, exposure_factor, seeing, transp, sky):
+        """exposure_factor is for the tile only and does not include weather (seeing, transp)
+        """
+        self.mjd_start = mjd_now
+        self._snr2frac_start = snr2frac
+        self.mjd_last = mjd_now
+        self.mjd_start = mjd_now
+        self._active = True
+        if tileid == self.tileid:
+            self.tile_nexp += 1
+        else:
+            self.tile_nexp = 1
+        self.tileid = tileid
+        self.texp_total, texp_remaining, nexp = self.estimate_exposure(
+            program, snr2frac, exposure_factor, self.tile_nexp - 1)
+        # Estimate SNR2 to integrate in the next exposure.
+        self.snr2frac_target = snr2frac + (texp_remaining / nexp) / self.texp_total
+        # Initialize signal and background rate factors.
+        self.srate0 = self.weather_factor(seeing, transp)
+        self.brate0 = sky
+        self.signal = 0.
+        self.background = 0.
+        self.last_snr2frac = 0.
+        self.should_abort = False
+        if self.save_history:
+            self.history['mjd'].append(mjd_now)
+            self.history['signal'].append(0.)
+            self.history['background'].append(0.)
+            self.history['snr2frac'].append(snr2frac)
+    
+    def update(self, mjd_now, seeing, transp, sky):
+        """
+        (seeing, transp, sky) are averaged over [mjd_last, mjd_now]
+        Return True if the exposure should continue integrating
+        """
+        dt = mjd_now - self.mjd_last
+        self.mjd_last = mjd_now
+        srate = self.weather_factor(seeing, transp)
+        brate = sky        
+        self.signal += dt * srate / self.srate0
+        #self.background += dt * (srate + brate) / (self.srate0 + self.brate0)
+        self.background += dt * brate / self.brate0
+        self._snr2frac = self._snr2frac_start + self.signal ** 2 / self.background / self.texp_total            
+        if self.save_history:
+            self.history['mjd'].append(mjd_now)
+            self.history['signal'].append(self.signal)
+            self.history['background'].append(self.background)
+            self.history['snr2frac'].append(self._snr2frac)
+        need_more_snr = self._snr2frac < self.snr2frac_target
+        # Give up on this tile if SNR progress has dropped significantly since we started.
+        self.should_abort = (self._snr2frac - self.last_snr2frac) / dt < 0.25 / self.texp_total
+        self.last_snr2frac = self._snr2frac
+        return need_more_snr and not self.should_abort
+    
+    def stop(self, mjd_now):
+        """Return True if this tile is done, or False for a cosmic split"""
+        self._exptime = mjd_now - self.mjd_start
+        self._active = False
+        return self._snr2frac >= 1 or self.should_abort
+    
+    @property
+    def snr2frac(self):
+        return self._snr2frac
+    
+    @property
+    def exptime(self):
+        return self._exptime
+    
+    @property
+    def active(self):
+        return self._active

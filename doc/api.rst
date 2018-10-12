@@ -31,6 +31,9 @@ Full desisurvey API Reference
 .. automodule:: desisurvey.rules
     :members:
 
+.. automodule:: desisurvey.scheduler
+    :members:
+
 .. automodule:: desisurvey.forecast
     :members:
 
