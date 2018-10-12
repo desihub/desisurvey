@@ -586,7 +586,7 @@ def plot_scheduler(s, start_date=None, stop_date=None, where=None, when=None,
 
     Parameters
     ----------
-    s : desisurvey.schedule.Scheduler
+    s : desisurvey.old.schedule.Scheduler
         The scheduler object to use.
     start_date : date or None
         First night to include in the plot or use the first scheduler date.  Must
@@ -834,7 +834,7 @@ def plot_monthly(p, program='DARK', monsoon=False, fullmoon=True,
 
     Parameters
     ----------
-    p : desisurvey.schedule.Scheduler
+    p : desisurvey.old.schedule.Scheduler
         The scheduler object to use.
     program : 'DARK', 'GRAY', 'BRIGHT' or 'ANY'
         Name of the program to display visibility for.

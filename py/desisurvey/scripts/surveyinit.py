@@ -26,7 +26,7 @@ import desimodel.io
 
 import desisurvey.utils
 import desisurvey.ephemerides
-import desisurvey.schedule
+import desisurvey.old.schedule
 import desisurvey.optimize
 
 
@@ -185,10 +185,10 @@ def main(args):
 
     if args.recalc or not os.path.exists(config.get_path('scheduler.fits')):
         # Tabulate data used the the scheduler.
-        desisurvey.schedule.initialize(ephem)
+        desisurvey.old.schedule.initialize(ephem)
 
     # Load scheduler with precomputed tables needed by the optimizer.
-    scheduler = desisurvey.schedule.Scheduler()
+    scheduler = desisurvey.old.schedule.Scheduler()
 
     # Can we use existing HA assignments?
     fullname = config.get_path(args.save)

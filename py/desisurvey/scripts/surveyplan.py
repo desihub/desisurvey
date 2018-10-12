@@ -21,7 +21,7 @@ import astropy.table
 import desiutil.log
 
 import desisurvey.ephemerides
-import desisurvey.schedule
+import desisurvey.old.schedule
 import desisurvey.plan
 import desisurvey.utils
 import desisurvey.config
@@ -98,8 +98,8 @@ def main(args):
     # Initialize scheduler.
     if not os.path.exists(config.get_path('scheduler.fits')):
         # Tabulate data used by the scheduler if necessary.
-        desisurvey.schedule.initialize(ephem)
-    scheduler = desisurvey.schedule.Scheduler()
+        desisurvey.old.schedule.initialize(ephem)
+    scheduler = desisurvey.old.schedule.Scheduler()
 
     # Read priority rules.
     rules = desisurvey.rules.Rules(args.rules)

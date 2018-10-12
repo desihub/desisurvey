@@ -6,6 +6,7 @@ desisurvey change log
 -------------------
 
 * Add new modules: forecast.
+* Move module schedule to old/.
 
 0.10.4 (2018-10-02)
 -------------------

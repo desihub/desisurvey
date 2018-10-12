@@ -7,7 +7,7 @@ import numpy as np
 
 import desisurvey.config
 
-from desisurvey.schedule import *
+from desisurvey.old.schedule import *
 
 
 class TestPlan(unittest.TestCase):

@@ -27,7 +27,7 @@ class Optimizer(object):
 
     Parameters
     ----------
-    sched : desisurvey.schedule.Scheduler
+    sched : desisurvey.old.schedule.Scheduler
         The scheduler object to use for the observing calendar and exposure
         time forecasts.
     program : 'DARK', 'GRAY' or 'BRIGHT'
@@ -695,8 +695,8 @@ class Optimizer(object):
 if __name__ == '__main__':
     """This should eventually be made into a first-class script entry point.
     """
-    import desisurvey.schedule
-    scheduler = desisurvey.schedule.Scheduler()
+    import desisurvey.old.schedule
+    scheduler = desisurvey.old.schedule.Scheduler()
     opt = Optimizer(scheduler, 'GRAY')
     for i in range(10):
         opt.improve(frac=0.25, verbose=True)
