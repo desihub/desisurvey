@@ -5,8 +5,8 @@ desisurvey change log
 0.11.0 (unreleased)
 -------------------
 
-* Add new modules: forecast.
-* Move module schedule to old/.
+* Add new modules: forecast, scheduler.
+* Move module schedule to old/ (superceded by new scheduler module).
 
 0.10.4 (2018-10-02)
 -------------------
