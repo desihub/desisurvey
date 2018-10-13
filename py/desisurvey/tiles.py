@@ -45,6 +45,11 @@ class Tiles(object):
         self.ntiles = len(self.tileID)
         self.pass_ntiles = {p: np.count_nonzero(self.passnum == p)
                             for p in np.unique(self.passnum)}
+        # Get list of passes.
+        self.passes = np.unique(self.passnum)
+        self.npasses = len(self.passes)
+        # Map each pass to a small integer index.
+        self.pass_index = {p: idx for idx, p in enumerate(self.passes)}
         # Can remove this when tile_index no longer uses searchsorted.
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')

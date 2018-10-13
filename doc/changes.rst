@@ -5,7 +5,7 @@ desisurvey change log
 0.11.0 (unreleased)
 -------------------
 
-* Add new modules: forecast, scheduler.
+* Add new modules: tiles, forecast, scheduler.
 * Move module schedule to old/ (superceded by new scheduler module).
 * Add new class ExposureTimeCalculator to etc module.
 

@@ -14,8 +14,11 @@ class TestTiles(unittest.TestCase):
 
     def test_tiles(self):
         tiles = Tiles()
-        # Verify indexing round trip.
+        # Verify tile indexing round trip.
         assert np.array_equal(tiles.index(tiles.tileID), np.arange(tiles.ntiles))
+        # Verify pass indexing round trip.
+        for passnum in tiles.passes:
+            assert tiles.passes[tiles.pass_index[passnum]] == passnum
         # Check reasonable dust and airmass values.
         assert np.all(tiles.dust_factor > 1)
         assert np.all(tiles.airmass(np.zeros(tiles.ntiles)) >= 1)
