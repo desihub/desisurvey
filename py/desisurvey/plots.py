@@ -290,7 +290,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
             if not observing_night[i]:
                 continue
             mjd_grid = midnight[i] + t_centers
-            dark, gray, bright = ephem.get_program(mjd_grid)
+            dark, gray, bright = ephem.tabulate_program(mjd_grid)
             program[i][dark] = 1.
             program[i][gray] = 2.
             program[i][bright] = 3.
@@ -438,7 +438,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     t_edges = midnight + np.linspace(
         -window_size, +window_size, 2 * window_size * 60 + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
-    dark, gray, bright = ephem.get_program(t_centers)
+    dark, gray, bright = ephem.tabulate_program(t_centers)
 
     # Determine the program during the exposure midpoint.
     t_index = np.digitize(when.mjd, t_edges) - 1

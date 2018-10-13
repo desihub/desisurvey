@@ -455,7 +455,7 @@ class Scheduler(object):
         timestamps += when.mjd
         # Get brightest program at each timestamp:
         # 1=DARK < 2=GRAY < 3=BRIGHT < 4=DAYTIME.
-        obs_programs = ephem.get_program(timestamps, as_tuple=False)
+        obs_programs = ephem.tabulate_program(timestamps, as_tuple=False)
         obs_program = np.max(obs_programs, axis=0)
         # Lookup the program each candidate tile is assigned to.
         tile_program = self.tiles['program'][mask].data
@@ -715,7 +715,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
         calendar[i]['weather'] = weather_weights[i]
         # Calculate the program during this night (default is 4=DAYTIME).
         mjd = midnight[i] + t_centers
-        dark, gray, bright = ephem.get_program(mjd)
+        dark, gray, bright = ephem.tabulate_program(mjd)
         etable['program'][sl][dark] = 1
         etable['program'][sl][gray] = 2
         etable['program'][sl][bright] = 3

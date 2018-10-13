@@ -33,9 +33,9 @@ class Tiles(object):
         log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         valid_programs = list(config.programs.keys)
-        tiles_file = tiles_file or config.tiles_file()
+        self.tiles_file = tiles_file or config.tiles_file()
         tiles = desimodel.io.load_tiles(
-            onlydesi=True, extra=False, tilesfile=tiles_file)
+            onlydesi=True, extra=False, tilesfile=self.tiles_file)
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
         self.passnum = tiles['PASS'].copy()

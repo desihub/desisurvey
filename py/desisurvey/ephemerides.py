@@ -21,12 +21,6 @@ import desiutil.log
 import desisurvey.config
 import desisurvey.utils
 
-# Small integer constants for programs defined by ephemerides.
-DARK = 1
-GRAY = 2
-BRIGHT = 3
-program_name = ['', 'DARK', 'GRAY', 'BRIGHT']
-
 
 class Ephemerides(object):
     """Tabulate sun and moon ephemerides during the survey.
@@ -62,6 +56,11 @@ class Ephemerides(object):
                  use_cache=True, write_cache=True):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
+
+        # Get the list of all programs in canonical order.
+        self.programs = list(config.programs.keys)
+        # Map program names to small integer indices.
+        self.program_index = {pname: pidx for pidx, pname in enumerate(self.programs)}
 
         # Freeze IERS table for consistent results.
         desisurvey.utils.freeze_iers()
@@ -236,17 +235,17 @@ class Ephemerides(object):
         step_size_day = step_size_sec / 86400.
         dmjd_grid = desisurvey.ephemerides.get_grid(step_size=step_size_sec * u.s)
         # Loop over nights to calculate the program sequence.
-        self._table['programs'][:] = 0
+        self._table['programs'][:] = -1
         self._table['changes'][:] = 0.
         for row in self._table:
             mjd_grid = dmjd_grid + row['noon'] + 0.5
-            pindex = self.get_program(
+            pindex = self.tabulate_program(
                 mjd_grid, include_twilight=False, as_tuple=False)
-            assert pindex[0] == 4 and pindex[-1] == 4
+            assert pindex[0] == -1 and pindex[-1] == -1
             # Calculate index-1 where new programs starts (-1 because of np.diff)
             changes = np.where(np.diff(pindex) != 0)[0]
             # Must have at least DAY -> NIGHT -> DAY changes.
-            assert len(changes) >= 2 and pindex[changes[0]] == 4 and pindex[changes[-1] + 1] == 4
+            assert len(changes) >= 2 and pindex[changes[0]] == -1 and pindex[changes[-1] + 1] == -1
             # Max possible changes is 5.
             assert len(changes) <= 6
             # Check that first change is at dusk.
@@ -397,12 +396,14 @@ class Ephemerides(object):
         night_ephem = self.get_night(night)
         programs = night_ephem['programs']
         changes = night_ephem['changes']
-        num_programs = np.count_nonzero(programs)
+        # Unused slots are -1.
+        num_programs = np.count_nonzero(programs >= 0)
         programs = programs[:num_programs]
         changes = changes[:num_programs - 1]
         if include_twilight:
             start = night_ephem['brightdusk']
             stop = night_ephem['brightdawn']
+            BRIGHT = self.program_index['BRIGHT']
             if programs[0] != BRIGHT:
                 # Twilight adds a BRIGHT program at the start of the night.
                 programs = np.insert(programs, 0, BRIGHT)
@@ -417,11 +418,11 @@ class Ephemerides(object):
         # Add start, stop to the change times.
         changes = np.concatenate(([start], changes, [stop]))
         if not program_as_int:
-            # Replace program codes with names.
-            programs = [program_name[p] for p in programs]
+            # Replace program indices with names.
+            programs = [self.programs[pidx] for pidx in programs]
         return programs, changes
 
-    def get_program(self, mjd, include_twilight=True, as_tuple=True):
+    def tabulate_program(self, mjd, include_twilight=True, as_tuple=True):
         """Tabulate the program during one night.
 
         The program definitions are taken from
@@ -444,9 +445,9 @@ class Ephemerides(object):
         -------
         tuple or array
             Tuple (dark, gray, bright) of boolean arrays that tabulates the
-            program at each input MJD or array of np.int16 values that encode
-            the program at each time slice using 1=DARK, 2=GRAY, 3=BRIGHT,
-            4=DAYTIME. All output array has the same shape as the input
+            program at each input MJD or an array of small integer indices
+            into ``self.programs[]``, with the special value -1 indicating
+            DAYTIME. All output arrays have the same shape as the input
             ``mjd`` array.
         """
         # Get the night of the earliest time.
@@ -488,11 +489,11 @@ class Ephemerides(object):
         if as_tuple:
             return dark, gray, bright
         else:
-            # Default value 4=DAYTIME.
-            program = np.full(mjd.shape, 4, np.int16)
-            program[dark] = 1
-            program[gray] = 2
-            program[bright] = 3
+            # Default value -1=DAYTIME.
+            program = np.full(mjd.shape, -1, np.int16)
+            program[dark] = self.program_index['DARK']
+            program[gray] = self.program_index['GRAY']
+            program[bright] = self.program_index['BRIGHT']
             return program
 
     def is_full_moon(self, night, num_nights=None):
@@ -530,34 +531,6 @@ class Ephemerides(object):
             return True
         else:
             return False
-        '''
-        # Make sure we have tabulated the nearest full moon.
-        if index < 15 or index + 15 >= len(self._table):
-            return False
-        # Is tonight a full moon?
-        dfrac = np.diff(self._table['moon_illum_frac'][index - 1:index + 2].data)
-        if (dfrac[0] >= 0) and (dfrac[1] < 0):
-            # This is a full moon night.
-            return True
-        # Find the nearest full moon within +/-15 nights.
-        step = +1 if dfrac[0] >= 0 else -1
-        dt = np.argmax(self._table['moon_illum_frac'][index:index + step * 15:step])
-        # Rough cut.
-        nhalf = int(np.floor(0.5 * num_nights))
-        if dt > nhalf:
-            return False
-        if (dt < nhalf) or ((dt == nhalf) and (num_nights % 2 == 1)):
-            return True
-        # If we get here, we have to chose between this night and one the same
-        # distance but on the other side of the nearest full moon.
-        dfrac = (self._table['moon_illum_frac'][index] -
-            self._table['moon_illum_frac'][index + 2 * step * dt])
-        if dfrac == 0:
-            # Tie breaker when both nights equally full.
-            return step == -1
-        else:
-            return dfrac > 0
-        '''
 
 def get_object_interpolator(row, object_name, altaz=False):
     """Build an interpolator for object location during one night.
@@ -723,7 +696,7 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
         programs, changes = ephem.get_night_program(
             tonight, include_twilight=include_twilight, program_as_int=True)
         for p, dt in zip(programs, np.diff(changes)):
-            hours[p - 1, i] += dt
+            hours[p, i] += dt
     hours *= 24
 
     if apply_weather:

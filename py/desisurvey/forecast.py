@@ -50,9 +50,10 @@ class Forecast(object):
         for program in tiles.programs:
             tile_sel = tiles.program_mask[program]
             ntiles.append(np.count_nonzero(tile_sel))
-            pidx = desisurvey.ephemerides.program_name.index(program) - 1
-            tsched.append(scheduled[pidx].sum())
-            openfrac.append(available[pidx].sum() / scheduled[pidx].sum())
+            progindx = ephem.program_index[program]
+            scheduled_sum = scheduled[progindx].sum()
+            tsched.append(scheduled_sum)
+            openfrac.append(available[progindx].sum() / scheduled_sum)
             dust.append(tiles.dust_factor[tile_sel].mean())
             airmass.append(airmass_factor[tile_sel].mean())
         # Build a table of all forecasting parameters.
@@ -114,13 +115,13 @@ class Forecast(object):
             df['Average required / tile (s)'] - 1)
         self.pass_progress = np.zeros((self.tiles.npasses, self.num_nights))
         for program in self.tiles.programs:
-            progidx = desisurvey.ephemerides.program_name.index(program) - 1
+            progidx = self.tiles.program_index[program]
             dtexp = (
                 df['Average required / tile (s)'] +
                 df['Setup overhead / tile (s)'] +
                 df['Cosmic split overhead / tile (s)'] +
                 df['Operations overhead / tile (s)']
-                )[self.tiles.programs.index(program)] / 86400.
+                )[progidx] / 86400.
             # Calculate the mean time between exposures for this program.
             progress = self.cummulative_days[progidx] / dtexp
             # Compute progress assuming tiles are observed in pass order,
