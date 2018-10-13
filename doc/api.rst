@@ -31,6 +31,9 @@ Full desisurvey API Reference
 .. automodule:: desisurvey.rules
     :members:
 
+.. automodule:: desisurvey.tiles
+    :members:
+
 .. automodule:: desisurvey.scheduler
     :members:
 
