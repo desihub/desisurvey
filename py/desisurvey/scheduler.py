@@ -90,7 +90,7 @@ class Scheduler(object):
         self.last_idx = None
 
     def next_tile(self, mjd_now, ETC, seeing, transp, method='design'):
-        """Return the next (tileid, program) to observe or None.
+        """Return the next tile to observe or None.
         """
         # Which program are we in?
         while mjd_now >= self.night_changes[self.night_index + 1]:
@@ -102,7 +102,7 @@ class Scheduler(object):
         # Select available tiles in this program.
         self.tile_sel = self.tiles.program_mask[program] & self.avail
         if not np.any(self.tile_sel):
-            return None, None, None, None, program, mjd_program_end
+            return None, None, None, None, None, program, mjd_program_end
         # Calculate the local apparent sidereal time in degrees.
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
         # Calculate the hour angle of each available tile in degrees.
@@ -117,7 +117,7 @@ class Scheduler(object):
             self.hour_angle[self.tile_sel], self.tile_sel)
         self.tile_sel &= self.airmass < self.max_airmass
         if not np.any(self.tile_sel):
-            return None, None, None, None, program, mjd_program_end
+            return None, None, None, None, None, program, mjd_program_end
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
@@ -129,7 +129,7 @@ class Scheduler(object):
         self.tile_sel[self.tile_sel] &= ETC.could_complete(
             t_remaining, program, self.snr2frac[self.tile_sel], self.exposure_factor[self.tile_sel])
         if not np.any(self.tile_sel):
-            return None, None, None, None, program, mjd_program_end
+            return None, None, None, None, None, program, mjd_program_end
         if method == 'greedy':
             # Pick the tile with the smallest exposure factor.
             idx = np.argmin(self.exposure_factor)
@@ -140,7 +140,8 @@ class Scheduler(object):
                 self.hour_angle[self.tile_sel] - self.design_hour_angle[self.tile_sel]))
             idx = np.argmax(self.cosdHA)
         return (self.tiles.tileID[idx], self.tiles.passnum[idx],
-                self.snr2frac[idx], self.exposure_factor[idx], program, mjd_program_end)
+                self.snr2frac[idx], self.exposure_factor[idx],
+                self.airmass[idx], program, mjd_program_end)
 
     def update_tile(self, tileID, snr2frac):
         """Update SNR for one tile and return True if any tiles remain.
