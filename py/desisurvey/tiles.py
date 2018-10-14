@@ -101,7 +101,8 @@ class Tiles(object):
             Array of airmasses corresponding to each input hour angle.
         """
         hour_angle = np.deg2rad(hour_angle)
-        mask = mask or slice(None)
+        if mask is None:
+            mask = slice(None)
         cosZ = self.tile_coef_A[mask] + self.tile_coef_B[mask] * np.cos(hour_angle)
         return desisurvey.utils.cos_zenith_to_airmass(cosZ)
 
