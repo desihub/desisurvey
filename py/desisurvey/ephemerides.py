@@ -20,6 +20,7 @@ import ephem
 import desiutil.log
 import desisurvey.config
 import desisurvey.utils
+import desisurvey.tiles
 
 
 class Ephemerides(object):
@@ -56,11 +57,6 @@ class Ephemerides(object):
                  use_cache=True, write_cache=True):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
-
-        # Get the list of all programs in canonical order.
-        self.programs = list(config.programs.keys)
-        # Map program names to small integer indices.
-        self.program_index = {pname: pidx for pidx, pname in enumerate(self.programs)}
 
         # Freeze IERS table for consistent results.
         desisurvey.utils.freeze_iers()
@@ -403,7 +399,7 @@ class Ephemerides(object):
         if include_twilight:
             start = night_ephem['brightdusk']
             stop = night_ephem['brightdawn']
-            BRIGHT = self.program_index['BRIGHT']
+            BRIGHT = desisurvey.tiles.Tiles.PROGRAM_INDEX['BRIGHT']
             if programs[0] != BRIGHT:
                 # Twilight adds a BRIGHT program at the start of the night.
                 programs = np.insert(programs, 0, BRIGHT)
@@ -419,7 +415,7 @@ class Ephemerides(object):
         changes = np.concatenate(([start], changes, [stop]))
         if not program_as_int:
             # Replace program indices with names.
-            programs = [self.programs[pidx] for pidx in programs]
+            programs = [desisurvey.tiles.Tiles.PROGRAMS[pidx] for pidx in programs]
         return programs, changes
 
     def tabulate_program(self, mjd, include_twilight=True, as_tuple=True):
@@ -446,9 +442,9 @@ class Ephemerides(object):
         tuple or array
             Tuple (dark, gray, bright) of boolean arrays that tabulates the
             program at each input MJD or an array of small integer indices
-            into ``self.programs[]``, with the special value -1 indicating
-            DAYTIME. All output arrays have the same shape as the input
-            ``mjd`` array.
+            into :attr:`desisurvey.tiles.Tiles.PROGRAMS`, with the special value
+            -1 indicating DAYTIME. All output arrays have the same shape as
+            the input ``mjd`` array.
         """
         # Get the night of the earliest time.
         mjd = np.asarray(mjd)
@@ -491,9 +487,9 @@ class Ephemerides(object):
         else:
             # Default value -1=DAYTIME.
             program = np.full(mjd.shape, -1, np.int16)
-            program[dark] = self.program_index['DARK']
-            program[gray] = self.program_index['GRAY']
-            program[bright] = self.program_index['BRIGHT']
+            program[dark] = desisurvey.tiles.Tiles.PROGRAM_INDEX['DARK']
+            program[gray] = desisurvey.tiles.Tiles.PROGRAM_INDEX['GRAY']
+            program[bright] = desisurvey.tiles.Tiles.PROGRAM_INDEX['BRIGHT']
             return program
 
     def is_full_moon(self, night, num_nights=None):

@@ -13,6 +13,14 @@ import desisurvey.etc
 
 
 class Tiles(object):
+
+    # Define the valid programs in canonical order.
+    PROGRAMS = ['DARK', 'GRAY', 'BRIGHT']
+    # Define a mapping from program name to index 0,1,2.
+    # Note that this mapping is independent of the programs actually present
+    # in a tiles file.
+    PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
+
     """Manage static info associated with the tiles file.
     
     The ``tiles_file`` configuration parameter determines which tiles
@@ -32,10 +40,15 @@ class Tiles(object):
     def __init__(self, tiles_file=None):
         log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
-        valid_programs = list(config.programs.keys)
+        # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
         tiles = desimodel.io.load_tiles(
             onlydesi=True, extra=False, tilesfile=self.tiles_file)
+        # Check for any unknown program names.
+        tile_programs = np.unique(tiles['PROGRAM'])
+        unknown = set(tile_programs) - set(self.PROGRAMS)
+        if unknown:
+            raise RuntimeError('Cannot schedule unknown program(s): {}.'.format(unknown))
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
         self.passnum = tiles['PASS'].copy()
@@ -53,25 +66,16 @@ class Tiles(object):
         # Can remove this when tile_index no longer uses searchsorted.
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')
-        # Build program <-> pass mappings. The programs present must be a subset
-        # of those defined in our config. Pass numbers are arbitrary integers
-        # and do not need to be consecutive or dense.
-        tile_programs = np.unique(tiles['PROGRAM'])
-        unknown = set(tile_programs) - set(valid_programs)
-        if unknown:
-            raise RuntimeError('Cannot schedule unknown program(s): {}.'.format(unknown))
+        # Build program -> [passes] maps. A program with no tiles will map to an empty array.
         self.program_passes = {
-            p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in tile_programs}
+            p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in self.PROGRAMS}
+        # Build pass -> program maps.
         self.pass_program = {}
-        for p in tile_programs:
+        for p in self.PROGRAMS:
             self.pass_program.update({passnum: p for passnum in self.program_passes[p]})
-        # Save tile programs in canonical order.
-        self.programs = [p for p in valid_programs if p in tile_programs]
-        # Build a dictionary for mapping from program name to a small index.
-        self.program_index = {pname: pidx for pidx, pname in enumerate(self.programs)}
-        # Build tile masks for each program.
+        # Build tile masks for each program. A program will no tiles with have an empty mask.
         self.program_mask = {}
-        for p in self.programs:
+        for p in self.PROGRAMS:
             mask = np.zeros(self.ntiles, bool)
             for pnum in self.program_passes[p]:
                 mask |= (self.passnum == pnum)
@@ -136,7 +140,6 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
 
     log = desiutil.log.get_logger()
     config = desisurvey.config.Configuration()
-    valid_programs = list(config.programs.keys)
     tiles_file = tiles_file or config.tiles_file()
 
     if use_cache and tiles_file in _cached_tiles:
@@ -145,7 +148,7 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
     else:
         tiles = Tiles(tiles_file)
         log.info('Initialized tiles from "{}".'.format(tiles_file))
-        for pname in tiles.programs:
+        for pname in Tiles.PROGRAMS:
             pinfo = []
             for passnum in tiles.program_passes[pname]:
                 pinfo.append('{}({})'.format(passnum, tiles.pass_ntiles[passnum]))

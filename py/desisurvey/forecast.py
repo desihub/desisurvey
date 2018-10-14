@@ -47,10 +47,10 @@ class Forecast(object):
         self.cummulative_days = np.cumsum(available, axis=1) / 24.
         # Calculate program parameters.
         ntiles, tsched, openfrac, dust, airmass = [], [], [], [], []
-        for program in tiles.programs:
+        for program in tiles.PROGRAMS:
             tile_sel = tiles.program_mask[program]
             ntiles.append(np.count_nonzero(tile_sel))
-            progindx = ephem.program_index[program]
+            progindx = tiles.PROGRAM_INDEX[program]
             scheduled_sum = scheduled[progindx].sum()
             tsched.append(scheduled_sum)
             openfrac.append(available[progindx].sum() / scheduled_sum)
@@ -63,7 +63,7 @@ class Forecast(object):
         df['Scheduled time (hr)'] = tsched
         df['Dome open fraction'] = openfrac
         self.set_overheads()
-        df['Nominal exposure (s)'] = [nominal[p] for p in self.tiles.programs]
+        df['Nominal exposure (s)'] = [nominal[p] for p in self.tiles.PROGRAMS]
         df['Dust factor'] = dust
         df['Airmass factor'] = airmass
         self.set_factors()
@@ -72,7 +72,7 @@ class Forecast(object):
         """Print a summary table of the forecast parameters.
         """
         df = self.df.transpose()
-        df.rename({pidx: pname for pidx, pname in enumerate(self.tiles.programs)},
+        df.rename({pidx: pname for pidx, pname in enumerate(self.tiles.PROGRAMS)},
                   inplace=True, axis='columns')
         return df
 
@@ -81,12 +81,13 @@ class Forecast(object):
                       split={'DARK': 100, 'GRAY': 100, 'BRIGHT':  75},
                       dead ={'DARK':  20, 'GRAY': 100, 'BRIGHT':  10}):
         df = self.df
-        df['Setup overhead / tile (s)'] = [setup[p] for p in self.tiles.programs]
-        df['Cosmic split overhead / tile (s)'] = [split[p] for p in self.tiles.programs]
-        df['Operations overhead / tile (s)'] = [dead[p] for p in self.tiles.programs]
+        df['Setup overhead / tile (s)'] = [setup[p] for p in self.tiles.PROGRAMS]
+        df['Cosmic split overhead / tile (s)'] = [split[p] for p in self.tiles.PROGRAMS]
+        df['Operations overhead / tile (s)'] = [dead[p] for p in self.tiles.PROGRAMS]
         df['Average available / tile (s)'] = (
             df['Scheduled time (hr)'] * df['Dome open fraction'] /
-            df['Number of tiles'] * 3600 -
+            # Avoid division by zero for a program with no tiles.
+            np.maximum(1, df['Number of tiles']) * 3600 -
             df['Setup overhead / tile (s)'] -
             df['Cosmic split overhead / tile (s)'] -
             df['Operations overhead / tile (s)'])
@@ -96,8 +97,8 @@ class Forecast(object):
                        moon    = {'DARK': 1.00, 'GRAY': 1.10, 'BRIGHT': 1.33},
                        weather = {'DARK': 1.22, 'GRAY': 1.20, 'BRIGHT': 1.16}):
         df = self.df
-        df['Moon factor'] = [moon[p] for p in self.tiles.programs]
-        df['Weather factor'] = [weather[p] for p in self.tiles.programs]
+        df['Moon factor'] = [moon[p] for p in self.tiles.PROGRAMS]
+        df['Weather factor'] = [weather[p] for p in self.tiles.PROGRAMS]
         df['Average required / tile (s)'] = (
             df['Nominal exposure (s)'] *
             df['Dust factor'] *
@@ -114,8 +115,8 @@ class Forecast(object):
             df['Average available / tile (s)'] /
             df['Average required / tile (s)'] - 1)
         self.pass_progress = np.zeros((self.tiles.npasses, self.num_nights))
-        for program in self.tiles.programs:
-            progidx = self.tiles.program_index[program]
+        for program in self.tiles.PROGRAMS:
+            progidx = self.tiles.PROGRAM_INDEX[program]
             dtexp = (
                 df['Average required / tile (s)'] +
                 df['Setup overhead / tile (s)'] +
