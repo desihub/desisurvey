@@ -59,23 +59,29 @@ class Scheduler(object):
         self.tile_sel = np.zeros(ntiles, bool)
         self.LST = 0.
         # Initialize tile priority and available arrays.
-        if tile_priority is None:
-            self.tile_priority = np.ones(ntiles, float)
-        else:
-            self.tile_priority = np.array(tile_priority).astype(float)
-            if self.tile_priority.shape != (ntiles,) or np.any(self.tile_priority < 0):
-                raise ValueError('Invalid tile_priority input array.')
-        if tile_available is None:
-            self.tile_available = np.ones(ntiles, bool)
-        else:
-            self.tile_available = np.array(tile_available).astype(bool)
-            if self.tile_available.shape != (ntiles,):
-                raise ValueError('Invalid tile_available input array.')
+        self.tile_priority = np.ones(ntiles, float)
+        self.tile_available = np.ones(ntiles, bool)
         # Save design hour angles in degrees.
         surveyinit_t = astropy.table.Table.read(config.get_path('surveyinit.fits'))
         self.design_hour_angle = surveyinit_t['HA'].data.copy()
         # Load the ephemerides to use.
         self.ephem = desisurvey.ephemerides.Ephemerides()
+
+    def init_tiles(self, tile_available, tile_priority):
+        """Initialize tile availability and priority.
+
+        At least one tile must be available with priority > 0.
+        """
+        self.tile_available = np.array(tile_available).astype(bool)
+        if self.tile_available.shape != (self.tiles.ntiles,) or not np.any(self.tile_available):
+            raise ValueError('Invalid tile_available array.')
+        self.tile_priority = np.array(tile_priority).astype(float)
+        if self.tile_priority.shape != (self.tiles.ntiles,) or np.any(self.tile_priority < 0):
+            raise ValueError('Invalid tile_priority array.')
+        planned = self.tile_priority > 0
+        if not np.any(self.tile_available & planned):
+            raise ValueError('No tiles to schedule.')
+        return np.where(self.tile_available)[0], np.where(planned)[0]
 
     def init_night(self, night, use_twilight, verbose=False):
         """Initialize scheduling for the specified night.
