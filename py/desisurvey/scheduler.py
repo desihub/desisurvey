@@ -30,7 +30,7 @@ class Scheduler(object):
     to be represented.  Pass numbers are arbitrary integers and do not
     need to be consecutive or dense.
     """
-    def __init__(self, tiles_file=None):
+    def __init__(self, tiles_file=None, tile_priority=None, tile_available=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -53,23 +53,38 @@ class Scheduler(object):
         self.hour_angle = np.zeros(ntiles)
         self.cosdHA = np.zeros(ntiles)
         self.airmass = np.zeros(ntiles)
-        self.avail = np.ones(ntiles, bool)
+        self.completed = np.zeros(ntiles, bool)
+        self.in_night_pool = np.zeros(ntiles, bool)
         self.completed_by_pass = np.zeros(self.tiles.npasses, np.int32)
         self.tile_sel = np.zeros(ntiles, bool)
         self.LST = 0.
+        # Initialize tile priority and available arrays.
+        if tile_priority is None:
+            self.tile_priority = np.ones(ntiles, float)
+        else:
+            self.tile_priority = np.array(tile_priority).astype(float)
+            if self.tile_priority.shape != (ntiles,) or np.any(self.tile_priority < 0):
+                raise ValueError('Invalid tile_priority input array.')
+        if tile_available is None:
+            self.tile_available = np.ones(ntiles, bool)
+        else:
+            self.tile_available = np.array(tile_available).astype(bool)
+            if self.tile_available.shape != (ntiles,):
+                raise ValueError('Invalid tile_available input array.')
         # Save design hour angles in degrees.
         surveyinit_t = astropy.table.Table.read(config.get_path('surveyinit.fits'))
         self.design_hour_angle = surveyinit_t['HA'].data.copy()
         # Load the ephemerides to use.
         self.ephem = desisurvey.ephemerides.Ephemerides()
 
-    def reset(self):
-        self.snr2frac[:] = 0.
-        self.avail[:] = True
-        self.completed_by_pass[:] = 0
-        self.tile_sel[:] = False
-
     def init_night(self, night, use_twilight, verbose=False):
+        """Initialize scheduling for the specified night.
+
+        Must be called before calls to :meth:`next_tile` and
+        :meth:`update_tile` during the night.
+
+        Tile availability and priority is assumed fixed during the night.
+        """
         self.use_twilight = use_twilight
         self.night_ephem = self.ephem.get_night(night)
         # Lookup the program for this night.
@@ -84,10 +99,12 @@ class Scheduler(object):
         self.LST0, LST1 = [
             self.night_ephem['brightdusk_LST'], self.night_ephem['brightdawn_LST']]
         self.dLST = (LST1 - self.LST0) / (MJD1 - self.MJD0)
-
+        # Initialize tracking of the program through the night.
         self.night_index = 0
-        # Is this useful?
+        # Remember the last tile observed this night.
         self.last_idx = None
+        # Initialize the pool of tiles that could be observed this night.
+        self.in_night_pool[:] = ~self.completed & (self.tile_priority > 0) & self.tile_available
 
     def next_tile(self, mjd_now, ETC, seeing, transp, method='design'):
         """Return the next tile to observe or None.
@@ -100,7 +117,7 @@ class Scheduler(object):
         mjd_program_end = self.night_changes[self.night_index + 1]
         t_remaining = mjd_program_end - mjd_now
         # Select available tiles in this program.
-        self.tile_sel = self.tiles.program_mask[program] & self.avail
+        self.tile_sel = self.tiles.program_mask[program] & self.in_night_pool
         if not np.any(self.tile_sel):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate the local apparent sidereal time in degrees.
@@ -149,11 +166,14 @@ class Scheduler(object):
         idx = self.tiles.index(tileID)
         self.snr2frac[idx] = snr2frac
         if self.snr2frac[idx] >= self.min_snr2frac:
-            self.avail[idx] = False
+            self.in_night_pool[idx] = False
+            self.completed[idx] = True
             passidx = self.tiles.pass_index[self.tiles.passnum[idx]]
             self.completed_by_pass[passidx] += 1
-        # Is this useful?
+        # Remember the last tile observed this night.
         self.last_idx = idx
 
-    def complete(self):
-        return not any(self.avail)
+    def survey_completed(self):
+        """Test if all tiles have been completed.
+        """
+        return self.completed_by_pass.sum() == self.tiles.ntiles
