@@ -55,3 +55,6 @@ doc/_build/
 
 # PyBuilder
 target/
+
+# Surveymovie output
+*.mp4
