@@ -161,7 +161,10 @@ class Animator(object):
         in_range = (self.exposures['MJD'] >= mjd_start) & (self.exposures['MJD'] < mjd_stop)
         self.exposures = self.exposures[in_range]
         self.num_exp = len(self.exposures)
-        self.num_nights = (date_stop - date_start).days
+        # Count nights with at least one exposure.
+        day0 = desisurvey.utils.local_noon_on_date(date_start).mjd
+        day_number = np.floor(self.exposures['MJD'].data - day0)
+        self.num_nights = len(np.unique(day_number))
 
         # Add PASS, INDEX columns to the exposures table.
         self.exposures['INDEX'] = self.tiles.index(self.exposures['TILEID'])
