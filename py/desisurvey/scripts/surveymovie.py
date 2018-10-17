@@ -26,7 +26,6 @@ import matplotlib.animation
 
 import astropy.time
 import astropy.io.fits
-import astropy.table
 import astropy.units as u
 
 import desiutil.log
@@ -150,8 +149,18 @@ class Animator(object):
         ]
         self.start_date = self.config.first_day()
 
-        # Add EXPID column to the exposures table.
+        # Add some computed columns to the exposures table.
         self.exposures['EXPID'] = np.arange(len(self.exposures))
+        self.exposures['INDEX'] = self.tiles.index(self.exposures['TILEID'])
+        self.exposures['PASS'] = self.tiles.passnum[self.exposures['INDEX']]
+        self.exposures['STATUS'] = np.ones(len(self.exposures), np.int32)
+        self.exposures['STATUS'][self.exposures['SNR2FRAC'] == 0] = 0
+        self.exposures['STATUS'][
+            self.exposures['SNR2FRAC'] >= self.config.min_snr2_fraction()] = 2
+
+        # Convert tables to recarrays for much faster indexing.
+        self.exposures = self.exposures.as_array()
+        self.tiledata = self.tiledata.as_array()
 
         # Restrict the list of exposures to [start, stop].
         date_start = desisurvey.utils.get_date(start)
@@ -163,12 +172,8 @@ class Animator(object):
         self.num_exp = len(self.exposures)
         # Count nights with at least one exposure.
         day0 = desisurvey.utils.local_noon_on_date(date_start).mjd
-        day_number = np.floor(self.exposures['MJD'].data - day0)
+        day_number = np.floor(self.exposures['MJD'] - day0)
         self.num_nights = len(np.unique(day_number))
-
-        # Add PASS, INDEX columns to the exposures table.
-        self.exposures['INDEX'] = self.tiles.index(self.exposures['TILEID'])
-        self.exposures['PASS'] = self.tiles.passnum[self.exposures['INDEX']]
 
         # Calculate each exposure's LST window.
         exp_midpt = astropy.time.Time(
@@ -387,7 +392,7 @@ class Animator(object):
         date = desisurvey.utils.get_date(mjd)
         night = self.ephem.get_night(date)
         # Initialize status if necessary.
-        if (self.status is None) or nightly:
+        if self.status is None:
             # Find the most recent SNR2FRAC for each tile before this exposure.
             snr2frac = np.zeros(self.tiles.ntiles)
             for j in range(iexp):
@@ -397,14 +402,13 @@ class Animator(object):
             self.status = np.ones(self.tiles.ntiles)
             self.status[snr2frac == 0] = 0
             self.status[snr2frac >= self.config.min_snr2_fraction()] = 2
+        # Update the status for the current exposure.
+        self.status[info['INDEX']] = info['STATUS']
         if date != self.last_date:
             # Initialize for this night.
             self.init_date(date, night)
         elif nightly:
             return False
-        # Update the status for the current exposure.
-        complete = info['SNR2FRAC'] >= self.config.min_snr2_fraction()
-        self.status[info['INDEX']] = 2 if complete else 1
         # Update the top-right label.
         label = '{} {} #{:06d}'.format(self.label, date, info['EXPID'])
         if not nightly:
