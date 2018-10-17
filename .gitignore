@@ -58,3 +58,6 @@ target/
 
 # Surveymovie output
 *.mp4
+
+# Profiler output
+*_profile.out
