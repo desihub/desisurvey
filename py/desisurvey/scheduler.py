@@ -34,11 +34,7 @@ class Scheduler(object):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
-        ##################################################################
-        ### self.min_snr2frac = config.min_snr2_fraction()
-        # Keep this at one until we simulate errors in ETC integration.
-        self.min_snr2frac = 1.
-        ##################################################################
+        self.min_snr2frac = config.min_snr2_fraction()
         GRAY = desisurvey.config.Configuration().programs.GRAY
         self.max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
         self.max_frac = GRAY.max_moon_illumination()
