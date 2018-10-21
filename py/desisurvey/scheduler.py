@@ -74,10 +74,19 @@ class Scheduler(object):
         self.tile_priority = np.array(tile_priority).astype(float)
         if self.tile_priority.shape != (self.tiles.ntiles,) or np.any(self.tile_priority < 0):
             raise ValueError('Invalid tile_priority array.')
-        planned = self.tile_priority > 0
-        if not np.any(self.tile_available & planned):
+        self.tile_planned = self.tile_priority > 0
+        if not np.any(self.tile_available & self.tile_planned):
             raise ValueError('No tiles to schedule.')
-        return np.where(self.tile_available)[0], np.where(planned)[0]
+        return np.where(self.tile_available)[0], np.where(self.tile_planned)[0]
+
+    def update_tiles(self, tile_available, tile_priority):
+        """Update tile availability and priority.
+        """
+        new_available = tile_available & ~self.tile_available
+        new_planned = (tile_priority > 0) & ~self.tile_planned
+        self.tile_available[:] = tile_available
+        self.tile_priority[:] = tile_priority
+        return np.where(new_available)[0], np.where(new_planned)[0]
 
     def init_night(self, night, use_twilight, verbose=False):
         """Initialize scheduling for the specified night.
