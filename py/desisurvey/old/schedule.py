@@ -665,7 +665,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
     calendar['monsoon'] = np.zeros(num_nights, bool)
     calendar['fullmoon'] = np.zeros(num_nights, bool)
     calendar['weather'] = np.zeros(num_nights, np.float32)
-    weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
+    # Hardcode annualized average weight.
+    weather_weights = np.full(num_nights, 0.723)
 
     # Prepare a table of ephemeris data.
     etable = astropy.table.Table()

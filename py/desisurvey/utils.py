@@ -30,27 +30,6 @@ _iers_is_frozen = False
 _dome_closed_fractions = None
 
 
-def dome_closed_fractions():
-    """Return daily dome-closed fractions for each night of the survey.
-
-    Uses the config first_day, last_day and weather values.
-
-    Results are cached after the first call to this function.
-
-    Returns
-    -------
-    array
-        Array of N dome-closed fractions in the range 0-1, where N is
-        the number of nights in the survey.
-    """
-    global _dome_closed_fractions
-    if _dome_closed_fractions is None:
-        config = desisurvey.config.Configuration()
-        _dome_closed_fractions = desimodel.weather.dome_closed_fractions(
-            config.first_day(), config.last_day(), replay=config.weather())
-    return _dome_closed_fractions
-
-
 def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
     """Use a frozen IERS table saved with this package.
 

@@ -45,13 +45,6 @@ monsoon:
 # during each full moon.
 full_moon_nights: 7
 
-# Replay historical daily lost-time fractions from DESI-3577
-# using the specified years from a comma-separated list.
-# For details, see desimodel.weather.dome_closed_fractions().
-# The default Y2015 is the worst year during 2007-2017, so
-# replaying it each year gives a pessimistic forecast.
-weather: Y2015
-
 #-------------------------------------------------------------------
 # Definition of the DARK / GRAY / BRIGHT nominal programs based on
 # sun and moon ephemerides.

@@ -21,7 +21,8 @@ class Forecast(object):
     Based on config, ephemerides, tiles.
     """
     def __init__(self, use_twilight=False, tiles_file=None,
-        nominal={'DARK': 1000., 'GRAY': 1000., 'BRIGHT': 300.}):
+        nominal={'DARK': 1000., 'GRAY': 1000., 'BRIGHT': 300.},
+        weather_replay='Y2015'):
         self.use_twilight = use_twilight
         # Look up the tiles to observe.
         tiles = desisurvey.tiles.get_tiles(tiles_file)
@@ -38,12 +39,13 @@ class Forecast(object):
         # Load ephemerides.
         ephem = desisurvey.ephemerides.Ephemerides()
         self.num_nights = ephem.num_nights
-        # Compute the expected available hours per program,
-        # with and without weather.
+        # Compute the expected available hours per program.
         scheduled = desisurvey.ephemerides.get_program_hours(
-            ephem, apply_weather=False, include_twilight=use_twilight)
-        available = desisurvey.ephemerides.get_program_hours(
-            ephem, apply_weather=True, include_twilight=use_twilight)
+            ephem, include_twilight=use_twilight)
+        # Lookup the dome closed fractions.
+        dome_closed_frac = desimodel.weather.dome_closed_fractions(
+            config.first_day(), config.last_day(), replay=weather_replay)
+        available = scheduled * (1 - dome_closed_frac)
         self.cummulative_days = np.cumsum(available, axis=1) / 24.
         # Calculate program parameters.
         ntiles, tsched, openfrac, dust, airmass = [], [], [], [], []

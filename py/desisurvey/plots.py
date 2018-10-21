@@ -180,8 +180,7 @@ def plot_observed(progress, include='observed', start_date=None, stop_date=None,
 
 def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
                  include_monsoon=False, include_full_moon=False,
-                 apply_weather=False, include_twilight=True,
-                 night_start=-6.5, night_stop=7.5,
+                 include_twilight=True, night_start=-6.5, night_stop=7.5,
                  num_points=500, bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
@@ -211,9 +210,6 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         Include nights during the annual monsoon shutdowns.
     include_fullmoon : bool
         Include nights during the monthly full-moon breaks.
-    apply_weather : bool
-        Weight each night according to its monthly average dome-open fraction.
-        Only affects the printed totals with the "localtime" style.
     include_twilight : bool
         Include twilight time at the start and end of each night in
         the BRIGHT program.
@@ -249,8 +245,8 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
 
     hours = desisurvey.ephemerides.get_program_hours(
-        ephem, start_date, stop_date, include_monsoon, include_full_moon,
-        apply_weather, include_twilight)
+        ephem, start_date, stop_date, include_monsoon,
+        include_full_moon, include_twilight)
     observing_night = hours.sum(axis=0) > 0
 
     # Determine plot date range.

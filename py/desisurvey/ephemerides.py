@@ -639,7 +639,7 @@ def get_grid(step_size=1, night_start=-6, night_stop=7):
 
 def get_program_hours(ephem, start_date=None, stop_date=None,
                       include_monsoon=False, include_full_moon=False,
-                      apply_weather=False, include_twilight=True):
+                      include_twilight=True):
     """Tabulate hours in each program during each night of the survey.
 
     Use :func:`desisurvey.plots.plot_program` to visualize program hours.
@@ -660,10 +660,6 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
         Include nights during the annual monsoon shutdowns.
     include_fullmoon : bool
         Include nights during the monthly full-moon breaks.
-    apply_weather : bool
-        Weight each night according to its monthly average dome-open fraction.
-        Requires that the specified dates are covered by
-        :func:`desisurvey.utils.dome_closed_fractions`.
     include_twilight : bool
         Include twilight time at the start and end of each night in
         the BRIGHT program.
@@ -694,15 +690,5 @@ def get_program_hours(ephem, start_date=None, stop_date=None,
         for p, dt in zip(programs, np.diff(changes)):
             hours[p, i] += dt
     hours *= 24
-
-    if apply_weather:
-        config = desisurvey.config.Configuration()
-        first_day = config.first_day()
-        if start_date < first_day or stop_date > config.last_day():
-            raise ValueError('Weather not available for requested dates.')
-        weather_weights = 1 - desisurvey.utils.dome_closed_fractions()
-        i1 = (start_date - first_day).days
-        i2 = (stop_date - first_day).days
-        hours *= weather_weights[i1:i2]
 
     return hours
