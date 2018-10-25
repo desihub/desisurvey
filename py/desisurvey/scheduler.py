@@ -30,7 +30,7 @@ class Scheduler(object):
     to be represented.  Pass numbers are arbitrary integers and do not
     need to be consecutive or dense.
     """
-    def __init__(self, tiles_file=None, tile_priority=None, tile_available=None):
+    def __init__(self, tiles_file=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -55,8 +55,8 @@ class Scheduler(object):
         self.tile_sel = np.zeros(ntiles, bool)
         self.LST = 0.
         # Initialize tile priority and available arrays.
-        self.tile_priority = np.ones(ntiles, float)
-        self.tile_available = np.ones(ntiles, bool)
+        self.tile_priority = None
+        self.tile_available = None
         # Save design hour angles in degrees.
         surveyinit_t = astropy.table.Table.read(config.get_path('surveyinit.fits'))
         self.design_hour_angle = surveyinit_t['HA'].data.copy()
@@ -96,6 +96,8 @@ class Scheduler(object):
 
         Tile availability and priority is assumed fixed during the night.
         """
+        if self.tile_available is None or self.tile_priority is None:
+            raise RuntimeError('Must call init_tiles() before init_night().')
         self.use_twilight = use_twilight
         self.night_ephem = self.ephem.get_night(night)
         # Lookup the program for this night.
