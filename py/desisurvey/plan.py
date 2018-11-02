@@ -185,7 +185,8 @@ def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
 class Planner(object):
     """Coordinate afternoon planning activities.
     """
-    def __init__(self, fiberassign_cadence='monthly', tiles_file=None):
+    def __init__(self, rules=None, fiberassign_cadence='monthly', tiles_file=None):
+        self.rules = rules
         if fiberassign_cadence not in ('daily', 'monthly'):
             raise ValueError('Invalid fiberassign_cadence: "{}".'.format(fiberassign_cadence))
         self.fiberassign_cadence = fiberassign_cadence
@@ -196,8 +197,6 @@ class Planner(object):
         self.tile_covered = np.full(self.tiles.ntiles, -1)
         self.tile_countdown = np.full(self.tiles.ntiles, 1)
         self.tile_available = np.zeros(self.tiles.ntiles, bool)
-        # Set all tile priorities to one.
-        self.tile_priority = np.ones(self.tiles.ntiles, float)
         # Precompute the tile overlaps between passes needed to update fiber assignments.
         self.tile_over = {}
         self.overlapping = {}
@@ -228,6 +227,14 @@ class Planner(object):
     def initialize(self, night):
         # Remember the first night of the survey.
         self.initial_night = night
+        # Initialize priorities.
+        if self.rules is not None:
+            none_completed = np.zeros(self.tiles.ntiles, bool)
+            self.tile_priority = self.rules.apply(none_completed)
+            if not np.any(self.tile_priority > 0):
+                raise RuntimeError('Initial tile priorities are all <= 0.')
+        else:
+            self.tile_priority = np.ones(self.tiles.ntiles, float)
         return self.tile_available, self.tile_priority
 
     def fiberassign(self, night, completed):
@@ -262,14 +269,19 @@ class Planner(object):
         print('fiber assigned {} tiles, with {} delayed.'
               .format(np.count_nonzero(run_now), np.count_nonzero(delayed)))
 
-    def afternoon_plan(self, night, complete):
-        # Update fiber assignments.
+    def afternoon_plan(self, night, completed):
+        # Update fiber assignments this afternoon?
         if self.fiberassign_cadence == 'monthly':
+            # Run fiber assignment on the afternoon before the full moon.
             dt = self.ephem.get_night(night)['nearest_full_moon']
             run_fiberassign = (dt > -0.5) and (dt <= 0.5)
+            assert run_fiberassign == self.ephem.is_full_moon(night, num_nights=1)
         else:
             run_fiberassign = True
         if run_fiberassign:
-            self.fiberassign(night, complete)
+            self.fiberassign(night, completed)
+        # Update tile priorities.
+        if self.rules is not None:
+            self.tile_priority = self.rules.apply(completed)
 
         return self.tile_available, self.tile_priority
