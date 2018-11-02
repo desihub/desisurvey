@@ -192,28 +192,28 @@ class Planner(object):
         config = desisurvey.config.Configuration()
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
         self.ephem = desisurvey.ephemerides.Ephemerides()
-        # Set all priorities to one.
-        self.tile_priority = np.ones(self.tiles.ntiles, float)
-        # Any passes with no fiber-assignment dependency are initially available.
+        # Initialize per-tile arrays.
         self.tile_covered = np.full(self.tiles.ntiles, -1)
         self.tile_countdown = np.full(self.tiles.ntiles, 1)
         self.tile_available = np.zeros(self.tiles.ntiles, bool)
-        self.fiberassign_order = config.fiber_assignment_order
-        self.tile_diameter = 2 * config.tile_radius().to(u.deg).value
+        # Set all tile priorities to one.
+        self.tile_priority = np.ones(self.tiles.ntiles, float)
         # Precompute the tile overlaps between passes needed to update fiber assignments.
         self.tile_over = {}
         self.overlapping = {}
+        fiberassign_order = config.fiber_assignment_order
+        tile_diameter = 2 * config.tile_radius().to(u.deg).value
         for passnum in self.tiles.passes:
             under = self.tiles.passnum == passnum
             over = np.zeros_like(under)
             key = 'P{}'.format(passnum)
-            if key not in self.fiberassign_order.keys:
+            if key not in fiberassign_order.keys:
                 # Mark tiles in this pass as initially available.
                 self.tile_covered[under] = 0
                 self.tile_available[under] = True
                 print('Pass {} available for initial observing.'.format(passnum))
             else:
-                overpasses = getattr(self.fiberassign_order, key)()
+                overpasses = getattr(fiberassign_order, key)()
                 for overpass in overpasses.split('+'):
                     if not len(overpass) == 2 and overpass[0] == 'P':
                         raise RuntimeError(
@@ -222,7 +222,7 @@ class Planner(object):
                     over |= (self.tiles.passnum == int(overpass[1]))
                 self.overlapping[passnum] = desisurvey.utils.separation_matrix(
                     self.tiles.tileRA[under], self.tiles.tileDEC[under],
-                    self.tiles.tileRA[over], self.tiles.tileDEC[over], self.tile_diameter)
+                    self.tiles.tileRA[over], self.tiles.tileDEC[over], tile_diameter)
             self.tile_over[passnum] = over
 
     def initialize(self, night):
@@ -231,6 +231,7 @@ class Planner(object):
         return self.tile_available, self.tile_priority
 
     def fiberassign(self, night, completed):
+        # Calculate the number of elapsed nights in the survey.
         day_number = (night - self.initial_night).days
         print('Running fiber assignment on {} (day number {}) with {} tiles completed.'
               .format(night, day_number, np.count_nonzero(completed)))
@@ -244,13 +245,9 @@ class Planner(object):
             covered = np.all(~overlapping | completed[over], axis=1)
             # Which tiles have been newly covered since the last call to fiberassign?
             new_covered = covered & (self.tile_covered[under] == -1)
-            ##print('pass {} has {} tiles covered ({} new)'
-            ##      .format(passnum, np.count_nonzero(covered), np.count_nonzero(new_covered)))
             if np.any(new_covered):
                 new_tiles = self.tiles.tileID[under][new_covered]
-                ##print('{} new tiles available in pass {}: {}.'
-                ##      .format(len(new_tiles), passnum, ','.join([str(ID) for ID in new_tiles])))
-                # Record the day number when these tiles were first covered.
+               # Record the day number when these tiles were first covered.
                 new = under.copy()
                 new[under] = new_covered
                 self.tile_covered[new] = day_number
