@@ -95,7 +95,7 @@ def parse(options=None):
     return args
 
 
-def calculate_initial_plan(args, scheduler, fullname):
+def calculate_initial_plan(args, fullname):
     """Calculate initial hour-angle assignments for all tiles.
     """
     log = desiutil.log.get_logger()
@@ -183,14 +183,7 @@ def main(args):
     # Tabulate emphemerides if necessary.
     ephem = desisurvey.ephemerides.Ephemerides(use_cache=not args.recalc)
 
-    if args.recalc or not os.path.exists(config.get_path('scheduler.fits')):
-        # Tabulate data used the the scheduler.
-        desisurvey.old.schedule.initialize(ephem)
-
-    # Load scheduler with precomputed tables needed by the optimizer.
-    scheduler = desisurvey.old.schedule.Scheduler()
-
     # Can we use existing HA assignments?
     fullname = config.get_path(args.save)
     if args.recalc or not os.path.exists(fullname):
-        calculate_initial_plan(args, scheduler, fullname)
+        calculate_initial_plan(args, fullname)

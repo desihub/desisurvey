@@ -27,9 +27,6 @@ class Optimizer(object):
 
     Parameters
     ----------
-    sched : desisurvey.old.schedule.Scheduler
-        The scheduler object to use for the observing calendar and exposure
-        time forecasts.
     program : 'DARK', 'GRAY' or 'BRIGHT'
         Which program to optimize.  Determines the nominal exposure time.
     subset : array or None
@@ -74,11 +71,14 @@ class Optimizer(object):
         consider, in decreasing order, and the weight values determines their
         relative weight. The next bin to optimize is then selected at random.
     """
-    def __init__(self, sched, program, subset=None, start=None, stop=None,
+    def __init__(self, program, subset=None, start=None, stop=None,
                  nbins=192, init='info', initial_ha=None, stretch=1.0,
                  smoothing_radius=10,
                  origin=-60, center=None, seed=123, weights=[5, 4, 3, 2, 1]):
 
+        tiles = desisurvey.tiles.get_tiles()
+        if program not in tiles.PROGRAMS:
+            raise ValueError('Invalid program name: "{}".'.format(program))
         if not isinstance(smoothing_radius, u.Quantity):
             smoothing_radius = smoothing_radius * u.deg
         self.log = desiutil.log.get_logger()
@@ -88,27 +88,28 @@ class Optimizer(object):
         self.cum_weights /= self.cum_weights[-1]
 
         if start is None:
-            start = sched.start_date
+            start = config.first_day()
         else:
             start = desisurvey.utils.get_date(start)
         if stop is None:
-            stop = sched.stop_date
+            stop = config.last_day()
         else:
             stop = desisurvey.utils.get_date(stop)
         if start >= stop:
             raise ValueError('Expected start < stop.')
 
         # Calculate the time available in bins of LST for this program.
-        e = sched.etable
-        p_index = dict(DARK=1, GRAY=2, BRIGHT=3)[program]
+        ##e = sched.etable
+        p_index = tiles.PROGRAM_INDEX[program]
+
         sel = (e['program'] == p_index).reshape(
             sched.num_nights, sched.num_times)
         # Zero out nights during monsoon and full moon.
         sel[sched.calendar['monsoon']] = False
         sel[sched.calendar['fullmoon']] = False
         # Zero out nights outside [start:stop].
-        sel[:(start - sched.start_date).days] = False
-        sel[(stop - sched.start_date).days:] = False
+        sel[:(start - config.first_day()).days] = False
+        sel[(stop - config.first_day()).days:] = False
         # Accumulate times in hours over the full survey.
         dt = sched.step_size.to(u.hour).value
         wgt = dt * np.ones((sched.num_nights, sched.num_times))
@@ -695,8 +696,6 @@ class Optimizer(object):
 if __name__ == '__main__':
     """This should eventually be made into a first-class script entry point.
     """
-    import desisurvey.old.schedule
-    scheduler = desisurvey.old.schedule.Scheduler()
     opt = Optimizer(scheduler, 'GRAY')
     for i in range(10):
         opt.improve(frac=0.25, verbose=True)
