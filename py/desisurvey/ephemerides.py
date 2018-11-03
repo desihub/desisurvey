@@ -418,6 +418,86 @@ class Ephemerides(object):
             programs = [desisurvey.tiles.Tiles.PROGRAMS[pidx] for pidx in programs]
         return programs, changes
 
+    def get_available_lst(self, start=None, stop=None, nbins=192, origin=-60,
+                          weather=None, include_twilight=False):
+        """Calculate histograms of available LST for each program.
+        """
+        assert weather is None, 'Not implemented yet.'
+        config = desisurvey.config.Configuration()
+        if start is None:
+            start = config.first_day()
+        if stop is None:
+            stop = config.last_day()
+        num_nights = (stop - start).days
+        if num_nights <= 0:
+            raise ValueError('Expected start < stop.')
+        # Initialize LST histograms for each program.
+        lst_bins = np.linspace(origin, origin + 360, nbins + 1)
+        lst_hist = np.zeros((len(desisurvey.tiles.Tiles.PROGRAMS), nbins))
+        dlst = 360. / nbins
+        # Loop over nights.
+        for n in range(num_nights):
+            night = start + datetime.timedelta(n)
+            if desisurvey.utils.is_monsoon(night) or self.is_full_moon(night):
+                continue
+            # Look up the program changes during this night.
+            programs, changes = self.get_night_program(
+                night, include_twilight, program_as_int=True)
+            # Convert each change MJD to a corresponding LST in degrees.
+            night_ephem = self.get_night(night)
+            MJD0, MJD1 = night_ephem['brightdusk'], night_ephem['brightdawn']
+            LST0, LST1 = [night_ephem['brightdusk_LST'], night_ephem['brightdawn_LST']]
+            lst_changes = LST0 + (changes - MJD0) * (LST1 - LST0) / (MJD1 - MJD0)
+            assert np.all(np.diff(lst_changes) > 0)
+            lst_bin = (lst_changes - origin) / 360 * nbins
+            # Loop over programs during the night.
+            for i, prog_index in enumerate(programs):
+                phist = lst_hist[prog_index]
+                lo, hi = lst_bin[i:i + 2]
+                # Ensure that 0 <= lo < nbins
+                left_edge = np.floor(lo / nbins) * nbins
+                lo -= left_edge
+                hi -= left_edge
+                assert 0 <= lo and lo < nbins
+                ilo = int(np.ceil(lo))
+                assert ilo > 0
+                # Divide this program's LST window among the LST bins.
+                if hi < nbins:
+                    # [lo,hi) falls completely within [0,nbins)
+                    ihi = int(np.floor(hi))
+                    if ilo == ihi + 1:
+                        # LST window is contained within a single LST bin.
+                        phist[ihi] += hi - lo
+                    else:
+                        # Accumulate to bins that fall completely within the window.
+                        phist[ilo:ihi] += 1
+                        # Accumulate to partial bins at each end of the program window.
+                        phist[ilo - 1] += ilo - lo
+                        phist[ihi] += hi - ihi
+                else:
+                    # [lo,hi) wraps around on the right edge.
+                    hi -= nbins
+                    assert hi >= 0 and hi < nbins
+                    ihi = int(np.floor(hi))
+                    # Accumulate to bins that fall completely within the window.
+                    phist[ilo:nbins] += 1
+                    phist[0:ihi] += 1
+                    # Accumulate partial bins at each end of the program window.
+                    phist[ilo - 1] += ilo - lo
+                    phist[ihi] += hi - ihi
+
+        # Histogram units are sidereal hours per LST bin.
+        lst_hist *= 24 / nbins
+
+        # Check that total LST equals total hours, correcting for sidereal vs solar hours.
+        # This should be moved to a unit test.
+        hrs_sum = desisurvey.ephemerides.get_program_hours(
+            self, start, stop, include_twilight=include_twilight).sum(axis=1)
+        lst_sum = lst_hist.sum(axis=1) * 0.99726956583 # sidereal / solar hours
+        assert np.allclose(hrs_sum, lst_sum)
+
+        return lst_hist, lst_bins
+
     def tabulate_program(self, mjd, include_twilight=True, as_tuple=True):
         """Tabulate the program during one night.
 
