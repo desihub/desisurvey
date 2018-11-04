@@ -40,8 +40,7 @@ class Forecast(object):
         ephem = desisurvey.ephemerides.Ephemerides()
         self.num_nights = ephem.num_nights
         # Compute the expected available hours per program.
-        scheduled = desisurvey.ephemerides.get_program_hours(
-            ephem, include_twilight=use_twilight)
+        scheduled = ephem.get_program_hours(include_twilight=use_twilight)
         # Lookup the dome closed fractions.
         dome_closed_frac = desimodel.weather.dome_closed_fractions(
             config.first_day(), config.last_day(), replay=weather_replay)

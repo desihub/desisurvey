@@ -244,8 +244,8 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     if style not in styles:
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
 
-    hours = desisurvey.ephemerides.get_program_hours(
-        ephem, start_date, stop_date, include_monsoon,
+    hours = ephem.get_program_hours(
+        start_date, stop_date, include_monsoon,
         include_full_moon, include_twilight)
     observing_night = hours.sum(axis=0) > 0
 

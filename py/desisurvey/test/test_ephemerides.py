@@ -77,9 +77,9 @@ class TestEphemerides(unittest.TestCase):
         self.assertGreaterEqual(np.min(etable['moon_illum_frac']), 0.00)
         self.assertTrue(np.all(etable['moonrise'] < etable['moonset']))
 
-        hrs1 = get_program_hours(ephem, include_twilight=True).sum(axis=1)
-        hrs2 = get_program_hours(ephem, include_twilight=False).sum(axis=1)
-        hrs3 = get_program_hours(ephem, include_twilight=True, include_full_moon=True).sum(axis=1)
+        hrs1 = ephem.get_program_hours(include_twilight=True).sum(axis=1)
+        hrs2 = ephem.get_program_hours(include_twilight=False).sum(axis=1)
+        hrs3 = ephem.get_program_hours(include_twilight=True, include_full_moon=True).sum(axis=1)
         self.assertEqual(hrs1[0], hrs2[0])
         self.assertEqual(hrs1[1], hrs2[1])
         self.assertGreater(hrs1[2], hrs2[2])

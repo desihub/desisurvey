@@ -418,6 +418,62 @@ class Ephemerides(object):
             programs = [desisurvey.tiles.Tiles.PROGRAMS[pidx] for pidx in programs]
         return programs, changes
 
+    def get_program_hours(self, start_date=None, stop_date=None,
+                        include_monsoon=False, include_full_moon=False,
+                        include_twilight=True):
+        """Tabulate hours in each program during each night of the survey.
+
+        Use :func:`desisurvey.plots.plot_program` to visualize program hours.
+
+        Parameters
+        ----------
+        ephem : :class:`desisurvey.ephemerides.Ephemerides`
+            Tabulated ephemerides data to use for determining the program.
+        start_date : date or None
+            First night to include in the plot or use the first date of the
+            calculated ephemerides.  Must be convertible to a
+            date using :func:`desisurvey.utils.get_date`.
+        stop_date : date or None
+            First night to include in the plot or use the last date of the
+            calculated ephemerides.  Must be convertible to a
+            date using :func:`desisurvey.utils.get_date`.
+        include_monsoon : bool
+            Include nights during the annual monsoon shutdowns.
+        include_fullmoon : bool
+            Include nights during the monthly full-moon breaks.
+        include_twilight : bool
+            Include twilight time at the start and end of each night in
+            the BRIGHT program.
+
+        Returns
+        -------
+        array
+            Numpy array of shape (3, num_nights) containing the number of
+            hours in each program (0=DARK, 1=GRAY, 2=BRIGHT) during each
+            night.
+        """
+        # Determine date range to use.
+        start_date = desisurvey.utils.get_date(start_date or self.start)
+        stop_date = desisurvey.utils.get_date(stop_date or self.stop)
+        if start_date >= stop_date:
+            raise ValueError('Expected start_date < stop_date.')
+
+        num_nights = (stop_date - start_date).days
+        hours = np.zeros((3, num_nights))
+        for i in range(num_nights):
+            tonight = start_date + datetime.timedelta(days=i)
+            if not include_monsoon and desisurvey.utils.is_monsoon(tonight):
+                continue
+            if not include_full_moon and self.is_full_moon(tonight):
+                continue
+            programs, changes = self.get_night_program(
+                tonight, include_twilight=include_twilight, program_as_int=True)
+            for p, dt in zip(programs, np.diff(changes)):
+                hours[p, i] += dt
+        hours *= 24
+
+        return hours
+
     def get_available_lst(self, start=None, stop=None, nbins=192, origin=-60,
                           weather=None, include_twilight=False):
         """Calculate histograms of available LST for each program.
@@ -491,8 +547,8 @@ class Ephemerides(object):
 
         # Check that total LST equals total hours, correcting for sidereal vs solar hours.
         # This should be moved to a unit test.
-        hrs_sum = desisurvey.ephemerides.get_program_hours(
-            self, start, stop, include_twilight=include_twilight).sum(axis=1)
+        hrs_sum = self.get_program_hours(
+            start, stop, include_twilight=include_twilight).sum(axis=1)
         lst_sum = lst_hist.sum(axis=1) * 0.99726956583 # sidereal / solar hours
         assert np.allclose(hrs_sum, lst_sum)
 
@@ -715,60 +771,3 @@ def get_grid(step_size=1, night_start=-6, night_stop=7):
     night_stop = night_start + num_points * step_size
     return (night_start.to(u.day).value +
             step_size.to(u.day).value * np.arange(num_points + 1))
-
-
-def get_program_hours(ephem, start_date=None, stop_date=None,
-                      include_monsoon=False, include_full_moon=False,
-                      include_twilight=True):
-    """Tabulate hours in each program during each night of the survey.
-
-    Use :func:`desisurvey.plots.plot_program` to visualize program hours.
-
-    Parameters
-    ----------
-    ephem : :class:`desisurvey.ephemerides.Ephemerides`
-        Tabulated ephemerides data to use for determining the program.
-    start_date : date or None
-        First night to include in the plot or use the first date of the
-        calculated ephemerides.  Must be convertible to a
-        date using :func:`desisurvey.utils.get_date`.
-    stop_date : date or None
-        First night to include in the plot or use the last date of the
-        calculated ephemerides.  Must be convertible to a
-        date using :func:`desisurvey.utils.get_date`.
-    include_monsoon : bool
-        Include nights during the annual monsoon shutdowns.
-    include_fullmoon : bool
-        Include nights during the monthly full-moon breaks.
-    include_twilight : bool
-        Include twilight time at the start and end of each night in
-        the BRIGHT program.
-
-    Returns
-    -------
-    array
-        Numpy array of shape (3, num_nights) containing the number of
-        hours in each program (0=DARK, 1=GRAY, 2=BRIGHT) during each
-        night.
-    """
-    # Determine date range to use.
-    start_date = desisurvey.utils.get_date(start_date or ephem.start)
-    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
-    if start_date >= stop_date:
-        raise ValueError('Expected start_date < stop_date.')
-
-    num_nights = (stop_date - start_date).days
-    hours = np.zeros((3, num_nights))
-    for i in range(num_nights):
-        tonight = start_date + datetime.timedelta(days=i)
-        if not include_monsoon and desisurvey.utils.is_monsoon(tonight):
-            continue
-        if not include_full_moon and ephem.is_full_moon(tonight):
-            continue
-        programs, changes = ephem.get_night_program(
-            tonight, include_twilight=include_twilight, program_as_int=True)
-        for p, dt in zip(programs, np.diff(changes)):
-            hours[p, i] += dt
-    hours *= 24
-
-    return hours
