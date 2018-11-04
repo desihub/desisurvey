@@ -478,7 +478,6 @@ class Ephemerides(object):
                           weather=None, include_twilight=False):
         """Calculate histograms of available LST for each program.
         """
-        assert weather is None, 'Not implemented yet.'
         config = desisurvey.config.Configuration()
         if start is None:
             start = config.first_day()
@@ -487,6 +486,10 @@ class Ephemerides(object):
         num_nights = (stop - start).days
         if num_nights <= 0:
             raise ValueError('Expected start < stop.')
+        if weather is not None:
+            weather = np.asarray(weather)
+            if len(weather) != num_nights:
+                raise ValueError('Expected weather array of length {}.'.format(num_nights))
         # Initialize LST histograms for each program.
         lst_bins = np.linspace(origin, origin + 360, nbins + 1)
         lst_hist = np.zeros((len(desisurvey.tiles.Tiles.PROGRAMS), nbins))
@@ -517,38 +520,41 @@ class Ephemerides(object):
                 assert 0 <= lo and lo < nbins
                 ilo = int(np.ceil(lo))
                 assert ilo > 0
+                # Calculate the weight of this night in sidereal hours.
+                wgt = 24 / nbins
+                if weather is not None:
+                    wgt *= weather[n]
                 # Divide this program's LST window among the LST bins.
                 if hi < nbins:
                     # [lo,hi) falls completely within [0,nbins)
                     ihi = int(np.floor(hi))
                     if ilo == ihi + 1:
                         # LST window is contained within a single LST bin.
-                        phist[ihi] += hi - lo
+                        phist[ihi] += (hi - lo) * wgt
                     else:
                         # Accumulate to bins that fall completely within the window.
-                        phist[ilo:ihi] += 1
+                        phist[ilo:ihi] += wgt
                         # Accumulate to partial bins at each end of the program window.
-                        phist[ilo - 1] += ilo - lo
-                        phist[ihi] += hi - ihi
+                        phist[ilo - 1] += (ilo - lo) * wgt
+                        phist[ihi] += (hi - ihi) * wgt
                 else:
                     # [lo,hi) wraps around on the right edge.
                     hi -= nbins
                     assert hi >= 0 and hi < nbins
                     ihi = int(np.floor(hi))
                     # Accumulate to bins that fall completely within the window.
-                    phist[ilo:nbins] += 1
-                    phist[0:ihi] += 1
+                    phist[ilo:nbins] += wgt
+                    phist[0:ihi] += wgt
                     # Accumulate partial bins at each end of the program window.
-                    phist[ilo - 1] += ilo - lo
-                    phist[ihi] += hi - ihi
-
-        # Histogram units are sidereal hours per LST bin.
-        lst_hist *= 24 / nbins
+                    phist[ilo - 1] += (ilo - lo) * wgt
+                    phist[ihi] += (hi - ihi) * wgt
 
         # Check that total LST equals total hours, correcting for sidereal vs solar hours.
         # This should be moved to a unit test.
-        hrs_sum = self.get_program_hours(
-            start, stop, include_twilight=include_twilight).sum(axis=1)
+        hrs = self.get_program_hours(start, stop, include_twilight=include_twilight)
+        if weather is not None:
+            hrs *= weather
+        hrs_sum = hrs.sum(axis=1)
         lst_sum = lst_hist.sum(axis=1) * 0.99726956583 # sidereal / solar hours
         assert np.allclose(hrs_sum, lst_sum)
 
