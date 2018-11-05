@@ -180,16 +180,18 @@ class Optimizer(object):
             self.ha = np.asarray(initial_ha)
         elif init == 'flat':
             if center is None:
-                centers = np.arange(-180, 180, 5)
+                # Try 5 equally spaced centers.
+                icenters = np.arange(0, self.nbins, self.nbins // 5)
             else:
-                centers = [center]
+                # Find the closest bin edge to the requested value.
+                icenters = [np.argmin(np.abs(center - lst_edges))]
             min_score = np.inf
             scores = []
-            for center in centers:
-                # Histogram available LST relative to the specified center.
-                lst = wrap(e['lst'][sel_flat], center)
-                hist, edges = np.histogram(
-                    lst, bins=nbins, range=(center, center + 360), weights=wgt)
+            for icenter in icenters:
+                # Rotate the available LST histogram to this new center.
+                hist = np.roll(self.lst_hist, -icenter)
+                center = self.lst_edges[icenter]
+                edges = np.linspace(center, center + 360, self.nbins + 1)
                 # Calculate the CDF of available LST.
                 lst_cdf = np.zeros_like(edges)
                 lst_cdf[1:] = np.cumsum(hist)
@@ -423,8 +425,6 @@ class Optimizer(object):
         self.plan_hist = self.plan_tiles.sum(axis=0)
         if not np.all(np.isfinite(self.plan_hist)):
             raise RuntimeError('Found invalid plan_tiles in use_plan().')
-        # Update our estimated stretch as the avail / plan ratio.
-        self.stretch = self.lst_hist_sum / self.plan_hist.sum()
         if save_history:
             self.scale_history.append(self.eval_scale(self.plan_hist))
             self.loss_history.append(self.eval_loss(self.plan_hist))
