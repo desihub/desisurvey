@@ -108,6 +108,7 @@ def calculate_initial_plan(args, fullname, ephem):
 
     # Initialize the output file to write.
     hdus = fits.HDUList()
+    hdr = fits.Header()
 
     # Calculate average weather factors for each day.
     first = config.first_day()
@@ -118,8 +119,9 @@ def calculate_initial_plan(args, fullname, ephem):
         fractions.append(
             desimodel.weather.dome_closed_fractions(first, last, replay='Y{}'.format(year)))
     weather = 1 - np.mean(fractions, axis=0)
-    # Save the weather fractions.
-    hdus.append(fits.ImageHDU(weather, name='WEATHER'))
+    # Save the weather fractions as the primary HDU.
+    hdr['FIRST'] = str(first)
+    hdus.append(fits.ImageHDU(weather, header=hdr, name='WEATHER'))
 
     # Calculate the distribution of available LST in each program.
     lst_hist, lst_bins = ephem.get_available_lst(
@@ -127,6 +129,7 @@ def calculate_initial_plan(args, fullname, ephem):
 
     # Initialize the output results table.
     design = astropy.table.Table()
+    design['INIT'] = np.zeros(tiles.ntiles)
     design['HA'] = np.zeros(tiles.ntiles)
     design['TEXP'] = np.zeros(tiles.ntiles)
 
@@ -141,12 +144,14 @@ def calculate_initial_plan(args, fullname, ephem):
             log.info('Skipping {} program with no tiles.'.format(program))
             continue
         # Initialize an LST summary table.
-        table = astropy.table.Table()
+        table = astropy.table.Table(meta={'ORIGIN': lst_bins[0]})
         table['AVAIL'] = lst_hist[pindex]
         # Initailize an optimizer for this program.
         opt = desisurvey.optimize.Optimizer(
             program, lst_bins, lst_hist[pindex], init=args.init, center=None,
             stretch=stretches[program])
+        table['INIT'] = opt.plan_hist.copy()
+        design['INIT'][sel] = opt.ha_initial
         # Initialize annealing cycles.
         ncycles = 0
         binsize = 360. / args.nbins

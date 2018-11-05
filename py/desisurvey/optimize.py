@@ -52,11 +52,11 @@ class Optimizer(object):
         Only used when init is 'array'. The subset arg must also be provided
         to specify which tile each HA applies to.
     stretch : float
-        Factor to stretch all exposure times by.
+        Amount to stretch exposure times to account for factors other than
+        dust and airmass (i.e., seeing, transparency, moon). This does not
+        have a big effect on the results so can be approximate.
     smoothing_radius : :class:`astropy.units.Quantity`
         Gaussian sigma for calculating smoothing weights with angular units.
-    include_twilight : bool
-        Include twilight in the BRIGHT program when True.
     center : float or None
         Used by the 'flat' initialization method to specify the starting
         DEC for the CDF balancing algorithm. When None, the 'flat' method
@@ -74,7 +74,7 @@ class Optimizer(object):
     """
     def __init__(self, program, lst_edges, lst_hist, subset=None, start=None, stop=None,
                  init='flat', initial_ha=None, stretch=1.0, smoothing_radius=10,
-                 include_twilight=False, center=None, seed=123, weights=[5, 4, 3, 2, 1]):
+                 center=None, seed=123, weights=[5, 4, 3, 2, 1]):
 
         tiles = desisurvey.tiles.get_tiles()
         if program not in tiles.PROGRAMS:
@@ -150,8 +150,8 @@ class Optimizer(object):
         self.init_smoothing(smoothing_radius)
 
         self.log.info(
-            '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}, stretch {4:.3f}).'
-            .format(program, self.lst_hist_sum, self.ntiles, texp_nom, stretch))
+            '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}).'
+            .format(program, self.lst_hist_sum, self.ntiles, texp_nom))
 
         # Initialize metric histories.
         self.scale_history = []
@@ -314,7 +314,7 @@ class Optimizer(object):
         plan = lo + hi
         plan[lst_max > lst_min] -= self.binsize
         ##assert np.allclose(plan.sum(axis=1), exptime)
-        # Convert from degrees to hours.
+        # Convert from degrees to sidereal hours.
         return plan * 24. / 360.
 
     def eval_score(self, plan_hist):
@@ -423,6 +423,8 @@ class Optimizer(object):
         self.plan_hist = self.plan_tiles.sum(axis=0)
         if not np.all(np.isfinite(self.plan_hist)):
             raise RuntimeError('Found invalid plan_tiles in use_plan().')
+        # Update our estimated stretch as the avail / plan ratio.
+        self.stretch = self.lst_hist_sum / self.plan_hist.sum()
         if save_history:
             self.scale_history.append(self.eval_scale(self.plan_hist))
             self.loss_history.append(self.eval_loss(self.plan_hist))
@@ -515,7 +517,7 @@ class Optimizer(object):
                 # Randomly select a direction to shift the next tile.
                 dha_sign = +1 if self.gen.uniform() > 0.5 else -1
 
-            # Do no move any tiles that are already at their |HA| limits.
+            # Do not move any tiles that are already at their |HA| limits.
             dha = 360. / self.nbins * frac * dha_sign
             veto = np.abs(self.ha + dha) >= self.max_abs_ha
             sel[veto] = False
