@@ -477,6 +477,33 @@ class Ephemerides(object):
     def get_available_lst(self, start=None, stop=None, nbins=192, origin=-60,
                           weather=None, include_twilight=False):
         """Calculate histograms of available LST for each program.
+
+        Parameters
+        ----------
+        start : date or None
+            Only consider available LST starting from this date.  Use the
+            nominal survey start date if None.
+        stop : date or None
+            Only consider available LST before this end date.  Use the nominal
+            survey stop date if None.
+        nbins : int
+            Number of LST bins to use.
+        origin : float
+            Rotate DEC values in plots so that the left edge is at this value
+            in degrees.
+        weather : array or None
+            1D array of nightly weather factors (0-1) to use, or None to calculate
+            available LST assuming perfect weather.  Length must equal the number
+            of nights between start and stop. Values are fraction of the night
+            with the dome open (0=never, 1=always).
+        include_twilight : bool
+            Include twilight in the BRIGHT program when True.
+
+        Returns
+        -------
+        tuple
+            Tuple (lst_hist, lst_bins) with lst_hist having shape (3,nbins) and
+            lst_bins having shape (nbins+1,).
         """
         config = desisurvey.config.Configuration()
         if start is None:
