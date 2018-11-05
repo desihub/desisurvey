@@ -73,10 +73,10 @@ def parse(options=None):
         '--max-cycles', type=int, default=100,
         help='maximum number of annealing cycles for each program')
     parser.add_argument(
-        '--dark-stretch', type=float, default=1.1, metavar='S',
+        '--dark-stretch', type=float, default=1.2, metavar='S',
         help='stretch DARK exposure times by this factor')
     parser.add_argument(
-        '--gray-stretch', type=float, default=1.2, metavar='S',
+        '--gray-stretch', type=float, default=1.3, metavar='S',
         help='stretch GRAY exposure times by this factor')
     parser.add_argument(
         '--bright-stretch', type=float, default=1.5, metavar='S',
