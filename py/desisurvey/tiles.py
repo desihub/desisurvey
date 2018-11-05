@@ -144,7 +144,7 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
 
     if use_cache and tiles_file in _cached_tiles:
         tiles = _cached_tiles[tiles_file]
-        log.info('Using cached tiles for "{}".'.format(tiles_file))
+        log.debug('Using cached tiles for "{}".'.format(tiles_file))
     else:
         tiles = Tiles(tiles_file)
         log.info('Initialized tiles from "{}".'.format(tiles_file))
