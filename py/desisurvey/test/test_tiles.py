@@ -27,3 +27,11 @@ class TestTiles(unittest.TestCase):
         tiles1 = get_tiles()
         tiles2 = get_tiles()
         assert id(tiles1) == id(tiles2)
+
+
+def test_suite():
+    """Allows testing of only this module with the command::
+
+        python setup.py test -m <modulename>
+    """
+    return unittest.defaultTestLoader.loadTestsFromName(__name__)

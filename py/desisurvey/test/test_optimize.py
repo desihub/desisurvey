@@ -13,3 +13,11 @@ class TestUtils(unittest.TestCase):
             w = wrap(x, dx)
             assert np.all(w >= dx)
             assert np.all(w < dx + 360)
+
+
+def test_suite():
+    """Allows testing of only this module with the command::
+
+        python setup.py test -m <modulename>
+    """
+    return unittest.defaultTestLoader.loadTestsFromName(__name__)
