@@ -148,7 +148,7 @@ class Animator(object):
             self.passnum > 4,  # BRIGHT
         ]
         self.start_date = self.config.first_day()
-        self.num_nights = (config.last_day() - self.start_date).days
+        self.survey_weeks = int(np.ceil((self.config.last_day() - self.start_date).days / 7))
 
         # Add some computed columns to the exposures table.
         self.exposures['EXPID'] = np.arange(len(self.exposures))
@@ -226,17 +226,16 @@ class Animator(object):
                 axes.append(ax)
                 # Top-right corner is reserved for integrated progress plots.
                 if row == 0 and col == 2:
-                    num_weeks = int(np.ceil(self.num_nights / 7.))
-                    ax.set_xlim(0, num_weeks)
+                    ax.set_xlim(0, self.survey_weeks)
                     ax.set_ylim(0, 1)
-                    ax.plot([0, num_weeks], [0., 1.], 'w-')
+                    ax.plot([0, self.survey_weeks], [0., 1.], 'w-')
                     for pname in ('DARK', 'GRAY', 'BRIGHT'):
                         pc = pcolors[pname]
-                        xprog = 0.5 + np.arange(num_weeks)
+                        xprog = 0.5 + np.arange(self.survey_weeks)
                         # Initialize values to INF so they are not plotted
                         # until some value is assigned later.  Any week with
                         # no observations will then result in a gap.
-                        yprog = np.full(num_weeks, np.inf)
+                        yprog = np.full(self.survey_weeks, np.inf)
                         self.iplots.append(ax.plot(
                             xprog, yprog, lw=2, ls='-',
                             color=pcolors[pname])[0])
