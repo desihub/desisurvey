@@ -23,26 +23,84 @@ import desisurvey.utils
 import desisurvey.tiles
 
 
-class Ephemerides(object):
-    """Tabulate sun and moon ephemerides during the survey.
+# Date range 2019-2025 for tabulated ephemerides.
+# This range is chosen large enough to cover commissioning,
+# survey validation and the 5-year main survey, so should
+# not normally need to be changed, except for testing.
+START_DATE = datetime.date(2019, 1, 1)
+STOP_DATE = datetime.date(2025, 12, 31)
+
+_ephem = None
+
+def get_ephem(write_cache=True):
+    """Return tabulated ephemerides for (START_DATE,STOP_DATE).
 
     Parameters
     ----------
-    start_date : datetime.date or None
-        Survey starts on the evening of this date. Use the ``first_day``
-        config parameter if None (the default).
-    stop_date : datetime.date or None
-        Survey stops on the morning of this date. Use the ``last_day``
-        config parameter if None (the default).
-    num_obj_steps : int
-        Number of steps for tabulating object (ra, dec) during each 24-hour
-        period from local noon to local noon. Ignored when a cached file
-        is loaded.
-    use_cache : bool
-        When True, use a previously saved table if available.
     write_cache : bool
         When True, write a generated table so it is available for
         future invocations.
+
+    Returns
+    -------
+    Ephemerides
+        Object with tabulated ephemerides for (START_DATE,STOP_DATE).
+    """
+    global _ephem
+
+    # Freeze IERS table for consistent results.
+    desisurvey.utils.freeze_iers()
+
+    # Use standardized string representation of dates.
+    start_iso = START_DATE.isoformat()
+    stop_iso = STOP_DATE.isoformat()
+    range_iso = '({},{})'.format(start_iso, stop_iso)
+
+    log = desiutil.log.get_logger()
+    # First check for a cached object in memory.
+    if _ephem is not None:
+        if _ephem.start_date != START_DATE or ephem.stop_date != STOP_DATE:
+            raise RuntimeError('START_DATE, STOP_DATE have changed.')
+        log.debug('Returning cached ephemerides for {}}.'.format(range_iso))
+        return _ephem
+    # Next check for a FITS file on disk.
+    config = desisurvey.config.Configuration()
+    filename = config.get_path('ephem_{}_{}.fits'.format(start_iso, stop_iso))
+    if os.path.exists(filename):
+        # Save restored object in memory.
+        _ephem = Ephemerides(START_DATE, STOP_DATE, restore=filename)
+        log.info('Restored ephemerides for {} from {}.'
+                 .format(range_iso, filename))
+        return _ephem
+    # Finally, create new ephemerides and save in the memory cache.
+    log.info('Building ephemerides for {}...'.format(range_iso))
+    _ephem = Ephemerides(START_DATE, STOP_DATE)
+    if write_cache:
+        # Save the tabulated ephemerides to disk.
+        _ephem._table.write(filename, overwrite=True)
+        log.info('Saved ephemerides for {} to {}'.format(range_iso, filename))
+    return _ephem
+
+
+class Ephemerides(object):
+    """Tabulate ephemerides.
+
+    :func:`get_ephem` should normally be used rather than calling this
+    constructor directly.
+
+    Parameters
+    ----------
+    start_date : datetime.date
+        Calculated ephemerides start on the evening of this date.
+    stop_date : datetime.date
+        Calculated ephemerides stop on the morning of this date.
+    num_obj_steps : int
+        Number of steps for tabulating object (ra, dec) during each 24-hour
+        period from local noon to local noon. Ignored when restore is set.
+    restore : str or None
+        Name of a file to restore ephemerides from.  Construct ephemerides
+        from scratch when None. A restored file must have start and stop
+        dates that match our args.
 
     Attributes
     ----------
@@ -54,24 +112,17 @@ class Ephemerides(object):
         Number of consecutive nights for which ephemerides are calculated.
     """
     def __init__(self, start_date=None, stop_date=None, num_obj_steps=25,
-                 use_cache=True, write_cache=True):
+                 restore=None):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
-
-        # Freeze IERS table for consistent results.
-        desisurvey.utils.freeze_iers()
-
-        # Use our config to set any unspecified dates.
-        if start_date is None:
-            start_date = config.first_day()
-        if stop_date is None:
-            stop_date = config.last_day()
 
         # Validate date range.
         num_nights = (stop_date - start_date).days
         if num_nights <= 0:
             raise ValueError('Expected start_date < stop_date.')
         self.num_nights = num_nights
+        self.start_date = start_date
+        self.stop_date = stop_date
 
         # Convert to astropy times at local noon.
         self.start = desisurvey.utils.local_noon_on_date(start_date)
@@ -81,19 +132,12 @@ class Ephemerides(object):
         # first time it is used.
         self._moon_illum_frac_interpolator = None
 
-        # Build filename for reading and writing the ephemerides.
-        if use_cache or write_cache:
-            filename = config.get_path(
-                'ephem_{0}_{1}.fits'.format(start_date, stop_date))
-
-        # Use cached ephemerides if requested and available.
-        if use_cache and os.path.exists(filename):
-            self._table = astropy.table.Table.read(filename)
+        # Restore ephemerides from a FITS table if requested.
+        if restore is not None:
+            self._table = astropy.table.Table.read(restore)
             assert self._table.meta['START'] == str(start_date)
             assert self._table.meta['STOP'] == str(stop_date)
             assert len(self._table) == num_nights
-            self.log.info('Loaded ephemerides from {0} for {1} to {2}'
-                          .format(filename, start_date, stop_date))
             return
 
         # Initialize an empty table to fill.
@@ -286,10 +330,6 @@ class Ephemerides(object):
         wrap = self._table['brightdusk_LST'] > self._table['brightdawn_LST']
         self._table['brightdusk_LST'][wrap] -= 360
         assert np.all(self._table['brightdawn_LST'] > self._table['brightdusk_LST'])
-
-        if write_cache:
-            self.log.info('Saving ephemerides to {0}'.format(filename))
-            self._table.write(filename, overwrite=True)
 
     def get_row(self, row_index):
         """Return the specified row of our table.
