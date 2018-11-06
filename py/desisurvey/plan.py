@@ -85,7 +85,7 @@ def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
     night : datetime.date
         Date when planning is being performed, used to interpret the
         next parameter.
-    ephem : desisurvey.ephemerides.Ephemerides
+    ephem : desisurvey.ephem.Ephemerides
         Tabulated ephemerides data to use.
     fa_delay : int
         Delay between when a tile is covered and then subsequently made
@@ -192,7 +192,7 @@ class Planner(object):
         self.fiberassign_cadence = fiberassign_cadence
         config = desisurvey.config.Configuration()
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
-        self.ephem = desisurvey.ephemerides.Ephemerides()
+        self.ephem = desisurvey.ephem.get_ephem()
         # Initialize per-tile arrays.
         self.tile_covered = np.full(self.tiles.ntiles, -1)
         self.tile_countdown = np.full(self.tiles.ntiles, 1)

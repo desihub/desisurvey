@@ -12,7 +12,7 @@ import astropy.units as u
 import astropy.io
 
 import desisurvey.config
-from desisurvey.ephemerides import Ephemerides, get_grid, get_object_interpolator, get_program_hours
+from desisurvey.ephem import Ephemerides, get_grid, get_object_interpolator, get_program_hours
 from desisurvey.utils import get_date, get_location, freeze_iers
 
 
@@ -57,13 +57,7 @@ class TestEphemerides(unittest.TestCase):
         start = datetime.date(2019, 9, 1)
         stop = datetime.date(2019, 10, 1)
         ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
-        self.assertEqual(ephem.start.mjd, ephem.get_row(0)['noon'])
-        self.assertEqual(ephem.start.mjd, ephem.get_night(start)['noon'])
-        self.assertEqual(ephem.stop.mjd, ephem.get_row(-1)['noon'] + 1)
-        self.assertEqual(ephem.start.mjd,
-                         ephem.get_night(ephem.start)['noon'])
-        self.assertEqual(ephem.num_nights,
-                         int(round(ephem.stop.mjd - ephem.start.mjd)))
+        self.assertEqual(ephem.num_nights, (ephem.stop_date - ephem.start_date).days)
 
         etable = ephem._table
         self.assertEqual(len(etable), 30)

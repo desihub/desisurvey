@@ -32,14 +32,22 @@ STOP_DATE = datetime.date(2025, 12, 31)
 
 _ephem = None
 
-def get_ephem(write_cache=True):
+def get_ephem(use_cache=True, write_cache=True):
     """Return tabulated ephemerides for (START_DATE,STOP_DATE).
+
+    The pyephem module must be installed to calculate ephemerides,
+    but is not necessary when a FITS file of precalcuated data is
+    available.
 
     Parameters
     ----------
+    use_cache : bool
+        Use cached ephemerides from memory or disk if possible
+        when True.  Otherwise, always calculate from scratch.
     write_cache : bool
         When True, write a generated table so it is available for
-        future invocations.
+        future invocations. Writing only takes place when a
+        cached object is not available or ``use_cache`` is False.
 
     Returns
     -------
@@ -58,15 +66,15 @@ def get_ephem(write_cache=True):
 
     log = desiutil.log.get_logger()
     # First check for a cached object in memory.
-    if _ephem is not None:
-        if _ephem.start_date != START_DATE or ephem.stop_date != STOP_DATE:
+    if use_cache and _ephem is not None:
+        if _ephem.start_date != START_DATE or _ephem.stop_date != STOP_DATE:
             raise RuntimeError('START_DATE, STOP_DATE have changed.')
-        log.debug('Returning cached ephemerides for {}}.'.format(range_iso))
+        log.debug('Returning cached ephemerides for {}.'.format(range_iso))
         return _ephem
     # Next check for a FITS file on disk.
     config = desisurvey.config.Configuration()
     filename = config.get_path('ephem_{}_{}.fits'.format(start_iso, stop_iso))
-    if os.path.exists(filename):
+    if use_cache and os.path.exists(filename):
         # Save restored object in memory.
         _ephem = Ephemerides(START_DATE, STOP_DATE, restore=filename)
         log.info('Restored ephemerides for {} from {}.'
@@ -273,7 +281,7 @@ class Ephemerides(object):
         # Build a 1s grid covering the night.
         step_size_sec = 1
         step_size_day = step_size_sec / 86400.
-        dmjd_grid = desisurvey.ephemerides.get_grid(step_size=step_size_sec * u.s)
+        dmjd_grid = desisurvey.ephem.get_grid(step_size=step_size_sec * u.s)
         # Loop over nights to calculate the program sequence.
         self._table['programs'][:] = -1
         self._table['changes'][:] = 0.
@@ -368,7 +376,7 @@ class Ephemerides(object):
             of this row (selected via ``as_index``).
         """
         date = desisurvey.utils.get_date(night)
-        row_index = (date - self.start.datetime.date()).days
+        row_index = (date - self.start_date).days
         if row_index < 0 or row_index >= self.num_nights:
             raise ValueError('Requested night outside ephemerides: {0}'
                              .format(night))
@@ -465,18 +473,20 @@ class Ephemerides(object):
 
         Use :func:`desisurvey.plots.plot_program` to visualize program hours.
 
+        This method calculates scheduled hours with no correction for weather.
+        Use 1 - :func:`desimodel.weather.dome_closed_fractions` to lookup
+        nightly corrections based on historical weather data.
+
         Parameters
         ----------
-        ephem : :class:`desisurvey.ephemerides.Ephemerides`
+        ephem : :class:`desisurvey.ephem.Ephemerides`
             Tabulated ephemerides data to use for determining the program.
         start_date : date or None
-            First night to include in the plot or use the first date of the
-            calculated ephemerides.  Must be convertible to a
-            date using :func:`desisurvey.utils.get_date`.
+            First night to include or use the first date of the survey. Must
+            be convertible to a date using :func:`desisurvey.utils.get_date`.
         stop_date : date or None
-            First night to include in the plot or use the last date of the
-            calculated ephemerides.  Must be convertible to a
-            date using :func:`desisurvey.utils.get_date`.
+            First night to include or use the last date of the survey. Must
+            be convertible to a date using :func:`desisurvey.utils.get_date`.
         include_monsoon : bool
             Include nights during the annual monsoon shutdowns.
         include_fullmoon : bool
@@ -493,8 +503,15 @@ class Ephemerides(object):
             night.
         """
         # Determine date range to use.
-        start_date = desisurvey.utils.get_date(start_date or self.start)
-        stop_date = desisurvey.utils.get_date(stop_date or self.stop)
+        config = desisurvey.config.Configuration()
+        if start_date is None:
+            start_date = config.first_day()
+        else:
+            start_date = desisurvey.utils.get_date(start_date)
+        if stop_date is None:
+            stop_date = config.last_day()
+        else:
+            stop_date = desisurvey.utils.get_date(stop_date)
         if start_date >= stop_date:
             raise ValueError('Expected start_date < stop_date.')
 
@@ -514,18 +531,18 @@ class Ephemerides(object):
 
         return hours
 
-    def get_available_lst(self, start=None, stop=None, nbins=192, origin=-60,
+    def get_available_lst(self, start_date=None, stop_date=None, nbins=192, origin=-60,
                           weather=None, include_twilight=False):
         """Calculate histograms of available LST for each program.
 
         Parameters
         ----------
-        start : date or None
-            Only consider available LST starting from this date.  Use the
-            nominal survey start date if None.
-        stop : date or None
-            Only consider available LST before this end date.  Use the nominal
-            survey stop date if None.
+        start_date : date or None
+            First night to include or use the first date of the survey. Must
+            be convertible to a date using :func:`desisurvey.utils.get_date`.
+        stop_date : date or None
+            First night to include or use the last date of the survey. Must
+            be convertible to a date using :func:`desisurvey.utils.get_date`.
         nbins : int
             Number of LST bins to use.
         origin : float
@@ -535,7 +552,9 @@ class Ephemerides(object):
             1D array of nightly weather factors (0-1) to use, or None to calculate
             available LST assuming perfect weather.  Length must equal the number
             of nights between start and stop. Values are fraction of the night
-            with the dome open (0=never, 1=always).
+            with the dome open (0=never, 1=always). Use
+            1 - :func:`desimodel.weather.dome_closed_fractions` to lookup
+            suitable corrections based on historical weather data.
         include_twilight : bool
             Include twilight in the BRIGHT program when True.
 
@@ -546,13 +565,17 @@ class Ephemerides(object):
             lst_bins having shape (nbins+1,).
         """
         config = desisurvey.config.Configuration()
-        if start is None:
-            start = config.first_day()
-        if stop is None:
-            stop = config.last_day()
-        num_nights = (stop - start).days
+        if start_date is None:
+            start_date = config.first_day()
+        else:
+            start_date = desisurvey.utils.get_date(start_date)
+        if stop_date is None:
+            stop_date = config.last_day()
+        else:
+            stop_date = desisurvey.utils.get_date(stop_date)
+        num_nights = (stop_date - start_date).days
         if num_nights <= 0:
-            raise ValueError('Expected start < stop.')
+            raise ValueError('Expected start_date < stop_date.')
         if weather is not None:
             weather = np.asarray(weather)
             if len(weather) != num_nights:
@@ -563,7 +586,7 @@ class Ephemerides(object):
         dlst = 360. / nbins
         # Loop over nights.
         for n in range(num_nights):
-            night = start + datetime.timedelta(n)
+            night = start_date + datetime.timedelta(n)
             if desisurvey.utils.is_monsoon(night) or self.is_full_moon(night):
                 continue
             # Look up the program changes during this night.
@@ -618,7 +641,7 @@ class Ephemerides(object):
 
         # Check that total LST equals total hours, correcting for sidereal vs solar hours.
         # This should be moved to a unit test.
-        hrs = self.get_program_hours(start, stop, include_twilight=include_twilight)
+        hrs = self.get_program_hours(start_date, stop_date, include_twilight=include_twilight)
         if weather is not None:
             hrs *= weather
         hrs_sum = hrs.sum(axis=1)

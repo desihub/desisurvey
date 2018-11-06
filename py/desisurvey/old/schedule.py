@@ -17,7 +17,7 @@ import desiutil.log
 import desisurvey.config
 import desisurvey.utils
 import desisurvey.etc
-import desisurvey.ephemerides
+import desisurvey.ephem
 
 
 class Scheduler(object):
@@ -362,7 +362,7 @@ class Scheduler(object):
         ----------
         when : astropy.time.Time
             Time at which the next tile decision is being made.
-        ephem : desisurvey.ephemerides.Ephemerides
+        ephem : desisurvey.ephem.Ephemerides
             Tabulated ephemerides data to use.
         seeing : float or array
             FWHM seeing value in arcseconds.
@@ -422,7 +422,7 @@ class Scheduler(object):
         if date != self.last_date:
             self.f_obj = []
             for i, name in enumerate(self.avoid_names):
-                decra = desisurvey.ephemerides.get_object_interpolator(
+                decra = desisurvey.ephem.get_object_interpolator(
                     night, name, altaz=False)
                 self.f_obj.append(decra)
             self.last_date = date
@@ -531,7 +531,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
 
     Parameters
     ----------
-    ephem : desisurvey.ephemerides.Ephemerides
+    ephem : desisurvey.ephem.Ephemerides
         Tabulated ephemerides data to use for planning.
     start_date : date or None
         Survey planning starts on the evening of this date. Must be convertible
@@ -564,8 +564,8 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
     config = desisurvey.config.Configuration()
     output_name = config.get_path(output_name)
 
-    start_date = desisurvey.utils.get_date(start_date or ephem.start)
-    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    start_date = desisurvey.utils.get_date(start_date or config.first_day())
+    stop_date = desisurvey.utils.get_date(stop_date or config.last_day())
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
     mjd = ephem._table['noon']
@@ -576,7 +576,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
 
     # Build a grid of elapsed time relative to local midnight during each night.
     midnight = t['noon'] + 0.5
-    t_edges = desisurvey.ephemerides.get_grid(step_size)
+    t_edges = desisurvey.ephem.get_grid(step_size)
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
     num_points = len(t_centers)
 
@@ -738,7 +738,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
         fexp[sl][visible] /= desisurvey.etc.airmass_exposure_factor(X)
         # Loop over objects we need to avoid.
         for name in config.avoid_bodies.keys:
-            f_obj = desisurvey.ephemerides.get_object_interpolator(night, name)
+            f_obj = desisurvey.ephem.get_object_interpolator(night, name)
             # Calculate this object's (dec,ra) path during the night.
             obj_dec, obj_ra = f_obj(mjd)
             sky_obj = astropy.coordinates.ICRS(
@@ -750,7 +750,7 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
                 etable['moon_ra'][sl] = obj_ra
                 etable['moon_dec'][sl] = obj_dec
                 # Calculate moon altitude during the night.
-                moon_alt, _ = desisurvey.ephemerides.get_object_interpolator(
+                moon_alt, _ = desisurvey.ephem.get_object_interpolator(
                     night, 'moon', altaz=True)(mjd)
                 etable['moon_alt'][sl] = moon_alt
                 moon_zenith = (90 - moon_alt[:,np.newaxis]) * u.deg
@@ -807,13 +807,3 @@ def initialize(ephem, start_date=None, stop_date=None, step_size=5.0,
         # astropy < 1.3 uses the now deprecated clobber.
         hdus.writeto(output_name, clobber=True)
     log.info('Plan initialization saved to {0}'.format(output_name))
-
-
-if __name__ == '__main__':
-    """This should eventually be made into a first-class script entry point.
-    """
-    #stop = desisurvey.utils.get_date('2019-10-03')
-    #stop = desisurvey.utils.get_date('2020-07-13')
-    stop = None
-    ephem = desisurvey.ephemerides.Ephemerides(stop_date=stop)
-    initialize(ephem, stop_date=stop)

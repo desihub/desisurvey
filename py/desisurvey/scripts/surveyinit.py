@@ -26,7 +26,7 @@ import desiutil.log
 import desimodel.weather
 
 import desisurvey.utils
-import desisurvey.ephemerides
+import desisurvey.ephem
 import desisurvey.tiles
 import desisurvey.optimize
 
@@ -218,7 +218,7 @@ def main(args):
         config.set_output_path(args.output_path)
 
     # Tabulate emphemerides if necessary.
-    ephem = desisurvey.ephemerides.Ephemerides(use_cache=not args.recalc)
+    ephem = desisurvey.ephem.get_ephem(use_cache=not args.recalc)
 
     # Can we use existing HA assignments?
     fullname = config.get_path(args.save)

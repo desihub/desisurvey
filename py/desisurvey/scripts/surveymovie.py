@@ -30,7 +30,7 @@ import astropy.units as u
 
 import desiutil.log
 
-import desisurvey.ephemerides
+import desisurvey.ephem
 import desisurvey.utils
 import desisurvey.config
 import desisurvey.tiles
@@ -125,7 +125,7 @@ class Animator(object):
         self.log = desiutil.log.get_logger()
         self.config = desisurvey.config.Configuration()
         self.tiles = desisurvey.tiles.get_tiles()
-        self.ephem = desisurvey.ephemerides.Ephemerides()
+        self.ephem = desisurvey.ephem.get_ephem()
         # Load exposures and associated tile data.
         self.exposures = astropy.table.Table.read(exposures_path, hdu='EXPOSURES')
         self.tiledata = astropy.table.Table.read(exposures_path, hdu='TILEDATA')
@@ -352,7 +352,7 @@ class Animator(object):
                 self.warn('Missing scores file: {0}.'.format(scores_name))
         # Get interpolator for moon, planet positions during this night.
         for i, name in enumerate(self.avoid_names):
-            self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
+            self.f_obj[i] = desisurvey.ephem.get_object_interpolator(
                 ephem, name)
         if self.last_date is not None:
             week_num = int(np.floor((date - self.start_date).days / 7.))

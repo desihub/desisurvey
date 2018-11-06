@@ -10,7 +10,7 @@ import astropy.table
 import desimodel.io
 
 import desisurvey.config
-import desisurvey.ephemerides
+import desisurvey.ephem
 import desisurvey.etc
 import desisurvey.utils
 
@@ -29,7 +29,7 @@ class Forecast(object):
         self.tiles = tiles
         # Load our configuration.
         config = desisurvey.config.Configuration()
-        # Save design hour angles in degrees.
+        # Load design hour angles in degrees.
         surveyinit_t = astropy.table.Table.read(
             config.get_path('surveyinit.fits'))
         self.design_hour_angle = surveyinit_t['HA'].data.copy()
@@ -37,7 +37,7 @@ class Forecast(object):
         self.airmass = tiles.airmass(self.design_hour_angle)
         airmass_factor = desisurvey.etc.airmass_exposure_factor(self.airmass)
         # Load ephemerides.
-        ephem = desisurvey.ephemerides.Ephemerides()
+        ephem = desisurvey.ephem.get_ephem()
         self.num_nights = ephem.num_nights
         # Compute the expected available hours per program.
         scheduled = ephem.get_program_hours(include_twilight=use_twilight)

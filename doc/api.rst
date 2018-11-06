@@ -10,7 +10,7 @@ Full desisurvey API Reference
 .. automodule:: desisurvey.config
     :members:
 
-.. automodule:: desisurvey.ephemerides
+.. automodule:: desisurvey.ephem
     :members:
 
 .. automodule:: desisurvey.etc

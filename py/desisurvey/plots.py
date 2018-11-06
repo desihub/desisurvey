@@ -12,7 +12,7 @@ import astropy.units as u
 
 import desiutil.plots
 
-import desisurvey.ephemerides
+import desisurvey.ephem
 import desisurvey.config
 import desisurvey.utils
 
@@ -184,22 +184,22 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
                  num_points=500, bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
 
-    Uses :func:`desisurvey.ephemerides.get_program_hours` to calculate the
+    Uses :func:`desisurvey.ephem.get_program_hours` to calculate the
     hours available for each program during each night.
 
     The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
-    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+    ephem : :class:`desisurvey.ephem.Ephemerides`
         Tabulated ephemerides data to use for determining the program.
     start_date : date or None
         First night to include in the plot or use the first date of the
-        calculated ephemerides.  Must be convertible to a
+        survey.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     stop_date : date or None
         First night to include in the plot or use the last date of the
-        calculated ephemerides.  Must be convertible to a
+        survey.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     style : string
         Plot style to use for the vertical axis: "localtime" shows time
@@ -250,8 +250,15 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     observing_night = hours.sum(axis=0) > 0
 
     # Determine plot date range.
-    start_date = desisurvey.utils.get_date(start_date or ephem.start)
-    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    config = desisurvey.config.Configuration()
+    if start_date is None:
+        start_date = config.first_day()
+    else:
+        start_date = desisurvey.utils.get_date(start_date)
+    if stop_date is None:
+        stop_date = config.last_day()
+    else:
+        stop_date = desisurvey.utils.get_date(stop_date)
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
     mjd = ephem._table['noon']
@@ -395,7 +402,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
         Observation date of the form 'YYYYMMDD'.
     obs_num : int
         Observation number on the specified night, counting from zero.
-    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+    ephem : :class:`desisurvey.ephem.Ephemerides`
         Ephemerides covering this night.
     """
     import matplotlib.pyplot as plt
@@ -486,7 +493,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     airmass = 1. / np.cos(zenith.to(u.rad).value)
 
     # Calculate position of moon.
-    moon_pos = desisurvey.ephemerides.get_object_interpolator(
+    moon_pos = desisurvey.ephem.get_object_interpolator(
         night, 'moon', altaz=True)
     moon_alt, moon_az = moon_pos(when.mjd)
     moon_altaz = astropy.coordinates.AltAz(

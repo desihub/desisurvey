@@ -8,6 +8,9 @@ desisurvey change log
 * Add new modules: tiles, forecast, scheduler.
 * Move module schedule to old/ (superceded by new scheduler module).
 * Add new class ExposureTimeCalculator to etc module.
+* Add new class Planner to plan module.
+* Decouple ephemerides date range from nominal survey start/stop.
+* Rename ephemerides to ephem (to enforce new get_ephem access pattern).
 
 0.10.4 (2018-10-02)
 -------------------

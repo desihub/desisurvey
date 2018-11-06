@@ -20,7 +20,7 @@ import astropy.table
 
 import desiutil.log
 
-import desisurvey.ephemerides
+import desisurvey.ephem
 import desisurvey.old.schedule
 import desisurvey.plan
 import desisurvey.utils
@@ -93,7 +93,7 @@ def main(args):
         config.set_output_path(args.output_path)
 
     # Load ephemerides.
-    ephem = desisurvey.ephemerides.Ephemerides()
+    ephem = desisurvey.ephem.get_ephem()
 
     # Initialize scheduler.
     if not os.path.exists(config.get_path('scheduler.fits')):

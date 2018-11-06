@@ -17,7 +17,7 @@ import desisurvey.config
 import desisurvey.utils
 import desisurvey.etc
 import desisurvey.tiles
-import desisurvey.ephemerides
+import desisurvey.ephem
 
 
 class Scheduler(object):
@@ -61,7 +61,7 @@ class Scheduler(object):
         surveyinit_t = astropy.table.Table.read(config.get_path('surveyinit.fits'))
         self.design_hour_angle = surveyinit_t['HA'].data.copy()
         # Load the ephemerides to use.
-        self.ephem = desisurvey.ephemerides.Ephemerides()
+        self.ephem = desisurvey.ephem.get_ephem()
 
     def init_tiles(self, tile_available, tile_priority):
         """Initialize tile availability and priority.
