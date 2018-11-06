@@ -148,6 +148,7 @@ class Animator(object):
             self.passnum > 4,  # BRIGHT
         ]
         self.start_date = self.config.first_day()
+        self.num_nights = (config.last_day() - self.start_date).days
 
         # Add some computed columns to the exposures table.
         self.exposures['EXPID'] = np.arange(len(self.exposures))
@@ -225,7 +226,7 @@ class Animator(object):
                 axes.append(ax)
                 # Top-right corner is reserved for integrated progress plots.
                 if row == 0 and col == 2:
-                    num_weeks = int(np.ceil(self.ephem.num_nights / 7.))
+                    num_weeks = int(np.ceil(self.num_nights / 7.))
                     ax.set_xlim(0, num_weeks)
                     ax.set_ylim(0, 1)
                     ax.plot([0, num_weeks], [0., 1.], 'w-')

@@ -119,8 +119,7 @@ class Ephemerides(object):
     num_nights : int
         Number of consecutive nights for which ephemerides are calculated.
     """
-    def __init__(self, start_date=None, stop_date=None, num_obj_steps=25,
-                 restore=None):
+    def __init__(self, start_date, stop_date, num_obj_steps=25, restore=None):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
 

@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 import astropy.table
+import astropy.units as u
 
 import desimodel.io
 
@@ -19,26 +20,45 @@ class Forecast(object):
     """Compute a simple forecast of survey progress and margin.
 
     Based on config, ephemerides, tiles.
+
+    Parameters
+    ----------
+    start_date : datetime.date
+        Forecast for survey that starts on the evening of this date.
+    stop_date : datetime.date
+        Forecast for survey that stops on the morning of this date.
     """
-    def __init__(self, use_twilight=False, tiles_file=None,
-        nominal={'DARK': 1000., 'GRAY': 1000., 'BRIGHT': 300.},
-        weather_replay='Y2015'):
+    def __init__(self, start_date=None, stop_date=None, use_twilight=False,
+                 tiles_file=None, designHA=None, weather_replay='Y2015'):
+        config = desisurvey.config.Configuration()
+        if start_date is None:
+            start_date = config.first_day()
+        else:
+            start_date = desisurvey.utils.get_date(start_date)
+        if stop_date is None:
+            stop_date = config.last_day()
+        else:
+            stop_date = desisurvey.utils.get_date(stop_date)
+        self.num_nights = (stop_date - start_date).days
+        if self.num_nights <= 0:
+            raise ValueError('Expected start_date < stop_date.')
+
         self.use_twilight = use_twilight
         # Look up the tiles to observe.
         tiles = desisurvey.tiles.get_tiles(tiles_file)
         self.tiles = tiles
+        if designHA is None:
+            self.design_hour_angle = np.zeros(tiles.ntiles)
+        else:
+            if len(designHA) != tiles.ntiles:
+                raise ValueError('Array designHA has wrong length.')
+            self.design_hour_angle = np.asarray(designHA)
         # Load our configuration.
-        config = desisurvey.config.Configuration()
-        # Load design hour angles in degrees.
-        surveyinit_t = astropy.table.Table.read(
-            config.get_path('surveyinit.fits'))
-        self.design_hour_angle = surveyinit_t['HA'].data.copy()
         # Compute airmass at design hour angles.
         self.airmass = tiles.airmass(self.design_hour_angle)
         airmass_factor = desisurvey.etc.airmass_exposure_factor(self.airmass)
         # Load ephemerides.
         ephem = desisurvey.ephem.get_ephem()
-        self.num_nights = ephem.num_nights
         # Compute the expected available hours per program.
         scheduled = ephem.get_program_hours(include_twilight=use_twilight)
         # Lookup the dome closed fractions.
@@ -47,7 +67,7 @@ class Forecast(object):
         available = scheduled * (1 - dome_closed_frac)
         self.cummulative_days = np.cumsum(available, axis=1) / 24.
         # Calculate program parameters.
-        ntiles, tsched, openfrac, dust, airmass = [], [], [], [], []
+        ntiles, tsched, openfrac, dust, airmass, nominal = [], [], [], [], [], []
         for program in tiles.PROGRAMS:
             tile_sel = tiles.program_mask[program]
             ntiles.append(np.count_nonzero(tile_sel))
@@ -57,6 +77,7 @@ class Forecast(object):
             openfrac.append(available[progindx].sum() / scheduled_sum)
             dust.append(tiles.dust_factor[tile_sel].mean())
             airmass.append(airmass_factor[tile_sel].mean())
+            nominal.append(getattr(config.nominal_exposure_time, program)().to(u.s).value)
         # Build a table of all forecasting parameters.
         df = pd.DataFrame()
         self.df = df
@@ -64,7 +85,7 @@ class Forecast(object):
         df['Scheduled time (hr)'] = tsched
         df['Dome open fraction'] = openfrac
         self.set_overheads()
-        df['Nominal exposure (s)'] = [nominal[p] for p in self.tiles.PROGRAMS]
+        df['Nominal exposure (s)'] = nominal
         df['Dust factor'] = dust
         df['Airmass factor'] = airmass
         self.set_factors()
