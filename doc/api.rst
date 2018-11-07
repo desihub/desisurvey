@@ -25,9 +25,6 @@ Full desisurvey API Reference
 .. automodule:: desisurvey.plots
     :members:
 
-.. automodule:: desisurvey.progress
-    :members:
-
 .. automodule:: desisurvey.rules
     :members:
 
@@ -40,20 +37,14 @@ Full desisurvey API Reference
 .. automodule:: desisurvey.forecast
     :members:
 
-.. automodule:: desisurvey.old.schedule
+.. automodule:: desisurvey.scripts
     :members:
 
-.. automodule:: desisurvey.scripts
+.. automodule:: desisurvey.utils
     :members:
 
 .. automodule:: desisurvey.scripts.surveyinit
     :members:
 
 .. automodule:: desisurvey.scripts.surveymovie
-    :members:
-
-.. automodule:: desisurvey.scripts.surveyplan
-    :members:
-
-.. automodule:: desisurvey.utils
     :members:
