@@ -469,7 +469,7 @@ class Optimizer(object):
         # Select the movements that reduce the RMSE between A and P by
         # the largest amounts.
         order = np.argsort(np.abs(dres))[::-1][:len(self.cum_weights)]
-        # Randomly select one of these moments, according to our weights.
+        # Randomly select one of these movements, according to our weights.
         which = np.searchsorted(self.cum_weights, self.gen.uniform())
         idx = order[which]
         if dres[idx] == 0:

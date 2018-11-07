@@ -5,7 +5,8 @@ from astropy.table import Table
 import desimodel.io
 
 import desisurvey.config
-from desisurvey.scripts import surveyinit, surveyplan
+import desisurvey.ephem
+from desisurvey.scripts import surveyinit
 
 class TestScripts(unittest.TestCase):
 
@@ -16,9 +17,11 @@ class TestScripts(unittest.TestCase):
         # Write output files to this temporary directory.
         config = desisurvey.config.Configuration()
         config.set_output_path(cls.tmpdir)
-        # Just run for 2 days for testing
+        # Run for 1 week for testing (but include some time in each program)
         start = datetime.date(2019,12,1)
-        stop = datetime.date(2019,12,3)
+        stop = datetime.date(2019,12,8)
+        desisurvey.ephem.START_DATE = start
+        desisurvey.ephem.STOP_DATE = stop
         config.first_day.set_value(start)
         config.last_day.set_value(stop)
         # Use just a subset of the tiles for faster testing
@@ -43,24 +46,25 @@ class TestScripts(unittest.TestCase):
         pass
 
     def test_scripts(self):
-        cmd = 'surveyinit --max-cycles 5 --nbins 20'
+        cmd = 'surveyinit --max-cycles 5 --init zero'
         args = surveyinit.parse(cmd.split()[1:])
-        # args = surveyinit.parse(['--verbose', ])
         surveyinit.main(args)
-
+        '''
         cmd = 'surveyplan --create --rules rules-layers.yaml'
         args = surveyplan.parse(cmd.split()[1:])
         surveyplan.main(args)
-
+        '''
         for filename in [
-            'ephem_2019-12-01_2019-12-03.fits',
-            'plan.fits',
-            'plan.fits',
-            'scheduler.fits',
+            'ephem_2019-12-01_2019-12-08.fits',
             'surveyinit.fits',
             ]:
             filepath = os.path.join(self.tmpdir, filename)
             self.assertTrue(os.path.exists(filepath), 'Missing {}'.format(filename))
 
-if __name__ == '__main__':
-    unittest.main()
+
+def test_suite():
+    """Allows testing of only this module with the command::
+
+        python setup.py test -m <modulename>
+    """
+    return unittest.defaultTestLoader.loadTestsFromName(__name__)
