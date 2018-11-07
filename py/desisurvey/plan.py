@@ -5,6 +5,7 @@ from __future__ import print_function, division
 import numpy as np
 
 import astropy.table
+import astropy.io.fits
 import astropy.units as u
 
 import desiutil.log
@@ -180,6 +181,35 @@ def update_available(plan, progress, night, ephem, fa_delay, fa_delay_type):
                 # Record the night number when these tiles were first covered.
                 plan['available'][under] |= new_avail
     return plan
+
+
+def load_design_hourangle(name='surveyinit.fits'):
+    """Load design hour-angle assignments from disk.
+
+    Reads column 'HA' from binary table HDU 'DESIGN'. This is the format
+    saved by the ``surveyinit`` script, but any FITS file following the
+    same convention can be used.
+
+    Parameters
+    ----------
+    name : str
+        Name of the FITS file to read. A relative path is assumed to
+        refer to the output path specified in the configuration.
+    
+    Returns
+    -------
+    array
+        1D array of design hour angles in degrees, with indexing
+        that matches :class:`desisurvey.tiles.Tiles`.
+    """
+    config = desisurvey.config.Configuration()
+    fullname = config.get_path(name)
+    with astropy.io.fits.open(fullname, memmap=False) as hdus:
+        HA = hdus['DESIGN'].data['HA'].copy()
+    tiles = desisurvey.tiles.get_tiles()
+    if HA.shape != (tiles.ntiles,):
+        raise ValueError('Read unexpected HA shape.')
+    return HA
 
 
 class Planner(object):
