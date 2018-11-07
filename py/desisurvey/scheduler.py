@@ -29,8 +29,19 @@ class Scheduler(object):
     Program names are predefined in our config, but not all programs need
     to be represented.  Pass numbers are arbitrary integers and do not
     need to be consecutive or dense.
+
+    Design hour angles can be read from the output of ``surveyinit`` using
+    :func:`desisurvey.plan.load_design_hourangle`.
+
+    Parameters
+    ----------
+    design_hourangles : array or None
+        1D array of design hour angles to use in degrees. Uses HA=0 when None.
+    tiles_file : str or None
+        Use this file containing the tile definitions, or the default
+        specified in the configuration when None.
     """
-    def __init__(self, tiles_file=None):
+    def __init__(self, design_hourangle=None, tiles_file=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -42,11 +53,18 @@ class Scheduler(object):
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
+        # Check hourangles.
+        if design_hourangle is None:
+            self.design_hourangle = np.zeros(self.tiles.ntiles, float)
+        else:
+            self.design_hourangle = np.asarray(design_hourangle)
+            if self.design_hourangle.shape != (self.tiles.ntiles,):
+                raise ValueError('Array design_hourangle has wrong shape.')
         # Initialize arrays
         ntiles = self.tiles.ntiles
         self.snr2frac = np.zeros(ntiles)
         self.exposure_factor = np.zeros(ntiles)
-        self.hour_angle = np.zeros(ntiles)
+        self.hourangle = np.zeros(ntiles)
         self.cosdHA = np.zeros(ntiles)
         self.airmass = np.zeros(ntiles)
         self.completed = np.zeros(ntiles, bool)
@@ -57,9 +75,6 @@ class Scheduler(object):
         # Initialize tile priority and available arrays.
         self.tile_priority = None
         self.tile_available = None
-        # Save design hour angles in degrees.
-        surveyinit_t = astropy.table.Table.read(config.get_path('surveyinit.fits'))
-        self.design_hour_angle = surveyinit_t['HA'].data.copy()
         # Load the ephemerides to use.
         self.ephem = desisurvey.ephem.get_ephem()
 
@@ -88,7 +103,7 @@ class Scheduler(object):
         self.tile_priority[:] = tile_priority
         return np.where(new_available)[0], np.where(new_planned)[0]
 
-    def init_night(self, night, use_twilight, verbose=False):
+    def init_night(self, night, use_twilight=False, verbose=False):
         """Initialize scheduling for the specified night.
 
         Must be called before calls to :meth:`next_tile` and
@@ -139,12 +154,12 @@ class Scheduler(object):
         #######################################################
         ### should be offset to estimated exposure midpoint ###
         #######################################################
-        self.hour_angle[:] = 0.
-        self.hour_angle[self.tile_sel] = self.LST - self.tiles.tileRA[self.tile_sel]
+        self.hourangle[:] = 0.
+        self.hourangle[self.tile_sel] = self.LST - self.tiles.tileRA[self.tile_sel]
         # Calculate the airmass of each available tile.
         self.airmass[:] = self.max_airmass
         self.airmass[self.tile_sel] = self.tiles.airmass(
-            self.hour_angle[self.tile_sel], self.tile_sel)
+            self.hourangle[self.tile_sel], self.tile_sel)
         self.tile_sel &= self.airmass < self.max_airmass
         if not np.any(self.tile_sel):
             return None, None, None, None, None, program, mjd_program_end
@@ -167,7 +182,7 @@ class Scheduler(object):
             # Pick the tile that is closest to its design hour angle.
             self.cosdHA[:] = -1
             self.cosdHA[self.tile_sel] = np.cos(np.radians(
-                self.hour_angle[self.tile_sel] - self.design_hour_angle[self.tile_sel]))
+                self.hourangle[self.tile_sel] - self.design_hourangle[self.tile_sel]))
             idx = np.argmax(self.cosdHA)
         return (self.tiles.tileID[idx], self.tiles.passnum[idx],
                 self.snr2frac[idx], self.exposure_factor[idx],

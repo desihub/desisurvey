@@ -101,6 +101,10 @@ def parse(options=None):
 
 def calculate_initial_plan(args, fullname, ephem):
     """Calculate initial hour-angle assignments for all tiles.
+
+    Save results in surveyinit.fits.  Use
+    :func:`desisurvey.plan.load_design_hourangle` to retrieve design hour-angle
+    assignments from the saved file.
     """
     log = desiutil.log.get_logger()
     config = desisurvey.config.Configuration()
