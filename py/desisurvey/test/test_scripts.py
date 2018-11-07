@@ -38,6 +38,7 @@ class TestScripts(unittest.TestCase):
         shutil.rmtree(cls.tmpdir)
         # Reset our configuration.
         desisurvey.config.Configuration.reset()
+        desisurvey.ephem._ephem = None
 
     def setUp(self):
         pass

@@ -52,6 +52,7 @@ class TestEphemerides(unittest.TestCase):
         shutil.rmtree(cls.tmpdir)
         # Reset our configuration.
         desisurvey.config.Configuration.reset()
+        desisurvey.ephem._ephem = None
 
     def test_get_ephem(self):
         """Test memory and disk caching"""
