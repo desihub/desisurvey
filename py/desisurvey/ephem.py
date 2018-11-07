@@ -646,7 +646,7 @@ class Ephemerides(object):
                     phist[ihi] += (hi - ihi) * wgt
         return lst_hist, lst_bins
 
-    def tabulate_program(self, mjd, include_twilight=True, as_tuple=True):
+    def tabulate_program(self, mjd, include_twilight=False, as_tuple=True):
         """Tabulate the program during one night.
 
         The program definitions are taken from
