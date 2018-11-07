@@ -227,6 +227,15 @@ class TestUtils(unittest.TestCase):
         """Test location object caching"""
         self.assertEqual(id(utils.get_location()), id(utils.get_location()))
 
+    def test_monsoon(self):
+        """Test nominal monsoon shutdown starts/stops on Mon/Fri each year"""
+        config = desisurvey.config.Configuration()
+        for key in config.monsoon.keys:
+            node = getattr(config.monsoon, key)
+            self.assertTrue(node.start().weekday() == 0)
+            self.assertTrue(node.stop().weekday() == 4)
+            self.assertTrue((node.stop() - node.start()).days == 18)
+
     def test_get_date(self):
         """Test date conversions"""
         # Start at local noon

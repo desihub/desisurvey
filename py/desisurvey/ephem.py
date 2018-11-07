@@ -531,7 +531,8 @@ class Ephemerides(object):
         return hours
 
     def get_available_lst(self, start_date=None, stop_date=None, nbins=192, origin=-60,
-                          weather=None, include_twilight=False):
+                          weather=None, include_monsoon=False, include_full_moon=False,
+                          include_twilight=False):
         """Calculate histograms of available LST for each program.
 
         Parameters
@@ -554,6 +555,10 @@ class Ephemerides(object):
             with the dome open (0=never, 1=always). Use
             1 - :func:`desimodel.weather.dome_closed_fractions` to lookup
             suitable corrections based on historical weather data.
+        include_monsoon : bool
+            Include nights during the annual monsoon shutdowns.
+        include_fullmoon : bool
+            Include nights during the monthly full-moon breaks.
         include_twilight : bool
             Include twilight in the BRIGHT program when True.
 
@@ -586,7 +591,9 @@ class Ephemerides(object):
         # Loop over nights.
         for n in range(num_nights):
             night = start_date + datetime.timedelta(n)
-            if desisurvey.utils.is_monsoon(night) or self.is_full_moon(night):
+            if not include_monsoon and desisurvey.utils.is_monsoon(night):
+                continue
+            if not include_full_moon and self.is_full_moon(night):
                 continue
             # Look up the program changes during this night.
             programs, changes = self.get_night_program(
@@ -637,16 +644,6 @@ class Ephemerides(object):
                     # Accumulate partial bins at each end of the program window.
                     phist[ilo - 1] += (ilo - lo) * wgt
                     phist[ihi] += (hi - ihi) * wgt
-
-        # Check that total LST equals total hours, correcting for sidereal vs solar hours.
-        # This should be moved to a unit test.
-        hrs = self.get_program_hours(start_date, stop_date, include_twilight=include_twilight)
-        if weather is not None:
-            hrs *= weather
-        hrs_sum = hrs.sum(axis=1)
-        lst_sum = lst_hist.sum(axis=1) * 0.99726956583 # sidereal / solar hours
-        assert np.allclose(hrs_sum, lst_sum)
-
         return lst_hist, lst_bins
 
     def tabulate_program(self, mjd, include_twilight=True, as_tuple=True):
