@@ -8,6 +8,7 @@ import numpy as np
 
 
 import desisurvey.config
+import desisurvey.ephem
 from desisurvey.forecast import Forecast
 
 
