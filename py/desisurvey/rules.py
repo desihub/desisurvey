@@ -45,6 +45,7 @@ class Rules(object):
     YAML file.
     """
     def __init__(self, file_name='rules.yaml'):
+        self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         tile_radius = config.tile_radius().to(u.deg).value
 
@@ -219,12 +220,11 @@ class Rules(object):
         """
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
-        # for gid, name in zip(np.unique(self.group_ids), self.group_names):
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
             if not np.any(group_sel):
-                log.error('No tiles covered by rule {}'.format(name))
+                self.log.error('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]
