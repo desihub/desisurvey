@@ -4,8 +4,10 @@ This is normally run once, at the start of the survey, and saves its results
 to a FITS file surveyinit.fits.  With the default parameters, the running time
 is about 25 minutes.
 
-This script will create the ephemerides and scheduler files, if necessary,
-which takes about 15 additional minutes. These only need to be created once.
+This script will calculate the ephemerides and expected weather (dome open
+fraction) for 2019-2025, then calculate design hour angles for the
+nominal survey dates.  The results are saved in a file (normally
+``surveyinit.fits``) and then do not need to be recalculated ever again.
 
 To run this script from the command line, use the ``surveyinit`` entry point
 that is created when this package is installed, and should be in your shell
@@ -114,9 +116,10 @@ def calculate_initial_plan(args, fullname, ephem):
     hdus = fits.HDUList()
     hdr = fits.Header()
 
-    # Calculate average weather factors for each day.
-    first = config.first_day()
-    last = config.last_day()
+    # Calculate average weather factors for each day covered by
+    # the ephemerides.
+    first = desisurvey.ephem.START_DATE
+    last = desisurvey.ephem.STOP_DATE
     years = np.arange(2007, 2018)
     fractions = []
     for year in years:
@@ -124,12 +127,21 @@ def calculate_initial_plan(args, fullname, ephem):
             desimodel.weather.dome_closed_fractions(first, last, replay='Y{}'.format(year)))
     weather = 1 - np.mean(fractions, axis=0)
     # Save the weather fractions as the primary HDU.
-    hdr['FIRST'] = str(first)
+    hdr['FIRST'] = first.isoformat()
+    hdr['YEARS'] = ','.join(years)
+    start = config.first_day()
+    stop = config.last_day()
+    assert start >= first and stop <= last
+    hdr['START'] = start.isoformat()
+    hdr['STOP'] = stop.isoformat()
+    hdr['TWILIGHT'] = args.include_twilight
     hdus.append(fits.ImageHDU(weather, header=hdr, name='WEATHER'))
 
-    # Calculate the distribution of available LST in each program.
+    # Calculate the distribution of available LST in each program
+    # during the nominal survey [start, stop).
+    ilo, ihi = (start - first).days, (stop - first).days
     lst_hist, lst_bins = ephem.get_available_lst(
-        nbins=args.nbins, weather=weather, include_twilight=args.include_twilight)
+        nbins=args.nbins, weather=weather[ilo:ihi], include_twilight=args.include_twilight)
 
     # Initialize the output results table.
     design = astropy.table.Table()
@@ -224,7 +236,7 @@ def main(args):
     # Tabulate emphemerides if necessary.
     ephem = desisurvey.ephem.get_ephem(use_cache=not args.recalc)
 
-    # Can we use existing HA assignments?
+    # Calculate design hour angles if necessary.
     fullname = config.get_path(args.save)
     if args.recalc or not os.path.exists(fullname):
         calculate_initial_plan(args, fullname, ephem)
