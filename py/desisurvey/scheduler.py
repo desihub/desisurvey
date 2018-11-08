@@ -36,7 +36,8 @@ class Scheduler(object):
     Parameters
     ----------
     design_hourangles : array or None
-        1D array of design hour angles to use in degrees. Uses HA=0 when None.
+        1D array of design hour angles to use in degrees, or use
+        :func:`desisurvey.plan.load_design_hourangle` when None.
     tiles_file : str or None
         Use this file containing the tile definitions, or the default
         specified in the configuration when None.
@@ -55,11 +56,11 @@ class Scheduler(object):
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
         # Check hourangles.
         if design_hourangle is None:
-            self.design_hourangle = np.zeros(self.tiles.ntiles, float)
+            self.design_hourangle = desisurvey.plan.load_design_hourangle()
         else:
             self.design_hourangle = np.asarray(design_hourangle)
-            if self.design_hourangle.shape != (self.tiles.ntiles,):
-                raise ValueError('Array design_hourangle has wrong shape.')
+        if self.design_hourangle.shape != (self.tiles.ntiles,):
+            raise ValueError('Array design_hourangle has wrong shape.')
         # Initialize arrays
         ntiles = self.tiles.ntiles
         self.snr2frac = np.zeros(ntiles)

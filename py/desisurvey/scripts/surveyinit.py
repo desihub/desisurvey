@@ -128,7 +128,7 @@ def calculate_initial_plan(args, fullname, ephem):
     weather = 1 - np.mean(fractions, axis=0)
     # Save the weather fractions as the primary HDU.
     hdr['FIRST'] = first.isoformat()
-    hdr['YEARS'] = ','.join(years)
+    hdr['YEARS'] = ','.join(['{}'.format(yr) for yr in years])
     start = config.first_day()
     stop = config.last_day()
     assert start >= first and stop <= last
