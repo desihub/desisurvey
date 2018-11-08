@@ -2,6 +2,8 @@
 """
 from __future__ import print_function, division
 
+import datetime
+
 import numpy as np
 
 import astropy.table
@@ -210,6 +212,57 @@ def load_design_hourangle(name='surveyinit.fits'):
     if HA.shape != (tiles.ntiles,):
         raise ValueError('Read unexpected HA shape.')
     return HA
+
+
+def load_weather(start_date=None, stop_date=None, name='surveyinit.fits'):
+    """Load dome-open fraction expected during each night of the survey.
+    
+    Reads Image HDU 'WEATHER'. This is the format saved by the
+    ``surveyinit`` script, but any FITS file following the same
+    convention can be used.
+
+    Parameters
+    ----------
+    name : str
+        Name of the FITS file to read. A relative path is assumed to
+        refer to the output path specified in the configuration.
+    start_date : date or None
+        First night to include or use the first date of the survey. Must
+        be convertible to a date using :func:`desisurvey.utils.get_date`.
+    stop_date : date or None
+        First night to include or use the last date of the survey. Must
+        be convertible to a date using :func:`desisurvey.utils.get_date`.
+
+    Returns
+    -------
+    array
+        1D array of length equal to the span between stop_date and
+        start_date. Values are between 0 (dome closed all night) and
+        1 (dome open all night).
+    """
+    config = desisurvey.config.Configuration()
+    if start_date is None:
+        start_date = config.first_day()
+    else:
+        start_date = desisurvey.utils.get_date(start_date)
+    if stop_date is None:
+        stop_date = config.last_day()
+    else:
+        stop_date = desisurvey.utils.get_date(stop_date)
+    if stop_date <= start_date:
+        raise ValueError('Expected start_date < stop_date.')
+    with astropy.io.fits.open(config.get_path(name), memmap=False) as hdus:
+        weather = hdus['WEATHER'].data
+        num_nights = len(weather)
+        first = desisurvey.utils.get_date(hdus['WEATHER'].header['FIRST'])
+        last = first + datetime.timedelta(num_nights)
+    if start_date < first:
+        raise ValueError('Weather not available before {}.'.format(first.isoformat()))
+    num_nights = (stop_date - start_date).days
+    if last < stop_date:
+        raise ValueError('Weather not available after {}.',format(last.isoformat()))
+    ilo, ihi = (start_date - first).days, (stop_date - first).days
+    return weather[ilo:ihi]
 
 
 class Planner(object):
