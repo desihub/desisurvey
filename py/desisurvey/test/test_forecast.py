@@ -38,7 +38,14 @@ class TestForecast(unittest.TestCase):
         desisurvey.ephem._ephem = None
 
     def test_forecast(self):
-        forecast = Forecast()
+        gen = np.random.RandomState(123)
+        ephem = desisurvey.ephem.get_ephem()
+        W = gen.uniform(size=ephem.num_nights)
+        tiles = desisurvey.tiles.get_tiles()
+        HA = gen.normal(scale=15, size=tiles.ntiles)
+        for twilight in True, False:
+            forecast = Forecast(use_twilight=twilight, design_hourangle=HA, weather=W)
+            forecast.summary()
 
 
 def test_suite():

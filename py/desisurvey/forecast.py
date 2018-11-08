@@ -2,8 +2,9 @@
 """
 from __future__ import print_function, division, absolute_import
 
+import collections
+
 import numpy as np
-import pandas as pd
 
 import astropy.table
 import astropy.units as u
@@ -27,9 +28,24 @@ class Forecast(object):
         Forecast for survey that starts on the evening of this date.
     stop_date : datetime.date
         Forecast for survey that stops on the morning of this date.
+    use_twilight : bool
+        Include twilight time in the forecast scheduled time?
+    weather : array or None
+        1D array of nightly weather factors (0-1) to use, or None to use
+        :func:`desisurvey.plan.load_weather`. The array length must equal
+        the number of nights in [start,stop). Values are fraction of the
+        night with the dome open (0=never, 1=always). Use
+        1 - :func:`desimodel.weather.dome_closed_fractions` to lookup
+        suitable corrections based on historical weather data.
+    design_hourangle : array or None
+        1D array of design hour angles to use in degrees, or None to use
+        :func:`desisurvey.plan.load_design_hourangle`.
+    tiles_file : str or None
+        Use this file containing the tile definitions, or the default
+        specified in the configuration when None.
     """
     def __init__(self, start_date=None, stop_date=None, use_twilight=False,
-                 tiles_file=None, designHA=None, weather_replay='Y2015'):
+                 weather=None, design_hourangle=None, tiles_file=None):
         config = desisurvey.config.Configuration()
         if start_date is None:
             start_date = config.first_day()
@@ -47,24 +63,34 @@ class Forecast(object):
         # Look up the tiles to observe.
         tiles = desisurvey.tiles.get_tiles(tiles_file)
         self.tiles = tiles
-        if designHA is None:
-            self.design_hour_angle = np.zeros(tiles.ntiles)
+        if design_hourangle is None:
+            self.design_hourangle = np.zeros(tiles.ntiles)
         else:
-            if len(designHA) != tiles.ntiles:
-                raise ValueError('Array designHA has wrong length.')
-            self.design_hour_angle = np.asarray(designHA)
-        # Load our configuration.
+            if len(design_hourangle) != tiles.ntiles:
+                raise ValueError('Array design_hourangle has wrong length.')
+            self.design_hourangle = np.asarray(design_hourangle)
+        # Get weather factors.
+        if weather is None:
+            self.weather = desisurvey.plan.load_weather(start_date, stop_date)
+        else:
+            self.weather = np.asarray(weather)
+        if self.weather.shape != (self.num_nights,):
+            raise ValueError('Array weather has wrong shape.')
+        # Get the design hour angles.
+        if design_hourangle is None:
+            self.design_hourangle = desisurvey.plan.load_design_hourangle()
+        else:
+            self.design_hourangle = np.asarray(design_hourangle)
+        if self.design_hourangle.shape != (tiles.ntiles,):
+            raise ValueError('Array design_hourangle has wrong shape.')
         # Compute airmass at design hour angles.
-        self.airmass = tiles.airmass(self.design_hour_angle)
+        self.airmass = tiles.airmass(self.design_hourangle)
         airmass_factor = desisurvey.etc.airmass_exposure_factor(self.airmass)
         # Load ephemerides.
         ephem = desisurvey.ephem.get_ephem()
-        # Compute the expected available hours per program.
+        # Compute the expected available and scheduled hours per program.
         scheduled = ephem.get_program_hours(include_twilight=use_twilight)
-        # Lookup the dome closed fractions.
-        dome_closed_frac = desimodel.weather.dome_closed_fractions(
-            config.first_day(), config.last_day(), replay=weather_replay)
-        available = scheduled * (1 - dome_closed_frac)
+        available = scheduled * self.weather
         self.cummulative_days = np.cumsum(available, axis=1) / 24.
         # Calculate program parameters.
         ntiles, tsched, openfrac, dust, airmass, nominal = [], [], [], [], [], []
@@ -79,33 +105,43 @@ class Forecast(object):
             airmass.append(airmass_factor[tile_sel].mean())
             nominal.append(getattr(config.nominal_exposure_time, program)().to(u.s).value)
         # Build a table of all forecasting parameters.
-        df = pd.DataFrame()
+        df = collections.OrderedDict()
         self.df = df
-        df['Number of tiles'] = ntiles
-        df['Scheduled time (hr)'] = tsched
-        df['Dome open fraction'] = openfrac
+        df['Number of tiles'] = np.array(ntiles)
+        df['Scheduled time (hr)'] = np.array(tsched)
+        df['Dome open fraction'] = np.array(openfrac)
         self.set_overheads()
-        df['Nominal exposure (s)'] = nominal
-        df['Dust factor'] = dust
-        df['Airmass factor'] = airmass
+        df['Nominal exposure (s)'] = np.array(nominal)
+        df['Dust factor'] = np.array(dust)
+        df['Airmass factor'] = np.array(airmass)
         self.set_factors()
 
-    def summary(self):
+    def summary(self, width=7, prec=5, separator='-'):
         """Print a summary table of the forecast parameters.
         """
-        df = self.df.transpose()
-        df.rename({pidx: pname for pidx, pname in enumerate(self.tiles.PROGRAMS)},
-                  inplace=True, axis='columns')
-        return df
+        # Find the longest key and calculate the row length.
+        nprog = len(self.tiles.PROGRAMS)
+        maxlen = np.max([len(key) for key in self.df])
+        rowlen = maxlen + (1 + width) * nprog
+        # Build a format string for each row.
+        header = ' ' * maxlen + ' {{:>{}s}}'.format(width) * nprog
+        row = '{{:>{}s}}'.format(maxlen) + ' {{:{}.{}g}}'.format(width, prec) * nprog
+        # Print the header.
+        print(header.format(*self.tiles.PROGRAMS))
+        print(separator * rowlen)
+        # Print each row.
+        for key, values in self.df.items():
+            print(row.format(key, *values))
+        print(separator * rowlen)
 
     def set_overheads(self, update_margin=True,
                       setup={'DARK': 200, 'GRAY': 200, 'BRIGHT': 150},
                       split={'DARK': 100, 'GRAY': 100, 'BRIGHT':  75},
                       dead ={'DARK':  20, 'GRAY': 100, 'BRIGHT':  10}):
         df = self.df
-        df['Setup overhead / tile (s)'] = [setup[p] for p in self.tiles.PROGRAMS]
-        df['Cosmic split overhead / tile (s)'] = [split[p] for p in self.tiles.PROGRAMS]
-        df['Operations overhead / tile (s)'] = [dead[p] for p in self.tiles.PROGRAMS]
+        df['Setup overhead / tile (s)'] = np.array([setup[p] for p in self.tiles.PROGRAMS])
+        df['Cosmic split overhead / tile (s)'] = np.array([split[p] for p in self.tiles.PROGRAMS])
+        df['Operations overhead / tile (s)'] = np.array([dead[p] for p in self.tiles.PROGRAMS])
         df['Average available / tile (s)'] = (
             df['Scheduled time (hr)'] * df['Dome open fraction'] /
             # Avoid division by zero for a program with no tiles.
@@ -119,8 +155,8 @@ class Forecast(object):
                        moon    = {'DARK': 1.00, 'GRAY': 1.10, 'BRIGHT': 1.33},
                        weather = {'DARK': 1.22, 'GRAY': 1.20, 'BRIGHT': 1.16}):
         df = self.df
-        df['Moon factor'] = [moon[p] for p in self.tiles.PROGRAMS]
-        df['Weather factor'] = [weather[p] for p in self.tiles.PROGRAMS]
+        df['Moon factor'] = np.array([moon[p] for p in self.tiles.PROGRAMS])
+        df['Weather factor'] = np.array([weather[p] for p in self.tiles.PROGRAMS])
         df['Average required / tile (s)'] = (
             df['Nominal exposure (s)'] *
             df['Dust factor'] *
