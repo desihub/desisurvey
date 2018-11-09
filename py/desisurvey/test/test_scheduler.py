@@ -69,7 +69,7 @@ class TestScheduler(unittest.TestCase):
             for mjd in np.arange(dusk, dawn, 15. / (24. * 60.)):
                 tileid, _, _, _, _, _, _ = scheduler.next_tile(mjd, ETC, seeing=1.1, transp=0.95)
                 if tileid is not None:
-                    scheduler.update_tile(tileid, 1.)
+                    scheduler.update_snr(tileid, 1.)
 
 
 def test_suite():
