@@ -48,7 +48,17 @@ class TestPlan(unittest.TestCase):
             plan.initialize(self.start)
             for i in range(num_nights):
                 night = self.start + datetime.timedelta(i)
-                plan.afternoon_plan(night, completed)
+                # Save and restore our state.
+                plan.save()
+                plan2 = Planner(fiberassign_cadence=cadence, restore_date=plan.last_night)
+                # Run afternoon plan using original and restored objects.
+                avail, pri = plan.afternoon_plan(night, completed)
+                avail2, pri2 = plan2.afternoon_plan(night, completed)
+                # Check that the restored planner gives identical results.
+                self.assertTrue(np.array_equal(avail, avail2))
+                self.assertTrue(np.array_equal(pri, pri2))
+                self.assertTrue(np.array_equal(plan.tile_countdown, plan2.tile_countdown))
+                # Mark a random set of tiles completed after this night.
                 completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
 
 

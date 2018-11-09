@@ -3,6 +3,7 @@
 from __future__ import print_function, division
 
 import datetime
+import os.path
 
 import numpy as np
 
@@ -99,8 +100,23 @@ def load_weather(start_date=None, stop_date=None, name='surveyinit.fits'):
 
 class Planner(object):
     """Coordinate afternoon planning activities.
+
+    Parameters
+    ----------
+    rules : object or None
+        Object with an ``apply`` method that is used to implement survey strategy by updating
+        tile priorities each afternoon.  When None, all tiles have equal priority.
+    fiberassign_cadence : 'daily' or 'monthly'
+        Cadence for updating fiber assignments.  Monthly is defined as the afternoon before
+        a full moon.
+    restore_date : datetime.date or None
+        Restore internal state from the snapshot saved on this date, or initialize a new
+        plan when None.
+    tiles_file : str or None
+        Override the default tiles files specified in the configuration when specified.
     """
-    def __init__(self, rules=None, fiberassign_cadence='monthly', tiles_file=None):
+    def __init__(self, rules=None, fiberassign_cadence='monthly', restore_date=None, tiles_file=None):
+        self.log = desiutil.log.get_logger()
         self.rules = rules
         if fiberassign_cadence not in ('daily', 'monthly'):
             raise ValueError('Invalid fiberassign_cadence: "{}".'.format(fiberassign_cadence))
@@ -108,10 +124,31 @@ class Planner(object):
         config = desisurvey.config.Configuration()
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
         self.ephem = desisurvey.ephem.get_ephem()
-        # Initialize per-tile arrays.
-        self.tile_covered = np.full(self.tiles.ntiles, -1)
-        self.tile_countdown = np.full(self.tiles.ntiles, 1)
-        self.tile_available = np.zeros(self.tiles.ntiles, bool)
+        if restore_date is not None:
+            name = config.get_path('plan_{}.fits'.format(restore_date.isoformat()))
+            if not os.path.exists(name):
+                raise RuntimeError('Cannot restore from non-existant "{}".'.format(name))
+            t = astropy.table.Table.read(name)
+            if t.meta['CADENCE'] != self.fiberassign_cadence:
+                raise ValueError('Fiberassign cadence mismatch.')
+            self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
+            self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
+            self.tile_covered = t['COVERED'].data.copy()
+            self.tile_countdown = t['COUNTDOWN'].data.copy()
+            self.tile_available = t['AVAILABLE'].data.copy()
+            self.tile_priority = t['PRIORITY'].data.copy()
+            self.log.info(
+                'Restored plan with {} ({}) / {} tiles covered (available).'
+                .format(np.count_nonzero(self.tile_covered),
+                        np.count_nonzero(self.tile_available),
+                        self.tiles.ntiles))
+        else:
+            # Initialize per-tile arrays.
+            self.tile_covered = np.full(self.tiles.ntiles, -1)
+            self.tile_countdown = np.full(self.tiles.ntiles, 1)
+            self.tile_available = np.zeros(self.tiles.ntiles, bool)
+            self.tile_priority = None
+            self.first_night = self.last_night = None
         # Precompute the tile overlaps between passes needed to update fiber assignments.
         self.tile_over = {}
         self.overlapping = {}
@@ -122,10 +159,11 @@ class Planner(object):
             over = np.zeros_like(under)
             key = 'P{}'.format(passnum)
             if key not in fiberassign_order.keys:
-                # Mark tiles in this pass as initially available.
-                self.tile_covered[under] = 0
-                self.tile_available[under] = True
-                print('Pass {} available for initial observing.'.format(passnum))
+                if restore_date is None:
+                    # Mark tiles in this pass as initially available.
+                    self.tile_covered[under] = 0
+                    self.tile_available[under] = True
+                    self.log.info('Pass {} available for initial observing.'.format(passnum))
             else:
                 overpasses = getattr(fiberassign_order, key)()
                 for overpass in overpasses.split('+'):
@@ -139,9 +177,32 @@ class Planner(object):
                     self.tiles.tileRA[over], self.tiles.tileDEC[over], tile_diameter)
             self.tile_over[passnum] = over
 
+    def save(self):
+        """Save a snapshot of our current state that can be restored.
+
+        Snapshot is saved to $DESISURVEY_OUTPUT/plan_YYYYMMDD.fits using the
+        date when :meth:`afternoon_plan` or :meth:`initialize` was last run.
+        """
+        if self.first_night is None:
+            raise RuntimeError('Cannot save a plan before it has been initialized.')
+        assert self.tile_priority is not None
+        config = desisurvey.config.Configuration()
+        name = config.get_path('plan_{}.fits'.format(self.last_night.isoformat()))
+        t = astropy.table.Table(meta={
+            'CADENCE': self.fiberassign_cadence,
+            'FIRST': self.first_night.isoformat(),
+            'LAST': self.last_night.isoformat() if self.last_night is not None else '',
+            })
+        t['COVERED'] = self.tile_covered
+        t['COUNTDOWN'] = self.tile_countdown
+        t['AVAILABLE'] = self.tile_available
+        t['PRIORITY'] = self.tile_priority
+        t.write(name, overwrite=True)
+
     def initialize(self, night):
         # Remember the first night of the survey.
-        self.initial_night = night
+        self.first_night = night
+        self.last_night = night
         # Initialize priorities.
         if self.rules is not None:
             none_completed = np.zeros(self.tiles.ntiles, bool)
@@ -154,7 +215,7 @@ class Planner(object):
 
     def fiberassign(self, night, completed):
         # Calculate the number of elapsed nights in the survey.
-        day_number = (night - self.initial_night).days
+        day_number = (night - self.first_night).days
         print('Running fiber assignment on {} (day number {}) with {} tiles completed.'
               .format(night, day_number, np.count_nonzero(completed)))
         for passnum in self.tiles.passes:
@@ -181,10 +242,12 @@ class Planner(object):
         # Update delay countdown for the remaining ready tiles.
         delayed = ready & (self.tile_countdown > 0)
         self.tile_countdown[delayed] -= 1
-        print('fiber assigned {} tiles, with {} delayed.'
-              .format(np.count_nonzero(run_now), np.count_nonzero(delayed)))
+        self.log.info('Fiber assigned {} tiles, with {} delayed.'
+                      .format(np.count_nonzero(run_now), np.count_nonzero(delayed)))
 
     def afternoon_plan(self, night, completed):
+        if self.first_night is None:
+            raise RuntimeError('Must call initialize() before afternoon_plan()')
         # Update fiber assignments this afternoon?
         if self.fiberassign_cadence == 'monthly':
             # Run fiber assignment on the afternoon before the full moon.
@@ -198,5 +261,5 @@ class Planner(object):
         # Update tile priorities.
         if self.rules is not None:
             self.tile_priority = self.rules.apply(completed)
-
+        self.last_night = night
         return self.tile_available, self.tile_priority
