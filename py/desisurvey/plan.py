@@ -137,7 +137,7 @@ class Planner(object):
             self.tile_countdown = t['COUNTDOWN'].data.copy()
             self.tile_available = t['AVAILABLE'].data.copy()
             self.tile_priority = t['PRIORITY'].data.copy()
-            self.log.info(
+            self.log.debug(
                 'Restored plan with {} ({}) / {} tiles covered (available).'
                 .format(np.count_nonzero(self.tile_covered),
                         np.count_nonzero(self.tile_available),
@@ -182,6 +182,7 @@ class Planner(object):
 
         Snapshot is saved to $DESISURVEY_OUTPUT/plan_YYYYMMDD.fits using the
         date when :meth:`afternoon_plan` or :meth:`initialize` was last run.
+        The snapshot file size is about 400Kb.
         """
         if self.first_night is None:
             raise RuntimeError('Cannot save a plan before it has been initialized.')
@@ -198,6 +199,11 @@ class Planner(object):
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
         t.write(name, overwrite=True)
+        self.log.debug(
+            'Saved plan with {} ({}) / {} tiles covered (available).'
+            .format(np.count_nonzero(self.tile_covered),
+                    np.count_nonzero(self.tile_available),
+                    self.tiles.ntiles))
 
     def initialize(self, night):
         # Remember the first night of the survey.
