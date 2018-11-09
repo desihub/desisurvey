@@ -189,8 +189,8 @@ class Scheduler(object):
                 self.snr2frac[idx], self.exposure_factor[idx],
                 self.airmass[idx], program, mjd_program_end)
 
-    def update_tile(self, tileID, snr2frac):
-        """Update SNR for one tile and return True if any tiles remain.
+    def update_snr(self, tileID, snr2frac):
+        """Update SNR for one tile.
         """
         idx = self.tiles.index(tileID)
         self.snr2frac[idx] = snr2frac
