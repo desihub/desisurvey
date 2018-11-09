@@ -38,11 +38,15 @@ class Scheduler(object):
     design_hourangles : array or None
         1D array of design hour angles to use in degrees, or use
         :func:`desisurvey.plan.load_design_hourangle` when None.
+    snr2frac : array or None
+        Array of fractional SNR**2 values accumulated so far per tile.
+        Initialized to zero when None. This is the only internal state
+        required to restore a scheduler object.
     tiles_file : str or None
         Use this file containing the tile definitions, or the default
         specified in the configuration when None.
     """
-    def __init__(self, design_hourangle=None, tiles_file=None):
+    def __init__(self, design_hourangle=None, snr2frac=None, tiles_file=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -54,6 +58,7 @@ class Scheduler(object):
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
+        ntiles = self.tiles.ntiles
         # Check hourangles.
         if design_hourangle is None:
             self.design_hourangle = desisurvey.plan.load_design_hourangle()
@@ -61,16 +66,27 @@ class Scheduler(object):
             self.design_hourangle = np.asarray(design_hourangle)
         if self.design_hourangle.shape != (self.tiles.ntiles,):
             raise ValueError('Array design_hourangle has wrong shape.')
-        # Initialize arrays
-        ntiles = self.tiles.ntiles
-        self.snr2frac = np.zeros(ntiles)
+        # Initialize snr2frac, which is our only internal state.
+        if snr2frac is None:
+            self.snr2frac = np.zeros(ntiles)
+        else:
+            self.snr2frac = np.array(snr2frac).astype(float)
+            if self.snr2frac.shape != (ntiles,):
+                raise ValueError('Invalid snr2frac array shape.')
+        # Initialize arrays derived from snr2frac.
+        # Note that indexing of completed_by_pass uses tiles.pass_index, which is not necessarily
+        # the same as range(tiles.npasses).
+        self.completed = (self.snr2frac >= self.min_snr2frac)
+        self.completed_by_pass = np.zeros(self.tiles.npasses, np.int32)
+        for passnum in self.tiles.passes:
+            idx = self.tiles.pass_index[passnum]
+            self.completed_by_pass[idx] = np.count_nonzero(self.completed[self.tiles.passnum == passnum])
+        # Allocate memory for internal arrays.
         self.exposure_factor = np.zeros(ntiles)
         self.hourangle = np.zeros(ntiles)
         self.cosdHA = np.zeros(ntiles)
         self.airmass = np.zeros(ntiles)
-        self.completed = np.zeros(ntiles, bool)
         self.in_night_pool = np.zeros(ntiles, bool)
-        self.completed_by_pass = np.zeros(self.tiles.npasses, np.int32)
         self.tile_sel = np.zeros(ntiles, bool)
         self.LST = 0.
         # Initialize tile priority and available arrays.

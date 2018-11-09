@@ -138,10 +138,10 @@ class Planner(object):
             self.tile_available = t['AVAILABLE'].data.copy()
             self.tile_priority = t['PRIORITY'].data.copy()
             self.log.debug(
-                'Restored plan with {} ({}) / {} tiles covered (available).'
+                'Restored plan with {} ({}) / {} tiles covered (available) for ({},{}).'
                 .format(np.count_nonzero(self.tile_covered),
-                        np.count_nonzero(self.tile_available),
-                        self.tiles.ntiles))
+                        np.count_nonzero(self.tile_available), self.tiles.ntiles,
+                        self.first_night.isoformat(), self.last_night.isoformat()))
         else:
             # Initialize per-tile arrays.
             self.tile_covered = np.full(self.tiles.ntiles, -1)
@@ -200,10 +200,10 @@ class Planner(object):
         t['PRIORITY'] = self.tile_priority
         t.write(name, overwrite=True)
         self.log.debug(
-            'Saved plan with {} ({}) / {} tiles covered (available).'
+            'Saved plan with {} ({}) / {} tiles covered (available) for ({},{}).'
             .format(np.count_nonzero(self.tile_covered),
-                    np.count_nonzero(self.tile_available),
-                    self.tiles.ntiles))
+                    np.count_nonzero(self.tile_available), self.tiles.ntiles,
+                    self.first_night.isoformat(), self.last_night.isoformat()))
 
     def initialize(self, night):
         # Remember the first night of the survey.
