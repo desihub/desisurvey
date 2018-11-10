@@ -125,6 +125,7 @@ class Planner(object):
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
         self.ephem = desisurvey.ephem.get_ephem()
         if restore_date is not None:
+            # Restore the plan for a survey in progress.
             name = config.get_path('plan_{}.fits'.format(restore_date.isoformat()))
             if not os.path.exists(name):
                 raise RuntimeError('Cannot restore from non-existant "{}".'.format(name))
@@ -143,12 +144,20 @@ class Planner(object):
                         np.count_nonzero(self.tile_available), self.tiles.ntiles,
                         self.first_night.isoformat(), self.last_night.isoformat()))
         else:
+            # Initialize the plan for a a new survey.
+            self.first_night = self.last_night = None
             # Initialize per-tile arrays.
             self.tile_covered = np.full(self.tiles.ntiles, -1)
             self.tile_countdown = np.full(self.tiles.ntiles, 1)
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
-            self.tile_priority = None
-            self.first_night = self.last_night = None
+            # Initialize priorities.
+            if self.rules is not None:
+                none_completed = np.zeros(self.tiles.ntiles, bool)
+                self.tile_priority = self.rules.apply(none_completed)
+            else:
+                self.tile_priority = np.ones(self.tiles.ntiles, float)
+        if not np.any(self.tile_priority > 0):
+            raise RuntimeError('All tile priorities are all <= 0.')
         # Precompute the tile overlaps between passes needed to update fiber assignments.
         self.tile_over = {}
         self.overlapping = {}
@@ -184,15 +193,15 @@ class Planner(object):
         date when :meth:`afternoon_plan` or :meth:`initialize` was last run.
         The snapshot file size is about 400Kb.
         """
-        if self.first_night is None:
-            raise RuntimeError('Cannot save a plan before it has been initialized.')
+        if self.first_night is None or self.last_night is None:
+            raise ValueError('Cannot save tiles before first afternoon_plan().')
         assert self.tile_priority is not None
         config = desisurvey.config.Configuration()
         name = config.get_path('plan_{}.fits'.format(self.last_night.isoformat()))
         t = astropy.table.Table(meta={
             'CADENCE': self.fiberassign_cadence,
             'FIRST': self.first_night.isoformat(),
-            'LAST': self.last_night.isoformat() if self.last_night is not None else '',
+            'LAST': self.last_night.isoformat(),
             })
         t['COVERED'] = self.tile_covered
         t['COUNTDOWN'] = self.tile_countdown
@@ -204,20 +213,6 @@ class Planner(object):
             .format(np.count_nonzero(self.tile_covered),
                     np.count_nonzero(self.tile_available), self.tiles.ntiles,
                     self.first_night.isoformat(), self.last_night.isoformat()))
-
-    def initialize(self, night):
-        # Remember the first night of the survey.
-        self.first_night = night
-        self.last_night = night
-        # Initialize priorities.
-        if self.rules is not None:
-            none_completed = np.zeros(self.tiles.ntiles, bool)
-            self.tile_priority = self.rules.apply(none_completed)
-            if not np.any(self.tile_priority > 0):
-                raise RuntimeError('Initial tile priorities are all <= 0.')
-        else:
-            self.tile_priority = np.ones(self.tiles.ntiles, float)
-        return self.tile_available, self.tile_priority
 
     def fiberassign(self, night, completed):
         # Calculate the number of elapsed nights in the survey.
@@ -253,7 +248,8 @@ class Planner(object):
 
     def afternoon_plan(self, night, completed):
         if self.first_night is None:
-            raise RuntimeError('Must call initialize() before afternoon_plan()')
+            # Remember the first night of the survey.
+            self.first_night = night
         # Update fiber assignments this afternoon?
         if self.fiberassign_cadence == 'monthly':
             # Run fiber assignment on the afternoon before the full moon.

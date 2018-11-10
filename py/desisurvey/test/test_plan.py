@@ -45,21 +45,23 @@ class TestPlan(unittest.TestCase):
         gen = np.random.RandomState(123)
         for cadence in 'daily', 'monthly':
             plan = Planner(fiberassign_cadence=cadence)
-            plan.initialize(self.start)
+            plan2 = None
             for i in range(num_nights):
                 night = self.start + datetime.timedelta(i)
+                # Run afternoon plan using original and restored objects.
+                avail, pri = plan.afternoon_plan(night, completed)
+                if plan2 is not None:
+                    # Check that the restored planner gives identical results.
+                    avail2, pri2 = plan2.afternoon_plan(night, completed)
+                    self.assertTrue(np.array_equal(avail, avail2))
+                    self.assertTrue(np.array_equal(pri, pri2))
+                    self.assertTrue(np.array_equal(plan.tile_countdown, plan2.tile_countdown))
+                # Mark a random set of tiles completed after this night.
+                completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
                 # Save and restore our state.
                 plan.save()
                 plan2 = Planner(fiberassign_cadence=cadence, restore_date=plan.last_night)
-                # Run afternoon plan using original and restored objects.
-                avail, pri = plan.afternoon_plan(night, completed)
-                avail2, pri2 = plan2.afternoon_plan(night, completed)
-                # Check that the restored planner gives identical results.
-                self.assertTrue(np.array_equal(avail, avail2))
-                self.assertTrue(np.array_equal(pri, pri2))
-                self.assertTrue(np.array_equal(plan.tile_countdown, plan2.tile_countdown))
-                # Mark a random set of tiles completed after this night.
-                completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
+
 
 
 def test_suite():
