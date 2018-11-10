@@ -104,11 +104,35 @@ class Scheduler(object):
 
     def update_tiles(self, tile_available, tile_priority):
         """Update tile availability and priority.
+
+        A valid update must have some tiles available with priority > 0.
+        Once a tile has been "planned", i.e., assigned priority > 0, it can
+        not be later un-planned, i.e., assigned zero priority.
+
+        Parameters
+        ----------
+        tile_available : array
+            1D array of booleans to indicate which tiles have had fibers assigned
+            and so are available to schedule.
+        tile_priority : array
+            1D array of per-tile priority values >= 0 used to implement survey strategy.
+
+        Returns
+        -------
+        tuple
+            Tuple (new_available, new_planned) of 1D arrays of tile indices that
+            identify any tiles are newly available or "planned" (assigned priority > 0).
         """
+        if np.any(tile_priority < 0):
+            raise ValueError('All tile priorities must be >= 0.')
         new_available = tile_available & ~self.tile_available
         new_planned = (tile_priority > 0) & ~self.tile_planned
-        self.tile_available[:] = tile_available
-        self.tile_priority[:] = tile_priority
+        new_unplanned = (tile_priority == 0) & self.tile_planned
+        if np.any(new_unplanned):
+            raise RuntimeError('Some previously planned tiles now have zero priority.')
+        self.tile_available[new_available] = True
+        self.tile_planned[new_planned] = True
+        self.tile_priority[new_planned] = tile_priority[new_planned]
         if not np.any(self.tile_available & self.tile_planned):
             raise ValueError('No available tiles with priority > 0 to schedule.')
         return np.where(new_available)[0], np.where(new_planned)[0]
@@ -142,7 +166,7 @@ class Scheduler(object):
         # Remember the last tile observed this night.
         self.last_idx = None
         # Initialize the pool of tiles that could be observed this night.
-        self.in_night_pool[:] = ~self.completed & (self.tile_priority > 0) & self.tile_available
+        self.in_night_pool[:] = ~self.completed & self.tile_planned & self.tile_available
 
     def next_tile(self, mjd_now, ETC, seeing, transp, method='design'):
         """Return the next tile to observe or None.

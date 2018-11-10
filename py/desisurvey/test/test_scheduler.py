@@ -58,7 +58,6 @@ class TestScheduler(unittest.TestCase):
         HA = desisurvey.plan.load_design_hourangle()
         scheduler = Scheduler(HA)
         planner = desisurvey.plan.Planner(fiberassign_cadence='daily')
-        scheduler.init_tiles(*planner.initialize(self.start))
         num_nights = (self.stop - self.start).days
         for i in range(num_nights):
             night = self.start + datetime.timedelta(i)
