@@ -55,20 +55,28 @@ class TestScheduler(unittest.TestCase):
         cmd = 'surveyinit --max-cycles 5 --init zero'
         args = surveyinit.parse(cmd.split()[1:])
         surveyinit.main(args)
-        HA = desisurvey.plan.load_design_hourangle()
-        scheduler = Scheduler(HA)
         planner = desisurvey.plan.Planner(fiberassign_cadence='daily')
+        scheduler = Scheduler()
         num_nights = (self.stop - self.start).days
         for i in range(num_nights):
             night = self.start + datetime.timedelta(i)
             scheduler.update_tiles(*planner.afternoon_plan(night, scheduler.completed))
             scheduler.init_night(night)
+            # Save and restore scheduler state.
+            scheduler.save('snapshot.fits')
+            scheduler2 = Scheduler(restore='snapshot.fits')
+            scheduler2.init_night(night)
+            # Loop over exposures during the night.
             dusk, dawn = scheduler.night_ephem['dusk'], scheduler.night_ephem['dawn']
             ETC = desisurvey.etc.ExposureTimeCalculator()
             for mjd in np.arange(dusk, dawn, 15. / (24. * 60.)):
                 tileid, _, _, _, _, _, _ = scheduler.next_tile(mjd, ETC, seeing=1.1, transp=0.95)
+                # Check that the restored scheduler gives the same results.
+                tileid2, _, _, _, _, _, _ = scheduler.next_tile(mjd, ETC, seeing=1.1, transp=0.95)
+                self.assertEqual(tileid, tileid2)
                 if tileid is not None:
                     scheduler.update_snr(tileid, 1.)
+                    scheduler2.update_snr(tileid, 1.)
 
 
 def test_suite():

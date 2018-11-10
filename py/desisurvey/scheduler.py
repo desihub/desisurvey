@@ -4,9 +4,12 @@ This module supercedes desisurvey.old.schedule.
 """
 from __future__ import print_function, division
 
+import os.path
+
 import numpy as np
 
 import astropy.table
+import astropy.io.fits
 import astropy.units as u
 
 import desiutil.log
@@ -40,6 +43,10 @@ class Scheduler(object):
     design_hourangles : array or None
         1D array of design hour angles to use in degrees, or use
         :func:`desisurvey.plan.load_design_hourangle` when None.
+    restore : str or None
+        Restore internal state from the snapshot saved to this filename,
+        or initialize a new scheduler when None. Use :meth:`save` to
+        save a snapshot to be restored later.
     snr2frac : array or None
         Array of fractional SNR**2 values accumulated so far per tile.
         Initialized to zero when None. This is the only internal state
@@ -48,7 +55,7 @@ class Scheduler(object):
         Use this file containing the tile definitions, or the default
         specified in the configuration when None.
     """
-    def __init__(self, design_hourangle=None, snr2frac=None, tiles_file=None):
+    def __init__(self, design_hourangle=None, restore=None, tiles_file=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -69,12 +76,19 @@ class Scheduler(object):
         if self.design_hourangle.shape != (self.tiles.ntiles,):
             raise ValueError('Array design_hourangle has wrong shape.')
         # Initialize snr2frac, which is our only internal state.
-        if snr2frac is None:
-            self.snr2frac = np.zeros(ntiles)
-        else:
-            self.snr2frac = np.array(snr2frac).astype(float)
+        if restore is not None:
+            # Restore the snr2frac array for a survey in progress.
+            fullname = config.get_path(restore)
+            if not os.path.exists(fullname):
+                raise RuntimeError('Cannot restore scheduler from non-existent "{}".'.format(fullname))
+            with astropy.io.fits.open(fullname, memmap=False) as hdus:
+                self.snr2frac = hdus[0].data.copy()
             if self.snr2frac.shape != (ntiles,):
                 raise ValueError('Invalid snr2frac array shape.')
+            self.log.debug('Restored scheduler snapshot from "{}".'.format(fullname))
+        else:
+            # Initialize for a new survey.
+            self.snr2frac = np.zeros(ntiles, float)
         # Initialize arrays derived from snr2frac.
         # Note that indexing of completed_by_pass uses tiles.pass_index, which is not necessarily
         # the same as range(tiles.npasses).
@@ -91,6 +105,7 @@ class Scheduler(object):
         self.in_night_pool = np.zeros(ntiles, bool)
         self.tile_sel = np.zeros(ntiles, bool)
         self.LST = 0.
+        self.night = None
         # Initialize tile priority and available arrays.
         self.tile_priority = None
         self.tile_available = None
@@ -101,6 +116,35 @@ class Scheduler(object):
         self.tile_available = np.zeros(self.tiles.ntiles, bool)
         self.tile_planned = np.zeros(self.tiles.ntiles, bool)
         self.tile_priority = np.zeros(self.tiles.ntiles, float)
+
+    def save(self, name):
+        """Save a snapshot of our current state that can be restored.
+
+        The only internal state required to restore a Scheduler is the array
+        of snr2frac values per tile.
+
+        Snapshot is saved to $DESISURVEY_OUTPUT/scheduler_YYYYMMDD.fits using the
+        date when :meth:`init_night` was last run.
+        The snapshot file size is about ??Kb.
+
+        Parameters
+        ----------
+        name : str
+            Name of FITS file where the snapshot will be saved. The file will
+            be saved under our configuration's output path unless name is
+            already an absolute path.  Pass the same name to the constructor's
+            ``restore`` argument to restore this snapshot.
+        """
+        config = desisurvey.config.Configuration()
+        fullname = config.get_path(name)
+        hdr = astropy.io.fits.Header()
+        # Record the last night this scheduler was initialized for.
+        hdr['NIGHT'] = self.night.isoformat() if self.night else ''
+        # Record the number of completed tiles.
+        hdr['NDONE'] = self.completed_by_pass.sum()
+        # Save a copy of our snr2frac array.
+        astropy.io.fits.PrimaryHDU(self.snr2frac, header=hdr).writeto(fullname, overwrite=True)
+        self.log.debug('Saved scheduler snapshot to "{}".'.format(fullname))
 
     def update_tiles(self, tile_available, tile_priority):
         """Update tile availability and priority.
@@ -146,7 +190,8 @@ class Scheduler(object):
         Tile availability and priority is assumed fixed during the night.
         """
         if self.tile_available is None or self.tile_priority is None:
-            raise RuntimeError('Must call init_tiles() before init_night().')
+            raise RuntimeError('Must call update_tiles() before init_night().')
+        self.night = night
         self.use_twilight = use_twilight
         self.night_ephem = self.ephem.get_night(night)
         # Lookup the program for this night.
@@ -169,8 +214,35 @@ class Scheduler(object):
         self.in_night_pool[:] = ~self.completed & self.tile_planned & self.tile_available
 
     def next_tile(self, mjd_now, ETC, seeing, transp, method='design'):
-        """Return the next tile to observe or None.
+        """Select the next tile to observe.
+
+        The :meth:`init_night` method must be called before calling this
+        method during a night.
+
+        Parameters
+        ----------
+        mjd_now : float
+            Time when the decision is being made.
+        ETC : :class:`desisurvey.etc.ExposureTimeCalculator`
+            Object with a method ``could_complete()`` that is used to determine
+            which tiles could be completed within a specified amount of time
+            under current observing conditions. This use of ETC does not
+            change its internal state.
+        seeing : float
+            Estimate of current atmospherid seeing in arcseconds.
+        transp : float
+            Estimate of current atmospheric transparency in the range 0-1.
+
+        Returns
+        -------
+        tuple
+            Tuple (TILEID,PASSNUM,SNR2FRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
+            giving the ID and associated properties of the selected tile.
+            When TILEID is None, no tile is observable and this method
+            should be called again after some delay.
         """
+        if self.night is None:
+            raise ValueError('Must call init_night() before next_tile().')
         # Which program are we in?
         while mjd_now >= self.night_changes[self.night_index + 1]:
             self.night_index += 1
