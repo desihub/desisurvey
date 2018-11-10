@@ -35,6 +35,8 @@ class Scheduler(object):
 
     Parameters
     ----------
+    planner : :class:`desisurvey.plan.Planner`
+        Planner object to use for initialzing tiles to schedule.
     design_hourangles : array or None
         1D array of design hour angles to use in degrees, or use
         :func:`desisurvey.plan.load_design_hourangle` when None.
@@ -94,22 +96,11 @@ class Scheduler(object):
         self.tile_available = None
         # Load the ephemerides to use.
         self.ephem = desisurvey.ephem.get_ephem()
-
-    def init_tiles(self, tile_available, tile_priority):
-        """Initialize tile availability and priority.
-
-        At least one tile must be available with priority > 0.
-        """
-        self.tile_available = np.array(tile_available).astype(bool)
-        if self.tile_available.shape != (self.tiles.ntiles,) or not np.any(self.tile_available):
-            raise ValueError('Invalid tile_available array.')
-        self.tile_priority = np.array(tile_priority).astype(float)
-        if self.tile_priority.shape != (self.tiles.ntiles,) or np.any(self.tile_priority < 0):
-            raise ValueError('Invalid tile_priority array.')
-        self.tile_planned = self.tile_priority > 0
-        if not np.any(self.tile_available & self.tile_planned):
-            raise ValueError('No tiles to schedule.')
-        return np.where(self.tile_available)[0], np.where(self.tile_planned)[0]
+        # Initialize tile availability and priority.
+        # No tiles will be scheduled until these are updated using update_tiles().
+        self.tile_available = np.zeros(self.tiles.ntiles, bool)
+        self.tile_planned = np.zeros(self.tiles.ntiles, bool)
+        self.tile_priority = np.zeros(self.tiles.ntiles, float)
 
     def update_tiles(self, tile_available, tile_priority):
         """Update tile availability and priority.
@@ -118,6 +109,8 @@ class Scheduler(object):
         new_planned = (tile_priority > 0) & ~self.tile_planned
         self.tile_available[:] = tile_available
         self.tile_priority[:] = tile_priority
+        if not np.any(self.tile_available & self.tile_planned):
+            raise ValueError('No available tiles with priority > 0 to schedule.')
         return np.where(new_available)[0], np.where(new_planned)[0]
 
     def init_night(self, night, use_twilight=False, verbose=False):
