@@ -59,8 +59,8 @@ class TestPlan(unittest.TestCase):
                 # Mark a random set of tiles completed after this night.
                 completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
                 # Save and restore our state.
-                plan.save()
-                plan2 = Planner(fiberassign_cadence=cadence, restore_date=plan.last_night)
+                plan.save('snapshot.fits')
+                plan2 = Planner(fiberassign_cadence=cadence, restore='snapshot.fits')
 
 
 

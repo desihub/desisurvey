@@ -122,9 +122,7 @@ class Scheduler(object):
         The only internal state required to restore a Scheduler is the array
         of snr2frac values per tile.
 
-        Snapshot is saved to $DESISURVEY_OUTPUT/scheduler_YYYYMMDD.fits using the
-        date when :meth:`init_night` was last run.
-        The snapshot file size is about ??Kb.
+        The snapshot file size is about 130Kb.
 
         Parameters
         ----------

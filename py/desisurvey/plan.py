@@ -108,14 +108,17 @@ class Planner(object):
         tile priorities each afternoon.  When None, all tiles have equal priority.
     fiberassign_cadence : 'daily' or 'monthly'
         Cadence for updating fiber assignments.  Monthly is defined as the afternoon before
-        a full moon.
-    restore_date : datetime.date or None
-        Restore internal state from the snapshot saved on this date, or initialize a new
-        plan when None.
+        a full moon. Must match the value in a restored snapshot when restore is set.
+    restore : str or None
+        Restore internal state from the snapshot saved to this filename,
+        or initialize a new planner when None. Use :meth:`save` to
+        save a snapshot to be restored later. Filename is relative to
+        the configured output path unless an absolute path is
+        provided.
     tiles_file : str or None
         Override the default tiles files specified in the configuration when specified.
     """
-    def __init__(self, rules=None, fiberassign_cadence='monthly', restore_date=None, tiles_file=None):
+    def __init__(self, rules=None, fiberassign_cadence='monthly', restore=None, tiles_file=None):
         self.log = desiutil.log.get_logger()
         self.rules = rules
         if fiberassign_cadence not in ('daily', 'monthly'):
@@ -124,25 +127,26 @@ class Planner(object):
         config = desisurvey.config.Configuration()
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
         self.ephem = desisurvey.ephem.get_ephem()
-        if restore_date is not None:
+        if restore is not None:
             # Restore the plan for a survey in progress.
-            name = config.get_path('plan_{}.fits'.format(restore_date.isoformat()))
-            if not os.path.exists(name):
-                raise RuntimeError('Cannot restore planner from non-existent "{}".'.format(name))
-            t = astropy.table.Table.read(name)
+            fullname = config.get_path(restore)
+            if not os.path.exists(fullname):
+                raise RuntimeError('Cannot restore planner from non-existent "{}".'.format(fullname))
+            t = astropy.table.Table.read(fullname)
             if t.meta['CADENCE'] != self.fiberassign_cadence:
                 raise ValueError('Fiberassign cadence mismatch.')
-            self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
-            self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
+            first, last = t.meta['FIRST'], t.meta['LAST']
+            self.first_night = desisurvey.utils.get_date(first) if first else None
+            self.last_night = desisurvey.utils.get_date(last) if last else None
             self.tile_covered = t['COVERED'].data.copy()
             self.tile_countdown = t['COUNTDOWN'].data.copy()
             self.tile_available = t['AVAILABLE'].data.copy()
             self.tile_priority = t['PRIORITY'].data.copy()
             self.log.debug(
-                'Restored plan with {} ({}) / {} tiles covered (available) for ({},{}).'
+                'Restored plan with {} ({}) / {} tiles covered (available) from "{}".'
                 .format(np.count_nonzero(self.tile_covered),
                         np.count_nonzero(self.tile_available), self.tiles.ntiles,
-                        self.first_night.isoformat(), self.last_night.isoformat()))
+                        fullname))
         else:
             # Initialize the plan for a a new survey.
             self.first_night = self.last_night = None
@@ -168,33 +172,36 @@ class Planner(object):
         if not np.any(self.tile_priority > 0):
             raise RuntimeError('All tile priorities are all <= 0.')
 
-    def save(self):
+    def save(self, name):
         """Save a snapshot of our current state that can be restored.
 
-        Snapshot is saved to $DESISURVEY_OUTPUT/plan_YYYYMMDD.fits using the
-        date when :meth:`afternoon_plan` or :meth:`initialize` was last run.
         The snapshot file size is about 400Kb.
+
+        Parameters
+        ----------
+        name : str
+            Name of FITS file where the snapshot will be saved. The file will
+            be saved under our configuration's output path unless name is
+            already an absolute path.  Pass the same name to the constructor's
+            ``restore`` argument to restore this snapshot.
         """
-        if self.first_night is None or self.last_night is None:
-            raise ValueError('Cannot save tiles before first afternoon_plan().')
-        assert self.tile_priority is not None
         config = desisurvey.config.Configuration()
-        name = config.get_path('plan_{}.fits'.format(self.last_night.isoformat()))
+        fullname = config.get_path(name)
         t = astropy.table.Table(meta={
             'CADENCE': self.fiberassign_cadence,
-            'FIRST': self.first_night.isoformat(),
-            'LAST': self.last_night.isoformat(),
+            'FIRST': self.first_night.isoformat() if self.first_night else '',
+            'LAST': self.last_night.isoformat() if self.last_night else '',
             })
         t['COVERED'] = self.tile_covered
         t['COUNTDOWN'] = self.tile_countdown
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
-        t.write(name, overwrite=True)
+        t.write(fullname, overwrite=True)
         self.log.debug(
-            'Saved plan with {} ({}) / {} tiles covered (available) for ({},{}).'
+            'Saved plan with {} ({}) / {} tiles covered (available) to "{}".'
             .format(np.count_nonzero(self.tile_covered),
                     np.count_nonzero(self.tile_available), self.tiles.ntiles,
-                    self.first_night.isoformat(), self.last_night.isoformat()))
+                    fullname))
 
     def fiberassign(self, night, completed):
         # Calculate the number of elapsed nights in the survey.
