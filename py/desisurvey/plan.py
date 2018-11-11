@@ -128,7 +128,7 @@ class Planner(object):
             # Restore the plan for a survey in progress.
             name = config.get_path('plan_{}.fits'.format(restore_date.isoformat()))
             if not os.path.exists(name):
-                raise RuntimeError('Cannot restore from non-existant "{}".'.format(name))
+                raise RuntimeError('Cannot restore planner from non-existent "{}".'.format(name))
             t = astropy.table.Table.read(name)
             if t.meta['CADENCE'] != self.fiberassign_cadence:
                 raise ValueError('Fiberassign cadence mismatch.')
@@ -156,35 +156,17 @@ class Planner(object):
                 self.tile_priority = self.rules.apply(none_completed)
             else:
                 self.tile_priority = np.ones(self.tiles.ntiles, float)
-        if not np.any(self.tile_priority > 0):
-            raise RuntimeError('All tile priorities are all <= 0.')
-        # Precompute the tile overlaps between passes needed to update fiber assignments.
-        self.tile_over = {}
-        self.overlapping = {}
-        fiberassign_order = config.fiber_assignment_order
-        tile_diameter = 2 * config.tile_radius().to(u.deg).value
-        for passnum in self.tiles.passes:
-            under = self.tiles.passnum == passnum
-            over = np.zeros_like(under)
-            key = 'P{}'.format(passnum)
-            if key not in fiberassign_order.keys:
-                if restore_date is None:
+            # Mark tiles that are initially available.
+            fiberassign_order = config.fiber_assignment_order
+            for passnum in self.tiles.passes:
+                if 'P{}'.format(passnum) not in fiberassign_order.keys:
                     # Mark tiles in this pass as initially available.
+                    under = self.tiles.passnum == passnum
                     self.tile_covered[under] = 0
                     self.tile_available[under] = True
                     self.log.info('Pass {} available for initial observing.'.format(passnum))
-            else:
-                overpasses = getattr(fiberassign_order, key)()
-                for overpass in overpasses.split('+'):
-                    if not len(overpass) == 2 and overpass[0] == 'P':
-                        raise RuntimeError(
-                            'Invalid pass in fiber_assignment_order: {}.'
-                            .format(overpass))
-                    over |= (self.tiles.passnum == int(overpass[1]))
-                self.overlapping[passnum] = desisurvey.utils.separation_matrix(
-                    self.tiles.tileRA[under], self.tiles.tileDEC[under],
-                    self.tiles.tileRA[over], self.tiles.tileDEC[over], tile_diameter)
-            self.tile_over[passnum] = over
+        if not np.any(self.tile_priority > 0):
+            raise RuntimeError('All tile priorities are all <= 0.')
 
     def save(self):
         """Save a snapshot of our current state that can be restored.
@@ -221,10 +203,10 @@ class Planner(object):
               .format(night, day_number, np.count_nonzero(completed)))
         for passnum in self.tiles.passes:
             under = self.tiles.passnum == passnum
-            over = self.tile_over[passnum]
+            over = self.tiles.tile_over[passnum]
             if not np.any(over):
                 continue
-            overlapping = self.overlapping[passnum]
+            overlapping = self.tiles.overlapping[passnum]
             # Identify all tiles in this pass whose covering tiles are completed.
             covered = np.all(~overlapping | completed[over], axis=1)
             # Which tiles have been newly covered since the last call to fiberassign?
