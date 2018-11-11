@@ -24,38 +24,40 @@ import desisurvey.ephem
 
 
 class Scheduler(object):
-    """Create a new Scheduler.
+    """Create a new next-tile scheduler.
 
-    Reads global configuration, tiles, design hour angles and ephemerides.
+    Design hour angles are read from the output of ``surveyinit`` using
+    :func:`desisurvey.plan.load_design_hourangle`, by default.
 
-    The tiles, programs and passes to observe are specified by the tiles file.
-    Program names are predefined in our config, but not all programs need
-    to be represented.  Pass numbers are arbitrary integers and do not
-    need to be consecutive or dense.
+    The only internal state needed by the scheduler is the list of
+    accumulated SNR2 fractions per tile, which can be restored
+    from a file created using :meth:`save`.
 
-    Design hour angles can be read from the output of ``surveyinit`` using
-    :func:`desisurvey.plan.load_design_hourangle`.
+    A newly created or restored scheduler must be configured with
+    calls to :meth:`update_tiles` (to tile availablity and priority)
+    and :meth:`init_night` (to precompute data for a night's observing)
+    before tiles can be selected.
+
+    Use :meth:`next_tile` to select the next tile to observe during
+    a night.  If the tile is observed, the internal state must be
+    updated with a call to :meth:`update_snr`.
 
     Parameters
     ----------
-    planner : :class:`desisurvey.plan.Planner`
-        Planner object to use for initialzing tiles to schedule.
-    design_hourangles : array or None
-        1D array of design hour angles to use in degrees, or use
-        :func:`desisurvey.plan.load_design_hourangle` when None.
     restore : str or None
         Restore internal state from the snapshot saved to this filename,
         or initialize a new scheduler when None. Use :meth:`save` to
-        save a snapshot to be restored later.
-    snr2frac : array or None
-        Array of fractional SNR**2 values accumulated so far per tile.
-        Initialized to zero when None. This is the only internal state
-        required to restore a scheduler object.
+        save a snapshot to be restored later. Filename is relative to
+        the configured output path unless an absolute path is
+        provided.
+    design_hourangles : array or None
+        1D array of design hour angles to use in degrees, or use
+        :func:`desisurvey.plan.load_design_hourangle` when None.
     tiles_file : str or None
         Use this file containing the tile definitions, or the default
         specified in the configuration when None.
     """
-    def __init__(self, design_hourangle=None, restore=None, tiles_file=None):
+    def __init__(self, restore=None, design_hourangle=None, tiles_file=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -106,9 +108,6 @@ class Scheduler(object):
         self.tile_sel = np.zeros(ntiles, bool)
         self.LST = 0.
         self.night = None
-        # Initialize tile priority and available arrays.
-        self.tile_priority = None
-        self.tile_available = None
         # Load the ephemerides to use.
         self.ephem = desisurvey.ephem.get_ephem()
         # Initialize tile availability and priority.
@@ -167,16 +166,30 @@ class Scheduler(object):
             Tuple (new_available, new_planned) of 1D arrays of tile indices that
             identify any tiles are newly available or "planned" (assigned priority > 0).
         """
+        new_available = tile_available & ~self.tile_available
+        new_unavailable = ~tile_available & self.tile_available
+        if np.any(new_unavailable):
+            raise RuntimeError('Some previously available tiles now unavailable.')
+        self.tile_available[new_available] = True
+
+        assert np.all(self.tile_priority >= 0)
         if np.any(tile_priority < 0):
             raise ValueError('All tile priorities must be >= 0.')
-        new_available = tile_available & ~self.tile_available
-        new_planned = (tile_priority > 0) & ~self.tile_planned
-        new_unplanned = (tile_priority == 0) & self.tile_planned
+        tile_planned = tile_priority > 0
+        new_planned = tile_planned & ~self.tile_planned
+        new_unplanned = ~tile_planned & self.tile_planned
         if np.any(new_unplanned):
             raise RuntimeError('Some previously planned tiles now have zero priority.')
-        self.tile_available[new_available] = True
         self.tile_planned[new_planned] = True
-        self.tile_priority[new_planned] = tile_priority[new_planned]
+        # Tile priorities can change after the become > 0, so copy all planned priorities,
+        # not just the newly planned priorities.
+        self.tile_priority[self.tile_planned] = tile_priority[self.tile_planned]
+
+        # Sanity checks
+        assert np.all(self.tile_available == tile_available)
+        assert np.all(self.tile_priority == tile_priority)
+        assert np.all(self.tile_planned == (tile_priority > 0))
+
         if not np.any(self.tile_available & self.tile_planned):
             raise ValueError('No available tiles with priority > 0 to schedule.')
         return np.where(new_available)[0], np.where(new_planned)[0]
