@@ -4,6 +4,8 @@ from __future__ import print_function, division
 
 import numpy as np
 
+import astropy.units as u
+
 import desimodel.io
 import desiutil.log
 
@@ -87,6 +89,10 @@ class Tiles(object):
         tile_dec_rad = np.radians(self.tileDEC)
         self.tile_coef_A = np.sin(tile_dec_rad) * np.sin(latitude)
         self.tile_coef_B = np.cos(tile_dec_rad) * np.cos(latitude)
+        # Placeholders for overlap attributes that are expensive to calculate
+        # so we use lazy evaluation the first time they are accessed.
+        self._tile_over = None
+        self._overlapping = None
 
     def airmass(self, hour_angle, mask=None):
         """Calculate tile airmass given hour angle.
@@ -130,6 +136,64 @@ class Tiles(object):
         if np.any(bad):
             raise ValueError('Invalid tile ID(s): {}.'.format(tileID[bad]))
         return idx[0] if scalar else idx
+
+    @property
+    def tile_over(self):
+        """Dictionary of tile masks.
+
+        tile_over[passnum] identifies all tiles from a fiber-assignment
+        dependent pass that cover at least one tile in passnum.
+
+        Uses the config parameter ``fiber_assignment_order`` to
+        determine fiber-assignment dependencies.
+        """
+        if self._tile_over is None:
+            self._calculate_overlaps()
+        return self._tile_over
+
+    @property
+    def overlapping(self):
+        """Dictionary of tile overlap matrices.
+
+        overlapping[passnum][j, k] is True if the j-th tile of passnum is
+        overlapped by the k-th tile of tile_over[passnum]. There is no
+        dictionary entry when the mask tile_over[passnum] is empty.
+        """
+        if self._overlapping is None:
+            self._calculate_overlaps()
+        return self._overlapping
+
+    def _calculate_overlaps(self):
+        """Initialize attributes _overlapping and _tile_over.
+
+        Uses the config parameters ``fiber_assignment_order`` and
+        ``tile_diameter`` to determine overlap dependencies.
+
+        This is relatively slow, so only used the first time our ``tile_over``
+        or ``overlapping`` properties are accessed.
+        """
+        self._overlapping = {}
+        self._tile_over = {}
+        config = desisurvey.config.Configuration()
+        fiberassign_order = config.fiber_assignment_order
+        tile_diameter = 2 * config.tile_radius().to(u.deg).value
+        for passnum in self.passes:
+            under = self.passnum == passnum
+            over = np.zeros_like(under)
+            key = 'P{}'.format(passnum)
+            if key in fiberassign_order.keys:
+                overpasses = getattr(fiberassign_order, key)()
+                for overpass in overpasses.split('+'):
+                    if not len(overpass) == 2 and overpass[0] == 'P':
+                        raise RuntimeError(
+                            'Invalid pass in fiber_assignment_order: {}.'
+                            .format(overpass))
+                    over |= (self.passnum == int(overpass[1]))
+                self.overlapping[passnum] = desisurvey.utils.separation_matrix(
+                    self.tileRA[under], self.tileDEC[under],
+                    self.tileRA[over], self.tileDEC[over], tile_diameter)
+            self.tile_over[passnum] = over
+
 
 _cached_tiles = {}
 
