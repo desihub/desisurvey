@@ -10,7 +10,7 @@ from desisurvey.rules import Rules
 class TestRules(Tester):
 
     def test_rules(self):
-        rules = Rules()
+        rules = Rules('rules-layers.yaml')
         tiles = desisurvey.tiles.get_tiles()
         completed = np.ones(tiles.ntiles, bool)
         rules.apply(completed)
