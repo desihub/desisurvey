@@ -5,12 +5,21 @@ desisurvey change log
 0.11.0 (unreleased)
 -------------------
 
+This version is a major refactoring of the code to simplify the logic
+for easier maintenance and documentation. There is now a clean
+separation between survey strategy, afternoon planning,
+next-tile selection, and exposure-time calculations. The refactored
+code is also significantly faster.
+
 * Add new modules: tiles, forecast, scheduler.
 * Move module schedule to old/ (superceded by new scheduler module).
 * Add new class ExposureTimeCalculator to etc module.
 * Add new class Planner to plan module.
 * Decouple ephemerides date range from nominal survey start/stop.
 * Rename ephemerides to ephem (to enforce new get_ephem access pattern).
+* Use of twilight is now optional and off by default.
+* Exposure times include an average correction for the moon: this will
+  be fixed in a future release.
 
 0.10.4 (2018-10-02)
 -------------------

@@ -272,20 +272,23 @@ class ExposureTimeCalculator(object):
     an exposure using the :meth:`start`, :meth:`update` and :meth:`stop`
     methods.
 
+    Exposure time tracking is configured by the following parameters:
+     - nominal_exposure_time
+     - new_field_setup
+     - same_field_setup
+     - cosmic_ray_split
+     - min_exposures
+
+    Note that this version applies an average correction for the moon
+    during the GRAY and BRIGHT programs, rather than idividual corrections
+    based on the moon parameters.  This will be fixed in a future version.
+
     Parameters
     ----------
     save_history : bool
         When True, records the history of internal calculations during an
         exposure, for debugging and plotting.
     """
-    #NEW_FIELD_SETUP = 120. / 86400.
-    #SAME_FIELD_SETUP = 60. / 86400.
-    # Maximum time for a single exposure (days)
-    ##MAX_EXPTIME = 20 * 60 / 86400.
-    # Minimum number of consecutive exposures of a tile for cosmic splits.
-    # Set to one if cosmic splits are not required for exposures that could complete in MAX_EXPTIME.
-    #MIN_NEXP = 2
-
     def __init__(self, save_history=False):
         self._snr2frac = 0.
         self._exptime = 0.
@@ -331,7 +334,6 @@ class ExposureTimeCalculator(object):
         """Estimate exposure time(s).
 
         Can be used to estimate exposures for one or many tiles from the same program.
-        Configured by the ... parameters.
 
         Parameters
         ----------
