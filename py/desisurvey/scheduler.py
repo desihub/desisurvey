@@ -235,10 +235,8 @@ class Scheduler(object):
         mjd_now : float
             Time when the decision is being made.
         ETC : :class:`desisurvey.etc.ExposureTimeCalculator`
-            Object with a method ``could_complete()`` that is used to determine
-            which tiles could be completed within a specified amount of time
-            under current observing conditions. This use of ETC does not
-            change its internal state.
+            Object with methods ``could_complete()`` and ``weather_factor()``.
+            Normally an instance of :class:`desisurvey.etc.ExposureTimeCalculator`.
         seeing : float
             Estimate of current atmospherid seeing in arcseconds.
         transp : float
@@ -285,8 +283,7 @@ class Scheduler(object):
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
-        global_factor = desisurvey.etc.seeing_exposure_factor(seeing) * desisurvey.etc.transparency_exposure_factor(transp)
-        self.exposure_factor[self.tile_sel] *= global_factor
+        self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
         # Restrict to tiles that could be completed in the remaining time.
         self.tile_sel[self.tile_sel] &= ETC.could_complete(
             t_remaining, program, self.snr2frac[self.tile_sel], self.exposure_factor[self.tile_sel])
