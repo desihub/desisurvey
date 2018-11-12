@@ -247,8 +247,17 @@ class Scheduler(object):
         tuple
             Tuple (TILEID,PASSNUM,SNR2FRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
             giving the ID and associated properties of the selected tile.
-            When TILEID is None, no tile is observable and this method
-            should be called again after some delay.
+            When no tile is observable, only the last two tuple fields
+            will be valid, and this method should be called again after
+            some dead-time delay.  The tuple fields are:
+             - TILEID: ID of the tile to observe.
+             - PASSNUM: pass number of the tile to observe.
+             - SNR2FRAC: fractional SNR2 already accumulated for the selected tile.
+             - EXPFAC: initial exposure-time factor for the selected tile.
+             - AIRMASS: initial airmass of the selected tile.
+             - PROGRAM: scheduled program at ``mjd_now``, which might be
+               different from the program of the selected (TILEID, PASSNUM).
+             - PROGEND: MJD timestamp when the scheduled program ends.
         """
         if self.night is None:
             raise ValueError('Must call init_night() before next_tile().')
