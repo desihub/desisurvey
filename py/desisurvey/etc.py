@@ -304,10 +304,45 @@ class ExposureTimeCalculator(object):
             self.history = dict(mjd=[], signal=[], background=[], snr2frac=[])
 
     def weather_factor(self, seeing, transp):
+        """Return the relative SNR2 accumulation rate for specified conditions.
+
+        This is the inverse of the instantaneous exposure factor due to seeing and transparency.
+
+        Parameters
+        ----------
+        seeing : float
+            Atmospheric seeing in arcseconds.
+        transp : float
+            Atmospheric transparency in the range (0,1).
+        """
         return transp * (self.seeing_coefs[0] + seeing * (self.seeing_coefs[1] + seeing * self.seeing_coefs[2])) ** 2
 
     def estimate_exposure(self, program, snr2frac, exposure_factor, nexp_completed=0):
-        """snr2frac can be an array or scalar.
+        """Estimate exposure time(s).
+
+        Can be used to estimate exposures for one or many tiles from the same program.
+        Configured by the ... parameters.
+
+        Parameters
+        ----------
+        program : str
+            Name of the program to estimate exposure times for. Used to determine the nominal
+            exposure time. All tiles must be from the same program.
+        snr2frac : float or array
+            Fractional SNR2 integrated so far for the tile(s) to estimate.
+        exposure_factor : float or array
+            Exposure-time factor for the tile(s) to estimate.
+        nexp_completed : int or array
+            Number of exposures completed so far for tile(s) to estimate.
+        
+        Returns
+        -------
+        tuple
+            Tuple (texp_total, texp_remaining, nexp) of floats or arrays, where
+            texp_total is the total time that would be required under current conditions,
+            texp_remaining is the remaining time under current conditions taking the
+            already accumulated SNR2 into account, and nexp is the estimated number
+            of remaining exposures required.
         """
         # Estimate total exposure time required under current conditions.
         texp_total = ExposureTimeCalculator.TEXP_TOTAL[program] * exposure_factor
@@ -319,16 +354,67 @@ class ExposureTimeCalculator(object):
         return texp_total, texp_remaining, nexp
 
     def could_complete(self, t_remaining, program, snr2frac, exposure_factor):
+        """Determine which tiles could be completed.
+
+        Completion refers to achieving SNR2 = 1, which might require
+        multiple exposures.
+
+        Used by :meth:`desisurvey.scheduler.Scheduler.next_tile` and uses
+        :meth:`estimate_exposure`.
+
+        Parameters
+        ----------
+        t_remaining : float
+            Time remaining in units of days.
+        program : str
+            Program that the candidate tiles belong to (must be the same for all tiles).
+        snr2frac : float or array
+            Fractional SNR2 integrated so far for each tile to consider.
+        exposure_factor : float or array
+            Exposure-time factor for each tile to consider.
+
+        Returns
+        -------
+        array
+            1D array of booleans indicating which tiles (if any) could completed
+            within the remaining time.
+        """
         texp_total, texp_remaining, nexp = self.estimate_exposure(program, snr2frac, exposure_factor)
         # Estimate total time required for all exposures.
         t_required = ExposureTimeCalculator.NEW_FIELD_SETUP + ExposureTimeCalculator.SAME_FIELD_SETUP * (nexp - 1) + texp_remaining
         return t_required <= t_remaining
 
     def start(self, mjd_now, tileid, program, snr2frac, exposure_factor, seeing, transp, sky):
-        """exposure_factor is for the tile only and does not include weather (seeing, transp)
+        """Start tracking an exposure.
+
+        Must be called before using :meth:`update` to track changing conditions
+        during the exposure.
+
+        Parameters
+        ----------
+        mjd_now : float
+            MJD timestamp when exposure starts.
+        tileid : int
+            ID of the tile being exposed. This is only used to recognize consecutive
+            exposures of the same tile.
+        program : str
+            Name of the program the exposed tile belongs to.
+        snr2frac : float
+            Previous accumulated fractional SNR2 of the exposed tile.
+        exposure_factor : float
+            Irreducible exposure factor of the tile when the exposure starts.
+            Irreducible means that it does not include corrections for
+            the observing conditins that change during the exposure: seeing,
+            transp, and sky.
+        seeing : float
+            Initial atmospheric seeing in arcseconds.
+        transp : float
+            Initial atmospheric transparency (0,1).
+        sky : float
+            Initial sky background level.
         """
         self.mjd_start = mjd_now
-        self._snr2frac_start = snr2frac
+        self._snr2frac = self._snr2frac_start = snr2frac
         self.mjd_last = mjd_now
         self.mjd_start = mjd_now
         self._active = True
@@ -355,9 +441,28 @@ class ExposureTimeCalculator(object):
             self.history['snr2frac'].append(snr2frac)
     
     def update(self, mjd_now, seeing, transp, sky):
-        """
-        (seeing, transp, sky) are averaged over [mjd_last, mjd_now]
-        Return True if the exposure should continue integrating
+        """Track changing conditions during an exposure.
+
+        Must call :meth:`start` first to start tracking an exposure.
+
+        Parameters
+        ----------
+        mjd_now : float
+            Current MJD timestamp.
+        seeing : float
+            Estimate of average atmospheric seeing in arcseconds
+            since last update (or start).
+        transp : float
+            Estimate of average atmospheric transparency
+            since last update (or start).
+        sky : float
+            Estimate of average sky background level
+            since last update (or start).
+
+        Returns
+        -------
+        bool
+            True if the exposure should continue integrating.
         """
         dt = mjd_now - self.mjd_last
         self.mjd_last = mjd_now
@@ -377,21 +482,49 @@ class ExposureTimeCalculator(object):
         self.should_abort = (self._snr2frac - self.last_snr2frac) / dt < 0.25 / self.texp_total
         self.last_snr2frac = self._snr2frac
         return need_more_snr and not self.should_abort
-    
+
     def stop(self, mjd_now):
-        """Return True if this tile is done, or False for a cosmic split"""
+        """Stop tracking an exposure.
+
+        After calling this method, use :attr:`exptime` to look up the exposure time.
+
+        Parameters
+        ----------
+        mjd_now : float
+            MJD timestamp when the current exposure was stopped.
+
+        Returns
+        -------
+        bool
+            True if this tile is "done" or False if another exposure of the
+            same tile should be started immediately.  Note that "done" normally
+            means the tile has reached its target SNR2, but could also mean
+            that the SNR2 accumulation rate has fallen below some threshold
+            so that it is no longer useful to continue exposing.
+        """
         self._exptime = mjd_now - self.mjd_start
         self._active = False
         return self._snr2frac >= 1 or self.should_abort
-    
+
     @property
     def snr2frac(self):
+        """Integrated fractional SNR2 of tile currently being exposed.
+
+        Includes signal accumulated in previous exposures. Initialized by
+        :meth:`start`, updated by :meth:`update` and frozen by :meth:`stop`.
+        """
         return self._snr2frac
-    
+
     @property
     def exptime(self):
+        """Exposure time in days recorded by last call to :meth:`stop`.
+        """
         return self._exptime
-    
+
     @property
     def active(self):
+        """Are we tracking an exposure?
+
+        Set True by :meth:`start` and False by :meth:`stop`.
+        """
         return self._active
