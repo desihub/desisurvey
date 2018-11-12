@@ -19,6 +19,7 @@ import specsim.atmosphere
 import desiutil.log
 
 import desisurvey.config
+import desisurvey.tiles
 
 
 def seeing_exposure_factor(seeing):
@@ -276,24 +277,26 @@ class ExposureTimeCalculator(object):
     """
     NEW_FIELD_SETUP = 120. / 86400.
     SAME_FIELD_SETUP = 60. / 86400.
-    TEXP_TOTAL = {
-        'DARK': 1000.0 / 86400,
-        'GRAY': 1000.0 * 1.1 / 86400,
-        'BRIGHT': 300. * 1.33 / 86400,
-    }
     # Maximum time for a single exposure (days)
     MAX_EXPTIME = 20 * 60 / 86400.
     # Minimum number of consecutive exposures of a tile for cosmic splits.
     # Set to one if cosmic splits are not required for exposures that could complete in MAX_EXPTIME.
     MIN_NEXP = 2
-    # Time between updates (days)
-    UPDATE_INTERVAL = 10. / 86400.
 
     def __init__(self, save_history=False):
         self._snr2frac = 0.
         self._exptime = 0.
         self._active = False
         self.tileid = None
+        # Lookup config parameters.
+        config = desisurvey.config.Configuration()
+        self.TEXP_TOTAL = {}
+        for program in desisurvey.tiles.Tiles.PROGRAMS:
+            self.TEXP_TOTAL[program] = getattr(config.nominal_exposure_time, program)().to(u.day).value
+        # Temporary hardcoded exposure factors for moon-up observing.
+        self.TEXP_TOTAL['GRAY'] *= 1.1
+        self.TEXP_TOTAL['BRIGHT'] *= 1.33
+
         # Initialize model of exposure time dependence on seeing.
         self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
         self.seeing_coefs /= np.sqrt(self.weather_factor(1.1, 1.0))
@@ -345,7 +348,7 @@ class ExposureTimeCalculator(object):
             of remaining exposures required.
         """
         # Estimate total exposure time required under current conditions.
-        texp_total = ExposureTimeCalculator.TEXP_TOTAL[program] * exposure_factor
+        texp_total = self.TEXP_TOTAL[program] * exposure_factor
         # Estimate time remaining to reach snr2frac = 1.
         texp_remaining = texp_total * (1 - snr2frac)
         # Estimate the number of exposures required.
