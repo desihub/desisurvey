@@ -72,15 +72,17 @@ programs:
 # Never observe below this limit.
 min_altitude: 30 deg
 
-# Exposure overhead parameters
-focus_time: 30 s
-slew_overhead: 11.5 s
-slew_rate: 0.45 deg / s
-readout_time: 2 min
+# Time required to setup for a new field, including slew, fiber positioning, etc.
+new_field_setup : 120 s
 
-# Exposure time policy parameters
+# Time required to setup for re-observing the same field.
+same_field_setup : 60 s
+
+# Maximum time allowed for a single exposure before we force a cosmic split.
 cosmic_ray_split: 20 min
-max_exposure_length: 60 min
+
+# Minimum number of consecutive exposures required for cosmic rejection.
+min_exposures: 2
 
 # The target SNR**2 for each program is specified as the total exposure time
 # required at nominal observing conditions.

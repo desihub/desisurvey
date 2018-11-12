@@ -268,28 +268,35 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
 class ExposureTimeCalculator(object):
     """Online Exposure Time Calculator.
 
-    This class has no dependencies on other desisurvey classes or functions.
+    Track observing conditions (seeing, transparency, sky background) during
+    an exposure using the :meth:`start`, :meth:`update` and :meth:`stop`
+    methods.
 
-    TODO:
-     - Get constants from config instead of hardcoded.
-     - Scheduler should use weather_factor().
-     - Remove _active, or use it to validate start/stop?
+    Parameters
+    ----------
+    save_history : bool
+        When True, records the history of internal calculations during an
+        exposure, for debugging and plotting.
     """
-    NEW_FIELD_SETUP = 120. / 86400.
-    SAME_FIELD_SETUP = 60. / 86400.
+    #NEW_FIELD_SETUP = 120. / 86400.
+    #SAME_FIELD_SETUP = 60. / 86400.
     # Maximum time for a single exposure (days)
-    MAX_EXPTIME = 20 * 60 / 86400.
+    ##MAX_EXPTIME = 20 * 60 / 86400.
     # Minimum number of consecutive exposures of a tile for cosmic splits.
     # Set to one if cosmic splits are not required for exposures that could complete in MAX_EXPTIME.
-    MIN_NEXP = 2
+    #MIN_NEXP = 2
 
     def __init__(self, save_history=False):
         self._snr2frac = 0.
         self._exptime = 0.
         self._active = False
         self.tileid = None
-        # Lookup config parameters.
+        # Lookup config parameters (with times converted to days).
         config = desisurvey.config.Configuration()
+        self.NEW_FIELD_SETUP = config.new_field_setup().to(u.day).value
+        self.SAME_FIELD_SETUP = config.same_field_setup().to(u.day).value
+        self.MAX_EXPTIME = config.cosmic_ray_split().to(u.day).value
+        self.MIN_NEXP = config.min_exposures()
         self.TEXP_TOTAL = {}
         for program in desisurvey.tiles.Tiles.PROGRAMS:
             self.TEXP_TOTAL[program] = getattr(config.nominal_exposure_time, program)().to(u.day).value
@@ -352,8 +359,8 @@ class ExposureTimeCalculator(object):
         # Estimate time remaining to reach snr2frac = 1.
         texp_remaining = texp_total * (1 - snr2frac)
         # Estimate the number of exposures required.
-        nexp = np.ceil(texp_remaining / ExposureTimeCalculator.MAX_EXPTIME).astype(int)
-        nexp = np.maximum(nexp, ExposureTimeCalculator.MIN_NEXP - nexp_completed)
+        nexp = np.ceil(texp_remaining / self.MAX_EXPTIME).astype(int)
+        nexp = np.maximum(nexp, self.MIN_NEXP - nexp_completed)
         return texp_total, texp_remaining, nexp
 
     def could_complete(self, t_remaining, program, snr2frac, exposure_factor):
@@ -384,7 +391,7 @@ class ExposureTimeCalculator(object):
         """
         texp_total, texp_remaining, nexp = self.estimate_exposure(program, snr2frac, exposure_factor)
         # Estimate total time required for all exposures.
-        t_required = ExposureTimeCalculator.NEW_FIELD_SETUP + ExposureTimeCalculator.SAME_FIELD_SETUP * (nexp - 1) + texp_remaining
+        t_required = self.NEW_FIELD_SETUP + self.SAME_FIELD_SETUP * (nexp - 1) + texp_remaining
         return t_required <= t_remaining
 
     def start(self, mjd_now, tileid, program, snr2frac, exposure_factor, seeing, transp, sky):
@@ -405,10 +412,8 @@ class ExposureTimeCalculator(object):
         snr2frac : float
             Previous accumulated fractional SNR2 of the exposed tile.
         exposure_factor : float
-            Irreducible exposure factor of the tile when the exposure starts.
-            Irreducible means that it does not include corrections for
-            the observing conditins that change during the exposure: seeing,
-            transp, and sky.
+            Exposure factor of the tile when the exposure starts, based on the
+            current conditions specified by the remaining parameters.
         seeing : float
             Initial atmospheric seeing in arcseconds.
         transp : float
