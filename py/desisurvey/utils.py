@@ -184,66 +184,6 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
     print('Wrote updated table to {0}.'.format(save_name))
 
 
-def get_overhead_time(current_pointing, new_pointing, deadtime=0):
-    """Compute the instrument overhead time between exposures.
-
-    Use a model of the time required to slew and focus, in parallel with
-    reading out the previous exposure.
-
-    With no slew or readout required, the minimum overhead is set by the
-    time needed to focus the new exposure.
-
-    The calculation will be automatically broadcast over an array of new
-    pointings and return an array of overhead times.
-
-    Parameters
-    ----------
-    current_pointing : :class:`astropy.coordinates.SkyCoord` or None
-        Current pointing of the telescope.  Do not include any slew overhead
-        when None.
-    new_pointing : :class:`astropy.coordinates.SkyCoord`
-        New pointing(s) of the telescope.
-    deadtime : :class:`astropy.units.Quantity`, optional
-        Amount of deadtime elapsed since end of any previous exposure.
-        Used to ensure that the overhead time is sufficient to finish
-        reading out the previous exposure. Must be >= 0.
-        Defaults to zero seconds.
-
-    Returns
-    -------
-    :class:`astropy.units.Quantity`
-        Overhead time(s) for each new_pointing.
-    """
-    if not isinstance(deadtime, u.Quantity):
-        deadtime = deadtime * u.s
-    if deadtime.to(u.s).value < 0:
-        raise ValueError('Expected deadtime >= 0 (got {0}).'.format(deadtime))
-    config = desisurvey.config.Configuration()
-    if current_pointing is not None:
-        # Calculate the amount that each axis needs to move in degrees.
-        # The ra,dec attributes of a SkyCoord are always in the ranges
-        # [0,360] and [-90,+90] degrees.
-        delta_dec = np.fabs(
-            (new_pointing.dec - current_pointing.dec).to(u.deg).value)
-        delta_ra = np.fabs(
-            (new_pointing.ra - current_pointing.ra).to(u.deg).value)
-        # Handle wrap around in RA
-        delta_ra = 180 - np.fabs(delta_ra - 180)
-        # The slew time is determined by the axis motor with the most travel.
-        max_travel = np.maximum(delta_ra, delta_dec) * u.deg
-        moving = max_travel > 0
-        overhead = max_travel / config.slew_rate()
-        overhead[moving] += config.slew_overhead()
-    else:
-        overhead = np.zeros(new_pointing.shape) * u.s
-    # Add the constant focus time.
-    overhead += config.focus_time()
-    # Overhead is at least the remaining readout time for the last exposure.
-    overhead = np.maximum(overhead, config.readout_time() - deadtime)
-
-    return overhead
-
-
 def get_location():
     """Return the telescope's earth location.
 
