@@ -8,13 +8,9 @@ import os.path
 
 import numpy as np
 
-import astropy.table
 import astropy.io.fits
-import astropy.units as u
 
 import desiutil.log
-
-import desimodel.io
 
 import desisurvey.config
 import desisurvey.utils
@@ -234,10 +230,12 @@ class Scheduler(object):
         .. math::
 
             -\\frac{1}{2} \\left( \\frac{\\text{HA} - \\text{HA}_0}{\\sigma_{\\text{HA}}}
-            \\right) + g \\log \\frac{t_\\text{exp}}{t_\\text{nom}}
+            \\right)^2 + g \\log \\frac{t_\\text{exp}}{t_\\text{nom}} + \log P
 
         where :math:`\\text{HA}` and :math:`\\text{HA}_0` are the current and design
-        hour angles, respectively, and :math:`g` is the ``greediness`` parameter.
+        hour angles, respectively, :math:`g` is the ``greediness`` parameter below,
+        and :math:`P` are the tile priorities used to implement survey strategy
+        and updated via :meth:`update_tiles`.
 
         Parameters
         ----------
@@ -269,6 +267,7 @@ class Scheduler(object):
             When no tile is observable, only the last two tuple fields
             will be valid, and this method should be called again after
             some dead-time delay.  The tuple fields are:
+
              - TILEID: ID of the tile to observe.
              - PASSNUM: pass number of the tile to observe.
              - SNR2FRAC: fractional SNR2 already accumulated for the selected tile.
@@ -336,6 +335,18 @@ class Scheduler(object):
 
     def update_snr(self, tileID, snr2frac):
         """Update SNR for one tile.
+
+        A tile whose update ``snr2frac`` exceeds the ``min_snr2frac``
+        configuration parameter will be considered completed, and
+        not scheduled for future observing.
+
+        Parameters
+        ----------
+        tileID : int
+            ID of the tile to update.
+        snr2frac : float
+            New value of the fractional SNR2 accumulated for this tile, including
+            all previous exposures.
         """
         idx = self.tiles.index(tileID)
         self.snr2frac[idx] = snr2frac
