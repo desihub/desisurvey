@@ -102,7 +102,6 @@ class Scheduler(object):
         # Allocate memory for internal arrays.
         self.exposure_factor = np.zeros(ntiles)
         self.hourangle = np.zeros(ntiles)
-        self.cosdHA = np.zeros(ntiles)
         self.airmass = np.zeros(ntiles)
         self.in_night_pool = np.zeros(ntiles, bool)
         self.tile_sel = np.zeros(ntiles, bool)
@@ -224,11 +223,21 @@ class Scheduler(object):
         # Initialize the pool of tiles that could be observed this night.
         self.in_night_pool[:] = ~self.completed & self.tile_planned & self.tile_available
 
-    def next_tile(self, mjd_now, ETC, seeing, transp, method='design'):
+    def next_tile(self, mjd_now, ETC, seeing, transp, HA_sigma=15., greediness=0.):
         """Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
         method during a night.
+
+        The (log) score for each observable tile is calculated as:
+
+        .. math::
+
+            -\\frac{1}{2} \\left( \\frac{\\text{HA} - \\text{HA}_0}{\\sigma_{\\text{HA}}}
+            \\right) + g \\log \\frac{t_\\text{exp}}{t_\\text{nom}}
+
+        where :math:`\\text{HA}` and :math:`\\text{HA}_0` are the current and design
+        hour angles, respectively, and :math:`g` is the ``greediness`` parameter.
 
         Parameters
         ----------
@@ -241,6 +250,16 @@ class Scheduler(object):
             Estimate of current atmospherid seeing in arcseconds.
         transp : float
             Estimate of current atmospheric transparency in the range 0-1.
+        HA_sigma : float
+            RMS in degrees for the Gaussian penalty applied to tiles observed
+            away from their design hour angle.
+        greediness : float
+            Parameter that controls the balance between observing at the design
+            hour angle and observing tiles with the small exposure-time factor.
+            Set this value to zero to only consider hour angle. Larger values
+            place more importance on instantaneous efficiency. Note that
+            changing ``HA_sigma`` also changes balances. Refer to the equation
+            above for details.
 
         Returns
         -------
@@ -298,15 +317,19 @@ class Scheduler(object):
             t_remaining, program, self.snr2frac[self.tile_sel], self.exposure_factor[self.tile_sel])
         if not np.any(self.tile_sel):
             return None, None, None, None, None, program, mjd_program_end
-        if method == 'greedy':
-            # Pick the tile with the smallest exposure factor.
-            idx = np.argmin(self.exposure_factor)
-        else:
-            # Pick the tile that is closest to its design hour angle.
-            self.cosdHA[:] = -1
-            self.cosdHA[self.tile_sel] = np.cos(np.radians(
-                self.hourangle[self.tile_sel] - self.design_hourangle[self.tile_sel]))
-            idx = np.argmax(self.cosdHA)
+        # Calculate (the log of a) Gaussian multiplicative penalty for
+        # observing tiles away from their design hour angle.
+        dHA = self.hourangle[self.tile_sel] - self.design_hourangle[self.tile_sel]
+        dHA[dHA >= 180.] -= 360
+        dHA[dHA < -180] += 360
+        assert np.all((dHA >= -180) & (dHA < 180))
+        log_score = -0.5 * (dHA / HA_sigma) ** 2
+        # Adjust scores for each tile's instantaneous efficiency.
+        if greediness > 0:
+            log_score += greediness * np.log(self.exposure_factor[self.tile_sel])
+        # Select the tile with the highest (log) score.
+        idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
+        # Return info about the selected tile and scheduled program.
         return (self.tiles.tileID[idx], self.tiles.passnum[idx],
                 self.snr2frac[idx], self.exposure_factor[idx],
                 self.airmass[idx], program, mjd_program_end)
