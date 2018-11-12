@@ -14,20 +14,12 @@ import astropy.io
 import astropy.utils.data
 import astropy.units as u
 
-from desisurvey import utils, config
+from desisurvey.test.base import Tester
+import desisurvey.utils as utils
+import desisurvey.config as config
 
 
-class TestUtils(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        # Create a temporary directory.
-        cls.tmpdir = tempfile.mkdtemp()
-
-    @classmethod
-    def tearDownClass(cls):
-        # Remove the directory after the test.
-        shutil.rmtree(cls.tmpdir)
+class TestUtils(Tester):
 
     def setUp(self):
         # Configure a CSV reader for the Horizons output format.

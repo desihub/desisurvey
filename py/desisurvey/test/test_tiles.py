@@ -6,13 +6,11 @@ import astropy.units as u
 
 import desisurvey.utils
 import desisurvey.config
+from desisurvey.test.base import Tester
 from desisurvey.tiles import Tiles, get_tiles
 
 
-class TestTiles(unittest.TestCase):
-
-    def setUp(self):
-        pass
+class TestTiles(Tester):
 
     def test_tiles(self):
         tiles = Tiles()
@@ -40,7 +38,6 @@ class TestTiles(unittest.TestCase):
         # Sanity checks on overlap results.
         # Assume that the second DARK pass depends on the first DARK pass.
         DARK1, DARK2 = tiles.program_passes['DARK'][:2]
-        print(DARK1, DARK2)
         IN1 = (tiles.passnum == DARK1)
         IN2 = (tiles.passnum == DARK2)
         self.assertEqual(len(tile_over[DARK1]), tiles.ntiles)
@@ -51,17 +48,17 @@ class TestTiles(unittest.TestCase):
         self.assertTrue(DARK1 not in overlapping)
         self.assertEqual(overlapping[DARK2].shape, (tiles.pass_ntiles[DARK2], tiles.pass_ntiles[DARK1]))
         # Pick a tile in the second DARK pass.
-        N = 500
-        IDX2 = np.where(IN2)[0][N]
-        # Find covering tiles in the first DARK pass.
-        IDX1 = np.where(tile_over[DARK2])[0][overlapping[DARK2][N]]
-        # Calculate separations.
-        sep = desisurvey.utils.separation_matrix(
-            [tiles.tileRA[IDX2]], [tiles.tileDEC[IDX2]],
-            tiles.tileRA[IDX1], tiles.tileDEC[IDX1])
-        self.assertEqual(sep.shape, (1, len(IDX1)))
         config = desisurvey.config.Configuration()
-        self.assertTrue(np.max(sep) <= 2 * config.tile_radius().to(u.deg).value)
+        for N in range(0, 25, 5):
+            IDX2 = np.where(IN2)[0][N]
+            # Find covering tiles in the first DARK pass.
+            IDX1 = np.where(tile_over[DARK2])[0][overlapping[DARK2][N]]
+            # Calculate separations.
+            sep = desisurvey.utils.separation_matrix(
+                [tiles.tileRA[IDX2]], [tiles.tileDEC[IDX2]],
+                tiles.tileRA[IDX1], tiles.tileDEC[IDX1])
+            self.assertEqual(sep.shape, (1, len(IDX1)))
+            self.assertTrue(np.max(sep) <= 2 * config.tile_radius().to(u.deg).value)
 
 
 def test_suite():

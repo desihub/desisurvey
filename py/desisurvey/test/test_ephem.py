@@ -1,8 +1,5 @@
 import unittest
-import os
-import datetime
-import tempfile
-import shutil
+import os.path
 
 import numpy as np
 
@@ -11,23 +8,16 @@ from astropy.coordinates import ICRS, AltAz
 import astropy.units as u
 import astropy.io
 
-import desisurvey.config
+from desisurvey.test.base import Tester
 from desisurvey.ephem import get_ephem, get_grid, get_object_interpolator
 from desisurvey.utils import get_location
 
 
-class TestEphemerides(unittest.TestCase):
+class TestEphemerides(Tester):
 
     @classmethod
     def setUpClass(cls):
-        # Create a temporary directory.
-        cls.tmpdir = tempfile.mkdtemp()
-        # Write output files to this temporary directory.
-        config = desisurvey.config.Configuration()
-        config.set_output_path(cls.tmpdir)
-        # Test with only one month of ephemerides.
-        desisurvey.ephem.START_DATE = datetime.date(2019, 12, 31)
-        desisurvey.ephem.STOP_DATE = datetime.date(2020, 1, 31)
+        super(TestEphemerides, cls).setUpClass()
         # Configure a CSV reader for the Horizons output format.
         csv_reader = astropy.io.ascii.Csv()
         csv_reader.header.comment = r'[^ ]'
@@ -45,14 +35,6 @@ class TestEphemerides(unittest.TestCase):
                  'az', 'alt', 'lst', 'frac')
         for old_name, new_name in zip(cls.table.colnames, names):
             cls.table[old_name].name = new_name
-
-    @classmethod
-    def tearDownClass(cls):
-        # Remove the directory after the test.
-        shutil.rmtree(cls.tmpdir)
-        # Reset our configuration.
-        desisurvey.config.Configuration.reset()
-        desisurvey.ephem._ephem = None
 
     def test_get_ephem(self):
         """Test memory and disk caching"""
