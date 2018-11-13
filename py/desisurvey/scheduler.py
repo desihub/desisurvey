@@ -9,6 +9,7 @@ import os.path
 import numpy as np
 
 import astropy.io.fits
+import astropy.units as u
 
 import desiutil.log
 
@@ -174,14 +175,11 @@ class Scheduler(object):
         if np.any(new_unplanned):
             raise RuntimeError('Some previously planned tiles now have zero priority.')
         self.tile_planned[new_planned] = True
-        # Tile priorities can change after the become > 0, so copy all planned priorities,
+        # Tile priorities can change after they become > 0, so copy all planned priorities,
         # not just the newly planned priorities.
         self.tile_priority[self.tile_planned] = tile_priority[self.tile_planned]
-
-        # Sanity checks
-        assert np.all(self.tile_available == tile_available)
-        assert np.all(self.tile_priority == tile_priority)
-        assert np.all(self.tile_planned == (tile_priority > 0))
+        # Precompute log(priority) since that is what we use for scheduling.
+        self.log_priority = np.log(self.tile_priority)
 
         if not np.any(self.tile_available & self.tile_planned):
             raise ValueError('No available tiles with priority > 0 to schedule.')
@@ -326,6 +324,8 @@ class Scheduler(object):
         # Adjust scores for each tile's instantaneous efficiency.
         if greediness > 0:
             log_score += greediness * np.log(self.exposure_factor[self.tile_sel])
+        # Add tile priorities.
+        log_score += self.log_priority[self.tile_sel]
         # Select the tile with the highest (log) score.
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
         # Return info about the selected tile and scheduled program.
