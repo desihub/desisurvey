@@ -121,21 +121,21 @@ avoid_bodies:
 fiber_assignment_cadence: monthly
 
 # Specify the fiber-assignment ordering dependencies between passes.
-# For example, the line P2[1]: P0+P1 means that a tile in pass 2
+# For example, "P2: P0+P1 delay 1" means that a tile in pass 2
 # cannot be fiber assigned until all overlapping tiles in passes
-# 0 and 1 have been completed. The qualifier [1] indicates
+# 0 and 1 have been completed. A delay value of 1 indicates
 # that fiber assignment for pass 2 is delayed by 1 day / month
 # (depending on fiber_assignment_cadence) after all overlapping
 # tiles have been completed, to allow sufficient time to
 # analyze offline outputs and confirm targeting decisions.
-# Similarly, [0] indicates that fibers are assigned on the first
-# day / month after the covering tiles are completed.
+# Similarly, a delay of 0 indicates that fibers are assigned on
+# the first day / month after the covering tiles are completed.
 fiber_assignment_order:
-    P1: P0
-    P2: P0+P1
-    P3: P0+P1
-    P6: P5
-    P7: P5+P6
+    P1: P0 delay 1
+    P2: P0+P1 delay 1
+    P3: P0+P1 delay 1
+    P6: P5 delay 1
+    P7: P5+P6 delay 1
 
 # Nominal tile radius for determining whether two tiles overlap.
 tile_radius: 1.62 deg
@@ -156,6 +156,6 @@ tile_radius: 1.62 deg
 tiles_file: desi-tiles.fits
 
 # Base path to pre-pended to all non-absolute paths used for reading and
-# writing files managed by this pacakge. The pattern {...} will be expanded
+# writing files managed by this package. The pattern {...} will be expanded
 # using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'

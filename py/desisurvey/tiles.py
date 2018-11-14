@@ -2,6 +2,8 @@
 """
 from __future__ import print_function, division
 
+import re
+
 import numpy as np
 
 import astropy.units as u
@@ -93,6 +95,7 @@ class Tiles(object):
         # so we use lazy evaluation the first time they are accessed.
         self._tile_over = None
         self._overlapping = None
+        self._fiberassign_delay = None
 
     def airmass(self, hour_angle, mask=None):
         """Calculate tile airmass given hour angle.
@@ -163,6 +166,18 @@ class Tiles(object):
             self._calculate_overlaps()
         return self._overlapping
 
+    @property
+    def fiberassign_delay(self):
+        """Delay between covering a tile and when it can be fiber assigned.
+
+        Units are determined by the value of the fiber_assignment_cadence
+        configuration parameter.
+        """
+        if self._fiberassign_delay is None:
+            self._calculate_overlaps()
+        return self._fiberassign_delay
+
+
     def _calculate_overlaps(self):
         """Initialize attributes _overlapping and _tile_over.
 
@@ -174,25 +189,45 @@ class Tiles(object):
         """
         self._overlapping = {}
         self._tile_over = {}
+        self._fiberassign_delay = np.full(self.ntiles, -1, int)
         config = desisurvey.config.Configuration()
-        fiberassign_order = config.fiber_assignment_order
         tile_diameter = 2 * config.tile_radius().to(u.deg).value
-        for passnum in self.passes:
-            under = self.passnum == passnum
-            over = np.zeros_like(under)
-            key = 'P{}'.format(passnum)
-            if key in fiberassign_order.keys:
-                overpasses = getattr(fiberassign_order, key)()
-                for overpass in overpasses.split('+'):
-                    if not len(overpass) == 2 and overpass[0] == 'P':
-                        raise RuntimeError(
-                            'Invalid pass in fiber_assignment_order: {}.'
-                            .format(overpass))
-                    over |= (self.passnum == int(overpass[1]))
-                self.overlapping[passnum] = desisurvey.utils.separation_matrix(
-                    self.tileRA[under], self.tileDEC[under],
-                    self.tileRA[over], self.tileDEC[over], tile_diameter)
-            self.tile_over[passnum] = over
+
+        # Validate and parse config.fiber_assignment_order into a dictionary.
+        fiberassign_order = config.fiber_assignment_order
+        Pn = re.compile('^P(\d+)$')
+        RHS = re.compile('^(P\d+(?:\+P\d+)*) delay (\d+)$')
+        fa_rules = {passnum: dict(coveredby=[], delay=0) for passnum in self.passes}
+        for key in fiberassign_order.keys:
+            matched = Pn.match(key)
+            if not matched:
+                raise ValueError('Invalid fiber_assignment_order Pn key: "{}".'.format(key))
+            under_pass = int(matched.group(1))
+            value = getattr(fiberassign_order, key)()
+            matched = RHS.match(value)
+            if not matched:
+                raise ValueError('Invalid fiber_assignment_order RHS value: "{}".'.format(value))
+            over_passes = [int(Pn.match(token).group(1)) for token in matched.group(1).split('+')]
+            delay = int(matched.group(2))
+            fa_rules[under_pass] = dict(coveredby=over_passes, delay=delay)
+
+        # Initialize the data structures behind the attributes defined above.
+        for under_pass in self.passes:
+            fa_rule = fa_rules[under_pass]
+            under_sel = self.passnum == under_pass
+            # Save the delay for tiles in this pass.
+            self._fiberassign_delay[under_sel] = fa_rule['delay']
+            # Build and save a mask of all tiles in passes that cover this pass.
+            over_sel = np.zeros_like(under_sel)
+            for over_pass in fa_rule['coveredby']:
+                over_sel |= (self.passnum == over_pass)
+            self.tile_over[under_pass] = over_sel
+            if np.any(over_sel):
+                # Calculate a boolean matrix of overlaps between tiles in under_pass
+                # and over_passes.
+                self.overlapping[under_pass] = desisurvey.utils.separation_matrix(
+                    self.tileRA[under_sel], self.tileDEC[under_sel],
+                    self.tileRA[over_sel], self.tileDEC[over_sel], tile_diameter)
 
 
 _cached_tiles = {}
