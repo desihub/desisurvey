@@ -149,8 +149,9 @@ class Planner(object):
             self.first_night = self.last_night = None
             # Initialize per-tile arrays.
             self.tile_covered = np.full(self.tiles.ntiles, -1)
-            self.tile_countdown = np.full(self.tiles.ntiles, 1)
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
+            # Initailize the delay countdown for each tile.
+            self.tile_countdown = self.tiles.fiberassign_delay.copy()
             # Initialize priorities.
             if self.rules is not None:
                 none_completed = np.zeros(self.tiles.ntiles, bool)
