@@ -24,10 +24,10 @@ class Tiles(object):
     PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
 
     """Manage static info associated with the tiles file.
-    
+
     The ``tiles_file`` configuration parameter determines which tiles
     file is read.
-    
+
     Each tile has an assigned program name and pass number.
     Program names are predefined in our config, but not all programs need
     to be represented.  Pass numbers are arbitrary integers and do not
