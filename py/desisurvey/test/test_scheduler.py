@@ -5,6 +5,7 @@ import numpy as np
 
 import desisurvey.plan
 import desisurvey.etc
+import desisurvey.config
 from desisurvey.test.base import Tester
 from desisurvey.scripts import surveyinit
 from desisurvey.scheduler import Scheduler

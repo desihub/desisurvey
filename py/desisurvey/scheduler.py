@@ -179,7 +179,9 @@ class Scheduler(object):
         # not just the newly planned priorities.
         self.tile_priority[self.tile_planned] = tile_priority[self.tile_planned]
         # Precompute log(priority) since that is what we use for scheduling.
-        self.log_priority = np.log(self.tile_priority)
+        # Ignore harmless warnings about log(0) = -inf.
+        with np.errstate(divide='ignore'):
+            self.log_priority = np.log(self.tile_priority)
 
         if not np.any(self.tile_available & self.tile_planned):
             raise ValueError('No available tiles with priority > 0 to schedule.')
