@@ -197,7 +197,17 @@ class Scheduler(object):
         Must be called before calls to :meth:`next_tile` and
         :meth:`update_tile` during the night.
 
+        The pool of available tiles during the night consists of those that:
+
+         - Have fibers assigned.
+         - Have non-zero priority (aka "planned").
+         - Have not already reached their target SNR (aka "completed").
+         - Are not too close to a planet during this night.
+
         Tile availability and priority is assumed fixed during the night.
+        When the moon is up, tiles are also vetoed if they are too
+        close to the moon. The angles that define "too close" to a
+        planet or the moon are specified in config.avoid_bodies.
 
         Parameters
         ----------
@@ -239,7 +249,8 @@ class Scheduler(object):
             if body == 'moon':
                 continue
             # Get body (RA,DEC) at midnight.
-            bodyRA, bodyDEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, body)(midnight)
+            bodyRA, bodyDEC = desisurvey.ephem.get_object_interpolator(
+                self.night_ephem, body, altaz=False)(midnight)
             too_close = desisurvey.utils.separation_matrix(
                 [bodyRA], [bodyDEC], poolRA, poolDEC, self.avoid_bodies[body])[0]
             if np.any(too_close):
@@ -249,6 +260,9 @@ class Scheduler(object):
                     self.avoid_bodies[body], body, ','.join([str(ID) for ID in tileIDs])))
                 avoid_idx.extend(idx)
         self.in_night_pool[avoid_idx] = False
+        # Initialize moon tracking during this night.
+        self.moon_RADEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
+        #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
     def next_tile(self, mjd_now, ETC, seeing, transp, HA_sigma=15., greediness=0.):
         """Select the next tile to observe.
@@ -320,6 +334,7 @@ class Scheduler(object):
         # Select available tiles in this program.
         self.tile_sel = self.tiles.program_mask[program] & self.in_night_pool
         if not np.any(self.tile_sel):
+            # No tiles available to observe tonight in this program.
             return None, None, None, None, None, program, mjd_program_end
         # Calculate the local apparent sidereal time in degrees.
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
@@ -335,7 +350,25 @@ class Scheduler(object):
             self.hourangle[self.tile_sel], self.tile_sel)
         self.tile_sel &= self.airmass < self.max_airmass
         if not np.any(self.tile_sel):
+            # No tiles left to observe after airmass cut.
             return None, None, None, None, None, program, mjd_program_end
+        # Is the moon up?
+        if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
+            moon_is_up = True
+            # Calculate the moon (RA,DEC).
+            moonRA, moonDEC = self.moon_RADEC(mjd_now)
+            # Identify tiles that are too close to the moon to observe now.
+            too_close = desisurvey.utils.separation_matrix(
+                [moonRA], [moonDEC],
+                self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel],
+                self.avoid_bodies['moon'])[0]
+            idx = np.where(self.tile_sel)[0][too_close]
+            self.tile_sel[idx] = False
+            if not np.any(self.tile_sel):
+                # No tiles left to observe after moon avoidance veto.
+                return None, None, None, None, None, program, mjd_program_end
+        else:
+            moon_is_up = False
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
