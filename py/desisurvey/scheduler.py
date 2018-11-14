@@ -111,6 +111,10 @@ class Scheduler(object):
         self.tile_available = np.zeros(self.tiles.ntiles, bool)
         self.tile_planned = np.zeros(self.tiles.ntiles, bool)
         self.tile_priority = np.zeros(self.tiles.ntiles, float)
+        # Lookup avoidance cone angles.
+        self.avoid_bodies = {}
+        for body in config.avoid_bodies.keys:
+            self.avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg).value
 
     def save(self, name):
         """Save a snapshot of our current state that can be restored.
@@ -187,26 +191,35 @@ class Scheduler(object):
             raise ValueError('No available tiles with priority > 0 to schedule.')
         return np.where(new_available)[0], np.where(new_planned)[0]
 
-    def init_night(self, night, use_twilight=False, verbose=False):
+    def init_night(self, night, use_twilight=False):
         """Initialize scheduling for the specified night.
 
         Must be called before calls to :meth:`next_tile` and
         :meth:`update_tile` during the night.
 
         Tile availability and priority is assumed fixed during the night.
+
+        Parameters
+        ----------
+        night : str
+            Date on the evening this night starts in the format YYYY-MM-DD.
+        use_twilight : bool
+            Include twilight when calculating the scheduled program changes
+            during this night when True.
+        verbose : bool
+            Generate verbose logging output when True.
         """
+        self.log.debug('Initializing scheduler for {}'.format(night))
         if self.tile_available is None or self.tile_priority is None:
             raise RuntimeError('Must call update_tiles() before init_night().')
         self.night = night
-        self.use_twilight = use_twilight
         self.night_ephem = self.ephem.get_night(night)
+        midnight = self.night_ephem['noon'] + 0.5
         # Lookup the program for this night.
         self.night_programs, self.night_changes = self.ephem.get_night_program(
             night, include_twilight=use_twilight)
-        if verbose:
-            midnight = self.night_ephem['noon'] + 0.5
-            self.log.info('Program: {}'.format(self.night_programs))
-            self.log.info('Changes: {}'.format(np.round(24 * (self.night_changes - midnight), 3)))
+        self.log.debug('  Program: {}'.format(self.night_programs))
+        self.log.debug('  Changes: {}'.format(np.round(24 * (self.night_changes - midnight), 3)))
         # Initialize linear interpolation of MJD -> LST in degrees during this night.
         self.MJD0, MJD1 = self.night_ephem['brightdusk'], self.night_ephem['brightdawn']
         self.LST0, LST1 = [
@@ -218,6 +231,24 @@ class Scheduler(object):
         self.last_idx = None
         # Initialize the pool of tiles that could be observed this night.
         self.in_night_pool[:] = ~self.completed & self.tile_planned & self.tile_available
+        # Check if any tiles cannot be observed because they are too close to a planet this night.
+        poolRA = self.tiles.tileRA[self.in_night_pool]
+        poolDEC = self.tiles.tileDEC[self.in_night_pool]
+        avoid_idx = []
+        for body in self.avoid_bodies:
+            if body == 'moon':
+                continue
+            # Get body (RA,DEC) at midnight.
+            bodyRA, bodyDEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, body)(midnight)
+            too_close = desisurvey.utils.separation_matrix(
+                [bodyRA], [bodyDEC], poolRA, poolDEC, self.avoid_bodies[body])[0]
+            if np.any(too_close):
+                idx = np.where(self.in_night_pool)[0][too_close]
+                tileIDs = self.tiles.tileID[idx]
+                self.log.debug('  Tiles within {} deg of {}: {}.'.format(
+                    self.avoid_bodies[body], body, ','.join([str(ID) for ID in tileIDs])))
+                avoid_idx.extend(idx)
+        self.in_night_pool[avoid_idx] = False
 
     def next_tile(self, mjd_now, ETC, seeing, transp, HA_sigma=15., greediness=0.):
         """Select the next tile to observe.
