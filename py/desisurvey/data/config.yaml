@@ -115,6 +115,11 @@ avoid_bodies:
 # Parameters used to schedule fiber assignment.
 #-------------------------------------------------------------------
 
+# Specify the cadence for updating fiber assignments. The choices are:
+# - monthly: perform updates at every full moon break.
+# - daily: perform updates as part of every afternoon plan.
+fiber_assignment_cadence: monthly
+
 # Specify the fiber-assignment ordering dependencies between passes.
 # For example, the line P2[1]: P0+P1 means that a tile in pass 2
 # cannot be fiber assigned until all overlapping tiles in passes

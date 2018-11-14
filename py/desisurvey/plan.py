@@ -106,9 +106,6 @@ class Planner(object):
     rules : object or None
         Object with an ``apply`` method that is used to implement survey strategy by updating
         tile priorities each afternoon.  When None, all tiles have equal priority.
-    fiberassign_cadence : 'daily' or 'monthly'
-        Cadence for updating fiber assignments.  Monthly is defined as the afternoon before
-        a full moon. Must match the value in a restored snapshot when restore is set.
     restore : str or None
         Restore internal state from the snapshot saved to this filename,
         or initialize a new planner when None. Use :meth:`save` to
@@ -118,13 +115,13 @@ class Planner(object):
     tiles_file : str or None
         Override the default tiles files specified in the configuration when specified.
     """
-    def __init__(self, rules=None, fiberassign_cadence='monthly', restore=None, tiles_file=None):
+    def __init__(self, rules=None, restore=None, tiles_file=None):
         self.log = desiutil.log.get_logger()
         self.rules = rules
-        if fiberassign_cadence not in ('daily', 'monthly'):
-            raise ValueError('Invalid fiberassign_cadence: "{}".'.format(fiberassign_cadence))
-        self.fiberassign_cadence = fiberassign_cadence
         config = desisurvey.config.Configuration()
+        self.fiberassign_cadence = config.fiber_assignment_cadence()
+        if self.fiberassign_cadence not in ('daily', 'monthly'):
+            raise ValueError('Invalid fiberassign_cadence: "{}".'.format(self.fiberassign_cadence))
         self.tiles = desisurvey.tiles.get_tiles(tiles_file)
         self.ephem = desisurvey.ephem.get_ephem()
         if restore is not None:
@@ -204,6 +201,8 @@ class Planner(object):
                     fullname))
 
     def fiberassign(self, night, completed):
+        """Update fiber assignments.
+        """
         # Calculate the number of elapsed nights in the survey.
         day_number = (night - self.first_night).days
         print('Running fiber assignment on {} (day number {}) with {} tiles completed.'

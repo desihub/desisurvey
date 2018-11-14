@@ -4,6 +4,7 @@ import datetime
 import numpy as np
 
 import desisurvey.tiles
+import desisurvey.config
 from desisurvey.test.base import Tester
 from desisurvey.plan import Planner
 
@@ -15,8 +16,10 @@ class TestPlan(Tester):
         completed = np.zeros(tiles.ntiles, bool)
         num_nights = (self.stop - self.start).days
         gen = np.random.RandomState(123)
+        config = desisurvey.config.Configuration()
         for cadence in 'daily', 'monthly':
-            plan = Planner(fiberassign_cadence=cadence)
+            config.fiber_assignment_cadence.set_value(cadence)
+            plan = Planner()
             plan2 = None
             for i in range(num_nights):
                 night = self.start + datetime.timedelta(i)
@@ -32,8 +35,7 @@ class TestPlan(Tester):
                 completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
                 # Save and restore our state.
                 plan.save('snapshot.fits')
-                plan2 = Planner(fiberassign_cadence=cadence, restore='snapshot.fits')
-
+                plan2 = Planner(restore='snapshot.fits')
 
 
 def test_suite():

@@ -16,7 +16,9 @@ class TestScheduler(Tester):
         cmd = 'surveyinit --max-cycles 5 --init zero'
         args = surveyinit.parse(cmd.split()[1:])
         surveyinit.main(args)
-        planner = desisurvey.plan.Planner(fiberassign_cadence='daily')
+        config = desisurvey.config.Configuration()
+        config.fiber_assignment_cadence.set_value('daily')
+        planner = desisurvey.plan.Planner()
         scheduler = Scheduler()
         num_nights = (self.stop - self.start).days
         for i in range(num_nights):
