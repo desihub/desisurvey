@@ -496,6 +496,9 @@ def main(args):
     if args.output_path is not None:
         config.set_output_path(args.output_path)
 
+    # Look for the exposures file in the output path by default.
+    args.exposures = config.get_path(args.exposures)
+
     # Initialize.
     animator = Animator(
         args.exposures, args.start, args.stop, args.label, args.scores)
