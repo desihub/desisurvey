@@ -274,8 +274,8 @@ class Scheduler(object):
 
         .. math::
 
-            -\\frac{1}{2} \\left( \\frac{\\text{HA} - \\text{HA}_0}{\\sigma_{\\text{HA}}}
-            \\right)^2 + g \\log \\frac{t_\\text{exp}}{t_\\text{nom}} + \log P
+            -(1 - g)\\,\\frac{1}{2} \\left( \\frac{\\text{HA} - \\text{HA}_0}{\\sigma_{\\text{HA}}}
+            \\right)^2 - g \\log \\frac{t_\\text{exp}}{t_\\text{nom}} + \log P
 
         where :math:`\\text{HA}` and :math:`\\text{HA}_0` are the current and design
         hour angles, respectively, :math:`g` is the ``greediness`` parameter below,
@@ -299,10 +299,11 @@ class Scheduler(object):
         greediness : float
             Parameter that controls the balance between observing at the design
             hour angle and observing tiles with the small exposure-time factor.
-            Set this value to zero to only consider hour angle. Larger values
-            place more importance on instantaneous efficiency. Note that
-            changing ``HA_sigma`` also changes balances. Refer to the equation
-            above for details.
+            Set this value to zero to only consider hour angle or to one to
+            only consider isntantaneous efficiency. The meaning of intermediate
+            values will depend on the value of ``HA_sigma`` and how exposure
+            factors are calculated. Refer to the equation above for details.
+            Must be between 0 and 1.
 
         Returns
         -------
@@ -324,6 +325,8 @@ class Scheduler(object):
         """
         if self.night is None:
             raise ValueError('Must call init_night() before next_tile().')
+        if greediness < 0 or greediness > 1:
+            raise ValueError('Expected greediness between 0 and 1.')
         # Which program are we in?
         while mjd_now >= self.night_changes[self.night_index + 1]:
             self.night_index += 1
@@ -386,10 +389,10 @@ class Scheduler(object):
         dHA[dHA >= 180.] -= 360
         dHA[dHA < -180] += 360
         assert np.all((dHA >= -180) & (dHA < 180))
-        log_score = -0.5 * (dHA / HA_sigma) ** 2
-        # Adjust scores for each tile's instantaneous efficiency.
-        if greediness > 0:
-            log_score += greediness * np.log(self.exposure_factor[self.tile_sel])
+        # Calculate a score that combines dHA and instantaneous efficiency.
+        log_score = (
+            -0.5 * (dHA / HA_sigma) ** 2 * (1 - greediness) +
+            -np.log(self.exposure_factor[self.tile_sel]) * greediness)
         # Add tile priorities.
         log_score += self.log_priority[self.tile_sel]
         # Select the tile with the highest (log) score.
