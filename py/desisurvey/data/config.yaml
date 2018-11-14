@@ -66,7 +66,7 @@ programs:
         # Any time after twilight that is neither DARK nor GRAY is BRIGHT.
 
 #-------------------------------------------------------------------
-# Parameters used to plan observation during a night.
+# Parameters to plan next-tile selection during each night.
 #-------------------------------------------------------------------
 
 # Never observe below this limit.
@@ -110,25 +110,21 @@ avoid_bodies:
     saturn: 2 deg
     neptune: 2 deg
     uranus: 2 deg
-    #ceres: 2 deg  # not implemented in pyephem: do we need it?
 
-# Weights for scheduling a tile out of the nominal program, relative
-# to 1 for observing a tile from the nominal program.
-fallback_weights:
-    # DARK program fallback weights.
-    gray_in_dark: 0.4
-    bright_in_dark: 0.3
-    # GRAY program fallback weights.
-    dark_in_gray: 0.0
-    bright_in_gray: 0.5
-    # BRIGHT program fallback weights.
-    dark_in_bright: 0.0
-    gray_in_bright: 0.0
+#-------------------------------------------------------------------
+# Parameters used to schedule fiber assignment.
+#-------------------------------------------------------------------
 
-# Nominal tile radius for determining whether two tiles overlap.
-# https://github.com/desihub/desimodel/pull/37#issuecomment-270788581
-tile_radius: 1.62 deg
-
+# Specify the fiber-assignment ordering dependencies between passes.
+# For example, the line P2[1]: P0+P1 means that a tile in pass 2
+# cannot be fiber assigned until all overlapping tiles in passes
+# 0 and 1 have been completed. The qualifier [1] indicates
+# that fiber assignment for pass 2 is delayed by 1 day / month
+# (depending on fiber_assignment_cadence) after all overlapping
+# tiles have been completed, to allow sufficient time to
+# analyze offline outputs and confirm targeting decisions.
+# Similarly, [0] indicates that fibers are assigned on the first
+# day / month after the covering tiles are completed.
 fiber_assignment_order:
     P1: P0
     P2: P0+P1
@@ -136,15 +132,25 @@ fiber_assignment_order:
     P6: P5
     P7: P5+P6
 
+# Nominal tile radius for determining whether two tiles overlap.
+tile_radius: 1.62 deg
+
+#-------------------------------------------------------------------
+# Parameters to locate files needed by desisurvey.
+#-------------------------------------------------------------------
+
 # Name of file defining DESI tiles for desimodel.io.load_tiles(tiles_file).
 # Without path this will look in $DESIMODEL/data/footprint/; otherwise with
 # a path (relative or absolute) it will read that file.
+# Non-standard tiles files are supported with the following caveats:
+# - The program names (DARK,GRAY,BRIGHT) are predefined but not all
+#   programs need to be included in the tiles file.
+# - Pass numbers are arbitrary integers and do not need to be consecutive
+#   or dense. However use of non-standard values will generally require
+#   an update to fiber_assignment_order, above.
 tiles_file: desi-tiles.fits
 
-#-------------------------------------------------------------------
-# Base path to pre-pended to all non-absolute paths used for writing
-# output files. The pattern {...} will be expanded using environment
-# variables.
-#-------------------------------------------------------------------
-
+# Base path to pre-pended to all non-absolute paths used for reading and
+# writing files managed by this pacakge. The pattern {...} will be expanded
+# using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'
