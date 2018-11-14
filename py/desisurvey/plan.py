@@ -206,8 +206,6 @@ class Planner(object):
         """
         # Calculate the number of elapsed nights in the survey.
         day_number = (night - self.first_night).days
-        print('Running fiber assignment on {} (day number {}) with {} tiles completed.'
-              .format(night, day_number, np.count_nonzero(completed)))
         for passnum in self.tiles.passes:
             under = self.tiles.passnum == passnum
             over = self.tiles.tile_over[passnum]
@@ -232,8 +230,8 @@ class Planner(object):
         # Update delay countdown for the remaining ready tiles.
         delayed = ready & (self.tile_countdown > 0)
         self.tile_countdown[delayed] -= 1
-        self.log.info('Fiber assigned {} tiles, with {} delayed.'
-                      .format(np.count_nonzero(run_now), np.count_nonzero(delayed)))
+        self.log.info('Fiber assigned {} tiles with {} delayed on {}.'
+                      .format(np.count_nonzero(run_now), np.count_nonzero(delayed), night))
 
     def afternoon_plan(self, night, completed):
         if self.first_night is None:
