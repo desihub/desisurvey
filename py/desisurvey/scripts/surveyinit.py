@@ -88,7 +88,7 @@ def parse(options=None):
         help='name of FITS output file where results are saved')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
-        help='output path where output files should be written')
+        help='output path to use instead of config.output_path')
     parser.add_argument(
         '--tiles-file', default=None, metavar='TILES',
         help='name of tiles file to use instead of config.tiles_file')
@@ -104,18 +104,22 @@ def parse(options=None):
     return args
 
 
-def calculate_initial_plan(args, fullname, ephem):
-    """Calculate initial hour-angle assignments for all tiles.
+def calculate_initial_plan(args):
+    """Calculate the initial survey plan.
 
-    Save results in surveyinit.fits.  Use
-    :func:`desisurvey.plan.load_design_hourangle` to retrieve design hour-angle
-    assignments from the saved file.
+    Use :func:`desisurvey.plan.load_weather` and
+    :func:`desisurvey.plan.load_design_hourangles` to retrieve
+    these data from the saved plan.
+
+    Parameters
+    ----------
+    args : object
+        Object with attributes for parsed command-line arguments.
     """
     log = desiutil.log.get_logger()
     config = desisurvey.config.Configuration()
-    if args.tile_file is not None:
-        config.tiles_file.set_value(args.tile_file)
     tiles = desisurvey.tiles.get_tiles()
+    ephem = desisurvey.ephem.get_ephem()
 
     # Initialize the output file to write.
     hdus = fits.HDUList()
@@ -217,8 +221,9 @@ def calculate_initial_plan(args, fullname, ephem):
         design['TEXP'][sel] = texp
 
     hdus.append(fits.BinTableHDU(design, name='DESIGN'))
+    fullname = config.get_path(args.name)
     hdus.writeto(fullname, overwrite=True)
-    log.info('Wrote {}'.format(fullname))
+    log.info('Saved initial plan to "{}".'.format(fullname))
 
 
 def main(args):
@@ -237,6 +242,8 @@ def main(args):
     config = desisurvey.config.Configuration(file_name=args.config_file)
     if args.output_path is not None:
         config.set_output_path(args.output_path)
+    if args.tiles_file is not None:
+        config.tiles_file.set_value(args.tiles_file)
 
     # Tabulate emphemerides if necessary.
     ephem = desisurvey.ephem.get_ephem(use_cache=not args.recalc)
@@ -244,4 +251,6 @@ def main(args):
     # Calculate design hour angles if necessary.
     fullname = config.get_path(args.save)
     if args.recalc or not os.path.exists(fullname):
-        calculate_initial_plan(args, fullname, ephem)
+        calculate_initial_plan(args)
+    else:
+        log.info('Initial plan has already been created.')
