@@ -90,6 +90,9 @@ def parse(options=None):
         '--output-path', default=None, metavar='PATH',
         help='output path where output files should be written')
     parser.add_argument(
+        '--tiles-file', default=None, metavar='TILES',
+        help='name of tiles file to use instead of config.tiles_file')
+    parser.add_argument(
         '--config-file', default='config.yaml', metavar='CONFIG',
         help='input configuration file')
 
@@ -110,6 +113,8 @@ def calculate_initial_plan(args, fullname, ephem):
     """
     log = desiutil.log.get_logger()
     config = desisurvey.config.Configuration()
+    if args.tile_file is not None:
+        config.tiles_file.set_value(args.tile_file)
     tiles = desisurvey.tiles.get_tiles()
 
     # Initialize the output file to write.
