@@ -1,4 +1,24 @@
 """Manage static information associated with tiles, programs and passes.
+
+Each tile has an assigned program name and pass number. The program names
+(DARK, GRAY, BRIGHT) are predefined in terms of conditions on the
+ephemerides, but not all programs need to be present in a tiles file.
+Pass numbers are arbitrary integers and do not need to be consecutive or dense.
+
+To ensure consistent and efficient usage of static tile info, all code
+should use::
+
+    tiles = desisurvey.tiles.get_tiles()
+
+To use a non-standard tiles file, change the configuration before the
+first call to ``get_tiles()`` with::
+
+    config = desisurvey.config.Configuration()
+    config.tiles_file.set_value(name)
+
+The :class:`Tiles` class returned by :func:`get_tiles` is a wrapper around
+the FITS table contained in a tiles file, that adds some precomputed derived
+attributes for consistency and efficiency.
 """
 from __future__ import print_function, division
 
@@ -26,14 +46,6 @@ class Tiles(object):
     PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
 
     """Manage static info associated with the tiles file.
-
-    The ``tiles_file`` configuration parameter determines which tiles
-    file is read.
-
-    Each tile has an assigned program name and pass number.
-    Program names are predefined in our config, but not all programs need
-    to be represented.  Pass numbers are arbitrary integers and do not
-    need to be consecutive or dense.
 
     Parameters
     ----------
@@ -234,6 +246,21 @@ _cached_tiles = {}
 
 def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
     """Return a Tiles object with optional caching.
+
+    You should normally always use the default arguments to ensure
+    that tiles are defined consistently and efficiently between
+    different classes.
+
+    Parameters
+    ----------
+    tiles_file : str or None
+        Use the specified name to override config.tiles_file.
+    use_cache : bool
+        Use tiles previously cached in memory when True.
+        Otherwise, (re)load tiles from disk.
+    write_cache : bool
+        If tiles need to be loaded from disk with this call,
+        save them in a memory cache for future calls.
     """
     global _cached_tiles
 

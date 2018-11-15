@@ -50,11 +50,8 @@ class Scheduler(object):
     design_hourangles : array or None
         1D array of design hour angles to use in degrees, or use
         :func:`desisurvey.plan.load_design_hourangle` when None.
-    tiles_file : str or None
-        Use this file containing the tile definitions, or the default
-        specified in the configuration when None.
     """
-    def __init__(self, restore=None, design_hourangle=None, tiles_file=None):
+    def __init__(self, restore=None, design_hourangle=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -65,7 +62,7 @@ class Scheduler(object):
         self.threshold_alt = self.max_prod / self.max_frac
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         # Load static tile info.
-        self.tiles = desisurvey.tiles.get_tiles(tiles_file)
+        self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
         # Check hourangles.
         if design_hourangle is None:

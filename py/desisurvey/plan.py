@@ -112,17 +112,15 @@ class Planner(object):
         save a snapshot to be restored later. Filename is relative to
         the configured output path unless an absolute path is
         provided.
-    tiles_file : str or None
-        Override the default tiles files specified in the configuration when specified.
     """
-    def __init__(self, rules=None, restore=None, tiles_file=None):
+    def __init__(self, rules=None, restore=None):
         self.log = desiutil.log.get_logger()
         self.rules = rules
         config = desisurvey.config.Configuration()
         self.fiberassign_cadence = config.fiber_assignment_cadence()
         if self.fiberassign_cadence not in ('daily', 'monthly'):
             raise ValueError('Invalid fiberassign_cadence: "{}".'.format(self.fiberassign_cadence))
-        self.tiles = desisurvey.tiles.get_tiles(tiles_file)
+        self.tiles = desisurvey.tiles.get_tiles()
         self.ephem = desisurvey.ephem.get_ephem()
         if restore is not None:
             # Restore the plan for a survey in progress.

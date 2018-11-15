@@ -40,12 +40,9 @@ class Forecast(object):
     design_hourangle : array or None
         1D array of design hour angles to use in degrees, or None to use
         :func:`desisurvey.plan.load_design_hourangle`.
-    tiles_file : str or None
-        Use this file containing the tile definitions, or the default
-        specified in the configuration when None.
     """
     def __init__(self, start_date=None, stop_date=None, use_twilight=False,
-                 weather=None, design_hourangle=None, tiles_file=None):
+                 weather=None, design_hourangle=None):
         config = desisurvey.config.Configuration()
         if start_date is None:
             start_date = config.first_day()
@@ -61,7 +58,7 @@ class Forecast(object):
 
         self.use_twilight = use_twilight
         # Look up the tiles to observe.
-        tiles = desisurvey.tiles.get_tiles(tiles_file)
+        tiles = desisurvey.tiles.get_tiles()
         self.tiles = tiles
         if design_hourangle is None:
             self.design_hourangle = np.zeros(tiles.ntiles)

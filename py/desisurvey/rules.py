@@ -43,6 +43,12 @@ class Rules(object):
 
     Read tile group definitions and observing rules from the specified
     YAML file.
+
+    Parameters
+    ----------
+    file_name : str
+        Name of YAML file containing the rules to use. A relative path refers
+        to our configured output path.
     """
     def __init__(self, file_name='rules.yaml'):
         self.log = desiutil.log.get_logger()
