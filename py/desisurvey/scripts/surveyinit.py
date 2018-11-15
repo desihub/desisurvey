@@ -221,7 +221,7 @@ def calculate_initial_plan(args):
         design['TEXP'][sel] = texp
 
     hdus.append(fits.BinTableHDU(design, name='DESIGN'))
-    fullname = config.get_path(args.name)
+    fullname = config.get_path(args.save)
     hdus.writeto(fullname, overwrite=True)
     log.info('Saved initial plan to "{}".'.format(fullname))
 
