@@ -48,7 +48,8 @@ def parse(options=None):
         help='display log messages with severity >= debug (implies verbose)')
     parser.add_argument('--log-interval', type=int, default=100, metavar='N',
         help='interval for logging periodic info messages')
-    parser.add_argument('--exposures', default='exposures.fits', metavar='FITS',
+    parser.add_argument(
+        '--exposures', default='exposures_surveysim.fits', metavar='FITS',
         help='name of FITS file with list of exposures taken')
     parser.add_argument(
         '--start', type=str, default=None, metavar='DATE',
@@ -62,8 +63,9 @@ def parse(options=None):
     parser.add_argument(
         '--nightly', action='store_true',
         help='output one summary frame per night')
-    parser.add_argument(
-        '--scores', action='store_true', help='display scheduler scores')
+    # The scores option needs to be re-implemented after the refactor.
+    ##parser.add_argument(
+    ##    '--scores', action='store_true', help='display scheduler scores')
     parser.add_argument(
         '--save', type=str, default='surveymovie', metavar='NAME',
         help='base name (without extension) of output file to write')
@@ -75,7 +77,10 @@ def parse(options=None):
         help='label to display on each frame')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
-        help='output path where output files should be written')
+        help='path that desisurvey files are read from')
+    parser.add_argument(
+        '--tiles-file', default=None, metavar='TILES',
+        help='name of tiles file to use instead of config.tiles_file')
     parser.add_argument(
         '--config-file', default='config.yaml', metavar='CONFIG',
         help='input configuration file')
@@ -84,6 +89,9 @@ def parse(options=None):
         args = parser.parse_args()
     else:
         args = parser.parse_args(options)
+
+    # The scores option needs to be re-implemented after the refactor.
+    args.scores = False
 
     if args.nightly and args.scores:
         log.warn('Cannot display scores in nightly summary.')
@@ -495,6 +503,8 @@ def main(args):
     config = desisurvey.config.Configuration()
     if args.output_path is not None:
         config.set_output_path(args.output_path)
+    if args.tiles_file is not None:
+        config.tiles_file.set_value(args.tiles_file)
 
     # Look for the exposures file in the output path by default.
     args.exposures = config.get_path(args.exposures)
