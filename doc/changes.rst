@@ -12,7 +12,7 @@ next-tile selection, and exposure-time calculations. The refactored
 code is also significantly faster.
 
 * Add new modules: tiles, forecast, scheduler.
-* Move module schedule to old/ (superceded by new scheduler module).
+* Move modules schedule, progress, surveyplan to old/.
 * Add new class ExposureTimeCalculator to etc module.
 * Add new class Planner to plan module.
 * Decouple ephemerides date range from nominal survey start/stop.
