@@ -181,7 +181,7 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
 
     # Save the table. The IERS-B table provided with astropy uses the
     # ascii.cds format but astropy cannot write this format.
-    iers.write(save_name, format='ascii.ecsv')
+    iers.write(save_name, format='ascii.ecsv', overwrite=True)
     log.info('Wrote updated table to {0}.'.format(save_name))
 
 

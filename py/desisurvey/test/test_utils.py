@@ -167,7 +167,7 @@ class TestUtils(Tester):
         """The lowest airmass occurs when dec=latitude"""
         t = astropy.time.Time('2020-01-01')
         ra = np.arange(360) * u.deg
-        dec = utils.get_location().latitude
+        dec = utils.get_location().lat
         Xinv = 1 / utils.get_airmass(t, ra, dec)
         self.assertTrue(np.max(Xinv) > 0.999)
         dec = dec + 30 * u.deg
@@ -185,8 +185,8 @@ class TestUtils(Tester):
     def test_get_location(self):
         """Check for sensible coordinates"""
         loc = utils.get_location()
-        self.assertTrue(np.fabs(loc.latitude.to(u.deg).value - 32.0) < 0.1)
-        self.assertTrue(np.fabs(loc.longitude.to(u.deg).value + 111.6) < 0.1)
+        self.assertTrue(np.fabs(loc.lat.to(u.deg).value - 32.0) < 0.1)
+        self.assertTrue(np.fabs(loc.lon.to(u.deg).value + 111.6) < 0.1)
         self.assertTrue(np.fabs(loc.height.to(u.m).value - 2120) < 0.1)
 
     def test_get_location_cache(self):
