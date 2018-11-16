@@ -232,6 +232,8 @@ class Planner(object):
                       .format(np.count_nonzero(run_now), np.count_nonzero(delayed), night))
 
     def afternoon_plan(self, night, completed):
+        self.log.debug('Starting afternoon planning for {} with {} / {} tiles completed.'
+                       .format(night, np.count_nonzero(completed), self.tiles.ntiles))
         if self.first_night is None:
             # Remember the first night of the survey.
             self.first_night = night

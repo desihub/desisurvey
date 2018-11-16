@@ -186,7 +186,10 @@ class Scheduler(object):
 
         if not np.any(self.tile_available & self.tile_planned):
             raise ValueError('No available tiles with priority > 0 to schedule.')
-        return np.where(new_available)[0], np.where(new_planned)[0]
+        new_available, new_planned = np.where(new_available)[0], np.where(new_planned)[0]
+        self.log.debug('{} new available tiles, {} new planned tiles.'.format(
+            len(new_available), len(new_planned)))
+        return new_available, new_planned
 
     def init_night(self, night, use_twilight=False):
         """Initialize scheduling for the specified night.
