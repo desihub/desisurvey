@@ -155,6 +155,7 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
         use for calculating UT1-UTC offsets and polar motion at times
         beyond the table.
     """
+    log = desiutil.log.get_logger()
     # Validate the save_name extension.
     _, ext = os.path.splitext(save_name)
     if ext != '.ecsv':
@@ -163,8 +164,8 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
     # Download the latest IERS_A table
     iers = astropy.utils.iers.IERS_A.open(astropy.utils.iers.IERS_A_URL)
     last = astropy.time.Time(iers['MJD'][-1], format='mjd').datetime
-    print('Updating to current IERS-A table with coverage up to {0}.'
-          .format(last.date()))
+    log.info('Updating to current IERS-A table with coverage up to {0}.'
+             .format(last.date()))
 
     # Loop over the columns used by the astropy IERS routines.
     for name in 'UT1_UTC', 'PM_x', 'PM_y':
@@ -172,7 +173,7 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
         mean_value = np.mean(iers[name][-num_avg:].value)
         unit = iers[name].unit
         iers[name][-1] = mean_value * unit
-        print('Future {0:7s} = {1:.3}'.format(name, mean_value * unit))
+        log.info('Future {0:7s} = {1:.3}'.format(name, mean_value * unit))
 
     # Strip the original table metadata since ECSV cannot handle it.
     # We only need a single keyword that is checked by IERS_Auto.open().
@@ -181,7 +182,7 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
     # Save the table. The IERS-B table provided with astropy uses the
     # ascii.cds format but astropy cannot write this format.
     iers.write(save_name, format='ascii.ecsv')
-    print('Wrote updated table to {0}.'.format(save_name))
+    log.info('Wrote updated table to {0}.'.format(save_name))
 
 
 def get_location():
