@@ -127,7 +127,7 @@ class Planner(object):
             fullname = config.get_path(restore)
             if not os.path.exists(fullname):
                 raise RuntimeError('Cannot restore planner from non-existent "{}".'.format(fullname))
-            t = astropy.table.Table.read(fullname)
+            t = astropy.table.Table.read(fullname, hdu='PLAN')
             if t.meta['CADENCE'] != self.fiberassign_cadence:
                 raise ValueError('Fiberassign cadence mismatch.')
             first, last = t.meta['FIRST'], t.meta['LAST']
@@ -171,7 +171,9 @@ class Planner(object):
     def save(self, name):
         """Save a snapshot of our current state that can be restored.
 
-        The snapshot file size is about 400Kb.
+        The output file has a binary table (extname PLAN) with columns
+        COVERED, COUNTDOWN, AVAILABLE and PRIORITY and header keywords
+        CADENCE, FIRST, LAST. The saved file size is about 400Kb.
 
         Parameters
         ----------
@@ -192,7 +194,11 @@ class Planner(object):
         t['COUNTDOWN'] = self.tile_countdown
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
-        t.write(fullname, overwrite=True)
+        hdus = astropy.io.fits.HDUList()
+        hdus.append(astropy.io.fits.PrimaryHDU())
+        hdus.append(astropy.io.fits.table_to_hdu(t))
+        hdus[-1].name = 'PLAN'
+        hdus.writeto(fullname, overwrite=True)
         self.log.debug(
             'Saved plan with {} ({}) / {} tiles covered (available) to "{}".'
             .format(np.count_nonzero(self.tile_covered),
