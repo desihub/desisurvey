@@ -30,27 +30,6 @@ _iers_is_frozen = False
 _dome_closed_fractions = None
 
 
-def dome_closed_fractions():
-    """Return daily dome-closed fractions for each night of the survey.
-
-    Uses the config first_day, last_day and weather values.
-
-    Results are cached after the first call to this function.
-
-    Returns
-    -------
-    array
-        Array of N dome-closed fractions in the range 0-1, where N is
-        the number of nights in the survey.
-    """
-    global _dome_closed_fractions
-    if _dome_closed_fractions is None:
-        config = desisurvey.config.Configuration()
-        _dome_closed_fractions = desimodel.weather.dome_closed_fractions(
-            config.first_day(), config.last_day(), replay=config.weather())
-    return _dome_closed_fractions
-
-
 def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
     """Use a frozen IERS table saved with this package.
 
@@ -176,6 +155,7 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
         use for calculating UT1-UTC offsets and polar motion at times
         beyond the table.
     """
+    log = desiutil.log.get_logger()
     # Validate the save_name extension.
     _, ext = os.path.splitext(save_name)
     if ext != '.ecsv':
@@ -184,8 +164,8 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
     # Download the latest IERS_A table
     iers = astropy.utils.iers.IERS_A.open(astropy.utils.iers.IERS_A_URL)
     last = astropy.time.Time(iers['MJD'][-1], format='mjd').datetime
-    print('Updating to current IERS-A table with coverage up to {0}.'
-          .format(last.date()))
+    log.info('Updating to current IERS-A table with coverage up to {0}.'
+             .format(last.date()))
 
     # Loop over the columns used by the astropy IERS routines.
     for name in 'UT1_UTC', 'PM_x', 'PM_y':
@@ -193,7 +173,7 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
         mean_value = np.mean(iers[name][-num_avg:].value)
         unit = iers[name].unit
         iers[name][-1] = mean_value * unit
-        print('Future {0:7s} = {1:.3}'.format(name, mean_value * unit))
+        log.info('Future {0:7s} = {1:.3}'.format(name, mean_value * unit))
 
     # Strip the original table metadata since ECSV cannot handle it.
     # We only need a single keyword that is checked by IERS_Auto.open().
@@ -201,68 +181,8 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
 
     # Save the table. The IERS-B table provided with astropy uses the
     # ascii.cds format but astropy cannot write this format.
-    iers.write(save_name, format='ascii.ecsv')
-    print('Wrote updated table to {0}.'.format(save_name))
-
-
-def get_overhead_time(current_pointing, new_pointing, deadtime=0):
-    """Compute the instrument overhead time between exposures.
-
-    Use a model of the time required to slew and focus, in parallel with
-    reading out the previous exposure.
-
-    With no slew or readout required, the minimum overhead is set by the
-    time needed to focus the new exposure.
-
-    The calculation will be automatically broadcast over an array of new
-    pointings and return an array of overhead times.
-
-    Parameters
-    ----------
-    current_pointing : :class:`astropy.coordinates.SkyCoord` or None
-        Current pointing of the telescope.  Do not include any slew overhead
-        when None.
-    new_pointing : :class:`astropy.coordinates.SkyCoord`
-        New pointing(s) of the telescope.
-    deadtime : :class:`astropy.units.Quantity`, optional
-        Amount of deadtime elapsed since end of any previous exposure.
-        Used to ensure that the overhead time is sufficient to finish
-        reading out the previous exposure. Must be >= 0.
-        Defaults to zero seconds.
-
-    Returns
-    -------
-    :class:`astropy.units.Quantity`
-        Overhead time(s) for each new_pointing.
-    """
-    if not isinstance(deadtime, u.Quantity):
-        deadtime = deadtime * u.s
-    if deadtime.to(u.s).value < 0:
-        raise ValueError('Expected deadtime >= 0 (got {0}).'.format(deadtime))
-    config = desisurvey.config.Configuration()
-    if current_pointing is not None:
-        # Calculate the amount that each axis needs to move in degrees.
-        # The ra,dec attributes of a SkyCoord are always in the ranges
-        # [0,360] and [-90,+90] degrees.
-        delta_dec = np.fabs(
-            (new_pointing.dec - current_pointing.dec).to(u.deg).value)
-        delta_ra = np.fabs(
-            (new_pointing.ra - current_pointing.ra).to(u.deg).value)
-        # Handle wrap around in RA
-        delta_ra = 180 - np.fabs(delta_ra - 180)
-        # The slew time is determined by the axis motor with the most travel.
-        max_travel = np.maximum(delta_ra, delta_dec) * u.deg
-        moving = max_travel > 0
-        overhead = max_travel / config.slew_rate()
-        overhead[moving] += config.slew_overhead()
-    else:
-        overhead = np.zeros(new_pointing.shape) * u.s
-    # Add the constant focus time.
-    overhead += config.focus_time()
-    # Overhead is at least the remaining readout time for the last exposure.
-    overhead = np.maximum(overhead, config.readout_time() - deadtime)
-
-    return overhead
+    iers.write(save_name, format='ascii.ecsv', overwrite=True)
+    log.info('Wrote updated table to {0}.'.format(save_name))
 
 
 def get_location():

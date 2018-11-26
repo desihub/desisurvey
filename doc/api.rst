@@ -10,7 +10,7 @@ Full desisurvey API Reference
 .. automodule:: desisurvey.config
     :members:
 
-.. automodule:: desisurvey.ephemerides
+.. automodule:: desisurvey.ephem
     :members:
 
 .. automodule:: desisurvey.etc
@@ -25,26 +25,26 @@ Full desisurvey API Reference
 .. automodule:: desisurvey.plots
     :members:
 
-.. automodule:: desisurvey.progress
-    :members:
-
 .. automodule:: desisurvey.rules
     :members:
 
-.. automodule:: desisurvey.schedule
+.. automodule:: desisurvey.tiles
+    :members:
+
+.. automodule:: desisurvey.scheduler
+    :members:
+
+.. automodule:: desisurvey.forecast
     :members:
 
 .. automodule:: desisurvey.scripts
+    :members:
+
+.. automodule:: desisurvey.utils
     :members:
 
 .. automodule:: desisurvey.scripts.surveyinit
     :members:
 
 .. automodule:: desisurvey.scripts.surveymovie
-    :members:
-
-.. automodule:: desisurvey.scripts.surveyplan
-    :members:
-
-.. automodule:: desisurvey.utils
     :members:

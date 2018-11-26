@@ -45,13 +45,6 @@ monsoon:
 # during each full moon.
 full_moon_nights: 7
 
-# Replay historical daily lost-time fractions from DESI-3577
-# using the specified years from a comma-separated list.
-# For details, see desimodel.weather.dome_closed_fractions().
-# The default Y2015 is the worst year during 2007-2017, so
-# replaying it each year gives a pessimistic forecast.
-weather: Y2015
-
 #-------------------------------------------------------------------
 # Definition of the DARK / GRAY / BRIGHT nominal programs based on
 # sun and moon ephemerides.
@@ -73,21 +66,23 @@ programs:
         # Any time after twilight that is neither DARK nor GRAY is BRIGHT.
 
 #-------------------------------------------------------------------
-# Parameters used to plan observation during a night.
+# Parameters to plan next-tile selection during each night.
 #-------------------------------------------------------------------
 
 # Never observe below this limit.
 min_altitude: 30 deg
 
-# Exposure overhead parameters
-focus_time: 30 s
-slew_overhead: 11.5 s
-slew_rate: 0.45 deg / s
-readout_time: 2 min
+# Time required to setup for a new field, including slew, fiber positioning, etc.
+new_field_setup : 120 s
 
-# Exposure time policy parameters
+# Time required to setup for re-observing the same field.
+same_field_setup : 60 s
+
+# Maximum time allowed for a single exposure before we force a cosmic split.
 cosmic_ray_split: 20 min
-max_exposure_length: 60 min
+
+# Minimum number of consecutive exposures required for cosmic rejection.
+min_exposures: 2
 
 # The target SNR**2 for each program is specified as the total exposure time
 # required at nominal observing conditions.
@@ -103,7 +98,8 @@ nominal_conditions:
     EBV: 0.0
 
 # Reobserve tiles that have not reached this fraction of their target SNR**2.
-min_snr2_fraction: 0.8
+# Keep this at one until we simulate errors in ETC integration.
+min_snr2_fraction: 1.0
 
 # List of bodies to avoid when scheduling tiles.
 avoid_bodies:
@@ -114,41 +110,52 @@ avoid_bodies:
     saturn: 2 deg
     neptune: 2 deg
     uranus: 2 deg
-    #ceres: 2 deg  # not implemented in pyephem: do we need it?
 
-# Weights for scheduling a tile out of the nominal program, relative
-# to 1 for observing a tile from the nominal program.
-fallback_weights:
-    # DARK program fallback weights.
-    gray_in_dark: 0.4
-    bright_in_dark: 0.3
-    # GRAY program fallback weights.
-    dark_in_gray: 0.0
-    bright_in_gray: 0.5
-    # BRIGHT program fallback weights.
-    dark_in_bright: 0.0
-    gray_in_bright: 0.0
+#-------------------------------------------------------------------
+# Parameters used to schedule fiber assignment.
+#-------------------------------------------------------------------
+
+# Specify the cadence for updating fiber assignments. The choices are:
+# - monthly: perform updates at every full moon break.
+# - daily: perform updates as part of every afternoon plan.
+fiber_assignment_cadence: monthly
+
+# Specify the fiber-assignment ordering dependencies between passes.
+# For example, "P2: P0+P1 delay 1" means that a tile in pass 2
+# cannot be fiber assigned until all overlapping tiles in passes
+# 0 and 1 have been completed. A delay value of 1 indicates
+# that fiber assignment for pass 2 is delayed by 1 day / month
+# (depending on fiber_assignment_cadence) after all overlapping
+# tiles have been completed, to allow sufficient time to
+# analyze offline outputs and confirm targeting decisions.
+# Similarly, a delay of 0 indicates that fibers are assigned on
+# the first day / month after the covering tiles are completed.
+fiber_assignment_order:
+    P1: P0 delay 1
+    P2: P0+P1 delay 1
+    P3: P0+P1 delay 1
+    P6: P5 delay 1
+    P7: P5+P6 delay 1
 
 # Nominal tile radius for determining whether two tiles overlap.
-# https://github.com/desihub/desimodel/pull/37#issuecomment-270788581
 tile_radius: 1.62 deg
 
-fiber_assignment_order:
-    P1: P0
-    P2: P0+P1
-    P3: P0+P1
-    P6: P5
-    P7: P5+P6
+#-------------------------------------------------------------------
+# Parameters to locate files needed by desisurvey.
+#-------------------------------------------------------------------
 
 # Name of file defining DESI tiles for desimodel.io.load_tiles(tiles_file).
 # Without path this will look in $DESIMODEL/data/footprint/; otherwise with
 # a path (relative or absolute) it will read that file.
+# Non-standard tiles files are supported with the following caveats:
+# - The program names (DARK,GRAY,BRIGHT) are predefined but not all
+#   programs need to be included in the tiles file.
+# - Pass numbers are arbitrary integers and do not need to be consecutive
+#   or dense. However use of non-standard values will generally require
+#   an update to fiber_assignment_order, above.
 tiles_file: desi-tiles.fits
 
-#-------------------------------------------------------------------
-# Base path to pre-pended to all non-absolute paths used for writing
-# output files. The pattern {...} will be expanded using environment
-# variables.
-#-------------------------------------------------------------------
-
+# Base path to pre-pended to all non-absolute paths used for reading and
+# writing files managed by this package. The pattern {...} will be expanded
+# using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'

@@ -30,10 +30,10 @@ import astropy.units as u
 
 import desiutil.log
 
-import desisurvey.ephemerides
+import desisurvey.ephem
 import desisurvey.utils
 import desisurvey.config
-import desisurvey.progress
+import desisurvey.tiles
 import desisurvey.plots
 
 
@@ -48,8 +48,9 @@ def parse(options=None):
         help='display log messages with severity >= debug (implies verbose)')
     parser.add_argument('--log-interval', type=int, default=100, metavar='N',
         help='interval for logging periodic info messages')
-    parser.add_argument('--progress', default='progress.fits', metavar='FITS',
-        help='name of FITS file with progress record')
+    parser.add_argument(
+        '--exposures', default='exposures_surveysim.fits', metavar='FITS',
+        help='name of FITS file with list of exposures taken')
     parser.add_argument(
         '--start', type=str, default=None, metavar='DATE',
         help='movie starts on the evening of this day, formatted as YYYY-MM-DD')
@@ -62,8 +63,9 @@ def parse(options=None):
     parser.add_argument(
         '--nightly', action='store_true',
         help='output one summary frame per night')
-    parser.add_argument(
-        '--scores', action='store_true', help='display scheduler scores')
+    # The scores option needs to be re-implemented after the refactor.
+    ##parser.add_argument(
+    ##    '--scores', action='store_true', help='display scheduler scores')
     parser.add_argument(
         '--save', type=str, default='surveymovie', metavar='NAME',
         help='base name (without extension) of output file to write')
@@ -75,7 +77,10 @@ def parse(options=None):
         help='label to display on each frame')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
-        help='output path where output files should be written')
+        help='path that desisurvey files are read from')
+    parser.add_argument(
+        '--tiles-file', default=None, metavar='TILES',
+        help='name of tiles file to use instead of config.tiles_file')
     parser.add_argument(
         '--config-file', default='config.yaml', metavar='CONFIG',
         help='input configuration file')
@@ -84,6 +89,9 @@ def parse(options=None):
         args = parser.parse_args()
     else:
         args = parser.parse_args(options)
+
+    # The scores option needs to be re-implemented after the refactor.
+    args.scores = False
 
     if args.nightly and args.scores:
         log.warn('Cannot display scores in nightly summary.')
@@ -121,38 +129,60 @@ def wrap(angle, offset=-60):
 class Animator(object):
     """Manage animation of survey progress.
     """
-    def __init__(self, ephem, progress, start, stop, label, show_scores):
+    def __init__(self, exposures_path, start, stop, label, show_scores):
         self.log = desiutil.log.get_logger()
-        self.ephem = ephem
-        self.progress = progress
+        self.config = desisurvey.config.Configuration()
+        self.tiles = desisurvey.tiles.get_tiles()
+        self.ephem = desisurvey.ephem.get_ephem()
+        # Load exposures and associated tile data.
+        self.exposures = astropy.table.Table.read(exposures_path, hdu='EXPOSURES')
+        self.tiledata = astropy.table.Table.read(exposures_path, hdu='TILEDATA')
         self.label = label
         self.show_scores = show_scores
-        self.config = desisurvey.config.Configuration()
-        tiles = progress._table
-        self.ra = wrap(tiles['ra'])
-        self.dec = tiles['dec']
-        self.passnum = tiles['pass']
-        self.tileid = tiles['tileid']
-        npass = np.max(self.passnum) + 1
-        self.tiles_per_pass = np.zeros(npass, int)
-        for passnum in np.unique(self.passnum):
-            self.tiles_per_pass[passnum] = np.count_nonzero(
-                self.passnum == passnum)
+        self.ra = wrap(self.tiles.tileRA)
+        self.dec = self.tiles.tileDEC
+        self.passnum = self.tiles.passnum
+        self.tileid = self.tiles.tileID
+        # We require a standard set of passes.
+        if not np.array_equal(self.tiles.passes, np.arange(8)):
+            raise RuntimeError('Expected passes 0-7.')
         self.prognames = ['DARK', 'DARK', 'DARK', 'DARK', 'GRAY',
                           'BRIGHT', 'BRIGHT', 'BRIGHT']
+        npass = np.max(self.passnum) + 1
+        self.tiles_per_pass = self.tiles.pass_ntiles
         self.psels = [
             self.passnum < 4,  # DARK
             self.passnum == 4, # GRAY
             self.passnum > 4,  # BRIGHT
         ]
         self.start_date = self.config.first_day()
+        self.survey_weeks = int(np.ceil((self.config.last_day() - self.start_date).days / 7))
 
-        # Get a list of exposures in [start, stop].
-        self.exposures = self.progress.get_exposures(
-            start, stop, tile_fields='tileid,index,ra,dec,pass',
-            exp_fields='expid,mjd,night,exptime,snr2cum,seeing,transparency')
+        # Add some computed columns to the exposures table.
+        self.exposures['EXPID'] = np.arange(len(self.exposures))
+        self.exposures['INDEX'] = self.tiles.index(self.exposures['TILEID'])
+        self.exposures['PASS'] = self.tiles.passnum[self.exposures['INDEX']]
+        self.exposures['STATUS'] = np.ones(len(self.exposures), np.int32)
+        self.exposures['STATUS'][self.exposures['SNR2FRAC'] == 0] = 0
+        self.exposures['STATUS'][
+            self.exposures['SNR2FRAC'] >= self.config.min_snr2_fraction()] = 2
+
+        # Convert tables to recarrays for much faster indexing.
+        self.exposures = self.exposures.as_array()
+        self.tiledata = self.tiledata.as_array()
+
+        # Restrict the list of exposures to [start, stop].
+        date_start = desisurvey.utils.get_date(start)
+        date_stop = desisurvey.utils.get_date(stop)
+        mjd_start = desisurvey.utils.local_noon_on_date(date_start).mjd
+        mjd_stop = desisurvey.utils.local_noon_on_date(date_stop).mjd
+        in_range = (self.exposures['MJD'] >= mjd_start) & (self.exposures['MJD'] < mjd_stop)
+        self.exposures = self.exposures[in_range]
         self.num_exp = len(self.exposures)
-        self.num_nights = len(np.unique(self.exposures['NIGHT']))
+        # Count nights with at least one exposure.
+        day0 = desisurvey.utils.local_noon_on_date(date_start).mjd
+        day_number = np.floor(self.exposures['MJD'] - day0)
+        self.num_nights = len(np.unique(day_number))
 
         # Calculate each exposure's LST window.
         exp_midpt = astropy.time.Time(
@@ -204,17 +234,16 @@ class Animator(object):
                 axes.append(ax)
                 # Top-right corner is reserved for integrated progress plots.
                 if row == 0 and col == 2:
-                    num_weeks = int(np.ceil(self.ephem.num_nights / 7.))
-                    ax.set_xlim(0, num_weeks)
+                    ax.set_xlim(0, self.survey_weeks)
                     ax.set_ylim(0, 1)
-                    ax.plot([0, num_weeks], [0., 1.], 'w-')
+                    ax.plot([0, self.survey_weeks], [0., 1.], 'w-')
                     for pname in ('DARK', 'GRAY', 'BRIGHT'):
                         pc = pcolors[pname]
-                        xprog = 0.5 + np.arange(num_weeks)
+                        xprog = 0.5 + np.arange(self.survey_weeks)
                         # Initialize values to INF so they are not plotted
                         # until some value is assigned later.  Any week with
                         # no observations will then result in a gap.
-                        yprog = np.full(num_weeks, np.inf)
+                        yprog = np.full(self.survey_weeks, np.inf)
                         self.iplots.append(ax.plot(
                             xprog, yprog, lw=2, ls='-',
                             color=pcolors[pname])[0])
@@ -311,7 +340,7 @@ class Animator(object):
             Ephemerides data for this night.
         """
         # Update the observing program for this night.
-        dark, gray, bright = self.ephem.get_program(ephem['noon'] + self.dmjd)
+        dark, gray, bright = self.ephem.tabulate_program(ephem['noon'] + self.dmjd)
         self.pdata[:] = 0
         self.pdata[dark] = 1
         self.pdata[gray] = 2
@@ -331,7 +360,7 @@ class Animator(object):
                 self.warn('Missing scores file: {0}.'.format(scores_name))
         # Get interpolator for moon, planet positions during this night.
         for i, name in enumerate(self.avoid_names):
-            self.f_obj[i] = desisurvey.ephemerides.get_object_interpolator(
+            self.f_obj[i] = desisurvey.ephem.get_object_interpolator(
                 ephem, name)
         if self.last_date is not None:
             week_num = int(np.floor((date - self.start_date).days / 7.))
@@ -344,9 +373,9 @@ class Animator(object):
                 iplot.set_ydata(yprog)
         # Lookup which tiles are available and planned for tonight.
         day_number = desisurvey.utils.day_number(date)
-        avail = self.progress._table['available']
+        avail = self.tiledata['AVAIL']
         self.available = (avail >= 0) & (avail <= day_number)
-        planned = self.progress._table['planned']
+        planned = self.tiledata['PLANNED']
         self.planned = (planned >= 0) & (planned <= day_number)
         self.last_date = date
 
@@ -367,32 +396,37 @@ class Animator(object):
             True if a new frame was drawn.
         """
         info = self.exposures[iexp]
-        mjd = info['mjd']
+        mjd = info['MJD']
         date = desisurvey.utils.get_date(mjd)
-        assert date == desisurvey.utils.get_date(info['night'])
         night = self.ephem.get_night(date)
         # Initialize status if necessary.
-        if (self.status is None) or nightly:
-            snapshot = self.progress.copy_range(mjd_max=mjd)
-            self.status = np.array(snapshot._table['status'])
+        if self.status is None:
+            # Find the most recent SNR2FRAC for each tile before this exposure.
+            snr2frac = np.zeros(self.tiles.ntiles)
+            for j in range(iexp):
+                snr2frac[self.exposures['INDEX'][j]] = self.exposures['SNR2FRAC'][j]
+            # Determine which tiles are unobserved (0), partial (1) or done (2)
+            # before this exposure.
+            self.status = np.ones(self.tiles.ntiles)
+            self.status[snr2frac == 0] = 0
+            self.status[snr2frac >= self.config.min_snr2_fraction()] = 2
+        # Update the status for the current exposure.
+        self.status[info['INDEX']] = info['STATUS']
         if date != self.last_date:
             # Initialize for this night.
             self.init_date(date, night)
         elif nightly:
             return False
-        # Update the status for the current exposure.
-        complete = info['snr2cum'] >= self.config.min_snr2_fraction()
-        self.status[info['index']] = 2 if complete else 1
         # Update the top-right label.
-        label = '{} {} #{:06d}'.format(self.label, date, info['expid'])
+        label = '{} {} #{:06d}'.format(self.label, date, info['EXPID'])
         if not nightly:
             label += ' ({:.1f}",{:.2f})'.format(
-                info['seeing'], info['transparency'])
+                info['SEEING'], info['TRANSP'])
         self.text.set_text(label)
         if not nightly:
             # Update current time in program.
             dt1 = mjd - night['noon']
-            dt2 = dt1 + info['exptime'] / 86400.
+            dt2 = dt1 + info['EXPTIME'] / 86400.
             self.pline1.set_xdata([dt1, dt1])
             self.pline2.set_xdata([dt2, dt2])
         if self.show_scores:
@@ -415,9 +449,9 @@ class Animator(object):
             sizes[done] = 30.
             fc[done] = self.completecolor
             fc[~avail] = self.unavailcolor
-            if not nightly and (info['pass'] == passnum):
+            if not nightly and (info['PASS'] == passnum):
                 # Highlight the tile being observed now.
-                jdx = np.where(self.tileid[sel] == info['tileid'])[0][0]
+                jdx = np.where(self.tileid[sel] == info['TILEID'])[0][0]
                 fc[jdx] = self.nowcolor
                 scatter.get_sizes()[jdx] = 600.
             scatter.set_facecolors(fc)
@@ -430,7 +464,7 @@ class Animator(object):
             # Update LST lines.
             x1, x2 = self.lst[iexp]
             for passnum, (line1, line2) in enumerate(self.lstlines):
-                ls = '-' if info['pass'] == passnum else '--'
+                ls = '-' if info['PASS'] == passnum else '--'
                 line1.set_linestyle(ls)
                 line2.set_linestyle(ls)
                 line1.set_xdata([x1, x1])
@@ -469,16 +503,15 @@ def main(args):
     config = desisurvey.config.Configuration()
     if args.output_path is not None:
         config.set_output_path(args.output_path)
+    if args.tiles_file is not None:
+        config.tiles_file.set_value(args.tiles_file)
 
-    # Load ephemerides.
-    ephem = desisurvey.ephemerides.Ephemerides()
-
-    # Load progress.
-    progress = desisurvey.progress.Progress(args.progress)
+    # Look for the exposures file in the output path by default.
+    args.exposures = config.get_path(args.exposures)
 
     # Initialize.
     animator = Animator(
-        ephem, progress, args.start, args.stop, args.label, args.scores)
+        args.exposures, args.start, args.stop, args.label, args.scores)
     log.info('Found {0} exposures from {1} to {2} ({3} nights).'
              .format(animator.num_exp, args.start, args.stop,
                      animator.num_nights))

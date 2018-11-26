@@ -14,20 +14,12 @@ import astropy.io
 import astropy.utils.data
 import astropy.units as u
 
-from desisurvey import utils, config
+from desisurvey.test.base import Tester
+import desisurvey.utils as utils
+import desisurvey.config as config
 
 
-class TestUtils(unittest.TestCase):
-
-    @classmethod
-    def setUpClass(cls):
-        # Create a temporary directory.
-        cls.tmpdir = tempfile.mkdtemp()
-
-    @classmethod
-    def tearDownClass(cls):
-        # Remove the directory after the test.
-        shutil.rmtree(cls.tmpdir)
+class TestUtils(Tester):
 
     def setUp(self):
         # Configure a CSV reader for the Horizons output format.
@@ -50,14 +42,6 @@ class TestUtils(unittest.TestCase):
 
     def tearDown(self):
         utils._iers_is_frozen = False
-
-    def test_dome_fracs(self):
-        """Checks of dome-closed fractions"""
-        probs = utils.dome_closed_fractions()
-        self.assertTrue(np.all(probs >= 0))
-        self.assertTrue(np.all(probs <= 1))
-        mean = probs.mean()
-        self.assertTrue((mean > 0.25) & (mean < 0.35))
 
     def test_update_iers_bad_ext(self):
         """Test save_name extension check"""
@@ -93,32 +77,6 @@ class TestUtils(unittest.TestCase):
         """Test freezing from valid file with wrong format"""
         with self.assertRaises(ValueError):
             utils.freeze_iers('config.yaml')
-
-    def test_get_overhead(self):
-        """Sanity checks on overhead time calculations"""
-        c = config.Configuration()
-        tro = c.readout_time()
-        p0 = astropy.coordinates.ICRS(ra=300 * u.deg, dec=10 * u.deg)
-        # Move with no readout and no slew only has focus overhead.
-        self.assertEqual(utils.get_overhead_time(None, p0, tro),
-                         c.focus_time())
-        self.assertEqual(utils.get_overhead_time(p0, p0, 2 * tro),
-                         c.focus_time())
-        # Move with readout and no slew has focus and overhead in parallel.
-        self.assertEqual(utils.get_overhead_time(None, p0),
-                         max(c.focus_time(), c.readout_time()))
-        self.assertEqual(utils.get_overhead_time(p0, p0, 0.2 * tro),
-                         max(c.focus_time(), 0.8 * c.readout_time()))
-        # Overhead with slew same when dRA == dDEC.
-        for delta in (1, 45, 70):
-            ra = p0.ra + [+delta, -delta, 0, 0] * u.deg
-            dec = p0.dec + [0, 0, +delta, -delta] * u.deg
-            p1 = astropy.coordinates.ICRS(ra=ra, dec=dec)
-            dt = utils.get_overhead_time(p0, p1)
-            self.assertTrue(dt.shape == (4,))
-            self.assertEqual(dt[0], dt[1])
-            self.assertEqual(dt[0], dt[2])
-            self.assertEqual(dt[0], dt[3])
 
     def test_get_observer_to_sky(self):
         """Check (alt,az) -> (ra,dec) against JPL Horizons"""
@@ -209,7 +167,7 @@ class TestUtils(unittest.TestCase):
         """The lowest airmass occurs when dec=latitude"""
         t = astropy.time.Time('2020-01-01')
         ra = np.arange(360) * u.deg
-        dec = utils.get_location().latitude
+        dec = utils.get_location().lat
         Xinv = 1 / utils.get_airmass(t, ra, dec)
         self.assertTrue(np.max(Xinv) > 0.999)
         dec = dec + 30 * u.deg
@@ -227,13 +185,22 @@ class TestUtils(unittest.TestCase):
     def test_get_location(self):
         """Check for sensible coordinates"""
         loc = utils.get_location()
-        self.assertTrue(np.fabs(loc.latitude.to(u.deg).value - 32.0) < 0.1)
-        self.assertTrue(np.fabs(loc.longitude.to(u.deg).value + 111.6) < 0.1)
+        self.assertTrue(np.fabs(loc.lat.to(u.deg).value - 32.0) < 0.1)
+        self.assertTrue(np.fabs(loc.lon.to(u.deg).value + 111.6) < 0.1)
         self.assertTrue(np.fabs(loc.height.to(u.m).value - 2120) < 0.1)
 
     def test_get_location_cache(self):
         """Test location object caching"""
         self.assertEqual(id(utils.get_location()), id(utils.get_location()))
+
+    def test_monsoon(self):
+        """Test nominal monsoon shutdown starts/stops on Mon/Fri each year"""
+        config = desisurvey.config.Configuration()
+        for key in config.monsoon.keys:
+            node = getattr(config.monsoon, key)
+            self.assertTrue(node.start().weekday() == 0)
+            self.assertTrue(node.stop().weekday() == 4)
+            self.assertTrue((node.stop() - node.start()).days == 18)
 
     def test_get_date(self):
         """Test date conversions"""
