@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.11.0 (unreleased)
+0.11.1 (unreleased)
+-------------------
+
+* No changes yet.
+
+0.11.0 (2018-11-26)
 -------------------
 
 This version is a major refactoring of the code to simplify the logic
