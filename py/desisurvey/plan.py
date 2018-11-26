@@ -111,7 +111,8 @@ class Planner(object):
         or initialize a new planner when None. Use :meth:`save` to
         save a snapshot to be restored later. Filename is relative to
         the configured output path unless an absolute path is
-        provided.
+        provided. Raise a RuntimeError if the saved tile IDs do not
+        match the current tiles_file values.
     """
     def __init__(self, rules=None, restore=None):
         self.log = desiutil.log.get_logger()
@@ -133,6 +134,8 @@ class Planner(object):
             first, last = t.meta['FIRST'], t.meta['LAST']
             self.first_night = desisurvey.utils.get_date(first) if first else None
             self.last_night = desisurvey.utils.get_date(last) if last else None
+            if not np.array_equal(t['TILEID'].data, self.tiles.tileID):
+                raise RuntimeError('Saved tile IDs do not match current tiles_file.')
             self.tile_covered = t['COVERED'].data.copy()
             self.tile_countdown = t['COUNTDOWN'].data.copy()
             self.tile_available = t['AVAILABLE'].data.copy()
@@ -172,7 +175,7 @@ class Planner(object):
         """Save a snapshot of our current state that can be restored.
 
         The output file has a binary table (extname PLAN) with columns
-        COVERED, COUNTDOWN, AVAILABLE and PRIORITY and header keywords
+        TILEID, COVERED, COUNTDOWN, AVAILABLE and PRIORITY and header keywords
         CADENCE, FIRST, LAST. The saved file size is about 400Kb.
 
         Parameters
@@ -190,6 +193,7 @@ class Planner(object):
             'FIRST': self.first_night.isoformat() if self.first_night else '',
             'LAST': self.last_night.isoformat() if self.last_night else '',
             })
+        t['TILEID'] = self.tiles.tileID
         t['COVERED'] = self.tile_covered
         t['COUNTDOWN'] = self.tile_countdown
         t['AVAILABLE'] = self.tile_available
