@@ -2,17 +2,55 @@
 desisurvey change log
 =====================
 
-0.10.3 (unreleased)
+0.11.1 (unreleased)
 -------------------
 
 * No changes yet.
+
+0.11.0 (2018-11-26)
+-------------------
+
+This version is a major refactoring of the code to simplify the logic
+for easier maintenance and documentation. There is now a clean
+separation between survey strategy, afternoon planning,
+next-tile selection, and exposure-time calculations. The refactored
+code is also significantly faster.
+
+* Add new modules: tiles, forecast, scheduler.
+* Move modules schedule, progress, surveyplan to old/.
+* Add new class ExposureTimeCalculator to etc module.
+* Add new class Planner to plan module.
+* Decouple ephemerides date range from nominal survey start/stop.
+* Rename ephemerides to ephem (to enforce new get_ephem access pattern).
+* Use of twilight is now optional and off by default.
+* Exposure times include an average correction for the moon: this will
+  be fixed in a future release.
+
+0.10.4 (2018-10-02)
+-------------------
+
+* Implement realistic 18-day monsoon shutdowns instead of fixed 45-day period.
+* Replay daily Mayall weather history instead of fixed monthly fractions
+  (needs desimodel >= 0.9.8)
+* Update exposure-time model for atmospheric seeing.
+* Speed up full-moon, program change and LST calculations in ephemerides module.
+* Requires desimodel >= 0.9.8
+
+0.10.3 (2018-09-26)
+-------------------
+
+* Added tiling dithering and QA code (PR `#87`_).
+* Allow ``PASS`` to be as large as 99 (PR `#88`_).
+
+.. _`#87`: https://github.com/desihub/desisurvey/pull/87
+.. _`#88`: https://github.com/desihub/desisurvey/pull/88
 
 0.10.2 (2018-06-27)
 -------------------
 
 * Do not assume that input tile file includes all of DARK, BRIGHT, and GRAY
-  tiles (PR `#83`_). 
-* Enforce at least six characters in program name in exposures table (PR `#86`_). 
+  tiles (PR `#83`_).
+* Enforce at least six characters in program name in exposures table (PR `#86`_).
 
 .. _`#83`: https://github.com/desihub/desisurvey/pull/83
 .. _`#86`: https://github.com/desihub/desisurvey/pull/86

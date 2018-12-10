@@ -4,8 +4,10 @@ This is normally run once, at the start of the survey, and saves its results
 to a FITS file surveyinit.fits.  With the default parameters, the running time
 is about 25 minutes.
 
-This script will create the ephemerides and scheduler files, if necessary,
-which takes about 15 additional minutes. These only need to be created once.
+This script will calculate the ephemerides and expected weather (dome open
+fraction) for 2019-2025, then calculate design hour angles for the
+nominal survey dates.  The results are saved in a file (normally
+``surveyinit.fits``) and then do not need to be recalculated ever again.
 
 To run this script from the command line, use the ``surveyinit`` entry point
 that is created when this package is installed, and should be in your shell
@@ -18,15 +20,16 @@ import argparse
 
 import numpy as np
 
+import astropy.io.fits as fits
 import astropy.table
 
 import desiutil.log
 
-import desimodel.io
+import desimodel.weather
 
 import desisurvey.utils
-import desisurvey.ephemerides
-import desisurvey.schedule
+import desisurvey.ephem
+import desisurvey.tiles
 import desisurvey.optimize
 
 
@@ -41,6 +44,9 @@ def parse(options=None):
     parser.add_argument(
         '--debug', action='store_true',
         help='display log messages with severity >= debug (implies verbose)')
+    parser.add_argument(
+        '--include-twilight', action='store_true',
+        help='Include twilight in available LST')
     parser.add_argument(
         '--recalc', action='store_true',
         help='recalculate even when previous calculations are available')
@@ -69,10 +75,10 @@ def parse(options=None):
         '--max-cycles', type=int, default=100,
         help='maximum number of annealing cycles for each program')
     parser.add_argument(
-        '--dark-stretch', type=float, default=1.1, metavar='S',
+        '--dark-stretch', type=float, default=1.2, metavar='S',
         help='stretch DARK exposure times by this factor')
     parser.add_argument(
-        '--gray-stretch', type=float, default=1.2, metavar='S',
+        '--gray-stretch', type=float, default=1.3, metavar='S',
         help='stretch GRAY exposure times by this factor')
     parser.add_argument(
         '--bright-stretch', type=float, default=1.5, metavar='S',
@@ -82,7 +88,10 @@ def parse(options=None):
         help='name of FITS output file where results are saved')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
-        help='output path where output files should be written')
+        help='output path to use instead of config.output_path')
+    parser.add_argument(
+        '--tiles-file', default=None, metavar='TILES',
+        help='name of tiles file to use instead of config.tiles_file')
     parser.add_argument(
         '--config-file', default='config.yaml', metavar='CONFIG',
         help='input configuration file')
@@ -95,72 +104,126 @@ def parse(options=None):
     return args
 
 
-def calculate_initial_plan(args, scheduler, fullname):
-    """Calculate initial hour-angle assignments for all tiles.
+def calculate_initial_plan(args):
+    """Calculate the initial survey plan.
+
+    Use :func:`desisurvey.plan.load_weather` and
+    :func:`desisurvey.plan.load_design_hourangles` to retrieve
+    these data from the saved plan.
+
+    Parameters
+    ----------
+    args : object
+        Object with attributes for parsed command-line arguments.
     """
     log = desiutil.log.get_logger()
     config = desisurvey.config.Configuration()
+    tiles = desisurvey.tiles.get_tiles()
+    ephem = desisurvey.ephem.get_ephem()
+
+    # Initialize the output file to write.
+    hdus = fits.HDUList()
+    hdr = fits.Header()
+
+    # Calculate average weather factors for each day covered by
+    # the ephemerides.
+    first = desisurvey.ephem.START_DATE
+    last = desisurvey.ephem.STOP_DATE
+    years = np.arange(2007, 2018)
+    fractions = []
+    for year in years:
+        fractions.append(
+            desimodel.weather.dome_closed_fractions(first, last, replay='Y{}'.format(year)))
+    weather = 1 - np.mean(fractions, axis=0)
+    # Save the weather fractions as the primary HDU.
+    hdr['FIRST'] = first.isoformat()
+    hdr['YEARS'] = ','.join(['{}'.format(yr) for yr in years])
+    start = config.first_day()
+    stop = config.last_day()
+    assert start >= first and stop <= last
+    hdr['START'] = start.isoformat()
+    hdr['STOP'] = stop.isoformat()
+    hdr['TWILIGHT'] = args.include_twilight
+    hdus.append(fits.ImageHDU(weather, header=hdr, name='WEATHER'))
+
+    # Calculate the distribution of available LST in each program
+    # during the nominal survey [start, stop).
+    ilo, ihi = (start - first).days, (stop - first).days
+    lst_hist, lst_bins = ephem.get_available_lst(
+        nbins=args.nbins, weather=weather[ilo:ihi], include_twilight=args.include_twilight)
 
     # Initialize the output results table.
-    tiles = astropy.table.Table(desimodel.io.load_tiles(
-        onlydesi=True, extra=False, tilesfile=config.tiles_file()))
-    out = tiles[['TILEID', 'RA', 'DEC', 'PASS']]
-    out['HA'] = np.zeros(len(out))
-    out['OBSTIME'] = np.zeros(len(out))
+    design = astropy.table.Table()
+    design['INIT'] = np.zeros(tiles.ntiles)
+    design['HA'] = np.zeros(tiles.ntiles)
+    design['TEXP'] = np.zeros(tiles.ntiles)
 
     # Optimize each program separately.
     stretches = dict(
         DARK=args.dark_stretch,
         GRAY=args.gray_stretch,
         BRIGHT=args.bright_stretch)
-    for program in 'DARK', 'GRAY', 'BRIGHT':
-        sel = tiles['PROGRAM'] == program
-        if np.count_nonzero(sel) > 0:
-            opt = desisurvey.optimize.Optimizer(
-                scheduler, program, init=args.init, center=None, nbins=args.nbins,
-                subset=tiles['TILEID'][sel], stretch=stretches[program])
-            # Initialize annealing cycles.
-            ncycles = 0
-            binsize = 360. / args.nbins
-            frac = args.adjust / binsize
-            smoothing = args.smooth
-            # Loop over annealing cycles.
-            while ncycles < args.max_cycles:
-                start_score = opt.eval_score(opt.plan_hist)
-                for i in range(opt.ntiles):
-                    opt.improve(frac)
-                if smoothing > 0:
-                    opt.smooth(alpha=smoothing)
-                stop_score = opt.eval_score(opt.plan_hist)
-                delta = (stop_score - start_score) / start_score
-                RMSE = opt.RMSE_history[-1]
-                loss = opt.loss_history[-1]
-                log.info(
-                    '[{:03d}] dHA={:5.3f}deg '.format(ncycles + 1, frac * binsize) +
-                    'RMSE={:6.2f}% LOSS={:5.2f}% delta(score)={:+5.1f}%'
-                    .format(1e2*RMSE, 1e2*loss, 1e2*delta))
-                # Both conditions must be satisfied to terminate.
-                if RMSE < args.max_rmse and delta > -args.epsilon:
-                    break
-                # Anneal parameters for next cycle.
-                frac *= args.anneal
-                smoothing *= args.anneal
-                ncycles += 1
-            plan_sum = opt.plan_hist.sum()
-            avail_sum = opt.lst_hist_sum
-            margin = (avail_sum - plan_sum) / plan_sum
-            log.info('{} plan uses {:.1f}h with {:.1f}h avail ({:.1f}% margin).'
-                     .format(program, plan_sum, avail_sum, 1e2 * margin))
+    for pindex, program in enumerate(tiles.PROGRAMS):
+        sel = tiles.program_mask[program]
+        if not np.any(sel):
+            log.info('Skipping {} program with no tiles.'.format(program))
+            continue
+        # Initialize an LST summary table.
+        table = astropy.table.Table(meta={'ORIGIN': lst_bins[0]})
+        table['AVAIL'] = lst_hist[pindex]
+        # Initailize an optimizer for this program.
+        opt = desisurvey.optimize.Optimizer(
+            program, lst_bins, lst_hist[pindex], init=args.init, center=None,
+            stretch=stretches[program])
+        table['INIT'] = opt.plan_hist.copy()
+        design['INIT'][sel] = opt.ha_initial
+        # Initialize annealing cycles.
+        ncycles = 0
+        binsize = 360. / args.nbins
+        frac = args.adjust / binsize
+        smoothing = args.smooth
+        # Loop over annealing cycles.
+        while ncycles < args.max_cycles:
+            start_score = opt.eval_score(opt.plan_hist)
+            for i in range(opt.ntiles):
+                opt.improve(frac)
+            if smoothing > 0:
+                opt.smooth(alpha=smoothing)
+            stop_score = opt.eval_score(opt.plan_hist)
+            delta = (stop_score - start_score) / start_score
+            RMSE = opt.RMSE_history[-1]
+            loss = opt.loss_history[-1]
+            log.info(
+                '[{:03d}] dHA={:5.3f}deg '.format(ncycles + 1, frac * binsize) +
+                'RMSE={:6.2f}% LOSS={:5.2f}% delta(score)={:+5.1f}%'
+                .format(1e2*RMSE, 1e2*loss, 1e2*delta))
+            # Both conditions must be satisfied to terminate.
+            if RMSE < args.max_rmse and delta > -args.epsilon:
+                break
+            # Anneal parameters for next cycle.
+            frac *= args.anneal
+            smoothing *= args.anneal
+            ncycles += 1
+        plan_sum = opt.plan_hist.sum()
+        avail_sum = opt.lst_hist_sum
+        margin = (avail_sum - plan_sum) / plan_sum
+        log.info('{} plan uses {:.1f}h with {:.1f}h avail ({:.1f}% margin).'
+                 .format(program, plan_sum, avail_sum, 1e2 * margin))
+        # Save planned LST usage.
+        table['PLAN'] = opt.plan_hist
+        hdus.append(fits.BinTableHDU(table, name=program))
 
-            # Calculate exposure times in seconds.
-            texp, _ = opt.get_exptime(opt.ha)
-            texp *= 24. * 3600. / 360.
-            # Save results for this program.
-            out['HA'][sel] = opt.ha
-            out['OBSTIME'][sel] = texp
+        # Calculate exposure times in (solar) seconds.
+        texp, _ = opt.get_exptime(opt.ha)
+        texp *= 24. * 3600. / 360. * 0.99726956583
+        # Save results for this program.
+        design['HA'][sel] = opt.ha
+        design['TEXP'][sel] = texp
 
-    log.info('Saving results to {0}'.format(fullname))
-    out.write(fullname, overwrite=True)
+    hdus.append(fits.BinTableHDU(design, name='DESIGN'))
+    fullname = config.get_path(args.save)
+    hdus.writeto(fullname, overwrite=True)
+    log.info('Saved initial plan to "{}".'.format(fullname))
 
 
 def main(args):
@@ -179,18 +242,15 @@ def main(args):
     config = desisurvey.config.Configuration(file_name=args.config_file)
     if args.output_path is not None:
         config.set_output_path(args.output_path)
+    if args.tiles_file is not None:
+        config.tiles_file.set_value(args.tiles_file)
 
     # Tabulate emphemerides if necessary.
-    ephem = desisurvey.ephemerides.Ephemerides(use_cache=not args.recalc)
+    ephem = desisurvey.ephem.get_ephem(use_cache=not args.recalc)
 
-    if args.recalc or not os.path.exists(config.get_path('scheduler.fits')):
-        # Tabulate data used the the scheduler.
-        desisurvey.schedule.initialize(ephem)
-
-    # Load scheduler with precomputed tables needed by the optimizer.
-    scheduler = desisurvey.schedule.Scheduler()
-
-    # Can we use existing HA assignments?
+    # Calculate design hour angles if necessary.
     fullname = config.get_path(args.save)
     if args.recalc or not os.path.exists(fullname):
-        calculate_initial_plan(args, scheduler, fullname)
+        calculate_initial_plan(args)
+    else:
+        log.info('Initial plan has already been created.')

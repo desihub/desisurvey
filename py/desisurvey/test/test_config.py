@@ -2,36 +2,27 @@ from __future__ import print_function, division
 
 import unittest
 import os
-import tempfile
-import shutil
 
 import numpy as np
 
 import astropy.units
 
+from desisurvey.test.base import Tester
 from ..config import *
 
 
-class TestConfig(unittest.TestCase):
+class TestConfig(Tester):
 
     @classmethod
     def setUpClass(cls):
-        # Create a temporary directory.
-        cls.tmpdir = tempfile.mkdtemp()
-        # Write a simple valid configuration to this directory.
+        super(TestConfig, cls).setUpClass()
+        # Write a simple valid configuration.
         cls.simple = os.path.join(cls.tmpdir, 'simple.yaml')
         with open(cls.simple, 'w') as f:
             f.write('const:\n')
             f.write('  gravity: 9.8 m/s\n')
             f.write('  pi: 3.141\n')
             f.write('output_path: .\n')
-
-    @classmethod
-    def tearDownClass(cls):
-        # Remove the directory after the test.
-        shutil.rmtree(cls.tmpdir)
-        # Reset configuration for other unit test classes.
-        Configuration.reset()
 
     def test_default(self):
         """Default config file is valid"""

@@ -12,7 +12,7 @@ import astropy.units as u
 
 import desiutil.plots
 
-import desisurvey.ephemerides
+import desisurvey.ephem
 import desisurvey.config
 import desisurvey.utils
 
@@ -180,23 +180,26 @@ def plot_observed(progress, include='observed', start_date=None, stop_date=None,
 
 def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
                  include_monsoon=False, include_full_moon=False,
-                 apply_weather=False, night_start=-6.5, night_stop=7.5,
+                 include_twilight=True, night_start=-6.5, night_stop=7.5,
                  num_points=500, bg_color='lightblue', save=None):
     """Plot an overview of the DARK/GRAY/BRIGHT program.
+
+    Uses :func:`desisurvey.ephem.get_program_hours` to calculate the
+    hours available for each program during each night.
 
     The matplotlib and basemap packages must be installed to use this function.
 
     Parameters
     ----------
-    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+    ephem : :class:`desisurvey.ephem.Ephemerides`
         Tabulated ephemerides data to use for determining the program.
     start_date : date or None
         First night to include in the plot or use the first date of the
-        calculated ephemerides.  Must be convertible to a
+        survey.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     stop_date : date or None
         First night to include in the plot or use the last date of the
-        calculated ephemerides.  Must be convertible to a
+        survey.  Must be convertible to a
         date using :func:`desisurvey.utils.get_date`.
     style : string
         Plot style to use for the vertical axis: "localtime" shows time
@@ -207,9 +210,9 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         Include nights during the annual monsoon shutdowns.
     include_fullmoon : bool
         Include nights during the monthly full-moon breaks.
-    apply_weather : bool
-        Weight each night according to its monthly average dome-open fraction.
-        Only affects the printed totals with the "localtime" style.
+    include_twilight : bool
+        Include twilight time at the start and end of each night in
+        the BRIGHT program.
     night_start : float
         Start of night in hours relative to local midnight used to set
         y-axis minimum for 'localtime' style and tabulate nightly program.
@@ -241,15 +244,21 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     if style not in styles:
         raise ValueError('Valid styles are {0}.'.format(', '.join(styles)))
 
-    if apply_weather:
-        weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
-
-    if night_start >= night_stop:
-        raise ValueError('Expected night_start < night_stop.')
+    hours = ephem.get_program_hours(
+        start_date, stop_date, include_monsoon,
+        include_full_moon, include_twilight)
+    observing_night = hours.sum(axis=0) > 0
 
     # Determine plot date range.
-    start_date = desisurvey.utils.get_date(start_date or ephem.start)
-    stop_date = desisurvey.utils.get_date(stop_date or ephem.stop)
+    config = desisurvey.config.Configuration()
+    if start_date is None:
+        start_date = config.first_day()
+    else:
+        start_date = desisurvey.utils.get_date(start_date)
+    if stop_date is None:
+        stop_date = config.last_day()
+    else:
+        stop_date = desisurvey.utils.get_date(stop_date)
     if start_date >= stop_date:
         raise ValueError('Expected start_date < stop_date.')
     mjd = ephem._table['noon']
@@ -273,25 +282,6 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
     t_edges = np.linspace(night_start, night_stop, num_points + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
 
-    # Calculate the number of hours for each program during each night.
-    dt = (night_stop - night_start) / num_points
-    hours = np.zeros((3, num_nights))
-    observing_night = np.zeros(num_nights, bool)
-    for i in np.arange(num_nights):
-        if not include_monsoon and desisurvey.utils.is_monsoon(midnight[i]):
-            continue
-        if not include_full_moon and ephem.is_full_moon(midnight[i]):
-            continue
-        observing_night[i] = True
-        mjd_grid = midnight[i] + t_centers
-        dark, gray, bright = ephem.get_program(mjd_grid)
-        hours[0, i] = dt * np.count_nonzero(dark)
-        hours[1, i] = dt * np.count_nonzero(gray)
-        hours[2, i] = dt * np.count_nonzero(bright)
-        if apply_weather:
-            date = desisurvey.utils.get_date(midnight[i])
-            hours[:, i] *= weather_weights[date.month - 1]
-
     # Initialize the plot.
     fig, ax = plt.subplots(1, 1, figsize=(11, 8.5), squeeze=True)
 
@@ -303,7 +293,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
             if not observing_night[i]:
                 continue
             mjd_grid = midnight[i] + t_centers
-            dark, gray, bright = ephem.get_program(mjd_grid)
+            dark, gray, bright = ephem.tabulate_program(mjd_grid)
             program[i][dark] = 1.
             program[i][gray] = 2.
             program[i][bright] = 3.
@@ -339,7 +329,7 @@ def plot_program(ephem, start_date=None, stop_date=None, style='localtime',
         ax.plot(x, y[1], color=program_color['GRAY'], **opts)
         ax.plot(x, y[2], color=program_color['BRIGHT'], **opts)
 
-        ax.set_axis_bgcolor(bg_color)
+        ax.set_facecolor(bg_color)
         ax.set_ylim(0, 1.07 * y.max())
         if style == 'histogram':
             ax.set_ylabel('Hours / Night')
@@ -412,7 +402,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
         Observation date of the form 'YYYYMMDD'.
     obs_num : int
         Observation number on the specified night, counting from zero.
-    ephem : :class:`desisurvey.ephemerides.Ephemerides`
+    ephem : :class:`desisurvey.ephem.Ephemerides`
         Ephemerides covering this night.
     """
     import matplotlib.pyplot as plt
@@ -451,7 +441,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     t_edges = midnight + np.linspace(
         -window_size, +window_size, 2 * window_size * 60 + 1) / 24.
     t_centers = 0.5 * (t_edges[1:] + t_edges[:-1])
-    dark, gray, bright = ephem.get_program(t_centers)
+    dark, gray, bright = ephem.tabulate_program(t_centers)
 
     # Determine the program during the exposure midpoint.
     t_index = np.digitize(when.mjd, t_edges) - 1
@@ -503,7 +493,7 @@ def plot_next_field(date_string, obs_num, ephem, window_size=7.,
     airmass = 1. / np.cos(zenith.to(u.rad).value)
 
     # Calculate position of moon.
-    moon_pos = desisurvey.ephemerides.get_object_interpolator(
+    moon_pos = desisurvey.ephem.get_object_interpolator(
         night, 'moon', altaz=True)
     moon_alt, moon_az = moon_pos(when.mjd)
     moon_altaz = astropy.coordinates.AltAz(
@@ -599,7 +589,7 @@ def plot_scheduler(s, start_date=None, stop_date=None, where=None, when=None,
 
     Parameters
     ----------
-    s : desisurvey.schedule.Scheduler
+    s : desisurvey.old.schedule.Scheduler
         The scheduler object to use.
     start_date : date or None
         First night to include in the plot or use the first scheduler date.  Must
@@ -847,7 +837,7 @@ def plot_monthly(p, program='DARK', monsoon=False, fullmoon=True,
 
     Parameters
     ----------
-    p : desisurvey.schedule.Scheduler
+    p : desisurvey.old.schedule.Scheduler
         The scheduler object to use.
     program : 'DARK', 'GRAY', 'BRIGHT' or 'ANY'
         Name of the program to display visibility for.
@@ -878,8 +868,12 @@ def plot_monthly(p, program='DARK', monsoon=False, fullmoon=True,
     """
     import matplotlib.pyplot as plt
 
+    raise RuntimeError('Not updated for daily weather fractions.')
+
     # Tabulate month index for each night.
     month = np.empty_like(p.calendar, np.int16)
+    ##date = desisurvey.utils.get_date(midnight[i])
+
     weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
     for m in range(12):
         sel = np.in1d(p.calendar['weather'], [weather_weights[m],])

@@ -19,12 +19,19 @@ import specsim.atmosphere
 import desiutil.log
 
 import desisurvey.config
+import desisurvey.tiles
 
 
 def seeing_exposure_factor(seeing):
     """Scaling of exposure time with seeing, relative to nominal seeing.
 
-    The model is based on SDSS imaging data.
+    The model is based on DESI simulations with convolutions of realistic
+    atmospheric and instrument PSFs, for a nominal sample of DESI ELG
+    targets (including redshift evolution of ELG angular size).
+
+    The simulations predict SNR for the ELG [OII] doublet during dark-sky
+    conditions at airmass X=1.  The exposure factor assumes exposure time
+    scales with SNR ** -0.5.
 
     Parameters
     ----------
@@ -40,13 +47,11 @@ def seeing_exposure_factor(seeing):
     seeing = np.asarray(seeing)
     if np.any(seeing <= 0):
         raise ValueError('Got invalid seeing value <= 0.')
-    a, b, c = 4.6, -1.55, 1.15
-    # Could drop the denominator since it cancels in the ratio.
-    denom = (a - 0.25 * b * b / c)
-    f_seeing =  (a + b * seeing + c * seeing ** 2) / denom
+    a, b, c = 12.95475751, -7.10892892, 1.21068726
+    f_seeing =  (a + b * seeing + c * seeing ** 2) ** -2
     config = desisurvey.config.Configuration()
     nominal = config.nominal_conditions.seeing().to(u.arcsec).value
-    f_nominal = (a + b * nominal + c * nominal ** 2) / denom
+    f_nominal = (a + b * nominal + c * nominal ** 2) ** -2
     return f_seeing / f_nominal
 
 
@@ -77,7 +82,8 @@ def transparency_exposure_factor(transparency):
 def dust_exposure_factor(EBV):
     """Scaling of exposure time with median E(B-V) relative to nominal.
 
-    The model assumes SDSS g band. Where does this model come from?
+    The model uses the SDSS-g extinction coefficient (3.303) from Table 6
+    of Schlafly & Finkbeiner 2011.
 
     Parameters
     ----------
@@ -93,14 +99,15 @@ def dust_exposure_factor(EBV):
     EBV = np.asarray(EBV)
     config = desisurvey.config.Configuration()
     EBV0 = config.nominal_conditions.EBV()
-    Ag = 3.303 * (EBV - EBV0) # Use g-band
+    Ag = 3.303 * (EBV - EBV0)
     return np.power(10.0, (2.0 * Ag / 2.5))
 
 
 def airmass_exposure_factor(airmass):
     """Scaling of exposure time with airmass relative to nominal.
 
-    Is this model based on SDSS or HETDEX data?
+    The exponent 1.25 is based on empirical fits to BOSS exposure
+    times. See eqn (6) of Dawson 2012 for details.
 
     Parameters
     ----------
@@ -256,3 +263,278 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
     assert actual_time > 0 * u.s
 
     return actual_time
+
+
+class ExposureTimeCalculator(object):
+    """Online Exposure Time Calculator.
+
+    Track observing conditions (seeing, transparency, sky background) during
+    an exposure using the :meth:`start`, :meth:`update` and :meth:`stop`
+    methods.
+
+    Exposure time tracking is configured by the following parameters:
+     - nominal_exposure_time
+     - new_field_setup
+     - same_field_setup
+     - cosmic_ray_split
+     - min_exposures
+
+    Note that this version applies an average correction for the moon
+    during the GRAY and BRIGHT programs, rather than idividual corrections
+    based on the moon parameters.  This will be fixed in a future version.
+
+    Parameters
+    ----------
+    save_history : bool
+        When True, records the history of internal calculations during an
+        exposure, for debugging and plotting.
+    """
+    def __init__(self, save_history=False):
+        self._snr2frac = 0.
+        self._exptime = 0.
+        self._active = False
+        self.tileid = None
+        # Lookup config parameters (with times converted to days).
+        config = desisurvey.config.Configuration()
+        self.NEW_FIELD_SETUP = config.new_field_setup().to(u.day).value
+        self.SAME_FIELD_SETUP = config.same_field_setup().to(u.day).value
+        self.MAX_EXPTIME = config.cosmic_ray_split().to(u.day).value
+        self.MIN_NEXP = config.min_exposures()
+        self.TEXP_TOTAL = {}
+        for program in desisurvey.tiles.Tiles.PROGRAMS:
+            self.TEXP_TOTAL[program] = getattr(config.nominal_exposure_time, program)().to(u.day).value
+        # Temporary hardcoded exposure factors for moon-up observing.
+        self.TEXP_TOTAL['GRAY'] *= 1.1
+        self.TEXP_TOTAL['BRIGHT'] *= 1.33
+
+        # Initialize model of exposure time dependence on seeing.
+        self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
+        self.seeing_coefs /= np.sqrt(self.weather_factor(1.1, 1.0))
+        assert np.allclose(self.weather_factor(1.1, 1.0), 1.)
+        # Initialize optional history tracking.
+        self.save_history = save_history
+        if save_history:
+            self.history = dict(mjd=[], signal=[], background=[], snr2frac=[])
+
+    def weather_factor(self, seeing, transp):
+        """Return the relative SNR2 accumulation rate for specified conditions.
+
+        This is the inverse of the instantaneous exposure factor due to seeing and transparency.
+
+        Parameters
+        ----------
+        seeing : float
+            Atmospheric seeing in arcseconds.
+        transp : float
+            Atmospheric transparency in the range (0,1).
+        """
+        return transp * (self.seeing_coefs[0] + seeing * (self.seeing_coefs[1] + seeing * self.seeing_coefs[2])) ** 2
+
+    def estimate_exposure(self, program, snr2frac, exposure_factor, nexp_completed=0):
+        """Estimate exposure time(s).
+
+        Can be used to estimate exposures for one or many tiles from the same program.
+
+        Parameters
+        ----------
+        program : str
+            Name of the program to estimate exposure times for. Used to determine the nominal
+            exposure time. All tiles must be from the same program.
+        snr2frac : float or array
+            Fractional SNR2 integrated so far for the tile(s) to estimate.
+        exposure_factor : float or array
+            Exposure-time factor for the tile(s) to estimate.
+        nexp_completed : int or array
+            Number of exposures completed so far for tile(s) to estimate.
+        
+        Returns
+        -------
+        tuple
+            Tuple (texp_total, texp_remaining, nexp) of floats or arrays, where
+            texp_total is the total time that would be required under current conditions,
+            texp_remaining is the remaining time under current conditions taking the
+            already accumulated SNR2 into account, and nexp is the estimated number
+            of remaining exposures required.
+        """
+        # Estimate total exposure time required under current conditions.
+        texp_total = self.TEXP_TOTAL[program] * exposure_factor
+        # Estimate time remaining to reach snr2frac = 1.
+        texp_remaining = texp_total * (1 - snr2frac)
+        # Estimate the number of exposures required.
+        nexp = np.ceil(texp_remaining / self.MAX_EXPTIME).astype(int)
+        nexp = np.maximum(nexp, self.MIN_NEXP - nexp_completed)
+        return texp_total, texp_remaining, nexp
+
+    def could_complete(self, t_remaining, program, snr2frac, exposure_factor):
+        """Determine which tiles could be completed.
+
+        Completion refers to achieving SNR2 = 1, which might require
+        multiple exposures.
+
+        Used by :meth:`desisurvey.scheduler.Scheduler.next_tile` and uses
+        :meth:`estimate_exposure`.
+
+        Parameters
+        ----------
+        t_remaining : float
+            Time remaining in units of days.
+        program : str
+            Program that the candidate tiles belong to (must be the same for all tiles).
+        snr2frac : float or array
+            Fractional SNR2 integrated so far for each tile to consider.
+        exposure_factor : float or array
+            Exposure-time factor for each tile to consider.
+
+        Returns
+        -------
+        array
+            1D array of booleans indicating which tiles (if any) could completed
+            within the remaining time.
+        """
+        texp_total, texp_remaining, nexp = self.estimate_exposure(program, snr2frac, exposure_factor)
+        # Estimate total time required for all exposures.
+        t_required = self.NEW_FIELD_SETUP + self.SAME_FIELD_SETUP * (nexp - 1) + texp_remaining
+        return t_required <= t_remaining
+
+    def start(self, mjd_now, tileid, program, snr2frac, exposure_factor, seeing, transp, sky):
+        """Start tracking an exposure.
+
+        Must be called before using :meth:`update` to track changing conditions
+        during the exposure.
+
+        Parameters
+        ----------
+        mjd_now : float
+            MJD timestamp when exposure starts.
+        tileid : int
+            ID of the tile being exposed. This is only used to recognize consecutive
+            exposures of the same tile.
+        program : str
+            Name of the program the exposed tile belongs to.
+        snr2frac : float
+            Previous accumulated fractional SNR2 of the exposed tile.
+        exposure_factor : float
+            Exposure factor of the tile when the exposure starts, based on the
+            current conditions specified by the remaining parameters.
+        seeing : float
+            Initial atmospheric seeing in arcseconds.
+        transp : float
+            Initial atmospheric transparency (0,1).
+        sky : float
+            Initial sky background level.
+        """
+        self.mjd_start = mjd_now
+        self._snr2frac = self._snr2frac_start = snr2frac
+        self.mjd_last = mjd_now
+        self.mjd_start = mjd_now
+        self._active = True
+        if tileid == self.tileid:
+            self.tile_nexp += 1
+        else:
+            self.tile_nexp = 1
+        self.tileid = tileid
+        self.texp_total, texp_remaining, nexp = self.estimate_exposure(
+            program, snr2frac, exposure_factor, self.tile_nexp - 1)
+        # Estimate SNR2 to integrate in the next exposure.
+        self.snr2frac_target = snr2frac + (texp_remaining / nexp) / self.texp_total
+        # Initialize signal and background rate factors.
+        self.srate0 = self.weather_factor(seeing, transp)
+        self.brate0 = sky
+        self.signal = 0.
+        self.background = 0.
+        self.last_snr2frac = 0.
+        self.should_abort = False
+        if self.save_history:
+            self.history['mjd'].append(mjd_now)
+            self.history['signal'].append(0.)
+            self.history['background'].append(0.)
+            self.history['snr2frac'].append(snr2frac)
+    
+    def update(self, mjd_now, seeing, transp, sky):
+        """Track changing conditions during an exposure.
+
+        Must call :meth:`start` first to start tracking an exposure.
+
+        Parameters
+        ----------
+        mjd_now : float
+            Current MJD timestamp.
+        seeing : float
+            Estimate of average atmospheric seeing in arcseconds
+            since last update (or start).
+        transp : float
+            Estimate of average atmospheric transparency
+            since last update (or start).
+        sky : float
+            Estimate of average sky background level
+            since last update (or start).
+
+        Returns
+        -------
+        bool
+            True if the exposure should continue integrating.
+        """
+        dt = mjd_now - self.mjd_last
+        self.mjd_last = mjd_now
+        srate = self.weather_factor(seeing, transp)
+        brate = sky        
+        self.signal += dt * srate / self.srate0
+        #self.background += dt * (srate + brate) / (self.srate0 + self.brate0)
+        self.background += dt * brate / self.brate0
+        self._snr2frac = self._snr2frac_start + self.signal ** 2 / self.background / self.texp_total            
+        if self.save_history:
+            self.history['mjd'].append(mjd_now)
+            self.history['signal'].append(self.signal)
+            self.history['background'].append(self.background)
+            self.history['snr2frac'].append(self._snr2frac)
+        need_more_snr = self._snr2frac < self.snr2frac_target
+        # Give up on this tile if SNR progress has dropped significantly since we started.
+        self.should_abort = (self._snr2frac - self.last_snr2frac) / dt < 0.25 / self.texp_total
+        self.last_snr2frac = self._snr2frac
+        return need_more_snr and not self.should_abort
+
+    def stop(self, mjd_now):
+        """Stop tracking an exposure.
+
+        After calling this method, use :attr:`exptime` to look up the exposure time.
+
+        Parameters
+        ----------
+        mjd_now : float
+            MJD timestamp when the current exposure was stopped.
+
+        Returns
+        -------
+        bool
+            True if this tile is "done" or False if another exposure of the
+            same tile should be started immediately.  Note that "done" normally
+            means the tile has reached its target SNR2, but could also mean
+            that the SNR2 accumulation rate has fallen below some threshold
+            so that it is no longer useful to continue exposing.
+        """
+        self._exptime = mjd_now - self.mjd_start
+        self._active = False
+        return self._snr2frac >= 1 or self.should_abort
+
+    @property
+    def snr2frac(self):
+        """Integrated fractional SNR2 of tile currently being exposed.
+
+        Includes signal accumulated in previous exposures. Initialized by
+        :meth:`start`, updated by :meth:`update` and frozen by :meth:`stop`.
+        """
+        return self._snr2frac
+
+    @property
+    def exptime(self):
+        """Exposure time in days recorded by last call to :meth:`stop`.
+        """
+        return self._exptime
+
+    @property
+    def active(self):
+        """Are we tracking an exposure?
+
+        Set True by :meth:`start` and False by :meth:`stop`.
+        """
+        return self._active

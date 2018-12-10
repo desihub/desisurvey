@@ -4,7 +4,8 @@ import numpy as np
 
 import astropy.units as u
 
-from desisurvey.etc import exposure_time, moon_exposure_factor
+import desisurvey.config
+from desisurvey.etc import exposure_time, moon_exposure_factor, ExposureTimeCalculator
 
 
 class TestExpCalc(unittest.TestCase):
@@ -70,6 +71,42 @@ class TestExpCalc(unittest.TestCase):
         x2 = moon_exposure_factor(
             moon_frac=0.5, moon_sep=30, moon_alt=30, airmass=1.2)
         self.assertGreater(x2, x1)
+
+    def test_ETC(self):
+        for save in False, True:
+            ETC = ExposureTimeCalculator(save_history=save)
+            # Check for sensible scaling with conditions.
+            self.assertGreater(ETC.weather_factor(1.0, 1.0), ETC.weather_factor(1.1, 1.0))
+            self.assertGreater(ETC.weather_factor(1.0, 1.0), ETC.weather_factor(1.0, 0.9))
+            # Lookup the nominal DARK exposure time in days.
+            config = desisurvey.config.Configuration()
+            tnom = getattr(config.nominal_exposure_time, 'DARK')().to(u.day).value
+            # Check for sensible exposure estimates.
+            tot1, rem1, n1 = ETC.estimate_exposure('DARK', 0., 1.0, 0)
+            tot2, rem2, n2 = ETC.estimate_exposure('GRAY', 0., 1.1, 0)
+            self.assertEqual(tot1, tnom)
+            self.assertEqual(tot1, rem1)
+            self.assertEqual(tot2, rem2)
+            self.assertGreater(tot2, tot1)
+            self.assertGreater(n1, 0)
+            self.assertGreater(n2, 0)
+            # Check for sensible completion estimates.
+            self.assertFalse(ETC.could_complete(0., 'DARK', 0., 1.))
+            self.assertFalse(ETC.could_complete(0.9 * tnom, 'DARK', 0., 1.))
+            self.assertTrue(ETC.could_complete(2.0 * tnom, 'DARK', 0., 1.))
+            self.assertFalse(ETC.could_complete(2.0 * tnom, 'DARK', 0., 2.))
+            # Track an exposure.
+            self.assertFalse(ETC.active)
+            now = 1.
+            ETC.start(now, 1, 'DARK', 0., 1., 1.1, 1.0, 1.0)
+            self.assertTrue(ETC.active)
+            while ETC.active:
+                now += 10 / 86400.
+                if not ETC.update(now, 1.1, 1.0, 1.0):
+                    done = ETC.stop(now)
+            self.assertFalse(ETC.active)
+            self.assertEqual(ETC.exptime, now - 1.)
+            self.assertTrue((not done) or (ETC.snr2frac >= 1))
 
 
 def test_suite():

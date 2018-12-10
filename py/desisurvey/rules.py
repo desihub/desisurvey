@@ -1,4 +1,4 @@
-"""Manage and apply observing priorities using rules.
+"""Manage and apply tile observing priorities using rules.
 """
 from __future__ import print_function, division
 
@@ -19,6 +19,7 @@ import desiutil.log
 
 import desisurvey.config
 import desisurvey.utils
+import desisurvey.tiles
 
 
 # Loads a YAML file with dictionary key ordering preserved.
@@ -42,24 +43,24 @@ class Rules(object):
 
     Read tile group definitions and observing rules from the specified
     YAML file.
+
+    Parameters
+    ----------
+    file_name : str
+        Name of YAML file containing the rules to use. A relative path refers
+        to our configured output path.
     """
-    def __init__(self, file_name='rules.yaml', restore=None):
+    def __init__(self, file_name='rules.yaml'):
+        self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         tile_radius = config.tile_radius().to(u.deg).value
 
-        # Load the table of tiles in the DESI footprint.
-        tiles = astropy.table.Table(
-            desimodel.io.load_tiles(onlydesi=True, extra=False,
-                tilesfile=config.tiles_file() ))
-        num_tiles = len(tiles)
-        passnum = tiles['PASS']
-        ra = tiles['RA']
-        dec = tiles['DEC']
-        NGC = (tiles['RA'] > 75.0) & (tiles['RA'] < 300.0)
+        tiles = desisurvey.tiles.get_tiles()
+        NGC = (tiles.tileRA > 75.0) & (tiles.tileRA < 300.0)
         SGC = ~NGC
 
         # Initialize regexp for parsing "GROUP_NAME(PASS)"
-        parser = re.compile('([^\(]+)\(([0-7])\)$')
+        parser = re.compile('([^\(]+)\(([0-99]+)\)$')
 
         # Get the full path of the YAML file to read.
         if os.path.isabs(file_name):
@@ -74,13 +75,13 @@ class Rules(object):
             rules_dict = _ordered_load(f, yaml.SafeLoader)
 
         group_names = []
-        group_ids = np.zeros(num_tiles, int)
-        dec_priority = np.ones(num_tiles, float)
+        group_ids = np.zeros(tiles.ntiles, int)
+        dec_priority = np.ones(tiles.ntiles, float)
         group_rules = {}
         group_max_orphans = {}
 
         for group_name in rules_dict:
-            group_sel = np.ones(num_tiles, bool)
+            group_sel = np.ones(tiles.ntiles, bool)
             node = rules_dict[group_name]
 
             # Parse optional geographical attribute.
@@ -91,15 +92,15 @@ class Rules(object):
                 group_sel[NGC] = False
             dec_min = node.get('dec_min')
             if dec_min is not None:
-                group_sel[dec < float(dec_min)] = False
+                group_sel[tiles.tileDEC < float(dec_min)] = False
             dec_max = node.get('dec_max')
             if dec_max is not None:
-                group_sel[dec >= float(dec_max)] = False
+                group_sel[tiles.tileDEC >= float(dec_max)] = False
             max_orphans = node.get('max_orphans') or 0
             covers = node.get('covers')
             if covers is not None:
                 # Build the set of all tiles that must be covered.
-                under = np.zeros(num_tiles, bool)
+                under = np.zeros(tiles.ntiles, bool)
                 for name in covers.split('+'):
                     try:
                         group_id = group_names.index(name) + 1
@@ -114,21 +115,21 @@ class Rules(object):
                 raise RuntimeError(
                     'Missing required passes for {0}.'.format(group_name))
             passes = [int(p) for p in str(passes).split(',')]
-            for p in np.unique(passnum):
+            for p in tiles.passes:
                 if p not in passes:
-                    group_sel[passnum == p] = False
+                    group_sel[tiles.passnum == p] = False
 
             # Create GROUP(PASS) subgroup combinations.
-            final_group_sel = np.zeros(num_tiles, bool)
+            final_group_sel = np.zeros(tiles.ntiles, bool)
             for p in passes:
                 pass_name = '{0}({1:d})'.format(group_name, p)
                 group_names.append(pass_name)
                 group_id = len(group_names)
-                pass_sel = group_sel & (passnum == p)
+                pass_sel = group_sel & (tiles.passnum == p)
                 if covers is not None:
                     # Limit to tiles covering at least one tile in "under".
                     matrix = desisurvey.utils.separation_matrix(
-                        ra[pass_sel], dec[pass_sel], ra[under], dec[under],
+                        tiles.tileRA[pass_sel], tiles.tileDEC[pass_sel], tiles.tileRA[under], tiles.tileDEC[under],
                         2 * tile_radius)
                     overlapping = np.any(matrix, axis=1)
                     pass_sel[pass_sel] &= overlapping
@@ -148,7 +149,7 @@ class Rules(object):
             # Calculate priority multipliers to implement optional DEC ordering.
             dec_order = node.get('dec_order')
             if dec_order is not None and np.any(group_sel):
-                dec_group = dec[group_sel]
+                dec_group = tiles.tileDEC[group_sel]
                 lo, hi = np.min(dec_group), np.max(dec_group)
 
                 slope = float(dec_order)
@@ -190,7 +191,7 @@ class Rules(object):
         # Check that all tiles are assigned to exactly one group.
         if np.any(group_ids == 0):
             orphans = (group_ids == 0)
-            passes = ','.join([str(s) for s in np.unique(passnum[orphans])])
+            passes = ','.join([str(s) for s in np.unique(tiles.passnum[orphans])])
             raise RuntimeError(
                 '{0} tiles in passes {1} not assigned to any group.'
                 .format(np.count_nonzero(orphans), passes))
@@ -204,39 +205,38 @@ class Rules(object):
                     raise RuntimeError(
                         'Invalid target {0} in {1} rule.'.format(target, name))
 
-        self.tileid = tiles['TILEID']
         self.group_names = group_names
         self.group_ids = group_ids
         self.group_rules = group_rules
         self.dec_priority = dec_priority
         self.group_max_orphans = group_max_orphans
 
-    def apply(self, progress):
-        """Apply the priority rules given the observing progress so far.
+    def apply(self, completed):
+        """Apply rules to determine tile priorites based on those completed so far.
+
+        Parameters
+        ----------
+        completed : array
+            Boolean array of per-tile completion status.
 
         Returns
         -------
         array
             Array of per-tile observing priorities.
         """
-        # Find all completed tiles.
-        assert np.all(progress._table['tileid'] == self.tileid)
-        log = desiutil.log.get_logger()
-        completed = progress._table['status'] == 2
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
-        # for gid, name in zip(np.unique(self.group_ids), self.group_names):
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
             if not np.any(group_sel):
-                log.error('No tiles covered by rule {}'.format(name))
+                self.log.error('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]
             triggered[name] = (ndone + max_orphans >= ngroup)
         # Second pass through groups to apply rules.
-        priorities = np.zeros(len(self.tileid))
+        priorities = np.zeros_like(self.dec_priority)
         for gid, name in zip(np.unique(self.group_ids), self.group_names):
             priority = 0
             for condition, value in self.group_rules[name].items():

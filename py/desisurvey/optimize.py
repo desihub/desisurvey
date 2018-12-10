@@ -27,11 +27,13 @@ class Optimizer(object):
 
     Parameters
     ----------
-    sched : desisurvey.schedule.Scheduler
-        The scheduler object to use for the observing calendar and exposure
-        time forecasts.
     program : 'DARK', 'GRAY' or 'BRIGHT'
         Which program to optimize.  Determines the nominal exposure time.
+    lst_edges : array
+        Array of N+1 LST bin edges.
+    lst_hist : array
+        Array of N bins giving the available LST distribution in units of
+        sidereal hours per bin.
     subset : array or None
         An array of tile ID values to optimize within the specified program.
         Optimizes all tiles in the program if None.
@@ -41,9 +43,6 @@ class Optimizer(object):
     stop : date or None
         Only consider available LST before this end date.  Use the nominal
         survey stop date if None.
-    nbins : int
-        Number of LST histogram bins to use when calculating the optimization
-        metrics.
     init : 'zero', 'flat' or 'array'
         Method for initializing tile hour angles: 'zero' sets all hour angles
         to zero, 'flat' matches the CDF of available LST to planned LST (without
@@ -53,12 +52,11 @@ class Optimizer(object):
         Only used when init is 'array'. The subset arg must also be provided
         to specify which tile each HA applies to.
     stretch : float
-        Factor to stretch all exposure times by.
+        Amount to stretch exposure times to account for factors other than
+        dust and airmass (i.e., seeing, transparency, moon). This does not
+        have a big effect on the results so can be approximate.
     smoothing_radius : :class:`astropy.units.Quantity`
         Gaussian sigma for calculating smoothing weights with angular units.
-    origin : float
-        Rotate DEC values in plots so that the left edge is at this value
-        in degrees.
     center : float or None
         Used by the 'flat' initialization method to specify the starting
         DEC for the CDF balancing algorithm. When None, the 'flat' method
@@ -74,11 +72,13 @@ class Optimizer(object):
         consider, in decreasing order, and the weight values determines their
         relative weight. The next bin to optimize is then selected at random.
     """
-    def __init__(self, sched, program, subset=None, start=None, stop=None,
-                 nbins=192, init='info', initial_ha=None, stretch=1.0,
-                 smoothing_radius=10,
-                 origin=-60, center=None, seed=123, weights=[5, 4, 3, 2, 1]):
+    def __init__(self, program, lst_edges, lst_hist, subset=None, start=None, stop=None,
+                 init='flat', initial_ha=None, stretch=1.0, smoothing_radius=10,
+                 center=None, seed=123, weights=[5, 4, 3, 2, 1]):
 
+        tiles = desisurvey.tiles.get_tiles()
+        if program not in tiles.PROGRAMS:
+            raise ValueError('Invalid program name: "{}".'.format(program))
         if not isinstance(smoothing_radius, u.Quantity):
             smoothing_radius = smoothing_radius * u.deg
         self.log = desiutil.log.get_logger()
@@ -86,96 +86,72 @@ class Optimizer(object):
         self.gen = np.random.RandomState(seed)
         self.cum_weights = np.asarray(weights, float).cumsum()
         self.cum_weights /= self.cum_weights[-1]
+        self.stretch = stretch
 
         if start is None:
-            start = sched.start_date
+            start = config.first_day()
         else:
             start = desisurvey.utils.get_date(start)
         if stop is None:
-            stop = sched.stop_date
+            stop = config.last_day()
         else:
             stop = desisurvey.utils.get_date(stop)
         if start >= stop:
             raise ValueError('Expected start < stop.')
 
-        # Calculate the time available in bins of LST for this program.
-        e = sched.etable
-        p_index = dict(DARK=1, GRAY=2, BRIGHT=3)[program]
-        sel = (e['program'] == p_index).reshape(
-            sched.num_nights, sched.num_times)
-        # Zero out nights during monsoon and full moon.
-        sel[sched.calendar['monsoon']] = False
-        sel[sched.calendar['fullmoon']] = False
-        # Zero out nights outside [start:stop].
-        sel[:(start - sched.start_date).days] = False
-        sel[(stop - sched.start_date).days:] = False
-        # Accumulate times in hours over the full survey.
-        dt = sched.step_size.to(u.hour).value
-        wgt = dt * np.ones((sched.num_nights, sched.num_times))
-        # Weight nights for weather availability.
-        sel_flat = sel.flatten()
-        lst = wrap(e['lst'][sel_flat], origin)
-        wgt *= sched.calendar['weather'][:, np.newaxis]
-        wgt = wgt[sel].flatten()
-        self.lst_hist, self.lst_edges = np.histogram(
-            lst, bins=nbins, range=(origin, origin + 360), weights=wgt)
-        self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
-        self.nbins = nbins
-        self.origin = origin
-        self.stretch = stretch
+        self.lst_hist = np.asarray(lst_hist)
         self.lst_hist_sum = self.lst_hist.sum()
+        self.nbins = len(lst_hist)
+        self.lst_edges = np.asarray(lst_edges)
+        if self.lst_edges.shape != (self.nbins + 1,):
+            raise ValueError('Inconsistent lengths of lst_hist and lst_edges.')
+        self.lst_centers = 0.5 * (self.lst_edges[1:] + self.lst_edges[:-1])
+        self.origin = self.lst_edges[0]
         self.binsize = 360. / self.nbins
 
         # Get nominal exposure time for this program,
         # converted to LST equivalent in degrees.
         texp_nom = getattr(config.nominal_exposure_time, program)()
-        self.dlst_nom = 360 * texp_nom.to(u.day).value
+        self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583
 
-        # Load the tiles for this program.
-        p_tiles = sched.tiles[sched.tiles['program'] == p_index]
-        # Restrict to a subset of tiles in this program, if requested.
+        # Select the tiles to plan.
         if subset is not None:
-            subset = np.asarray(subset)
-            idx = np.searchsorted(p_tiles['tileid'], subset)
-            if not np.all(p_tiles['tileid'][idx] == subset):
-                bad = set(subset) - set(p_tiles['tileid'])
-                raise ValueError(
-                    'Subset contains non-{0} tiles: {1}.'
-                    .format(program, ','.join([str(n) for n in bad])))
-            p_tiles = p_tiles[idx]
+            idx = tiles.index(subset)
+            # Check that all tiles in the subset belong to program.
+            passes = np.unique(tiles.passnum[idx])
+            if np.any(tiles.pass_program[passes] != program):
+                raise ValueError('Subset contains non-{} tiles.'.format(program))
+            tile_sel = np.zeros(tiles.ntiles, bool)
+            tile_sel[idx] = True
+        else:
+            # Use all tiles in the program by default.
+            tile_sel = tiles.program_mask[program]
 
-        self.ra = wrap(p_tiles['ra'].data, origin)
-        self.dec = p_tiles['dec'].data
-        self.tid = p_tiles['tileid'].data
+        # Save arrays for the tiles to plan.
+        self.ra = wrap(tiles.tileRA[tile_sel], self.origin)
+        self.dec = tiles.tileDEC[tile_sel]
+        self.tid = tiles.tileID[tile_sel]
+        self.idx = np.where(tile_sel)[0]
         self.ntiles = len(self.ra)
-
-        # Initialize an index array for the selected tiles.
-        self.idx = np.searchsorted(sched.tiles['tileid'], self.tid)
-        assert(np.all(sched.tiles['tileid'][self.idx] == self.tid))
 
         # Calculate the maximum |HA| in degrees allowed for each tile to stay
         # above the survey minimum altitude (plus a 5 deg padding).
         cosZ_min = np.cos(90 * u.deg - (config.min_altitude() + 5 * u.deg))
-        latitude = desisurvey.config.Configuration().location.latitude()
+        latitude = config.location.latitude()
         cosHA_min = (
             (cosZ_min - np.sin(self.dec * u.deg) * np.sin(latitude)) /
             (np.cos(self.dec * u.deg) * np.cos(latitude))).value
         self.max_abs_ha = np.degrees(np.arccos(cosHA_min))
 
-        # Calculate static dust exposure factors for each tile.
-        self.dust_factor = desisurvey.etc.dust_exposure_factor(p_tiles['EBV'])
+        # Lookup static dust exposure factors for each tile.
+        self.dust_factor = tiles.dust_factor[tile_sel]
 
         # Initialize smoothing weights.
         self.init_smoothing(smoothing_radius)
 
         self.log.info(
-            '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}, stretch {4:.3f}).'
-            .format(program, self.lst_hist_sum, self.ntiles, texp_nom, stretch))
-
-        # Precompute coefficients for exposure time calculations.
-        latitude = np.radians(config.location.latitude())
-        self.A = np.sin(np.radians(self.dec)) * np.sin(latitude)
-        self.B = np.cos(np.radians(self.dec)) * np.cos(latitude)
+            '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}).'
+            .format(program, self.lst_hist_sum, self.ntiles, texp_nom))
 
         # Initialize metric histories.
         self.scale_history = []
@@ -204,16 +180,18 @@ class Optimizer(object):
             self.ha = np.asarray(initial_ha)
         elif init == 'flat':
             if center is None:
-                centers = np.arange(-180, 180, 5)
+                # Try 5 equally spaced centers.
+                icenters = np.arange(0, self.nbins, self.nbins // 5)
             else:
-                centers = [center]
+                # Find the closest bin edge to the requested value.
+                icenters = [np.argmin(np.abs(center - lst_edges))]
             min_score = np.inf
             scores = []
-            for center in centers:
-                # Histogram available LST relative to the specified center.
-                lst = wrap(e['lst'][sel_flat], center)
-                hist, edges = np.histogram(
-                    lst, bins=nbins, range=(center, center + 360), weights=wgt)
+            for icenter in icenters:
+                # Rotate the available LST histogram to this new center.
+                hist = np.roll(self.lst_hist, -icenter)
+                center = self.lst_edges[icenter]
+                edges = np.linspace(center, center + 360, self.nbins + 1)
                 # Calculate the CDF of available LST.
                 lst_cdf = np.zeros_like(edges)
                 lst_cdf[1:] = np.cumsum(hist)
@@ -223,7 +201,7 @@ class Optimizer(object):
                 # over multiple LST bins, add its entire HA=0 exposure time at
                 # LST=RA.
                 exptime, _ = self.get_exptime(ha=np.zeros(self.ntiles))
-                tile_ra = wrap(p_tiles['ra'].data, center)
+                tile_ra = wrap(tiles.tileRA[tile_sel], center)
                 sort_idx = np.argsort(tile_ra)
                 tile_cdf = np.cumsum(exptime[sort_idx])
                 tile_cdf /= tile_cdf[-1]
@@ -294,8 +272,8 @@ class Optimizer(object):
             subset = slice(None)
         # Calculate best-case exposure times (i.e., using only airmass & dust)
         # in degrees for the specified HA assignments.
-        cosZ = self.A[subset] + self.B[subset] * np.cos(np.radians(ha))
-        X = desisurvey.utils.cos_zenith_to_airmass(cosZ)
+        tiles = desisurvey.tiles.get_tiles()
+        X = tiles.airmass(ha, self.idx[subset])
         exptime = (self.dlst_nom * desisurvey.etc.airmass_exposure_factor(X) *
                    self.dust_factor[subset]) * self.stretch
         return exptime, subset
@@ -338,7 +316,7 @@ class Optimizer(object):
         plan = lo + hi
         plan[lst_max > lst_min] -= self.binsize
         ##assert np.allclose(plan.sum(axis=1), exptime)
-        # Convert from degrees to hours.
+        # Convert from degrees to sidereal hours.
         return plan * 24. / 360.
 
     def eval_score(self, plan_hist):
@@ -445,6 +423,8 @@ class Optimizer(object):
         and records the current values of the RMSE and scale metrics.
         """
         self.plan_hist = self.plan_tiles.sum(axis=0)
+        if not np.all(np.isfinite(self.plan_hist)):
+            raise RuntimeError('Found invalid plan_tiles in use_plan().')
         if save_history:
             self.scale_history.append(self.eval_scale(self.plan_hist))
             self.loss_history.append(self.eval_loss(self.plan_hist))
@@ -489,7 +469,7 @@ class Optimizer(object):
         # Select the movements that reduce the RMSE between A and P by
         # the largest amounts.
         order = np.argsort(np.abs(dres))[::-1][:len(self.cum_weights)]
-        # Randomly select one of these moments, according to our weights.
+        # Randomly select one of these movements, according to our weights.
         which = np.searchsorted(self.cum_weights, self.gen.uniform())
         idx = order[which]
         if dres[idx] == 0:
@@ -537,7 +517,7 @@ class Optimizer(object):
                 # Randomly select a direction to shift the next tile.
                 dha_sign = +1 if self.gen.uniform() > 0.5 else -1
 
-            # Do no move any tiles that are already at their |HA| limits.
+            # Do not move any tiles that are already at their |HA| limits.
             dha = 360. / self.nbins * frac * dha_sign
             veto = np.abs(self.ha + dha) >= self.max_abs_ha
             sel[veto] = False
@@ -691,8 +671,6 @@ class Optimizer(object):
 if __name__ == '__main__':
     """This should eventually be made into a first-class script entry point.
     """
-    import desisurvey.schedule
-    scheduler = desisurvey.schedule.Scheduler()
     opt = Optimizer(scheduler, 'GRAY')
     for i in range(10):
         opt.improve(frac=0.25, verbose=True)

@@ -1,8 +1,5 @@
 import unittest
-import os
-import datetime
-import tempfile
-import shutil
+import os.path
 
 import numpy as np
 
@@ -11,20 +8,16 @@ from astropy.coordinates import ICRS, AltAz
 import astropy.units as u
 import astropy.io
 
-import desisurvey.config
-from desisurvey.ephemerides import Ephemerides, get_grid, get_object_interpolator
-from desisurvey.utils import get_date, get_location
+from desisurvey.test.base import Tester
+from desisurvey.ephem import get_ephem, get_grid, get_object_interpolator
+from desisurvey.utils import get_location
 
 
-class TestEphemerides(unittest.TestCase):
+class TestEphemerides(Tester):
 
     @classmethod
     def setUpClass(cls):
-        # Create a temporary directory.
-        cls.tmpdir = tempfile.mkdtemp()
-        # Write output files to this temporary directory.
-        config = desisurvey.config.Configuration()
-        config.set_output_path(cls.tmpdir)
+        super(TestEphemerides, cls).setUpClass()
         # Configure a CSV reader for the Horizons output format.
         csv_reader = astropy.io.ascii.Csv()
         csv_reader.header.comment = r'[^ ]'
@@ -43,28 +36,29 @@ class TestEphemerides(unittest.TestCase):
         for old_name, new_name in zip(cls.table.colnames, names):
             cls.table[old_name].name = new_name
 
-    @classmethod
-    def tearDownClass(cls):
-        # Remove the directory after the test.
-        shutil.rmtree(cls.tmpdir)
-        # Reset our configuration.
-        desisurvey.config.Configuration.reset()
+    def test_get_ephem(self):
+        """Test memory and disk caching"""
+        # Create and save to memory only
+        id1 = id(get_ephem(write_cache=False))
+        # Load from memory
+        id2 = id(get_ephem())
+        self.assertEqual(id1, id2)
+        # Save to disk.
+        id3 = id(get_ephem())
+        self.assertEqual(id1, id3)
+        # Clear memory cache.
+        _ephem = None
+        # Read from disk.
+        id4 = id(get_ephem())
+        self.assertEqual(id1, id4)
 
-    def test_getephem(self):
-        """Tabulate one month of ephemerides"""
-        start = datetime.date(2019, 9, 1)
-        stop = datetime.date(2019, 10, 1)
-        ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
-        self.assertEqual(ephem.start.mjd, ephem.get_row(0)['noon'])
-        self.assertEqual(ephem.start.mjd, ephem.get_night(start)['noon'])
-        self.assertEqual(ephem.stop.mjd, ephem.get_row(-1)['noon'] + 1)
-        self.assertEqual(ephem.start.mjd,
-                         ephem.get_night(ephem.start)['noon'])
-        self.assertEqual(ephem.num_nights,
-                         int(round(ephem.stop.mjd - ephem.start.mjd)))
+    def test_ephem_table(self):
+        """Test basic table structure"""
+        ephem = get_ephem()
+        self.assertEqual(ephem.num_nights, (ephem.stop_date - ephem.start_date).days)
 
         etable = ephem._table
-        self.assertEqual(len(etable), 30)
+        self.assertEqual(len(etable), 31)
         self.assertTrue(np.all(etable['dusk'] > etable['noon']))
         self.assertTrue(np.all(etable['dawn'] > etable['dusk']))
         self.assertTrue(np.all(etable['dusk'] > etable['brightdusk']))
@@ -75,34 +69,32 @@ class TestEphemerides(unittest.TestCase):
         self.assertGreaterEqual(np.min(etable['moon_illum_frac']), 0.00)
         self.assertTrue(np.all(etable['moonrise'] < etable['moonset']))
 
-        for i in range(ephem.num_nights):
+        hrs1 = ephem.get_program_hours(ephem.start_date, ephem.stop_date, include_twilight=True).sum(axis=1)
+        hrs2 = ephem.get_program_hours(ephem.start_date, ephem.stop_date, include_twilight=False).sum(axis=1)
+        hrs3 = ephem.get_program_hours(ephem.start_date, ephem.stop_date, include_twilight=True, include_full_moon=True).sum(axis=1)
+        self.assertEqual(hrs1[0], hrs2[0])
+        self.assertEqual(hrs1[1], hrs2[1])
+        self.assertGreater(hrs1[2], hrs2[2])
+        self.assertLess(hrs1[0], hrs3[0])
+        self.assertEqual(hrs1[1], hrs3[1])
+        self.assertLess(hrs1[2], hrs3[2])
 
-            x = ephem.get_row(i)
-            date = Time(x['noon'], format='mjd').datetime.date()
-            night = date.strftime('%Y%m%d')
-            for key in [
-                    'brightdusk', 'brightdawn',
-                    'dusk', 'dawn',
-                ]:
-                #- AZ local time
-                localtime = Time(x[key], format='mjd') - 7*u.hour
-                #- YEARMMDD of sunset for that time
-                yearmmdd = (localtime - 12*u.hour).to_datetime().strftime('%Y%m%d')
-                msg = '{} != {} for {}={}'.format(night, yearmmdd, key, x[key])
-                self.assertEqual(night, yearmmdd, msg)
-
-    def test_full_moon(self):
-        """Verify that the full moon break in Sep-2019 occurs on days 10-16"""
-        start = datetime.date(2019, 9, 1)
-        stop = datetime.date(2019, 9, 30)
-        ephem = Ephemerides(start, stop, use_cache=False, write_cache=False)
-        full = np.empty(ephem.num_nights, bool)
-        for i in range(ephem.num_nights):
-            night = start + datetime.timedelta(days=i)
-            full[i] = ephem.is_full_moon(night)
-        expected = np.zeros_like(full, bool)
-        expected[9:16] = True
-        self.assertTrue(np.all(full == expected))
+    def test_lst_hours(self):
+        """Test consistent LST and hourly schedules"""
+        ephem = get_ephem()
+        gen = np.random.RandomState(123)
+        weather = gen.uniform(size=ephem.num_nights)
+        for twilight in True, False:
+            for full_moon in True, False:
+                for monsoon in True, False:
+                    lst_hist, lst_bins = ephem.get_available_lst(
+                        ephem.start_date, ephem.stop_date, weather=weather,
+                        include_monsoon=monsoon, include_full_moon=full_moon, include_twilight=twilight)
+                    hrs = ephem.get_program_hours(ephem.start_date, ephem.stop_date,
+                        include_monsoon=monsoon, include_full_moon=full_moon, include_twilight=twilight)
+                    hrs_sum = (hrs * weather).sum(axis=1)
+                    lst_sum = lst_hist.sum(axis=1) * 0.99726956583 # sidereal / solar hours
+                    self.assertTrue(np.allclose(hrs_sum, lst_sum))
 
     def test_get_grid(self):
         """Verify grid calculations"""
@@ -116,9 +108,7 @@ class TestEphemerides(unittest.TestCase):
 
     def test_moon_phase(self):
         """Verfify moon illuminated fraction for first week of 2020"""
-        ephem = Ephemerides(
-            get_date('2019-12-31'), get_date('2020-02-02'),
-            use_cache=False, write_cache=False)
+        ephem = get_ephem()
         for i, jd in enumerate(self.table['jd']):
             t = Time(jd, format='jd')
             frac = ephem.get_moon_illuminated_fraction(t.mjd)
@@ -127,9 +117,7 @@ class TestEphemerides(unittest.TestCase):
 
     def test_moon_radec(self):
         """Verify moon (ra,dec) for first week of 2020"""
-        ephem = Ephemerides(
-            get_date('2019-12-31'), get_date('2020-02-02'),
-            use_cache=False, write_cache=False)
+        ephem = get_ephem()
         for i, jd in enumerate(self.table['jd']):
             t = Time(jd, format='jd')
             night = ephem.get_night(t)
@@ -143,9 +131,7 @@ class TestEphemerides(unittest.TestCase):
 
     def test_moon_altaz(self):
         """Verify moon (alt,az) for first week of 2020"""
-        ephem = Ephemerides(
-            get_date('2019-12-31'), get_date('2020-02-02'),
-            use_cache=False, write_cache=False)
+        ephem = get_ephem()
         location = get_location()
         for i, jd in enumerate(self.table['jd']):
             t = Time(jd, format='jd')
