@@ -360,6 +360,11 @@ class Ephemerides(object):
                              .format(row_index))
         return self._table[row_index]
 
+    @property
+    def table(self):
+        """Read-only access to our internal table."""
+        return self._table
+
     def get_night(self, night, as_index=False):
         """Return the row of ephemerides for a single night.
 
