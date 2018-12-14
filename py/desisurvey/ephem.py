@@ -85,10 +85,7 @@ def get_ephem(use_cache=True, write_cache=True):
     _ephem = Ephemerides(START_DATE, STOP_DATE)
     if write_cache:
         # Save the tabulated ephemerides to disk.
-        hdus = astropy.io.fits.HDUList(astropy.io.fits.PrimaryHDU())
-        hdus.append(astropy.io.fits.table_to_hdu(_ephem._table))
-        hdus[-1].name = 'EPHEM'
-        hdus.writeto(filename, overwrite=True)
+        _ephem._table.write(filename, overwrite=True)
         log.info('Saved ephemerides for {} to {}'.format(range_iso, filename))
     return _ephem
 
@@ -151,7 +148,7 @@ class Ephemerides(object):
             return
 
         # Initialize an empty table to fill.
-        meta = dict(NAME='Survey Ephemerides',
+        meta = dict(NAME='Survey Ephemerides', EXTNAME='EPHEM',
                     START=str(start_date), STOP=str(stop_date))
         self._table = astropy.table.Table(meta=meta)
         mjd_format = '%.5f'
