@@ -5,8 +5,10 @@ desisurvey change log
 0.11.1 (unreleased)
 -------------------
 
-* Minor updates to conform to data model standards.
-* Improved documentation.
+* Minor updates to conform to data model standards (PR `#94`_).
+* Improved documentation (PR `#94`_).
+
+.. _`#94`: https://github.com/desihub/desisurvey/pull/94
 
 0.11.0 (2018-11-26)
 -------------------
@@ -15,7 +17,7 @@ This version is a major refactoring of the code to simplify the logic
 for easier maintenance and documentation. There is now a clean
 separation between survey strategy, afternoon planning,
 next-tile selection, and exposure-time calculations. The refactored
-code is also significantly faster.
+code is also significantly faster (PR `#91`_).
 
 * Add new modules: tiles, forecast, scheduler.
 * Move modules schedule, progress, surveyplan to old/.
@@ -27,8 +29,12 @@ code is also significantly faster.
 * Exposure times include an average correction for the moon: this will
   be fixed in a future release.
 
+.. _`#91`: https://github.com/desihub/desisurvey/pull/91
+
 0.10.4 (2018-10-02)
 -------------------
+
+Updates for survey margin estimates (PR `#89`_):
 
 * Implement realistic 18-day monsoon shutdowns instead of fixed 45-day period.
 * Replay daily Mayall weather history instead of fixed monthly fractions
@@ -36,6 +42,8 @@ code is also significantly faster.
 * Update exposure-time model for atmospheric seeing.
 * Speed up full-moon, program change and LST calculations in ephemerides module.
 * Requires desimodel >= 0.9.8
+
+.. _`#89`: https://github.com/desihub/desisurvey/pull/89
 
 0.10.3 (2018-09-26)
 -------------------
