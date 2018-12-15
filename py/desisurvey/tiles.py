@@ -37,14 +37,6 @@ import desisurvey.etc
 
 
 class Tiles(object):
-
-    # Define the valid programs in canonical order.
-    PROGRAMS = ['DARK', 'GRAY', 'BRIGHT']
-    # Define a mapping from program name to index 0,1,2.
-    # Note that this mapping is independent of the programs actually present
-    # in a tiles file.
-    PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
-
     """Manage static info associated with the tiles file.
 
     Parameters
@@ -108,6 +100,16 @@ class Tiles(object):
         self._tile_over = None
         self._overlapping = None
         self._fiberassign_delay = None
+
+    PROGRAMS = ['DARK', 'GRAY', 'BRIGHT']
+    """Enumeration of the valid programs in their canonical order."""
+
+    PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
+    """Canonical mapping from program name to a small integer.
+
+    Note that this mapping is independent of the programs actually present
+    in a tiles file.
+    """
 
     def airmass(self, hour_angle, mask=None):
         """Calculate tile airmass given hour angle.

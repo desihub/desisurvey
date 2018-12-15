@@ -25,6 +25,10 @@ def wrap(angle, offset):
 class Optimizer(object):
     """Initialize the hour angle assignments for specified tiles.
 
+    See `DESI-3060
+    <https://desi.lbl.gov/DocDB/cgi-bin/private/ShowDocument?docid=3060>`__
+    for details.
+
     Parameters
     ----------
     program : 'DARK', 'GRAY' or 'BRIGHT'

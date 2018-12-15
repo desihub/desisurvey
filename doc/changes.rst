@@ -5,7 +5,8 @@ desisurvey change log
 0.11.1 (unreleased)
 -------------------
 
-* No changes yet.
+* Minor updates to conform to data model standards.
+* Improved documentation.
 
 0.11.0 (2018-11-26)
 -------------------
