@@ -199,13 +199,80 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
 
     # Calculate scattered moon V-band brightness at each pixel.
-    V = specsim.atmosphere.krisciunas_schaefer(
+    #V = specsim.atmosphere.krisciunas_schaefer(
+    #    obs_zenith, moon_zenith, separation_angle,
+    #    moon_phase, _vband_extinction).value
+    V = krisciunas_schaefer_refit(
         obs_zenith, moon_zenith, separation_angle,
         moon_phase, _vband_extinction).value
 
     # Evaluate the linear regression model.
     X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
     return _moonCoefficients.dot(X)
+
+
+def krisciunas_schaefer_refit(obs_zenith, moon_zenith, separation_angle, moon_phase,
+                        vband_extinction):
+    """Calculate the scattered moonlight surface brightness in V band.
+
+    Based on Krisciunas and Schaefer, "A model of the brightness of moonlight",
+    PASP, vol. 103, Sept. 1991, p. 1033-1039 (http://dx.doi.org/10.1086/132921).
+    Equation numbers in the code comments refer to this paper.
+
+    Units are required for the angular inputs and the result has units of
+    surface brightness, for example:
+
+    >>> sb = krisciunas_schaefer_refit(20*u.deg, 70*u.deg, 50*u.deg, 0.25, 0.15)
+
+    Parameters
+    ----------
+    obs_zenith : astropy.units.Quantity
+        Zenith angle of the observation in angular units.
+    moon_zenith : astropy.units.Quantity
+        Zenith angle of the moon in angular units.
+    separation_angle : astropy.units.Quantity
+        Opening angle between the observation and moon in angular units.
+    moon_phase : float
+        Phase of the moon from 0.0 (full) to 1.0 (new), which can be calculated
+        as abs((d / D) - 1) where d is the time since the last new moon
+        and D = 29.5 days is the period between new moons.  The corresponding
+        illumination fraction is ``0.5*(1 + cos(pi * moon_phase))``.
+    vband_extinction : float
+        V-band extinction coefficient to use.
+
+    Returns
+    -------
+    astropy.units.Quantity
+        Observed V-band surface brightness of scattered moonlight.
+    """
+    moon_phase = np.asarray(moon_phase)
+    if np.any((moon_phase < 0) | (moon_phase > 1)):
+        raise ValueError(
+            'Invalid moon phase {0}. Expected 0-1.'.format(moon_phase))
+    # Calculate the V-band magnitude of the moon (eqn. 9).
+    abs_alpha = 180. * moon_phase
+    m = -12.73 + 0.026 * abs_alpha + 4e-9 * abs_alpha ** 4
+    # Calculate the illuminance of the moon outside the atmosphere in
+    # foot-candles (eqn. 8).
+    Istar = 10 ** (-0.4 * (m + 16.57))
+    # Calculate the scattering function (eqn.21).
+    rho = separation_angle.to(u.deg).value
+
+    f_scatter = (10 ** 5.661030 * (1.06 + np.cos(separation_angle) ** 2) +
+                 10 ** (5.540103 - rho / 178.141045))
+    # Calculate the scattering airmass along the lines of sight to the
+    # observation and moon (eqn. 3).
+    X_obs = (1 - 0.96 * np.sin(obs_zenith) ** 2) ** (-0.5)
+    X_moon = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
+    # Calculate the V-band moon surface brightness in nanoLamberts.
+    B_moon = (f_scatter * Istar *
+        10 ** (-0.4 * vband_extinction * X_moon) *
+        (1 - 10 ** (-0.4 * (vband_extinction * X_obs))))
+    # Convert from nanoLamberts to to mag / arcsec**2 using eqn.19 of
+    # Garstang, "Model for Artificial Night-Sky Illumination",
+    # PASP, vol. 98, Mar. 1986, p. 364 (http://dx.doi.org/10.1086/131768)
+    return ((20.7233 - np.log(B_moon / 34.08)) / 0.92104 *
+            u.mag / (u.arcsec ** 2))
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,
