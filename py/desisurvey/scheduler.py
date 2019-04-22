@@ -264,7 +264,8 @@ class Scheduler(object):
         self.moon_RADEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
         #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
-    def next_tile(self, mjd_now, ETC, seeing, transp, HA_sigma=15., greediness=0.):
+    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
+                  program=None):
         """Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -304,6 +305,10 @@ class Scheduler(object):
             values will depend on the value of ``HA_sigma`` and how exposure
             factors are calculated. Refer to the equation above for details.
             Must be between 0 and 1.
+        program : string
+            PROGRAM of tile to select.  Default of None selects the appropriate
+            PROGRAM given current moon/twilight conditions.  Forcing a particular
+            program leads PROGEND to be infinity.
 
         Returns
         -------
@@ -330,9 +335,12 @@ class Scheduler(object):
         # Which program are we in?
         while mjd_now >= self.night_changes[self.night_index + 1]:
             self.night_index += 1
-        program = self.night_programs[self.night_index]
-        # How much time remaining in this program?
-        mjd_program_end = self.night_changes[self.night_index + 1]
+        if program is None:
+            program = self.night_programs[self.night_index]
+            # How much time remaining in this program?
+            mjd_program_end = self.night_changes[self.night_index + 1]
+        else:
+            mjd_program_end = self.night_changes[-1]  # end of night?
         t_remaining = mjd_program_end - mjd_now
         # Select available tiles in this program.
         self.tile_sel = self.tiles.program_mask[program] & self.in_night_pool
