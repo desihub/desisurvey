@@ -376,6 +376,13 @@ class Scheduler(object):
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
+        self.exposure_factor[self.tile_sel] *= desisurvey.etc.bright_exposure_factor(
+                #moonfrac, 
+                #moonsep, 
+                #moonalt, 
+                #sunalt, 
+                #sunsep, 
+                self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
         self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
         # Restrict to tiles that could be completed in the remaining time.
