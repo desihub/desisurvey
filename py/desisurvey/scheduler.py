@@ -262,7 +262,10 @@ class Scheduler(object):
         self.in_night_pool[avoid_idx] = False
         # Initialize moon tracking during this night.
         self.moon_RADEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
-        #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
+        self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
+
+        self.sun_RADEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=False) 
+        self.sun_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=True) 
 
     def next_tile(self, mjd_now, ETC, seeing, transp, HA_sigma=15., greediness=0.):
         """Select the next tile to observe.
@@ -355,11 +358,17 @@ class Scheduler(object):
         if not np.any(self.tile_sel):
             # No tiles left to observe after airmass cut.
             return None, None, None, None, None, program, mjd_program_end
+
+        # Calculate the moon (RA,DEC).
+        moonRA, moonDEC = self.moon_RADEC(mjd_now)
+        moonALT, moonAZ = self.moon_ALTAZ(mjd_now) 
+        # calculate the sun (RA, DEC)
+        sunRA, sunDEC = self.sun_RADEC(mjd_now)
+        sunALT, sunAZ = self.sun_ALTAZ(mjd_now) 
+
         # Is the moon up?
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
             moon_is_up = True
-            # Calculate the moon (RA,DEC).
-            moonRA, moonDEC = self.moon_RADEC(mjd_now)
             # Identify tiles that are too close to the moon to observe now.
             too_close = desisurvey.utils.separation_matrix(
                 [moonRA], [moonDEC],
@@ -377,7 +386,7 @@ class Scheduler(object):
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.bright_exposure_factor(
-                #moonfrac, 
+                self.night_ephem['moon_illum_frac'], 
                 #moonsep, 
                 #moonalt, 
                 #sunalt, 
