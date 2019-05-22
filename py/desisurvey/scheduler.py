@@ -379,6 +379,13 @@ class Scheduler(object):
             if not np.any(self.tile_sel):
                 # No tiles left to observe after moon avoidance veto.
                 return None, None, None, None, None, program, mjd_program_end
+
+            moon_sep = desisurvey.utils.separation_matrix(
+                [moonRA], [moonDEC],
+                self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
+            sun_sep = desisurvey.utils.separation_matrix(
+                [moonRA], [moonDEC],
+                self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
         else:
             moon_is_up = False
         # Estimate exposure factors for all available tiles.
@@ -387,10 +394,10 @@ class Scheduler(object):
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.bright_exposure_factor(
                 self.night_ephem['moon_illum_frac'], 
-                #moonsep, 
-                #moonalt, 
-                #sunalt, 
-                #sunsep, 
+                moonALT, 
+                moon_sep, 
+                sunALT, 
+                sun_sep, 
                 self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
         self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)

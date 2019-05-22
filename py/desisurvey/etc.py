@@ -215,34 +215,74 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     return _moonCoefficients.dot(X)
 
 
-def bright_exposure_factor(moon_frac, moon_sep, moon_alt, sunalt, sunsep, airmass):
-    """    
+def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airmass):
+    """ calculate exposure time correction factor based on airmass and moon and sun 
+    parameters. 
+
+    Parameters
+    ----------
+    moon_frac : float
+        Illuminated fraction of the moon, in the range [0,1].
+    moon_alt : float
+        Altitude angle of the moon above the horizon in degrees, in the
+        range [-90,90].
+    moon_sep : array
+        Separation angle between field center and moon in degrees, in the
+        range [0,180].
+    sun_alt : float
+        Altitude angle of the sunin degrees
+    sun_sep : array 
+        Separation angle between field center and sun in degrees
+    airmass : array 
+        Airmass used for observing this tile, must be >= 1.
+
+    Returns
+    -------
+    float
+        Dimensionless factor that exposure time should be increased to
+        account for increased sky brightness due to scattered moonlight.
+        Will be 1 when the moon is below the horizon.
+
     """
+    moon_sep = moon_sep.flatten() 
+    sun_sep = sun_sep.flatten()
+    airmass = airmass.flatten() 
     if (moon_frac < 0) or (moon_frac > 1):
         raise ValueError('Got invalid moon_frac outside [0,1].')
-    if (moon_sep < 0) or (moon_sep > 180):
-        raise ValueError('Got invalid moon_sep outside [0,180].')
     if (moon_alt < -90) or (moon_alt > 90):
         raise ValueError('Got invalid moon_alt outside [-90,+90].')
-    if airmass < 1:
+    if (moon_sep.min() < 0) or (moon_sep.max() > 180):
+        raise ValueError('Got invalid moon_sep outside [0,180].')
+    if airmass.min() < 1:
         raise ValueError('Got invalid airmass < 1.')
-    # ['AIRMASS', 'MOONFRAC', 'MOONALT', 'MOONSEP', 'SUNALT', 'SUNSEP']
-    theta = np.array([airmass, moon_frac, moon_alt, moon_sep, sunalt, sunsep]) 
+
+    assert len(airmass) == len(moon_sep) 
+    assert len(airmass) == len(sun_sep) 
+
     # No exposure penalty when moon is below the horizon and sun is below -20.
-    if moon_alt < 0 and sunalt < -20.:
-        return 1.
+    if moon_alt < 0 and sun_alt < -20.:
+        return np.ones(len(airmass))  
+
+    moon_fracs = np.repeat(moon_frac, len(airmass)) 
+    moon_alts = np.repeat(moon_alt, len(airmass))
+    sun_alts = np.repeat(sun_alt, len(airmass))
+
+    theta = np.array([airmass, moon_fracs, moon_alts, moon_sep, sun_alts, sun_sep]) 
     
-    if sunalt >= -20.: 
+    if sun_alt >= -20.: 
         # twilight model 
-        fgp = astropy.utils.data._find_pkg_data_path('data', 'texp_factor_exposures.twi.GPparams.p') 
+        fgp = astropy.utils.data._find_pkg_data_path('data/texp_factor_exposures.twi.GPparams.p') 
+        print(fgp) 
         gp = pickle.load(open(fgp, 'rb'))
         expfactor = gp.predict(np.atleast_2d(theta))
     else:  
         # non-twilight model 
-        fgp = astropy.utils.data._find_pkg_data_path('data', 'texp_factor_exposures.nottwi.GPparams.p') 
+        fgp = astropy.utils.data._find_pkg_data_path('data/texp_factor_exposures.nottwi.GPparams.p') 
+        print(fgp) 
         gp = pickle.load(open(fgp, 'rb'))
         expfactor = gp.predict(np.atleast_2d(theta)) 
-
+    
+    print(np.clip(expfactor, 1., None))
     return np.clip(expfactor, 1., None) 
 
 
