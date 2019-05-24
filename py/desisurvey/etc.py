@@ -272,17 +272,13 @@ def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airm
     if sun_alt >= -20.: 
         # twilight model 
         fgp = astropy.utils.data._find_pkg_data_path('data/texp_factor_exposures.twi.GPparams.p') 
-        print(fgp) 
         gp = pickle.load(open(fgp, 'rb'))
-        expfactor = gp.predict(np.atleast_2d(theta))
+        expfactor = gp.predict(np.atleast_2d(theta.T))
     else:  
         # non-twilight model 
         fgp = astropy.utils.data._find_pkg_data_path('data/texp_factor_exposures.nottwi.GPparams.p') 
-        print(fgp) 
         gp = pickle.load(open(fgp, 'rb'))
-        expfactor = gp.predict(np.atleast_2d(theta)) 
-    
-    print(np.clip(expfactor, 1., None))
+        expfactor = gp.predict(np.atleast_2d(theta.T)) 
     return np.clip(expfactor, 1., None) 
 
 

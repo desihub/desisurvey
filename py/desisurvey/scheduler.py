@@ -379,15 +379,14 @@ class Scheduler(object):
             if not np.any(self.tile_sel):
                 # No tiles left to observe after moon avoidance veto.
                 return None, None, None, None, None, program, mjd_program_end
-
-            moon_sep = desisurvey.utils.separation_matrix(
-                [moonRA], [moonDEC],
-                self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
-            sun_sep = desisurvey.utils.separation_matrix(
-                [moonRA], [moonDEC],
-                self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
         else:
             moon_is_up = False
+        moon_sep = desisurvey.utils.separation_matrix(
+            [moonRA], [moonDEC],
+            self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
+        sun_sep = desisurvey.utils.separation_matrix(
+            [moonRA], [moonDEC],
+            self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
