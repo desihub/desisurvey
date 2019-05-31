@@ -385,7 +385,7 @@ class Scheduler(object):
             [moonRA], [moonDEC],
             self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
         sun_sep = desisurvey.utils.separation_matrix(
-            [moonRA], [moonDEC],
+            [sunRA], [sunDEC],
             self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
