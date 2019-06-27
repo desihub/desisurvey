@@ -137,7 +137,8 @@ class Scheduler(object):
         # Record the number of completed tiles.
         hdr['NDONE'] = self.completed_by_pass.sum()
         # Save a copy of our snr2frac array.
-        astropy.io.fits.PrimaryHDU(self.snr2frac, header=hdr).writeto(fullname, overwrite=True)
+        astropy.io.fits.PrimaryHDU(self.snr2frac, header=hdr).writeto(fullname+'.tmp', overwrite=True)
+        os.rename(fullname+'.tmp', fullname)
         self.log.debug('Saved scheduler snapshot to "{}".'.format(fullname))
 
     def update_tiles(self, tile_available, tile_priority):

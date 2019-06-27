@@ -3,7 +3,7 @@
 
   Based on our google sheet (
   these are the expected inputs
- 
+
         skylevel: current sky level [counts s-1 cm-2 arcsec-2]   (from ETC, at the end of last exposure)
         seeing: current atmospheric seeing PSF FWHM [arcsec]     (from ETC, at the end of last exposure)
         transparency: current atmospheric transparency [0-1, where 0=total cloud cover]   (from ETC, at the end of last exposure)
@@ -14,18 +14,18 @@
             EFS: this is currently not used.
         fiber_assign_dir: (output) directory for fiber assign files.
             EFS: this is currently not used for more than prepending to the tileid.
-        program (optional): request a tile will be in that program, 
+        program (optional): request a tile will be in that program,
                             otherwise get next field chooses program based on current conditions
 
         previoustiles (optional): list of tiles that have been observed that night (IS THIS RECORDED IN A FILE?)
-                                  This should be handled internally if at all possible. THe NTS could also scan the 
+                                  This should be handled internally if at all possible. THe NTS could also scan the
                                   fiber_assign_dir directory.
 
-  These variables are in the 
+  These variables are in the
         RA _prior:  in degrees, used only for user over-ride, defaults to -99
         DEC_prior:  in degrees, used only for user over-ride, defaults to -99
-            EFS: what is this?
-       
+            EFS: for slewing minimization; not used.
+
   If input values are missing (e.g. first exposure of the night), the NTS falls back to reasonable defaults for skylevel etc.
 
 
@@ -99,9 +99,8 @@ class NTS():
         # tileid, s2n, exptime, maxtime
 
         if mjd is None:
-            now = datetime.datetime.now()
             from astropy import time
-            mjd = time.Time(now).mjd
+            mjd = time.Time.now().mjd
             print('Warning: no time specified, using current time, MJD: %f' %
                   mjd)
         seeing = self.default_seeing if seeing is None else seeing
@@ -119,7 +118,6 @@ class NTS():
             mjd, self.ETC, seeing, transparency, skylevel, program=program)
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
-        print(result)
         if tileid is None:
             return {'tileid': None, 's2n': 0., 'esttime': 0., 'maxtime': 0.,
                     'fiber_assign': '', 'foundtile': False}

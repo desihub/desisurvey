@@ -142,7 +142,7 @@ class Tiles(object):
             Tile ID value(s) to convert.
         mask : bool
             if mask=True, an additional mask array is returned, indicating which
-            IDs were present in the tile array.  Otherwise, an exception is 
+            IDs were present in the tile array.  Otherwise, an exception is
             raised if tiles were not found.
 
         Returns
