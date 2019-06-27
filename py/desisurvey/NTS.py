@@ -172,7 +172,8 @@ def afternoon_plan(night=None, lastnight=None):
     # restore: maybe check directory, and restore if file present?  EFS
     # planner.save(), scheduler.save()
     # planner.restore(), scheduler.restore()
-    planner.afternoon_plan(datetime.date.fromisoformat(night),
+    import dateutil.parser
+    planner.afternoon_plan(dateutil.parser.parse(night).date(),
                            scheduler.completed)
     # currently afternoon planning checks to see what tiles have been marked
     # as done, and what new tiles may now be fiberassigned.
