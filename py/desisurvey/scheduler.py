@@ -249,7 +249,8 @@ class Scheduler(object):
             if body == 'moon':
                 continue
             # Get body (RA,DEC) at midnight.
-            bodyRA, bodyDEC = desisurvey.ephem.get_object_interpolator(
+            #bodyRA, bodyDEC = desisurvey.ephem.get_object_interpolator(
+            bodyDEC, bodyRA = desisurvey.ephem.get_object_interpolator(
                 self.night_ephem, body, altaz=False)(midnight)
             too_close = desisurvey.utils.separation_matrix(
                 [bodyRA], [bodyDEC], poolRA, poolDEC, self.avoid_bodies[body])[0]
@@ -360,10 +361,12 @@ class Scheduler(object):
             return None, None, None, None, None, program, mjd_program_end
 
         # Calculate the moon (RA,DEC).
-        moonRA, moonDEC = self.moon_RADEC(mjd_now)
+        #moonRA, moonDEC = self.moon_RADEC(mjd_now)
+        moonDEC, moonRA = self.moon_RADEC(mjd_now)
         moonALT, moonAZ = self.moon_ALTAZ(mjd_now) 
         # calculate the sun (RA, DEC)
-        sunRA, sunDEC = self.sun_RADEC(mjd_now)
+        #sunRA, sunDEC = self.sun_RADEC(mjd_now)
+        sunDEC, sunRA = self.sun_RADEC(mjd_now)
         sunALT, sunAZ = self.sun_ALTAZ(mjd_now) 
 
         # Is the moon up?
