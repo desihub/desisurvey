@@ -250,7 +250,7 @@ class Scheduler(object):
             if body == 'moon':
                 continue
             # Get body (RA,DEC) at midnight.
-            bodyRA, bodyDEC = desisurvey.ephem.get_object_interpolator(
+            bodyDEC, bodyRA = desisurvey.ephem.get_object_interpolator(
                 self.night_ephem, body, altaz=False)(midnight)
             too_close = desisurvey.utils.separation_matrix(
                 [bodyRA], [bodyDEC], poolRA, poolDEC, self.avoid_bodies[body])[0]
@@ -262,7 +262,7 @@ class Scheduler(object):
                 avoid_idx.extend(idx)
         self.in_night_pool[avoid_idx] = False
         # Initialize moon tracking during this night.
-        self.moon_RADEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
+        self.moon_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
         #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
     def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
@@ -368,7 +368,7 @@ class Scheduler(object):
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
             moon_is_up = True
             # Calculate the moon (RA,DEC).
-            moonRA, moonDEC = self.moon_RADEC(mjd_now)
+            moonDEC, moonRA = self.moon_DECRA(mjd_now)
             # Identify tiles that are too close to the moon to observe now.
             too_close = desisurvey.utils.separation_matrix(
                 [moonRA], [moonDEC],
@@ -387,9 +387,6 @@ class Scheduler(object):
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
         self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
-        # Restrict to tiles that could be completed in the remaining time.
-        self.tile_sel[self.tile_sel] &= ETC.could_complete(
-            t_remaining, program, self.snr2frac[self.tile_sel], self.exposure_factor[self.tile_sel])
         if not np.any(self.tile_sel):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for
