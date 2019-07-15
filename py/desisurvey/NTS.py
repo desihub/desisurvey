@@ -53,8 +53,24 @@ import datetime
 
 class NTS():
     def __init__(self, obsplan, fiber_assign_dir, defaults={}, night=None):
-        """The caller has checked that the obsplan file exists and that
-        fiber_assign_dir is writable
+        """Initialize a new instance of the Next Tile Selector.
+
+        Parameters
+        ----------
+        obsplan : not currently used; planner initialized from default
+            scheduler directory.
+
+        fiber_assign_dir : directory where fiber assign files are located
+
+        defaults : dictionary giving default values of 'seeing',
+            'transparency', 'sky_level', and 'program', for next tile
+            selection.
+
+        night : night to plan, ISO 8601.
+
+        Returns
+        -------
+        NTS object. Tiles can be generated via next_tile(...)
         """
         self.obsplan = obsplan
         self.fiber_assign_dir = fiber_assign_dir
@@ -89,7 +105,37 @@ class NTS():
                   seeing=None, program=None, lastexp=None, fiber_assign=None,
                   previoustiles=None):
         """
-        select the next tile
+        Select the next tile.
+
+        Parameters
+        ----------
+        mjd : float, MJD of time tile is desired.  Default to now.
+
+        skylevel : float, sky level to assume.  Currently unused.
+
+        transparency : float, current sky transparency.
+
+        seeing : float, current seeing.
+
+        program : desired tile program
+
+        lastexp : location of last observed tile; potentially useful for
+            slew minimization
+
+        fiber_assign : not used.
+
+        previoustiles : list of tileIDs.  Do not provide a tile in this list.
+
+        Returns
+        -------
+        A dictionary representing the next tile, containing the following
+        fields:
+        tileid : int, the next tileID.
+        s2n : float, the addition s2n needed on this tile
+        esttime : float, expected time needed to achieve this s2n (seconds)
+        maxtime : float, do not observe for longer than maxtime (seconds)
+        fiber_assign : str, file name of fiber_assign file
+        foundtile : bool, a valid tile was found
         """
 
         if fiber_assign is not None:
@@ -155,6 +201,22 @@ class NTS():
 
 
 def afternoon_plan(night=None, lastnight=None):
+    """
+    Perform daily afternoon planning.
+
+    Afternoon planning identifies tiles available for observation and assigns
+    priorities.  It must be performed before the NTS can identify new tiles to
+    observe.
+
+    Params
+    ------
+    night : str, ISO 8601.  The night to plan.  Default tonight.
+
+    lastnight : str, ISO 8601.  The previous planned night.  Used for restoring
+        the previous completion status of all tiles.  Defaults to not
+        restoring status, i.e., all previous tile completion information is
+        ignored!
+    """
     if night is None:
         night = datetime.date.today().isoformat()
     rules = desisurvey.rules.Rules()
@@ -170,8 +232,8 @@ def afternoon_plan(night=None, lastnight=None):
     # restore: maybe check directory, and restore if file present?  EFS
     # planner.save(), scheduler.save()
     # planner.restore(), scheduler.restore()
-    import dateutil.parser
-    planner.afternoon_plan(dateutil.parser.parse(night).date(),
+    import desisurvey.utils
+    planner.afternoon_plan(desisurvey.utils.get_date(night),
                            scheduler.completed)
     # currently afternoon planning checks to see what tiles have been marked
     # as done, and what new tiles may now be fiberassigned.
