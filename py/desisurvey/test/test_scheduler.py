@@ -41,9 +41,9 @@ class TestScheduler(Tester):
             ETC = desisurvey.etc.ExposureTimeCalculator()
             for mjd in np.arange(dusk, dawn, 15. / (24. * 60.)):
                 # TILEID,PASSNUM,SNR2FRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND
-                next = scheduler.next_tile(mjd, ETC, seeing=1.1, transp=0.95)
+                next = scheduler.next_tile(mjd, ETC, seeing=1.1, transp=0.95, skylevel=1)
                 # Check that the restored scheduler gives the same results.
-                next2 = scheduler2.next_tile(mjd, ETC, seeing=1.1, transp=0.95)
+                next2 = scheduler2.next_tile(mjd, ETC, seeing=1.1, transp=0.95, skylevel=1)
                 for field, field2 in zip(next, next2):
                     self.assertEqual(field, field2)
                 tileid = next[0]                
