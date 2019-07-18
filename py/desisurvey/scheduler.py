@@ -137,7 +137,8 @@ class Scheduler(object):
         # Record the number of completed tiles.
         hdr['NDONE'] = self.completed_by_pass.sum()
         # Save a copy of our snr2frac array.
-        astropy.io.fits.PrimaryHDU(self.snr2frac, header=hdr).writeto(fullname, overwrite=True)
+        astropy.io.fits.PrimaryHDU(self.snr2frac, header=hdr).writeto(fullname+'.tmp', overwrite=True)
+        os.rename(fullname+'.tmp', fullname)
         self.log.debug('Saved scheduler snapshot to "{}".'.format(fullname))
 
     def update_tiles(self, tile_available, tile_priority):
@@ -249,7 +250,6 @@ class Scheduler(object):
             if body == 'moon':
                 continue
             # Get body (RA,DEC) at midnight.
-            #bodyRA, bodyDEC = desisurvey.ephem.get_object_interpolator(
             bodyDEC, bodyRA = desisurvey.ephem.get_object_interpolator(
                 self.night_ephem, body, altaz=False)(midnight)
             too_close = desisurvey.utils.separation_matrix(
@@ -262,13 +262,14 @@ class Scheduler(object):
                 avoid_idx.extend(idx)
         self.in_night_pool[avoid_idx] = False
         # Initialize moon tracking during this night.
-        self.moon_RADEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
+        self.moon_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
         self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
-        self.sun_RADEC = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=False) 
+        self.sun_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=False) 
         self.sun_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=True) 
 
-    def next_tile(self, mjd_now, ETC, seeing, transp, HA_sigma=15., greediness=0.):
+    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
+                  program=None):
         """Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -308,6 +309,10 @@ class Scheduler(object):
             values will depend on the value of ``HA_sigma`` and how exposure
             factors are calculated. Refer to the equation above for details.
             Must be between 0 and 1.
+        program : string
+            PROGRAM of tile to select.  Default of None selects the appropriate
+            PROGRAM given current moon/twilight conditions.  Forcing a particular
+            program leads PROGEND to be infinity.
 
         Returns
         -------
@@ -334,9 +339,12 @@ class Scheduler(object):
         # Which program are we in?
         while mjd_now >= self.night_changes[self.night_index + 1]:
             self.night_index += 1
-        program = self.night_programs[self.night_index]
-        # How much time remaining in this program?
-        mjd_program_end = self.night_changes[self.night_index + 1]
+        if program is None:
+            program = self.night_programs[self.night_index]
+            # How much time remaining in this program?
+            mjd_program_end = self.night_changes[self.night_index + 1]
+        else:
+            mjd_program_end = self.night_changes[-1]  # end of night?
         t_remaining = mjd_program_end - mjd_now
         # Select available tiles in this program.
         self.tile_sel = self.tiles.program_mask[program] & self.in_night_pool
@@ -361,12 +369,10 @@ class Scheduler(object):
             return None, None, None, None, None, program, mjd_program_end
 
         # Calculate the moon (RA,DEC).
-        #moonRA, moonDEC = self.moon_RADEC(mjd_now)
-        moonDEC, moonRA = self.moon_RADEC(mjd_now)
+        moonDEC, moonRA = self.moon_DECRA(mjd_now)
         moonALT, moonAZ = self.moon_ALTAZ(mjd_now) 
         # calculate the sun (RA, DEC)
-        #sunRA, sunDEC = self.sun_RADEC(mjd_now)
-        sunDEC, sunRA = self.sun_RADEC(mjd_now)
+        sunDEC, sunRA = self.sun_DECRA(mjd_now)
         sunALT, sunAZ = self.sun_ALTAZ(mjd_now) 
 
         # Is the moon up?
@@ -403,9 +409,6 @@ class Scheduler(object):
                 self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
         self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
-        # Restrict to tiles that could be completed in the remaining time.
-        self.tile_sel[self.tile_sel] &= ETC.could_complete(
-            t_remaining, program, self.snr2frac[self.tile_sel], self.exposure_factor[self.tile_sel])
         if not np.any(self.tile_sel):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for

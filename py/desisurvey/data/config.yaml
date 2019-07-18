@@ -138,7 +138,7 @@ fiber_assignment_order:
     P7: P5+P6 delay 1
 
 # Nominal tile radius for determining whether two tiles overlap.
-tile_radius: 1.62 deg
+tile_radius: 1.63 deg
 
 #-------------------------------------------------------------------
 # Parameters to locate files needed by desisurvey.

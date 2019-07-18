@@ -199,7 +199,8 @@ class Planner(object):
         t['COUNTDOWN'] = self.tile_countdown
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
-        t.write(fullname, overwrite=True)
+        t.write(fullname+'.tmp', overwrite=True, format='fits')
+        os.rename(fullname+'.tmp', fullname)
         self.log.debug(
             'Saved plan with {} ({}) / {} tiles covered (available) to "{}".'
             .format(np.count_nonzero(self.tile_covered),
