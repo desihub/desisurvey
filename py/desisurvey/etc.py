@@ -216,7 +216,7 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     return _moonCoefficients.dot(X)
 
 
-def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airmass, specsim_atm):
+def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airmass):
     """ calculate exposure time correction factor based on airmass and moon and sun 
     parameters. 
 
