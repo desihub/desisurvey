@@ -12,11 +12,12 @@ from __future__ import print_function, division
 
 import pickle
 import numpy as np
+from scipy.interpolate import interp1d
 
 import astropy.utils.data
 import astropy.units as u
 
-import specsim.atmosphere
+import speclite 
 
 import desiutil.log
 
@@ -215,7 +216,7 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     return _moonCoefficients.dot(X)
 
 
-def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airmass):
+def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airmass, specsim_atm):
     """ calculate exposure time correction factor based on airmass and moon and sun 
     parameters. 
 
@@ -267,19 +268,210 @@ def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airm
     moon_alts = np.repeat(moon_alt, len(airmass))
     sun_alts = np.repeat(sun_alt, len(airmass))
 
-    theta = np.array([airmass, moon_fracs, moon_alts, moon_sep, sun_alts, sun_sep]) 
-    
-    if sun_alt >= -20.: 
-        # twilight model 
-        fgp = astropy.utils.data._find_pkg_data_path('data/texp_factor_exposures.twi.GPparams.p') 
-        gp = pickle.load(open(fgp, 'rb'))
-        expfactor = gp.predict(np.atleast_2d(theta.T))
-    else:  
-        # non-twilight model 
-        fgp = astropy.utils.data._find_pkg_data_path('data/texp_factor_exposures.nottwi.GPparams.p') 
-        gp = pickle.load(open(fgp, 'rb'))
-        expfactor = gp.predict(np.atleast_2d(theta.T)) 
+    if sun_alt >= -20.: # with twilight 
+        expfactor = texp_factor_bright_twi(airmass, moon_fracs, moon_alts, moon_sep, sun_alts, sun_sep)
+    else:  # without non-twilight model 
+        expfactor = texp_factor_bright_notwi(airmass, moon_fracs, moon_alts, moon_sep)
     return np.clip(expfactor, 1., None) 
+
+
+def texp_factor_bright_notwi(airmass, moonill, moonalt, moonsep): 
+    ''' exposure time correction factor for birhgt sky without twilight. 
+    sky surface brightness is calculated using stream-lined verison of 
+    `specsim.atmosphere.Atmosphere` surface brightness calculation. The
+    factor is calculated by taking the ratio: 
+    (median sky surface brightness 4000A < w < 5000A)/(median nominal dark sky surface brightness 4000A < w < 5000A)
+
+    '''
+    # translate moon parameter inputs 
+    moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    moon_zenith = (90. - moonalt) * u.deg
+    separation_angle = moonsep * u.deg
+
+    # load supporting data  
+    fsky = astropy.utils.data._find_pkg_data_path('data/data4skymodel.p') 
+    skydata = pickle.load(open(fsky, 'rb')) 
+    wavelength              = skydata['wavelength'] 
+    Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
+    Idark4500               = skydata['darksky_4500a'] # nominal dark sky at ~4500A 
+    extinction_coefficient  = skydata['extinction_coefficient']         
+    seeing                  = skydata['seeing'] 
+    moon_spectrum           = skydata['moon_spectrum'] 
+
+    extinction = 10 ** (-extinction_coefficient * airmass / 2.5)
+
+    Imoon = _Imoon(wavelength, moon_spectrum, extinction_coefficient,
+            airmass, moon_zenith, separation_angle, moon_phase)
+
+    Isky = extinction * Idark + Imoon # sky surface brightness 
+
+    wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
+    return np.median(Isky.value[wlim]) / Idark4500 
+
+
+def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep): 
+    ''' exposure time correction factor for birhgt sky with twilight. 
+    sky surface brightness is calculated using stream-lined verison of 
+    `specsim.atmosphere.Atmosphere` surface brightness calculation. The
+    factor is calculated by taking the ratio: 
+    (sky surface brightness @ 4500A)/(nominal dark sky surface brightness @ 4500A)
+
+    '''
+    # translate moon parameter inputs 
+    moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    moon_zenith = (90. - moonalt) * u.deg
+    separation_angle = moonsep * u.deg
+
+    # load supporting data  
+    fsky = astropy.utils.data._find_pkg_data_path('data/data4skymodel.p') 
+    skydata = pickle.load(open(fsky, 'rb')) 
+    wavelength              = skydata['wavelength'] 
+    Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
+    Idark4500               = skydata['darksky_4500a'] # nominal dark sky at ~4500A 
+    extinction_coefficient  = skydata['extinction_coefficient']         
+    seeing                  = skydata['seeing'] 
+    moon_spectrum           = skydata['moon_spectrum'] 
+
+    extinction = 10 ** (-extinction_coefficient * airmass / 2.5)
+
+    Imoon = _Imoon(wavelength, moon_spectrum, extinction_coefficient,
+            airmass, moon_zenith, separation_angle, moon_phase)
+
+    _Isky = extinction * Idark + Imoon # sky surface brightness 
+    Isky = _Isky.value 
+
+    # load supporting data for twilight calculation  
+    t0 = skydata['t0']
+    t1 = skydata['t1']
+    t2 = skydata['t2']
+    t3 = skydata['t3']
+    t4 = skydata['t4']
+    c0 = skydata['c0'] 
+    w_twi = skydata['wavelength_twi']
+
+    Itwi = ((t0 * np.abs(sunalt) +      # CT2
+            t1 * np.abs(sunalt)**2 +   # CT1
+            t2 * np.abs(sunsep)**2 +   # CT3
+            t3 * np.abs(sunsep)        # CT4
+            ) * np.exp(-t4 * airmass) + c0) / np.pi 
+
+    I_twi_interp = interp1d(10. * w_twi, Itwi, fill_value='extrapolate')
+    Isky += np.clip(I_twi_interp(wavelength.value), 0, None) 
+
+    wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
+    return np.median(Isky[wlim]) / Idark4500 
+
+
+def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zenith, separation_angle, moon_phase): 
+    ''' moon surface brightness. stream-lined verison of specsim.atmosphere.Moon surface brightness
+    calculation with re-fit KS coefficients hardcoded in
+    '''
+    KS_CR = 458173.535128
+    KS_CM0 = 5.540103
+    KS_CM1 = 178.141045
+
+    obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
+
+    _vband = speclite.filters.load_filter('bessell-V')
+    V = _vband.get_ab_magnitude(moon_spectrum, wavelength)
+
+    extinction = 10 ** (-extinction_coefficient / 2.5)
+
+    Vstar = _vband.get_ab_magnitude(moon_spectrum * extinction, wavelength)
+    vband_extinction = Vstar - V
+
+    # Calculate the V-band surface brightness of scattered moonlight.
+    scattered_V = krisciunas_schaefer_free(
+        obs_zenith, moon_zenith, separation_angle,
+        moon_phase, vband_extinction, KS_CR, KS_CM0, KS_CM1)
+
+    # Calculate the wavelength-dependent extinction of moonlight
+    # scattered once into the observed field of view.
+    scattering_airmass = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
+    extinction = (
+        10 ** (-extinction_coefficient * scattering_airmass / 2.5) *
+        (1 - 10 ** (-extinction_coefficient * airmass / 2.5)))
+    surface_brightness = moon_spectrum * extinction
+
+    # Renormalized the extincted spectrum to the correct V-band magnitude.
+    raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
+    area = 1 * u.arcsec ** 2
+    surface_brightness *= 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
+    return surface_brightness
+
+
+def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
+                        vband_extinction, C_R, C_M0, C_M1):
+    """Calculate the scattered moonlight surface brightness in V band.
+
+    Based on Krisciunas and Schaefer, "A model of the brightness of moonlight",
+    PASP, vol. 103, Sept. 1991, p. 1033-1039 (http://dx.doi.org/10.1086/132921).
+    Equation numbers in the code comments refer to this paper.
+
+    The function :func:`plot_lunar_brightness` provides a convenient way to
+    plot this model's predictions as a function of observation pointing.
+
+    Units are required for the angular inputs and the result has units of
+    surface brightness, for example:
+
+    >>> sb = krisciunas_schaefer(20*u.deg, 70*u.deg, 50*u.deg, 0.25, 0.15)
+    >>> print(np.round(sb, 3))
+    19.855 mag / arcsec2
+
+    The output is automatically broadcast over input arrays following the usual
+    numpy rules.
+
+    This method has several caveats but the authors find agreement with data at
+    the 8% - 23% level.  See the paper for details.
+
+    Parameters
+    ----------
+    obs_zenith : astropy.units.Quantity
+        Zenith angle of the observation in angular units.
+    moon_zenith : astropy.units.Quantity
+        Zenith angle of the moon in angular units.
+    separation_angle : astropy.units.Quantity
+        Opening angle between the observation and moon in angular units.
+    moon_phase : float
+        Phase of the moon from 0.0 (full) to 1.0 (new), which can be calculated
+        as abs((d / D) - 1) where d is the time since the last new moon
+        and D = 29.5 days is the period between new moons.  The corresponding
+        illumination fraction is ``0.5*(1 + cos(pi * moon_phase))``.
+    vband_extinction : float
+        V-band extinction coefficient to use.
+
+    Returns
+    -------
+    astropy.units.Quantity
+        Observed V-band surface brightness of scattered moonlight.
+    """
+    moon_phase = np.asarray(moon_phase)
+    if np.any((moon_phase < 0) | (moon_phase > 1)):
+        raise ValueError(
+            'Invalid moon phase {0}. Expected 0-1.'.format(moon_phase))
+    # Calculate the V-band magnitude of the moon (eqn. 9).
+    abs_alpha = 180. * moon_phase
+    m = -12.73 + 0.026 * abs_alpha + 4e-9 * abs_alpha ** 4
+    # Calculate the illuminance of the moon outside the atmosphere in
+    # foot-candles (eqn. 8).
+    Istar = 10 ** (-0.4 * (m + 16.57))
+    # Calculate the scattering function (eqn.21).
+    rho = separation_angle.to(u.deg).value
+    f_scatter = (C_R * (1.06 + np.cos(separation_angle) ** 2) +
+                 10 ** (C_M0 - rho / C_M1))
+    # Calculate the scattering airmass along the lines of sight to the
+    # observation and moon (eqn. 3).
+    X_obs = (1 - 0.96 * np.sin(obs_zenith) ** 2) ** (-0.5)
+    X_moon = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
+    # Calculate the V-band moon surface brightness in nanoLamberts.
+    B_moon = (f_scatter * Istar *
+        10 ** (-0.4 * vband_extinction * X_moon) *
+        (1 - 10 ** (-0.4 * (vband_extinction * X_obs))))
+    # Convert from nanoLamberts to to mag / arcsec**2 using eqn.19 of
+    # Garstang, "Model for Artificial Night-Sky Illumination",
+    # PASP, vol. 98, Mar. 1986, p. 364 (http://dx.doi.org/10.1086/131768)
+    return ((20.7233 - np.log(B_moon / 34.08)) / 0.92104 *
+            u.mag / (u.arcsec ** 2))
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,
