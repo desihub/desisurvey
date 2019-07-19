@@ -396,7 +396,8 @@ def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zeni
     # Renormalized the extincted spectrum to the correct V-band magnitude.
     raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
     area = 1 * u.arcsec ** 2
-    surface_brightness *= np.atleast_1d(10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area)[:,None]
+    scale = 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
+    surface_brightness *= np.atleast_1d(scale.value)[:,None] * 1/u.arcsec**2
     return surface_brightness
 
 
