@@ -337,8 +337,7 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
     Imoon = _Imoon(wavelength, moon_spectrum, extinction_coefficient,
             airmass, moon_zenith, separation_angle, moon_phase)
 
-    _Isky = extinction * Idark + Imoon # sky surface brightness 
-    Isky = _Isky.value 
+    Isky = extinction * Idark.value + Imoon.value # sky surface brightness 
 
     # load supporting data for twilight calculation  
     t0 = skydata['t0']
@@ -397,8 +396,9 @@ def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zeni
     raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
     area = 1 * u.arcsec ** 2
     scale = 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
-    surface_brightness *= np.atleast_1d(scale.value)[:,None] * 1/u.arcsec**2
-    return surface_brightness
+    u_sb = surface_brightness.unit
+    _sb = (surface_brightness.value * scale.value[:,None] * u_sb / u.arcsec**2).to(1e-17 * u.erg / (u.angstrom * u.arcsec**2 * u.cm**2 * u.s))
+    return _sb 
 
 
 def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
