@@ -298,7 +298,7 @@ def texp_factor_bright_notwi(airmass, moonill, moonalt, moonsep):
     seeing                  = skydata['seeing'] 
     moon_spectrum           = skydata['moon_spectrum'] 
 
-    extinction = 10 ** (-extinction_coefficient * airmass / 2.5)
+    extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
 
     Imoon = _Imoon(wavelength, moon_spectrum, extinction_coefficient,
             airmass, moon_zenith, separation_angle, moon_phase)
@@ -306,7 +306,7 @@ def texp_factor_bright_notwi(airmass, moonill, moonalt, moonsep):
     Isky = extinction * Idark + Imoon # sky surface brightness 
 
     wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
-    return np.median(Isky.value[wlim]) / Idark4500 
+    return np.median(Isky.value[:,wlim], axis=1) / Idark4500 
 
 
 def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep): 
@@ -332,7 +332,7 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
     seeing                  = skydata['seeing'] 
     moon_spectrum           = skydata['moon_spectrum'] 
 
-    extinction = 10 ** (-extinction_coefficient * airmass / 2.5)
+    extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
 
     Imoon = _Imoon(wavelength, moon_spectrum, extinction_coefficient,
             airmass, moon_zenith, separation_angle, moon_phase)
@@ -353,13 +353,13 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
             t1 * np.abs(sunalt)**2 +   # CT1
             t2 * np.abs(sunsep)**2 +   # CT3
             t3 * np.abs(sunsep)        # CT4
-            ) * np.exp(-t4 * airmass) + c0) / np.pi 
+            ) * np.exp(-t4 * np.atleast_1d(airmass)[:,None]) + c0) / np.pi 
 
     I_twi_interp = interp1d(10. * w_twi, Itwi, fill_value='extrapolate')
     Isky += np.clip(I_twi_interp(wavelength.value), 0, None) 
 
     wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
-    return np.median(Isky[wlim]) / Idark4500 
+    return np.median(Isky[:,wlim], axis=1) / Idark4500 
 
 
 def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zenith, separation_angle, moon_phase): 
@@ -389,14 +389,14 @@ def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zeni
     # scattered once into the observed field of view.
     scattering_airmass = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
     extinction = (
-        10 ** (-extinction_coefficient * scattering_airmass / 2.5) *
-        (1 - 10 ** (-extinction_coefficient * airmass / 2.5)))
+            10 ** (-extinction_coefficient * np.atleast_1d(scattering_airmass)[:,None] / 2.5) *
+            (1 - 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)))
     surface_brightness = moon_spectrum * extinction
 
     # Renormalized the extincted spectrum to the correct V-band magnitude.
     raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
     area = 1 * u.arcsec ** 2
-    surface_brightness *= 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
+    surface_brightness *= np.atleast_1d(10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area)[:,None]
     return surface_brightness
 
 
