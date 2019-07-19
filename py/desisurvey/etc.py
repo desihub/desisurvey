@@ -348,10 +348,10 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
     c0 = skydata['c0'] 
     w_twi = skydata['wavelength_twi']
 
-    Itwi = ((t0 * np.abs(sunalt) +      # CT2
-            t1 * np.abs(sunalt)**2 +   # CT1
-            t2 * np.abs(sunsep)**2 +   # CT3
-            t3 * np.abs(sunsep)        # CT4
+    Itwi = ((t0 * np.abs(np.atleast_1d(sunalt)[:,None]) +      # CT2
+            t1 * np.abs(np.atleast_1d(sunalt)[:,None])**2 +   # CT1
+            t2 * np.abs(np.atleast_1d(sunsep)[:,None])**2 +   # CT3
+            t3 * np.abs(np.atleast_1d(sunsep)[:,None])        # CT4
             ) * np.exp(-t4 * np.atleast_1d(airmass)[:,None]) + c0) / np.pi 
 
     I_twi_interp = interp1d(10. * w_twi, Itwi, fill_value='extrapolate')
