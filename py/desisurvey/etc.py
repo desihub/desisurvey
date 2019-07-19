@@ -17,7 +17,7 @@ from scipy.interpolate import interp1d
 import astropy.utils.data
 import astropy.units as u
 
-import speclite 
+import speclite.filters
 
 import desiutil.log
 
