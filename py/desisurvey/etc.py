@@ -295,18 +295,21 @@ def texp_factor_bright_notwi(airmass, moonill, moonalt, moonsep):
     Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
     Idark4500               = skydata['darksky_4500a'] # nominal dark sky at ~4500A 
     extinction_coefficient  = skydata['extinction_coefficient']         
+    extinction_array        = skydata['extinction_array'] 
     seeing                  = skydata['seeing'] 
     moon_spectrum           = skydata['moon_spectrum'] 
 
-    extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
+    i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
+    extinction = extinction_array[i_airmass,:] 
+    #extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
 
-    Imoon = _Imoon(wavelength, moon_spectrum, extinction_coefficient,
+    Imoon = _Imoon(wavelength, moon_spectrum, extinction_array, #extinction_coefficient, extinction,
             airmass, moon_zenith, separation_angle, moon_phase)
 
-    Isky = extinction * Idark + Imoon # sky surface brightness 
+    Isky = extinction * Idark.value + Imoon.value # sky surface brightness 
 
     wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
-    return np.median(Isky.value[:,wlim], axis=1) / Idark4500 
+    return np.median(Isky[:,wlim], axis=1) / Idark4500 
 
 
 def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep): 
@@ -329,12 +332,15 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
     Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
     Idark4500               = skydata['darksky_4500a'] # nominal dark sky at ~4500A 
     extinction_coefficient  = skydata['extinction_coefficient']         
+    extinction_array        = skydata['extinction_array'] 
     seeing                  = skydata['seeing'] 
     moon_spectrum           = skydata['moon_spectrum'] 
+    
+    i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
+    extinction = extinction_array[i_airmass,:] 
+    #extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
 
-    extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
-
-    Imoon = _Imoon(wavelength, moon_spectrum, extinction_coefficient,
+    Imoon = _Imoon(wavelength, moon_spectrum, extinction_array, 
             airmass, moon_zenith, separation_angle, moon_phase)
 
     Isky = extinction * Idark.value + Imoon.value # sky surface brightness 
@@ -361,7 +367,7 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
     return np.median(Isky[:,wlim], axis=1) / Idark4500 
 
 
-def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zenith, separation_angle, moon_phase): 
+def _Imoon(wavelength, moon_spectrum, extinction_array, airmass, moon_zenith, separation_angle, moon_phase): 
     ''' moon surface brightness. stream-lined verison of specsim.atmosphere.Moon surface brightness
     calculation with re-fit KS coefficients hardcoded in
     '''
@@ -370,11 +376,10 @@ def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zeni
     KS_CM1 = 178.141045
 
     obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
-
     _vband = speclite.filters.load_filter('bessell-V')
     V = _vband.get_ab_magnitude(moon_spectrum, wavelength)
 
-    extinction = 10 ** (-extinction_coefficient / 2.5)
+    extinction = extinction_array[0,:] #10 ** (-extinction_coefficient / 2.5)
 
     Vstar = _vband.get_ab_magnitude(moon_spectrum * extinction, wavelength)
     vband_extinction = Vstar - V
@@ -385,11 +390,15 @@ def _Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zeni
         moon_phase, vband_extinction, KS_CR, KS_CM0, KS_CM1)
 
     # Calculate the wavelength-dependent extinction of moonlight
-    # scattered once into the observed field of view.
+    # scattered once into the observed field of view. 
     scattering_airmass = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
-    extinction = (
-            10 ** (-extinction_coefficient * np.atleast_1d(scattering_airmass)[:,None] / 2.5) *
-            (1 - 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)))
+    i_airmass = (np.round((scattering_airmass - 1.)/0.04)).astype(int) 
+    _extinction_scatter = extinction_array[i_airmass,:] 
+
+    i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
+    _extinction = extinction_array[i_airmass,:] 
+
+    extinction = (_extinction_scatter * (1. - _extinction)) 
     surface_brightness = moon_spectrum * extinction
 
     # Renormalized the extincted spectrum to the correct V-band magnitude.
@@ -570,7 +579,6 @@ class ExposureTimeCalculator(object):
         self.TEXP_TOTAL = {}
         for program in desisurvey.tiles.Tiles.PROGRAMS:
             self.TEXP_TOTAL[program] = getattr(config.nominal_exposure_time, program)().to(u.day).value
-        print(self.TEXP_TOTAL) 
         # Temporary hardcoded exposure factors for moon-up observing.
         #self.TEXP_TOTAL['GRAY'] *= 1.1
         #self.TEXP_TOTAL['BRIGHT'] *= 1.33
