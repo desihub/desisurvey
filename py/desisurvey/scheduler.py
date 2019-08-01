@@ -62,7 +62,8 @@ class Scheduler(object):
         self.threshold_alt = self.max_prod / self.max_frac
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         # Load static tile info.
-        self.tiles = desisurvey.tiles.get_tiles()
+        self.tiles      = desisurvey.tiles.get_tiles()
+        
         ntiles = self.tiles.ntiles
         # Check hourangles.
         if design_hourangle is None:
@@ -401,6 +402,8 @@ class Scheduler(object):
             -np.log(self.exposure_factor[self.tile_sel]) * greediness)
         # Add tile priorities.
         log_score += self.log_priority[self.tile_sel]
+        log_score += self.tilevalues 
+
         # Select the tile with the highest (log) score.
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
         # Return info about the selected tile and scheduled program.

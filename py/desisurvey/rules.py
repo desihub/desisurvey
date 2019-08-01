@@ -77,6 +77,7 @@ class Rules(object):
         group_names = []
         group_ids = np.zeros(tiles.ntiles, int)
         dec_priority = np.ones(tiles.ntiles, float)
+        ecliptic_priority = np.ones(tiles.ntiles, float)
         group_rules = {}
         group_max_orphans = {}
 
@@ -164,6 +165,17 @@ class Rules(object):
             else:
                 assert np.all(dec_priority[group_sel] == 1)
 
+            # Calculate priority multiplies to implement ecliptic ordering.
+            dec_group  = tiles.tileDEC[group_sel]
+            ra_group   = tiles.tileRA[group_sel]
+
+            cs            = [SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to('barycentrictrueecliptic') for ra, dec in zip(ra_group, dec_group)]
+            abselat_group = [np.abs(x.lat.value) for x in cs]  ##  elon = [x.lon.value for x in cs]
+
+            elo, ehi      =  np.min(abselat_group), np.max(abselat_group)
+            
+            ecliptic_priority[group_sel] = 1. - 0.2 * (abselat_group - lo) / (hi - lo))
+            
             # Parse rules for this group.
             rules = node.get('rules')
             if rules is None:
@@ -243,5 +255,5 @@ class Rules(object):
                 if triggered[condition]:
                     priority = max(priority, value)
             sel = self.group_ids == gid
-            priorities[sel] = priority * self.dec_priority[sel]
+            priorities[sel] = priority * self.dec_priority[sel] * self.ecliptic_priority[sel]
         return priorities
