@@ -166,15 +166,15 @@ class Rules(object):
                 assert np.all(dec_priority[group_sel] == 1)
 
             # Calculate priority multiplies to implement ecliptic ordering.
-            dec_group  = tiles.tileDEC[group_sel]
-            ra_group   = tiles.tileRA[group_sel]
+            dec_group     = tiles.tileDEC[group_sel]
+            ra_group      = tiles.tileRA[group_sel]
 
             cs            = [SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to('barycentrictrueecliptic') for ra, dec in zip(ra_group, dec_group)]
             abselat_group = [np.abs(x.lat.value) for x in cs]  ##  elon = [x.lon.value for x in cs]
 
             elo, ehi      =  np.min(abselat_group), np.max(abselat_group)
             
-            ecliptic_priority[group_sel] = 1. - 0.2 * (abselat_group - lo) / (hi - lo))
+            ecliptic_priority[group_sel] = 1. - 0.2 * (abselat_group - elo) / (ehi - elo))
             
             # Parse rules for this group.
             rules = node.get('rules')
