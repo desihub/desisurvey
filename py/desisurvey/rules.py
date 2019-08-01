@@ -1,6 +1,7 @@
 """Manage and apply tile observing priorities using rules.
 """
-from __future__ import print_function, division
+from   __future__ import print_function, division
+from   astropy.coordinates import SkyCoord
 
 import os
 import re
@@ -164,18 +165,20 @@ class Rules(object):
                         1 - slope * (dec_group-lo) / (hi-lo))
             else:
                 assert np.all(dec_priority[group_sel] == 1)
+            '''
+            if np.any(group_sel):
+              # Calculate priority multiplies to implement ecliptic ordering.
+              dec_group     = tiles.tileDEC[group_sel]
+              ra_group      = tiles.tileRA[group_sel]
 
-            # Calculate priority multiplies to implement ecliptic ordering.
-            dec_group     = tiles.tileDEC[group_sel]
-            ra_group      = tiles.tileRA[group_sel]
-
-            cs            = [SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to('barycentrictrueecliptic') for ra, dec in zip(ra_group, dec_group)]
-            abselat_group = [np.abs(x.lat.value) for x in cs]  ##  elon = [x.lon.value for x in cs]
-
-            elo, ehi      =  np.min(abselat_group), np.max(abselat_group)
+              cs            = [SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to('barycentrictrueecliptic') for ra, dec in zip(ra_group, dec_group)]
+              abselat_group = np.array([np.abs(x.lat.value) for x in cs])  ##  elon = [x.lon.value for x in cs]
             
-            ecliptic_priority[group_sel] = 1. - 0.2 * (abselat_group - elo) / (ehi - elo))
+              elo           =  np.min(abselat_group)
+              ehi           =  np.max(abselat_group)
             
+              ecliptic_priority[group_sel] = 1. - 0.2 * (abselat_group - elo) / (ehi - elo)
+            '''
             # Parse rules for this group.
             rules = node.get('rules')
             if rules is None:
@@ -221,6 +224,7 @@ class Rules(object):
         self.group_ids = group_ids
         self.group_rules = group_rules
         self.dec_priority = dec_priority
+        self.ecliptic_priority = ecliptic_priority
         self.group_max_orphans = group_max_orphans
 
     def apply(self, completed):
@@ -256,4 +260,5 @@ class Rules(object):
                     priority = max(priority, value)
             sel = self.group_ids == gid
             priorities[sel] = priority * self.dec_priority[sel] * self.ecliptic_priority[sel]
+            
         return priorities

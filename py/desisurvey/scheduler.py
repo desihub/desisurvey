@@ -402,8 +402,7 @@ class Scheduler(object):
             -np.log(self.exposure_factor[self.tile_sel]) * greediness)
         # Add tile priorities.
         log_score += self.log_priority[self.tile_sel]
-        log_score += self.tilevalues 
-
+        
         # Select the tile with the highest (log) score.
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
         # Return info about the selected tile and scheduled program.
