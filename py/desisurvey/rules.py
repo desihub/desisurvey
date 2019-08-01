@@ -165,7 +165,7 @@ class Rules(object):
                         1 - slope * (dec_group-lo) / (hi-lo))
             else:
                 assert np.all(dec_priority[group_sel] == 1)
-            '''
+            
             if np.any(group_sel):
               # Calculate priority multiplies to implement ecliptic ordering.
               dec_group     = tiles.tileDEC[group_sel]
@@ -176,9 +176,11 @@ class Rules(object):
             
               elo           =  np.min(abselat_group)
               ehi           =  np.max(abselat_group)
+
+              slope         =  config.ecliptic_chase()
+
+              ecliptic_priority[group_sel] = 1. - slope * (abselat_group - elo) / (ehi - elo)
             
-              ecliptic_priority[group_sel] = 1. - 0.2 * (abselat_group - elo) / (ehi - elo)
-            '''
             # Parse rules for this group.
             rules = node.get('rules')
             if rules is None:
