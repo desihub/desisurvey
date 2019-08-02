@@ -20,7 +20,7 @@ from    desitarget.geomask   import  circles
 
 int2program = {0: 'Dark', 1: 'Gray', 2: 'Bright'}
 
-def  whatprogram(mjd, _programs, _changes):
+def whatprogram(mjd, _programs, _changes):
   changes  = list(_changes[_changes > 0.])
   programs = list(_programs[_programs > -1.]) 
   
@@ -152,29 +152,7 @@ for i, noon in enumerate(dat._table['noon'].quantity):
 ##  
 normed_visibility  = np.sum(hrs_visible, axis=0) / nnights
 
-cmap   = plt.get_cmap('viridis')
-norm   = mpl.colors.Normalize()
-
 for program in range(3):
-  pl.clf()
-
-  ##  print(normed_visibility[:,program])
-  
-  circles(tiles['RA'].quantity, tiles['DEC'].quantity, s=1.67, lw=1., ec='k', c=normed_visibility[:,program], alpha=0.4, cmap=cmap, norm=norm)
-
-  pl.title(int2program[program])
-  
-  plt.colorbar()
-
-  pl.xlabel(r'Right ascension [deg.]')
-  pl.ylabel(r'Declination [deg.]')
-
-  plt.tight_layout()
-  plt.gca().invert_xaxis()
-  
-  ##  pl.show()
-  
-  ##  Write.
   np.savetxt('visibility/visibility-{}-{}.txt'.format(nnights, program), hrs_visible[:, :, program], fmt='%.3lf')
   
 print('\n\nDone.\n\n')
