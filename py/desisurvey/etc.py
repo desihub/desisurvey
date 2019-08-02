@@ -143,6 +143,9 @@ _moonCoefficients = np.array([
 # See specsim.atmosphere.krisciunas_schaefer for details.
 _vband_extinction = 0.15154
 
+# surface brightness of the nominal dark sky at ~4500A.
+_dark_sky_4500A = 1.519 
+
 def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     """Calculate exposure time factor due to scattered moonlight.
 
@@ -293,10 +296,7 @@ def texp_factor_bright_notwi(airmass, moonill, moonalt, moonsep):
     skydata = pickle.load(open(fsky, 'rb')) 
     wavelength              = skydata['wavelength'] 
     Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
-    Idark4500               = skydata['darksky_4500a'] # nominal dark sky at ~4500A 
-    extinction_coefficient  = skydata['extinction_coefficient']         
     extinction_array        = skydata['extinction_array'] 
-    seeing                  = skydata['seeing'] 
     moon_spectrum           = skydata['moon_spectrum'] 
 
     i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
@@ -308,8 +308,9 @@ def texp_factor_bright_notwi(airmass, moonill, moonalt, moonsep):
 
     Isky = extinction * Idark.value + Imoon.value # sky surface brightness 
 
-    wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
-    return np.median(Isky[:,wlim], axis=1) / Idark4500 
+    #wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
+    print('bright sky=', np.median(Isky, axis=1)[:5])
+    return np.median(Isky, axis=1) / _dark_sky_4500A
 
 
 def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep): 
@@ -330,10 +331,7 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
     skydata = pickle.load(open(fsky, 'rb')) 
     wavelength              = skydata['wavelength'] 
     Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
-    Idark4500               = skydata['darksky_4500a'] # nominal dark sky at ~4500A 
-    extinction_coefficient  = skydata['extinction_coefficient']         
     extinction_array        = skydata['extinction_array'] 
-    seeing                  = skydata['seeing'] 
     moon_spectrum           = skydata['moon_spectrum'] 
     
     i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
@@ -363,8 +361,8 @@ def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
     I_twi_interp = interp1d(10. * w_twi, Itwi, fill_value='extrapolate')
     Isky += np.clip(I_twi_interp(wavelength.value), 0, None) 
 
-    wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
-    return np.median(Isky[:,wlim], axis=1) / Idark4500 
+    print('bright sky=', np.median(Isky, axis=1)[:5])
+    return np.median(Isky, axis=1) / _dark_sky_4500A
 
 
 def _Imoon(wavelength, moon_spectrum, extinction_array, airmass, moon_zenith, separation_angle, moon_phase): 
@@ -381,13 +379,10 @@ def _Imoon(wavelength, moon_spectrum, extinction_array, airmass, moon_zenith, se
 
     extinction = extinction_array[0,:] #10 ** (-extinction_coefficient / 2.5)
 
-    Vstar = _vband.get_ab_magnitude(moon_spectrum * extinction, wavelength)
-    vband_extinction = Vstar - V
-
     # Calculate the V-band surface brightness of scattered moonlight.
     scattered_V = krisciunas_schaefer_free(
         obs_zenith, moon_zenith, separation_angle,
-        moon_phase, vband_extinction, KS_CR, KS_CM0, KS_CM1)
+        moon_phase, _vband_extinction, KS_CR, KS_CM0, KS_CM1)
 
     # Calculate the wavelength-dependent extinction of moonlight
     # scattered once into the observed field of view. 

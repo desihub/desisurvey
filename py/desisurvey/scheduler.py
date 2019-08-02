@@ -6,6 +6,7 @@ from __future__ import print_function, division
 
 import os.path
 
+import time
 import numpy as np
 
 import astropy.io.fits
@@ -400,15 +401,29 @@ class Scheduler(object):
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
-        self.exposure_factor[self.tile_sel] *= desisurvey.etc.bright_exposure_factor(
+        _t0 = time.time() 
+        _bright_exposure_factor = desisurvey.etc.bright_exposure_factor(
                 self.night_ephem['moon_illum_frac'], 
                 moonALT, 
                 moon_sep, 
                 sunALT, 
                 sun_sep, 
                 self.airmass[self.tile_sel])
+        print('------------------------------------------------------------------------') 
+        print(time.time()-_t0) 
+         
+        self.exposure_factor[self.tile_sel] *= _bright_exposure_factor
         # Apply global weather factors that are the same for all tiles.
         self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
+        print('airmass=', self.airmass[self.tile_sel][:5]) 
+        print('moon ill=', self.night_ephem['moon_illum_frac']) 
+        print('moon alt=',  moonALT)
+        print('moon sep=', moon_sep[0][:5])
+        print('sun alt=', sunALT)
+        print('sun sep=', sun_sep[0][:5]) 
+        print('airmass exposure factor', desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])[:5]) 
+        print('bright exposure factor', _bright_exposure_factor[:5]) 
+
         if not np.any(self.tile_sel):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for
