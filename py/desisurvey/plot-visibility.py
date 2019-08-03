@@ -1,4 +1,5 @@
-import  matplotlib           as      mpl
+import  matplotlib           as      mpl; mpl.use('PDF')
+
 import  desisurvey
 import  astropy.io.fits      as      fits
 import  pylab                as      pl
@@ -17,9 +18,8 @@ from    astropy.time         import  Time
 from    astropy.coordinates  import  SkyCoord, EarthLocation, AltAz
 from    desitarget.geomask   import  circles
 
-
 ##
-program          =  'Dark'
+program          =  'Gray'
 program2int      = {'Dark': 0, 'Gray': 1, 'Bright': 2}
 
 tiles            = Table(fits.open('/global/cscratch1/sd/mjwilson/svdc2019c2/survey/basetiles/original/schlafly-tiles.fits')[1].data)
@@ -39,7 +39,7 @@ norm   = mpl.colors.Normalize()
 
 pl.clf()
 
-nnights            = 2
+nnights            = 26
 hrs_visible        = np.loadtxt('visibility/visibility-nofullmoon-{}-{}.txt'.format(nnights, program2int[program]))
 
 normed_visibility  = np.sum(hrs_visible, axis=0) / nnights
@@ -58,6 +58,6 @@ pl.ylabel(r'Declination [deg.]')
 plt.tight_layout()
 plt.gca().invert_xaxis()
 
-pl.show()
+##  pl.show()
   
-##  pl.savefig('plots/visibility-nofullmoon-{}-{}.pdf'.format(nnights, program2int[program]))                                                                                                                                                                                                
+pl.savefig('plots/visibility-nofullmoon-{}-{}.pdf'.format(nnights, program2int[program]))                                                                                                                                                                                                

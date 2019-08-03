@@ -157,8 +157,8 @@ for i, noon in enumerate(dat._table['noon'].quantity):
     ra        = tiles['RA'].quantity
     dec       = tiles['DEC'].quantity
 
+    ##  alt   = np.array([x.alt.value  for x in pos]);  airmass = np.array([x.secz.value for x in pos])  
     az        = np.array([x.az.value   for x in pos])
-    alt       = np.array([x.alt.value  for x in pos])  ##  airmass = np.array([x.secz.value for x in pos])
 
     isin      = np.zeros_like(tiles['RA'].quantity, dtype=np.float)
 
