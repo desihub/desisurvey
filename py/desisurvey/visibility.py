@@ -34,17 +34,20 @@ def whatprogram(mjd, _programs, _changes):
      
   return  programs[0]
 
+
+verbose          = False
+
 ##  Get Eddie's tiles -> remppaed to a format similar to the old tiles, e.g. in pass ordering.
 ##  Center ID defined for pass 5 (Gray) in this instance.  
 ##  tiles        = Table(fits.open('/global/cscratch1/sd/mjwilson/svdc2019c2/survey/tiles/schlafly/opall.fits')[1].data)
 
 tiles            = Table(fits.open('/global/cscratch1/sd/mjwilson/svdc2019c2/survey/basetiles/original/schlafly-tiles.fits')[1].data)
 tiles            = tiles[tiles['IN_DESI'].quantity > 0]
-tiles            = tiles[tiles['RA'].quantity > 160.]
-tiles            = tiles[tiles['RA'].quantity < 280.]
-tiles            = tiles[tiles['DEC'].quantity > -5.]
-tiles            = tiles[tiles['DEC'].quantity < 75.]
-tiles            = tiles[tiles['PASS'].quantity == 0]
+tiles            = tiles[tiles['RA'].quantity > 160.]  ##  160.
+tiles            = tiles[tiles['RA'].quantity < 280.]  ##  280.
+tiles            = tiles[tiles['DEC'].quantity > -5.]  ##   -5.
+tiles            = tiles[tiles['DEC'].quantity < 75.]  ##   75.
+tiles            = tiles[tiles['PASS'].quantity == 0]  ##    0
 
 tiles.sort('CENTERID')
 
@@ -56,16 +59,15 @@ cids             = np.unique(tiles['CENTERID'].quantity)
 ##  Write.                                                                                                                                                                                                     
 np.savetxt('visibility/cids.txt', cids, fmt='%d')
 
-##  ephem table duration. 
-start            = date(year = 2019, month = 1,  day = 1)   ##  local_noon_on_date(datetime(year = 2020, month = 4, day = 16))
-stop             = date(year = 2025, month = 12, day = 31)  ##  local_noon_on_date(datetime(year = 2020, month = 5, day = 16))
-
 ##  config derived constraints.                                                                                                                                                         
 config           = desisurvey.config.Configuration(file_name='/global/cscratch1/sd/mjwilson/svdc2019c2/survey/config.yaml')
 full_moon_nights = config.full_moon_nights()
 
-first_day        = Time(config.first_day().isoformat(), format='iso').mjd
-last_day         = Time(config.last_day().isoformat(), format='iso').mjd
+first_day        = config.first_day().isoformat()
+last_day         = config.last_day().isoformat()
+
+first_mjd        = Time(first_day, format='iso').mjd
+last_mjd         = Time(last_day,  format='iso').mjd
 
 min_altitude     = config.min_altitude().value
 
@@ -81,6 +83,10 @@ for body in config.avoid_bodies.keys:
 ##
 mayall           = EarthLocation(lat=lat, lon=lon, height=elv)
 
+##  ephem table duration.                                                                                                                                                                                                                                                                                                                                              
+start            = date(year = 2019, month =  1,  day = 1)
+stop             = date(year = 2025, month = 12, day = 31)
+
 ##  Load ephem. 
 dat              = Ephemerides(start, stop, restore='/global/cscratch1/sd/mjwilson/svdc2019c2/survey/ephem_2019-01-01_2025-12-31.fits')
  
@@ -88,43 +94,59 @@ dat              = Ephemerides(start, stop, restore='/global/cscratch1/sd/mjwils
 ##  print(dat._table)
 
 ##  Program hours for each night. 
-hrs              = dat.get_program_hours(include_twilight=True)
+hrs              = dat.get_program_hours(include_twilight=False)
 
-##
-mjd0             = Time(datetime(1899, 12, 31, 12, 0, 0)).mjd
-t_obj            = np.linspace(0., 1., 25)
+##  Choose same times as those solved for in ephem. 
+N                = 96
+dt               = 24. / N
+t_obj            = np.linspace(0., 1., N + 1)
 
-print('\n\nHours up and hours visible for each CENTERID and noon-to-noon day.\n\n')
+print('\n\nHours visible for each CENTERID, program and noon-to-noon day.\n\n')
 
-nnights      = 0
-hrs_visible  = np.zeros(3 * len(tiles['RA'].quantity) * len(dat._table['noon'].quantity), dtype=np.float).reshape(len(dat._table['noon'].quantity), len(tiles['RA'].quantity), 3)
-
-##  Write.                                                                                                                                                                                                      
-np.savetxt('visibility/noons.txt', dat._table['noon'].quantity)
+nnights          = 0
+hrs_visible      = np.zeros(3 * len(tiles['RA'].quantity) * len(dat._table['noon'].quantity), dtype=np.float).reshape(len(dat._table['noon'].quantity), len(tiles['RA'].quantity), 3)
+output           = []
+isonoons         = []
 
 for i, noon in enumerate(dat._table['noon'].quantity):
  isonoon     = Time(noon.value, format='mjd').iso.split(' ')[0]
- 
- if (noon >= first_day) & (noon <= last_day):
-  nnights   += 1
 
+ fullmoon    = dat.is_full_moon(desisurvey.utils.get_date(isonoon))
+ moonsoon    = desisurvey.utils.is_monsoon(desisurvey.utils.get_date(isonoon))
+ 
+ if (isonoon >= first_day) & (isonoon <= last_day):
+  if fullmoon | moonsoon:
+    print('\n\n', isonoon, '\nFULLMOON')
+    continue
+
+  output.append(i)
+  isonoons.append(isonoon)
+  
   midnight   = noon.value + 0.5
   
   programs   = dat._table['programs'].quantity[i]
   changes    = dat._table['changes'].quantity[i]
 
+  dusk       = dat._table['dusk'].quantity[i]
+  dawn       = dat._table['dawn'].quantity[i]
+  
+  ##  Includes twilight. 
   bdusk      = dat._table['brightdusk'].quantity[i]
   bdawn      = dat._table['brightdawn'].quantity[i]
+
+  nnights   += 1
   
   for j, t in enumerate(t_obj):
     mjd      = noon.value + t
     
-    if (mjd < bdusk) or (mjd > bdawn):      
+    if (mjd < dusk) or (mjd > dawn):      
       continue
 
-    program  = whatprogram(mjd, programs, changes)
-    
-    time     = Time(mjd, format='mjd')
+    program  = whatprogram(mjd, programs, changes)    
+    time     = Time(mjd, format='mjd') ##  UTC.
+
+    if verbose:
+      print(isonoon, time, program)  
     
     pos      = [SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to(AltAz(obstime=time, location=mayall)) for ra, dec in zip(tiles['RA'], tiles['DEC'])]
 
@@ -145,14 +167,19 @@ for i, noon in enumerate(dat._table['noon'].quantity):
       
       isin[too_close] = 0.0
       
-    hrs_visible[i, :, program] += np.array(isin)
-  
+    hrs_visible[i, :, program] += np.array(isin) * dt
+    
   print('\n\n', isonoon, '\n', '\n'.join('{}'.format(hrs_visible[i, :, x].astype(np.int)) for x in range(3))) 
+
+  for program in range(3):
+    np.savetxt('visibility/visibility-nofullmoon-{}-{}.txt'.format(nnights, program), hrs_visible[output, :, program], fmt='%.3lf')
+
   
 ##  
 normed_visibility  = np.sum(hrs_visible, axis=0) / nnights
 
-for program in range(3):
-  np.savetxt('visibility/visibility-{}-{}.txt'.format(nnights, program), hrs_visible[:, :, program], fmt='%.3lf')
+with open('visibility/noons.txt', 'w') as f:
+    for item in isonoons:
+        f.write("%s\n" % item)
   
 print('\n\nDone.\n\n')
