@@ -35,7 +35,7 @@ def whatprogram(mjd, _programs, _changes):
   return  programs[0]
 
 
-verbose          = False
+verbose          = True
 
 ##  Get Eddie's tiles -> remppaed to a format similar to the old tiles, e.g. in pass ordering.
 ##  Center ID defined for pass 5 (Gray) in this instance.  
@@ -76,10 +76,14 @@ lon              = config.location.longitude()
 elv              = config.location.elevation()
  
 avoid_bodies     = {}
+bodies           = list(config.avoid_bodies.keys)
 
-for body in config.avoid_bodies.keys:
+for body in bodies:
   avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg)
 
+##  You want this as the moon is the body that excludes the greatest number of tiles. 
+assert  bodies[0] == 'moon'
+  
 ##
 mayall           = EarthLocation(lat=lat, lon=lon, height=elv)
 
@@ -122,64 +126,67 @@ for i, noon in enumerate(dat._table['noon'].quantity):
   output.append(i)
   isonoons.append(isonoon)
   
-  midnight   = noon.value + 0.5
+  midnight    = noon.value + 0.5
   
-  programs   = dat._table['programs'].quantity[i]
-  changes    = dat._table['changes'].quantity[i]
+  programs    = dat._table['programs'].quantity[i]
+  changes     = dat._table['changes'].quantity[i]
 
-  dusk       = dat._table['dusk'].quantity[i]
-  dawn       = dat._table['dawn'].quantity[i]
+  dusk        = dat._table['dusk'].quantity[i]
+  dawn        = dat._table['dawn'].quantity[i]
   
   ##  Includes twilight. 
-  bdusk      = dat._table['brightdusk'].quantity[i]
-  bdawn      = dat._table['brightdawn'].quantity[i]
+  bdusk       = dat._table['brightdusk'].quantity[i]
+  bdawn       = dat._table['brightdawn'].quantity[i]
 
-  nnights   += 1
+  nnights    += 1
   
   for j, t in enumerate(t_obj):
-    mjd      = noon.value + t
+    mjd       = noon.value + t
     
     if (mjd < dusk) or (mjd > dawn):      
       continue
 
-    program  = whatprogram(mjd, programs, changes)    
-    time     = Time(mjd, format='mjd') ##  UTC.
+    program   = whatprogram(mjd, programs, changes)    
+    time      = Time(mjd, format='mjd') ##  UTC.
 
     if verbose:
       print(isonoon, time, program)  
     
-    pos      = [SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to(AltAz(obstime=time, location=mayall)) for ra, dec in zip(tiles['RA'], tiles['DEC'])]
+    pos       = [SkyCoord(ra = ra * u.degree, dec = dec * u.degree, frame='icrs').transform_to(AltAz(obstime=time, location=mayall)) for ra, dec in zip(tiles['RA'], tiles['DEC'])]
 
-    ra       = tiles['RA'].quantity
-    dec      = tiles['DEC'].quantity
+    ra        = tiles['RA'].quantity
+    dec       = tiles['DEC'].quantity
 
-    az       = np.array([x.az.value   for x in pos])
-    alt      = np.array([x.alt.value  for x in pos])
-    airmass  = np.array([x.secz.value for x in pos])
+    az        = np.array([x.az.value   for x in pos])
+    alt       = np.array([x.alt.value  for x in pos])  ##  airmass = np.array([x.secz.value for x in pos])
 
-    isin     = np.ones_like(tiles['RA'].quantity, dtype=np.float)
+    isin      = np.zeros_like(tiles['RA'].quantity, dtype=np.float)
+
+    sel       = alt > min_altitude
+    indices   = np.where(sel == True)[0]
     
-    isin[alt < min_altitude] = 0.0
+    for body in bodies:
+      bra, bdec    = desisurvey.ephem.get_object_interpolator(dat._table[i], body, altaz=False)(mjd)
+      too_close    = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra[indices] * u.deg, dec[indices] * u.deg, avoid_bodies[body])[0]
     
-    for body in avoid_bodies:
-      bra, bdec = desisurvey.ephem.get_object_interpolator(dat._table[i], body, altaz=False)(mjd)
-      too_close = desisurvey.utils.separation_matrix([bra] * u.deg, [bdec] * u.deg, ra * u.deg, dec * u.deg, avoid_bodies[body])[0]
-      
-      isin[too_close] = 0.0
+      indices      = indices[~too_close]
+
+    ##  
+    isin[indices]  = 1.0
       
     hrs_visible[i, :, program] += np.array(isin) * dt
     
   print('\n\n', isonoon, '\n', '\n'.join('{}'.format(hrs_visible[i, :, x].astype(np.int)) for x in range(3))) 
-
+  '''
   for program in range(3):
     np.savetxt('visibility/visibility-nofullmoon-{}-{}.txt'.format(nnights, program), hrs_visible[output, :, program], fmt='%.3lf')
-
+  '''
   
 ##  
 normed_visibility  = np.sum(hrs_visible, axis=0) / nnights
-
+'''
 with open('visibility/noons.txt', 'w') as f:
     for item in isonoons:
         f.write("%s\n" % item)
-  
+'''  
 print('\n\nDone.\n\n')
