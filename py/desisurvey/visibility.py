@@ -21,7 +21,7 @@ from    desitarget.geomask   import  circles
 int2program = {0: 'Dark', 1: 'Gray', 2: 'Bright'}
 
 def whatprogram(mjd, _programs, _changes):
-  changes  = list(_changes[_changes > 0.])
+  changes  = list(_changes[_changes   >  0.])
   programs = list(_programs[_programs > -1.]) 
   
   while (len(changes) != 0):
@@ -51,7 +51,7 @@ tiles            = tiles[tiles['PASS'].quantity == 0]  ##    0
 
 tiles.sort('CENTERID')
 
-print(tiles)
+##  print(tiles)
 
 ##
 cids             = np.unique(tiles['CENTERID'].quantity)
@@ -81,13 +81,14 @@ bodies           = list(config.avoid_bodies.keys)
 for body in bodies:
   avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg)
 
-##  You want this as the moon is the body that excludes the greatest number of tiles. 
+##  Ensure the moon is the first body considered for tile exlusion, as this minimises the computation
+##  by removing the most number of tiles. 
 assert  bodies[0] == 'moon'
   
 ##
 mayall           = EarthLocation(lat=lat, lon=lon, height=elv)
 
-##  ephem table duration.                                                                                                                                                                                                                                                                                                                                              
+##  ephem table duration.                                                                                                                                                                                                                                                                                                                                             
 start            = date(year = 2019, month =  1,  day = 1)
 stop             = date(year = 2025, month = 12, day = 31)
 
@@ -97,8 +98,12 @@ dat              = Ephemerides(start, stop, restore='/global/cscratch1/sd/mjwils
 ##  print(dat._table.columns)
 ##  print(dat._table)
 
-##  Program hours for each night. 
+##  Survey sim derived program hours for each night. 
 hrs              = dat.get_program_hours(include_twilight=False)
+
+print(hrs[0])
+print(hrs[1])
+print(hrs[2])
 
 ##  Choose same times as those solved for in ephem. 
 N                = 96
@@ -157,8 +162,8 @@ for i, noon in enumerate(dat._table['noon'].quantity):
     ra        = tiles['RA'].quantity
     dec       = tiles['DEC'].quantity
 
-    ##  alt   = np.array([x.alt.value  for x in pos]);  airmass = np.array([x.secz.value for x in pos])  
-    az        = np.array([x.az.value   for x in pos])
+    ##  az    = np.array([x.az.value  for x in pos]);  airmass = np.array([x.secz.value for x in pos])  
+    alt       = np.array([x.alt.value for x in pos])
 
     isin      = np.zeros_like(tiles['RA'].quantity, dtype=np.float)
 
