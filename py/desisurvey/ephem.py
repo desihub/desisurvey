@@ -148,7 +148,7 @@ class Ephemerides(object):
             return
 
         # Initialize an empty table to fill.
-        meta = dict(NAME='Survey Ephemerides',
+        meta = dict(NAME='Survey Ephemerides', EXTNAME='EPHEM',
                     START=str(start_date), STOP=str(stop_date))
         self._table = astropy.table.Table(meta=meta)
         mjd_format = '%.5f'
@@ -356,6 +356,11 @@ class Ephemerides(object):
             raise ValueError('Requested row index outside table: {0}'
                              .format(row_index))
         return self._table[row_index]
+
+    @property
+    def table(self):
+        """Read-only access to our internal table."""
+        return self._table
 
     def get_night(self, night, as_index=False):
         """Return the row of ephemerides for a single night.

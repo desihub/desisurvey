@@ -192,17 +192,15 @@ class Planner(object):
             'CADENCE': self.fiberassign_cadence,
             'FIRST': self.first_night.isoformat() if self.first_night else '',
             'LAST': self.last_night.isoformat() if self.last_night else '',
+            'EXTNAME': 'PLAN'
             })
         t['TILEID'] = self.tiles.tileID
         t['COVERED'] = self.tile_covered
         t['COUNTDOWN'] = self.tile_countdown
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
-        hdus = astropy.io.fits.HDUList()
-        hdus.append(astropy.io.fits.PrimaryHDU())
-        hdus.append(astropy.io.fits.table_to_hdu(t))
-        hdus[-1].name = 'PLAN'
-        hdus.writeto(fullname, overwrite=True)
+        t.write(fullname+'.tmp', overwrite=True, format='fits')
+        os.rename(fullname+'.tmp', fullname)
         self.log.debug(
             'Saved plan with {} ({}) / {} tiles covered (available) to "{}".'
             .format(np.count_nonzero(self.tile_covered),

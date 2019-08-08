@@ -57,6 +57,8 @@ class TestEphemerides(Tester):
         ephem = get_ephem()
         self.assertEqual(ephem.num_nights, (ephem.stop_date - ephem.start_date).days)
 
+        self.assertEqual(id(ephem._table), id(ephem.table))
+
         etable = ephem._table
         self.assertEqual(len(etable), 31)
         self.assertTrue(np.all(etable['dusk'] > etable['noon']))

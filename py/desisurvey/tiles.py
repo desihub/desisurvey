@@ -37,14 +37,6 @@ import desisurvey.etc
 
 
 class Tiles(object):
-
-    # Define the valid programs in canonical order.
-    PROGRAMS = ['DARK', 'GRAY', 'BRIGHT']
-    # Define a mapping from program name to index 0,1,2.
-    # Note that this mapping is independent of the programs actually present
-    # in a tiles file.
-    PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
-
     """Manage static info associated with the tiles file.
 
     Parameters
@@ -109,6 +101,16 @@ class Tiles(object):
         self._overlapping = None
         self._fiberassign_delay = None
 
+    PROGRAMS = ['DARK', 'GRAY', 'BRIGHT']
+    """Enumeration of the valid programs in their canonical order."""
+
+    PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
+    """Canonical mapping from program name to a small integer.
+
+    Note that this mapping is independent of the programs actually present
+    in a tiles file.
+    """
+
     def airmass(self, hour_angle, mask=None):
         """Calculate tile airmass given hour angle.
 
@@ -131,13 +133,17 @@ class Tiles(object):
         cosZ = self.tile_coef_A[mask] + self.tile_coef_B[mask] * np.cos(hour_angle)
         return desisurvey.utils.cos_zenith_to_airmass(cosZ)
 
-    def index(self, tileID):
+    def index(self, tileID, return_mask=False):
         """Map tile ID to array index.
 
         Parameters
         ----------
         tileID : int or array
             Tile ID value(s) to convert.
+        mask : bool
+            if mask=True, an additional mask array is returned, indicating which
+            IDs were present in the tile array.  Otherwise, an exception is
+            raised if tiles were not found.
 
         Returns
         -------
@@ -148,9 +154,15 @@ class Tiles(object):
         tileID = np.atleast_1d(tileID)
         idx = np.searchsorted(self.tileID, tileID)
         bad = self.tileID[idx] != tileID
-        if np.any(bad):
+        if not return_mask and np.any(bad):
             raise ValueError('Invalid tile ID(s): {}.'.format(tileID[bad]))
-        return idx[0] if scalar else idx
+        mask = ~bad
+        idx = idx[0] if scalar else idx
+        mask = mask[0] if scalar else mask
+        res = idx
+        if return_mask:
+            res = (res, mask)
+        return res
 
     @property
     def tile_over(self):
