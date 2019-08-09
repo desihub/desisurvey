@@ -144,6 +144,8 @@ class Planner(object):
             self.tile_countdown = t['COUNTDOWN'].data.copy()
             self.tile_available = t['AVAILABLE'].data.copy()
             self.tile_priority = t['PRIORITY'].data.copy()
+            self.donefrac = t['DONEFRAC'].data.copy()
+            self.lastexpid = t['LASTEXPID'].data.copy()
             self.log.debug(
                 'Restored plan with {} ({}) / {} tiles covered (available) from "{}".'
                 .format(np.count_nonzero(self.tile_covered),
@@ -163,6 +165,8 @@ class Planner(object):
                 self.tile_priority = self.rules.apply(none_completed)
             else:
                 self.tile_priority = np.ones(self.tiles.ntiles, float)
+            self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
+            self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             # Mark tiles that are initially available.
             fiberassign_order = config.fiber_assignment_order
             for passnum in self.tiles.passes:
@@ -174,6 +178,15 @@ class Planner(object):
                     self.log.info('Pass {} available for initial observing.'.format(passnum))
         if not np.any(self.tile_priority > 0):
             raise RuntimeError('All tile priorities are all <= 0.')
+
+    def set_donefrac(self, tileid, donefrac, lastexpid):
+        if len(donefrac) != len(lastexpid):
+            raise ValueError('donefrac length must equal lastexpid length.')
+        tileind, mask = self.tiles.index(tileid, return_mask=True)
+        if np.any(~mask):
+            raise ValueError('some tiles with unknown IDs')
+        self.donefrac[tileind] = donefrac
+        self.lastexpid[tileind] = lastexpid
 
     def save(self, name):
         """Save a snapshot of our current state that can be restored.
@@ -196,13 +209,17 @@ class Planner(object):
             'CADENCE': self.fiberassign_cadence,
             'FIRST': self.first_night.isoformat() if self.first_night else '',
             'LAST': self.last_night.isoformat() if self.last_night else '',
-            'EXTNAME': 'PLAN'
+            'EXTNAME': 'STATUS'
             })
         t['TILEID'] = self.tiles.tileID
-        t['COVERED'] = self.tile_covered
-        t['COUNTDOWN'] = self.tile_countdown
+        t['RA'] = self.tiles.tileRA
+        t['DEC'] = self.tiles.tileDEC
+        t['DONEFRAC'] = self.donefrac
+        t['LASTEXPID'] = self.lastexpid
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
+        t['COVERED'] = self.tile_covered
+        t['COUNTDOWN'] = self.tile_countdown
         t.write(fullname+'.tmp', overwrite=True, format='fits')
         os.rename(fullname+'.tmp', fullname)
         self.log.debug(

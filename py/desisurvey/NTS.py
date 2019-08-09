@@ -49,7 +49,32 @@ import desisurvey.plan
 import desisurvey.scheduler
 import desisurvey.etc
 import desisurvey.utils
+import desisurvey.config
 import datetime
+from astropy.io import ascii
+
+
+def night_to_str(night):
+    return night.isoformat().replace('-', '')
+
+
+class QueuedList():
+    def __init__(self, fn):
+        self.fn = fn
+        self.restore()
+
+    def restore(self):
+        if os.path.exists(self.fn):
+            self.queued = ascii.read(self.fn, comment='#',
+                                     names=['tileid'], format='csv')
+            self.queued = list(self.queued['tileid'])
+        else:
+            self.queued = []
+
+    def add(self, tileid):
+        self.queued.append(tileid)
+        open(self.fn, 'a').write(str(tileid)+'\n')
+        # could work harder to make this atomic.
 
 
 class NTS():
@@ -75,12 +100,13 @@ class NTS():
         """
         self.obsplan = obsplan
         self.fiber_assign_dir = fiber_assign_dir
+        config = desisurvey.config.Configuration()
         self.default_seeing = defaults.get('seeing', 1.0)
         self.default_transparency = defaults.get('transparency', 0.9)
         self.default_skylevel = defaults.get('skylevel', 1000.0)
         self.default_program = defaults.get('program', 'DESI DARK')
         if night is None:
-            self.night = datetime.date.today()
+            self.night = desisurvey.utils.get_current_date()
             print('Warning: no night selected, using current date!',
                   self.night)
         else:
@@ -88,12 +114,14 @@ class NTS():
         self.rules = desisurvey.rules.Rules()
         # should look for rules file in obsplan dir?
         try:
-            nightstr = self.night.isoformat()
+            nightstr = night_to_str(self.night)
             self.planner = desisurvey.plan.Planner(
                 self.rules,
-                restore='planner_afternoon_{}.fits'.format(nightstr))
+                restore='desi-status_{}.fits'.format(nightstr))
             self.scheduler = desisurvey.scheduler.Scheduler(
-                restore='scheduler_{}.fits'.format(nightstr))
+                restore='desi-status_{}.fits'.format(nightstr))
+            self.queuedlist = QueuedList(
+                config.get_path('queued-{}.dat'.format(nightstr)))
         except:
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')
@@ -104,7 +132,7 @@ class NTS():
 
     def next_tile(self, mjd=None, skylevel=None, transparency=None,
                   seeing=None, program=None, lastexp=None, fiber_assign=None,
-                  previoustiles=None):
+                  previoustiles=[]):
         """
         Select the next tile.
 
@@ -155,10 +183,11 @@ class NTS():
         transparency = (self.default_transparency if transparency is None
                         else transparency)
 
-        if previoustiles is not None:
-            ind, mask = self.scheduler.tiles.index(previoustiles,
-                                                   return_mask=True)
-            self.scheduler.in_night_pool[ind[mask]] = False
+        self.queuedlist.restore()
+        previoustiles = previoustiles + self.queuedlist.queued
+        ind, mask = self.scheduler.tiles.index(previoustiles,
+                                               return_mask=True)
+        self.scheduler.in_night_pool[ind[mask]] = False
         # remove previous tiles from possible tiles to schedule
         # note: this will be remembered until NTS is restarted!  EFS
         result = self.scheduler.next_tile(
@@ -182,9 +211,6 @@ class NTS():
             self.ETC.TEXP_TOTAL[sched_program]*exposure_factor)  # EFS hack
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
-        self.scheduler.update_snr(
-            tileid, snr2frac_start + min([exptime, maxtime])/texp_tot)
-        self.scheduler.save('scheduler_{}.fits'.format(self.night.isoformat()))
         if program is None:
             maxtime = min([maxtime, mjd_program_end-maxtime])
 
@@ -197,6 +223,7 @@ class NTS():
                      'maxtime': maxtime*days_to_seconds,
                      'fiber_assign': fiber_assign,
                      'foundtile': True}
+        self.queuedlist.add(tileid)
 
         return selection
 
@@ -219,14 +246,16 @@ def afternoon_plan(night=None, lastnight=None):
         ignored!
     """
     if night is None:
-        night = datetime.date.today().isoformat()
+        night = desisurvey.utils.get_current_date()
+
+    night = desisurvey.utils.get_date(night)
     rules = desisurvey.rules.Rules()
     # should look for rules file in obsplan dir?
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
-            rules, restore='planner_end_{}.fits' % lastnight)
+            rules, restore='desi-status_{}.fits' % lastnight)
         scheduler = desisurvey.scheduler.Scheduler(
-            restore='scheduler_end_{}.fits')
+            restore='desi-status_{}.fits')
     else:
         planner = desisurvey.plan.Planner(rules)
         scheduler = desisurvey.scheduler.Scheduler()
@@ -242,8 +271,8 @@ def afternoon_plan(night=None, lastnight=None):
     # eventually we want this to be ~totally different, so while this isn't
     # really the behavior we'd want on the mountain, I'm leaving it until
     # we have something much different.
-    planner.save('planner_afternoon_{}.fits'.format(night))
-    scheduler.save('scheduler_{}.fits'.format(night))
+    # planner.set_donefrac(donefrac, lastexpid)
+    planner.save('desi-status_{}.fits'.format(night_to_str(night)))
 
 
 if __name__ == "__main__":

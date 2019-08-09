@@ -235,6 +235,13 @@ def local_noon_on_date(day):
     return astropy.time.Time(utc_noon)
 
 
+def get_current_date():
+    """Give current date following get_date convention (date changes at noon).
+    """
+    date = datetime.datetime.now().astimezone()
+    return get_date(date)
+
+
 def get_date(date):
     """Convert different date specifications into a datetime.date object.
 
