@@ -28,7 +28,7 @@ import desisurvey.tiles
 # survey validation and the 5-year main survey, so should
 # not normally need to be changed, except for testing.
 START_DATE = datetime.date(2019, 1, 1)
-STOP_DATE = datetime.date(2025, 12, 31)
+STOP_DATE  = datetime.date(2025, 12, 31)
 
 _ephem = None
 
@@ -141,7 +141,7 @@ class Ephemerides(object):
 
         # Restore ephemerides from a FITS table if requested.
         if restore is not None:
-            self._table = astropy.table.Table.read(restore)
+            self._table = astropy.table.Table.read(restore)            
             assert self._table.meta['START'] == str(start_date)
             assert self._table.meta['STOP'] == str(stop_date)
             assert len(self._table) == num_nights
