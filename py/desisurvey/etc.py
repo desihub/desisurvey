@@ -220,37 +220,37 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
 
 
 def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airmass):
-    """ calculate exposure time correction factor based on airmass and moon and sun 
+    """ calculate exposure time correction factor based on airmass, moon, and sun 
     parameters. 
 
-    Parameters
-    ----------
-    moon_frac : float
-        Illuminated fraction of the moon, in the range [0,1].
-    moon_alt : float
-        Altitude angle of the moon above the horizon in degrees, in the
-        range [-90,90].
-    moon_sep : array
-        Separation angle between field center and moon in degrees, in the
-        range [0,180].
-    sun_alt : float
-        Altitude angle of the sunin degrees
-    sun_sep : array 
-        Separation angle between field center and sun in degrees
-    airmass : array 
-        Airmass used for observing this tile, must be >= 1.
+    :param moon_frac: 
+        Illuminated fraction of the moon within range [0,1].
 
-    Returns
-    -------
-    float
-        Dimensionless factor that exposure time should be increased to
+    :param moon_alt:
+        Altitude angle of the moon above the horizon in degrees within range [-90,90].
+
+    :param moon_sep:
+        Array of separation angles between field center and moon in degrees within the
+        range [0,180].
+
+    :param sun_alt:
+        Altitude angle of the sunin degrees
+
+    :param sun_sep: 
+        Arry of separations angles between field center and sun in degrees
+
+    :param airmass:
+        Array of airmass used for observing this tile, must be >= 1.
+
+    :returns expfactors: 
+        Dimensionless factors that exposure time should be increased to
         account for increased sky brightness due to scattered moonlight.
         Will be 1 when the moon is below the horizon.
-
     """
-    moon_sep = moon_sep.flatten() 
-    sun_sep = sun_sep.flatten()
-    airmass = airmass.flatten() 
+    # check inputs 
+    moon_sep    = moon_sep.flatten() 
+    sun_sep     = sun_sep.flatten()
+    airmass     = airmass.flatten() 
     if (moon_frac < 0) or (moon_frac > 1):
         raise ValueError('Got invalid moon_frac outside [0,1].')
     if (moon_alt < -90) or (moon_alt > 90):
@@ -260,149 +260,67 @@ def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airm
     if airmass.min() < 1:
         raise ValueError('Got invalid airmass < 1.')
 
+    # check size of inputs  
     assert len(airmass) == len(moon_sep) 
     assert len(airmass) == len(sun_sep) 
-
-    # No exposure penalty when moon is below the horizon and sun is below -20.
+    
+    # nothing happens when moon is below the horizon and sun is below -20.
     if moon_alt < 0 and sun_alt < -20.:
         return np.ones(len(airmass))  
 
-    moon_fracs = np.repeat(moon_frac, len(airmass)) 
-    moon_alts = np.repeat(moon_alt, len(airmass))
-    sun_alts = np.repeat(sun_alt, len(airmass))
+    thetas = np.zeros((len(moon_sep), 6))
+    thetas[:,0] = airmass
+    thetas[:,1] = moon_ill
+    thetas[:,2] = moon_alt
+    thetas[:,3] = moon_sep
+    thetas[:,4] = sun_alt
+    thetas[:,5] = sun_sep 
 
-    if sun_alt >= -20.: # with twilight 
-        expfactor = texp_factor_bright_twi(airmass, moon_fracs, moon_alts, moon_sep, sun_alts, sun_sep)
-    else:  # without non-twilight model 
-        expfactor = texp_factor_bright_notwi(airmass, moon_fracs, moon_alts, moon_sep)
-    return np.clip(expfactor, 1., None) 
-
-
-def texp_factor_bright_notwi(airmass, moonill, moonalt, moonsep): 
-    ''' exposure time correction factor for birhgt sky without twilight. 
-    sky surface brightness is calculated using stream-lined verison of 
-    `specsim.atmosphere.Atmosphere` surface brightness calculation. The
-    factor is calculated by taking the ratio: 
-    (median sky surface brightness 4000A < w < 5000A)/(median nominal dark sky surface brightness 4000A < w < 5000A)
-
-    '''
-    # translate moon parameter inputs 
-    moon_phase = np.arccos(2.*moonill - 1)/np.pi
-    moon_zenith = (90. - moonalt) * u.deg
-    separation_angle = moonsep * u.deg
-
-    # load supporting data  
-    fsky = astropy.utils.data._find_pkg_data_path('data/data4skymodel.p') 
-    skydata = pickle.load(open(fsky, 'rb')) 
-    wavelength              = skydata['wavelength'] 
-    Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
-    extinction_array        = skydata['extinction_array'] 
-    moon_spectrum           = skydata['moon_spectrum'] 
-
-    i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
-    extinction = extinction_array[i_airmass,:] 
-    #extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
-
-    Imoon = _Imoon(wavelength, moon_spectrum, extinction_array, #extinction_coefficient, extinction,
-            airmass, moon_zenith, separation_angle, moon_phase)
-
-    Isky = extinction * Idark.value + Imoon.value # sky surface brightness 
-
-    #wlim = ((wavelength.value > 4000.) & (wavelength.value < 5000.)) # ratio over 4000 - 5000 A  
-    print('bright sky=', np.median(Isky, axis=1)[:5])
-    return np.median(Isky, axis=1) / _dark_sky_4500A
+    if sun_alt >= -20.: 
+        # exposure factor during twilight 
+        _expfactors = texp_factor_bright(thetas, condition='twilight') 
+    else:  
+        # exposure factor during non-twilight 
+        _expfactors = texp_factor_bright(thetas[:,:4], condition='not_twilight')
+    expfactors = np.clip(_expfactors, 1., None) 
+    return expfactor
 
 
-def texp_factor_bright_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep): 
-    ''' exposure time correction factor for birhgt sky with twilight. 
-    sky surface brightness is calculated using stream-lined verison of 
-    `specsim.atmosphere.Atmosphere` surface brightness calculation. The
-    factor is calculated by taking the ratio: 
-    (sky surface brightness @ 4500A)/(nominal dark sky surface brightness @ 4500A)
-
-    '''
-    # translate moon parameter inputs 
-    moon_phase = np.arccos(2.*moonill - 1)/np.pi
-    moon_zenith = (90. - moonalt) * u.deg
-    separation_angle = moonsep * u.deg
-
-    # load supporting data  
-    fsky = astropy.utils.data._find_pkg_data_path('data/data4skymodel.p') 
-    skydata = pickle.load(open(fsky, 'rb')) 
-    wavelength              = skydata['wavelength'] 
-    Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
-    extinction_array        = skydata['extinction_array'] 
-    moon_spectrum           = skydata['moon_spectrum'] 
+def texp_factor_bright(thetas, condition=None): 
+    ''' exposure time correction factor for bright sky during non-twilight
+    from a GP emulator fit to correction factors calculated from bright sky
+    surface brightness calculations.  
     
-    i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
-    extinction = extinction_array[i_airmass,:] 
-    #extinction = 10 ** (-extinction_coefficient * np.atleast_1d(airmass)[:,None] / 2.5)
+    :param thetas: 
+        If condition == 'twilight', (N x 6) array specifying airmass, moon_ill, 
+        moon_alt, moon_sep, sun_alt, sun_sep. cA
+        If condition == 'not_twilihgt', (N x 4) array specifying airmass, moon_ill, 
+        moon_alt, moon_sep
 
-    Imoon = _Imoon(wavelength, moon_spectrum, extinction_array, 
-            airmass, moon_zenith, separation_angle, moon_phase)
-
-    Isky = extinction * Idark.value + Imoon.value # sky surface brightness 
-
-    # load supporting data for twilight calculation  
-    t0 = skydata['t0']
-    t1 = skydata['t1']
-    t2 = skydata['t2']
-    t3 = skydata['t3']
-    t4 = skydata['t4']
-    c0 = skydata['c0'] 
-    w_twi = skydata['wavelength_twi']
-
-    Itwi = ((t0 * np.abs(np.atleast_1d(sunalt)[:,None]) +      # CT2
-            t1 * np.abs(np.atleast_1d(sunalt)[:,None])**2 +   # CT1
-            t2 * np.abs(np.atleast_1d(sunsep)[:,None])**2 +   # CT3
-            t3 * np.abs(np.atleast_1d(sunsep)[:,None])        # CT4
-            ) * np.exp(-t4 * np.atleast_1d(airmass)[:,None]) + c0) / np.pi 
-
-    I_twi_interp = interp1d(10. * w_twi, Itwi, fill_value='extrapolate')
-    Isky += np.clip(I_twi_interp(wavelength.value), 0, None) 
-
-    print('bright sky=', np.median(Isky, axis=1)[:5])
-    return np.median(Isky, axis=1) / _dark_sky_4500A
-
-
-def _Imoon(wavelength, moon_spectrum, extinction_array, airmass, moon_zenith, separation_angle, moon_phase): 
-    ''' moon surface brightness. stream-lined verison of specsim.atmosphere.Moon surface brightness
-    calculation with re-fit KS coefficients hardcoded in
+    :param condition: 
+        Specifies twilight or not. (default: None) 
+    
+    :return texp_factor: 
+        exposure time correction factor
     '''
-    KS_CR = 458173.535128
-    KS_CM0 = 5.540103
-    KS_CM1 = 178.141045
+    # read in saved GP parameters 
+    f_gp_param = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.params.hdf5' % cond) 
+    gp_param = h5py.File(os.path.join(f_gp_param), 'r') 
+    _alpha  = gp_param['alpha'][...]
+    _Xtrain = gp_param['Xtrain'][...]
+    # read in pickled GP kernel  
+    f_gp_kernel = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.kernel.p' % cond) 
+    _kern   = pickle.load(open(f_gp_kernel, 'rb'))
+    
+    # load parametes and kernel to GP 
+    gp = GPR()
+    gp.alpha_ = _alpha_true
+    gp.kernel_ = _kern_true
+    gp.X_train_ = _Xtrain_true
+    gp._y_train_mean = [0] 
 
-    obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
-    _vband = speclite.filters.load_filter('bessell-V')
-    V = _vband.get_ab_magnitude(moon_spectrum, wavelength)
-
-    extinction = extinction_array[0,:] #10 ** (-extinction_coefficient / 2.5)
-
-    # Calculate the V-band surface brightness of scattered moonlight.
-    scattered_V = krisciunas_schaefer_free(
-        obs_zenith, moon_zenith, separation_angle,
-        moon_phase, _vband_extinction, KS_CR, KS_CM0, KS_CM1)
-
-    # Calculate the wavelength-dependent extinction of moonlight
-    # scattered once into the observed field of view. 
-    scattering_airmass = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
-    i_airmass = (np.round((scattering_airmass - 1.)/0.04)).astype(int) 
-    _extinction_scatter = extinction_array[i_airmass,:] 
-
-    i_airmass = (np.round((airmass - 1.)/0.04)).astype(int) 
-    _extinction = extinction_array[i_airmass,:] 
-
-    extinction = (_extinction_scatter * (1. - _extinction)) 
-    surface_brightness = moon_spectrum * extinction
-
-    # Renormalized the extincted spectrum to the correct V-band magnitude.
-    raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
-    area = 1 * u.arcsec ** 2
-    scale = 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
-    u_sb = surface_brightness.unit
-    _sb = (surface_brightness.value * scale.value[:,None] * u_sb / u.arcsec**2).to(1e-17 * u.erg / (u.angstrom * u.arcsec**2 * u.cm**2 * u.s))
-    return _sb 
+    texp_factor = gp.predict(np.atleast_2d(thetas))
+    return texp_factor 
 
 
 def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
