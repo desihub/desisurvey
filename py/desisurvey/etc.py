@@ -10,6 +10,7 @@ implemented: twilight sky brightness, clouds, variable OH sky brightness.
 """
 from __future__ import print_function, division
 
+import h5py 
 import pickle
 import numpy as np
 from scipy.interpolate import interp1d
@@ -270,7 +271,7 @@ def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airm
 
     thetas = np.zeros((len(moon_sep), 6))
     thetas[:,0] = airmass
-    thetas[:,1] = moon_ill
+    thetas[:,1] = moon_frac
     thetas[:,2] = moon_alt
     thetas[:,3] = moon_sep
     thetas[:,4] = sun_alt
@@ -283,7 +284,7 @@ def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airm
         # exposure factor during non-twilight 
         _expfactors = texp_factor_bright(thetas[:,:4], condition='not_twilight')
     expfactors = np.clip(_expfactors, 1., None) 
-    return expfactor
+    return expfactors
 
 
 def texp_factor_bright(thetas, condition=None): 
@@ -304,19 +305,19 @@ def texp_factor_bright(thetas, condition=None):
         exposure time correction factor
     '''
     # read in saved GP parameters 
-    f_gp_param = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.params.hdf5' % cond) 
-    gp_param = h5py.File(os.path.join(f_gp_param), 'r') 
+    f_gp_param = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.params.hdf5' % condition) 
+    gp_param = h5py.File(f_gp_param, 'r') 
     _alpha  = gp_param['alpha'][...]
     _Xtrain = gp_param['Xtrain'][...]
     # read in pickled GP kernel  
-    f_gp_kernel = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.kernel.p' % cond) 
+    f_gp_kernel = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.kernel.p' % condition) 
     _kern   = pickle.load(open(f_gp_kernel, 'rb'))
     
     # load parametes and kernel to GP 
     gp = GPR()
-    gp.alpha_ = _alpha_true
-    gp.kernel_ = _kern_true
-    gp.X_train_ = _Xtrain_true
+    gp.alpha_ = _alpha
+    gp.kernel_ = _kern
+    gp.X_train_ = _Xtrain
     gp._y_train_mean = [0] 
 
     texp_factor = gp.predict(np.atleast_2d(thetas))
