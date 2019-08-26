@@ -50,12 +50,7 @@ import desisurvey.scheduler
 import desisurvey.etc
 import desisurvey.utils
 import desisurvey.config
-import datetime
 from astropy.io import ascii
-
-
-def night_to_str(night):
-    return night.isoformat().replace('-', '')
 
 
 class QueuedList():
@@ -114,7 +109,7 @@ class NTS():
         self.rules = desisurvey.rules.Rules()
         # should look for rules file in obsplan dir?
         try:
-            nightstr = night_to_str(self.night)
+            nightstr = desisurvey.utils.night_to_str(self.night)
             self.planner = desisurvey.plan.Planner(
                 self.rules,
                 restore='desi-status_{}.fits'.format(nightstr))
@@ -253,9 +248,9 @@ def afternoon_plan(night=None, lastnight=None):
     # should look for rules file in obsplan dir?
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
-            rules, restore='desi-status_{}.fits' % lastnight)
+            rules, restore='desi-status_{}.fits'.format(lastnight))
         scheduler = desisurvey.scheduler.Scheduler(
-            restore='desi-status_{}.fits')
+            restore='desi-status_{}.fits'.format(lastnight))
     else:
         planner = desisurvey.plan.Planner(rules)
         scheduler = desisurvey.scheduler.Scheduler()
@@ -272,7 +267,8 @@ def afternoon_plan(night=None, lastnight=None):
     # really the behavior we'd want on the mountain, I'm leaving it until
     # we have something much different.
     # planner.set_donefrac(donefrac, lastexpid)
-    planner.save('desi-status_{}.fits'.format(night_to_str(night)))
+    planner.save('desi-status_{}.fits'.format(
+        desisurvey.utils.night_to_str(night)))
 
 
 if __name__ == "__main__":
@@ -287,5 +283,5 @@ if __name__ == "__main__":
                         help='night to restore, default: start fresh.',
                         default=None)
 
-    parser.parse_args()
-    afternoon_plan(parser.night, parser.lastnight)
+    args = parser.parse_args()
+    afternoon_plan(args.night, args.lastnight)
