@@ -112,9 +112,9 @@ class NTS():
             nightstr = desisurvey.utils.night_to_str(self.night)
             self.planner = desisurvey.plan.Planner(
                 self.rules,
-                restore='desi-status_{}.fits'.format(nightstr))
+                restore='desi-status-{}.fits'.format(nightstr))
             self.scheduler = desisurvey.scheduler.Scheduler(
-                restore='desi-status_{}.fits'.format(nightstr))
+                restore='desi-status-{}.fits'.format(nightstr))
             self.queuedlist = QueuedList(
                 config.get_path('queued-{}.dat'.format(nightstr)))
         except:
@@ -221,67 +221,3 @@ class NTS():
         self.queuedlist.add(tileid)
 
         return selection
-
-
-def afternoon_plan(night=None, lastnight=None):
-    """
-    Perform daily afternoon planning.
-
-    Afternoon planning identifies tiles available for observation and assigns
-    priorities.  It must be performed before the NTS can identify new tiles to
-    observe.
-
-    Params
-    ------
-    night : str, ISO 8601.  The night to plan.  Default tonight.
-
-    lastnight : str, ISO 8601.  The previous planned night.  Used for restoring
-        the previous completion status of all tiles.  Defaults to not
-        restoring status, i.e., all previous tile completion information is
-        ignored!
-    """
-    if night is None:
-        night = desisurvey.utils.get_current_date()
-
-    night = desisurvey.utils.get_date(night)
-    rules = desisurvey.rules.Rules()
-    # should look for rules file in obsplan dir?
-    if lastnight is not None:
-        planner = desisurvey.plan.Planner(
-            rules, restore='desi-status_{}.fits'.format(lastnight))
-        scheduler = desisurvey.scheduler.Scheduler(
-            restore='desi-status_{}.fits'.format(lastnight))
-    else:
-        planner = desisurvey.plan.Planner(rules)
-        scheduler = desisurvey.scheduler.Scheduler()
-    # restore: maybe check directory, and restore if file present?  EFS
-    # planner.save(), scheduler.save()
-    # planner.restore(), scheduler.restore()
-    planner.afternoon_plan(desisurvey.utils.get_date(night),
-                           scheduler.completed)
-    # currently afternoon planning checks to see what tiles have been marked
-    # as done, and what new tiles may now be fiberassigned.
-    # currently moves tiles closer to fiber assignment each time it's called
-    # (countdon decreases), depending on fiber_assign_cadence, etc.
-    # eventually we want this to be ~totally different, so while this isn't
-    # really the behavior we'd want on the mountain, I'm leaving it until
-    # we have something much different.
-    # planner.set_donefrac(donefrac, lastexpid)
-    planner.save('desi-status_{}.fits'.format(
-        desisurvey.utils.night_to_str(night)))
-
-
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser(
-        description='Perform afternoon planning.',
-        epilog='EXAMPLE: %(prog)s --night 2020-01-01')
-    parser.add_argument('--night', type=str,
-                        help='night to plan, default: tonight',
-                        default=None)
-    parser.add_argument('--lastnight', type=str,
-                        help='night to restore, default: start fresh.',
-                        default=None)
-
-    args = parser.parse_args()
-    afternoon_plan(args.night, args.lastnight)

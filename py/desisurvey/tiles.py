@@ -171,6 +171,7 @@ class Tiles(object):
         scalar = np.isscalar(tileID)
         tileID = np.atleast_1d(tileID)
         idx = np.searchsorted(self.tileID, tileID)
+        idx = np.clip(idx, 0, len(self.tileID)-1)
         bad = self.tileID[idx] != tileID
         if not return_mask and np.any(bad):
             raise ValueError('Invalid tile ID(s): {}.'.format(tileID[bad]))

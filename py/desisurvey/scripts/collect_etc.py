@@ -74,8 +74,8 @@ def scan_directory(dirname):
 
 def write_tile_exp(tiles, exps, fn):
     from astropy.io import fits
-    fits.writeto(fn, tiles)
-    fits.append(fn, tiles)
+    fits.writeto(fn, tiles, header=fits.Header(dict(EXTNAME='TILES')))
+    fits.append(fn, exps, header=fits.Header(dict(EXTNAME='EXPS')))
 
 
 if __name__ == "__main__":

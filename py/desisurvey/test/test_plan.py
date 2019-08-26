@@ -24,7 +24,8 @@ class TestPlan(Tester):
             for i in range(num_nights):
                 night = self.start + datetime.timedelta(i)
                 # Run afternoon plan using original and restored objects.
-                avail, pri = plan.afternoon_plan(night, completed)
+                avail, pri = plan.afternoon_plan(night, completed,
+                                                 simulate=True)
                 if plan2 is not None:
                     # Check that the restored planner gives identical results.
                     avail2, pri2 = plan2.afternoon_plan(night, completed)

@@ -30,7 +30,8 @@ class TestScheduler(Tester):
             self.assertTrue(np.all(scheduler.snr2frac == scheduler2.snr2frac))
             self.assertTrue(np.all(scheduler.completed == scheduler2.completed))
             self.assertTrue(np.all(scheduler.completed_by_pass == scheduler2.completed_by_pass))
-            avail, pri = planner.afternoon_plan(night, scheduler.completed)
+            avail, pri = planner.afternoon_plan(night, scheduler.completed,
+                                                simulate=True)
             # Run both schedulers in parallel.
             scheduler.update_tiles(avail, pri)
             scheduler.init_night(night)

@@ -78,7 +78,7 @@ class Scheduler(object):
             fullname = config.get_path(restore)
             if not os.path.exists(fullname):
                 raise RuntimeError('Cannot restore scheduler from non-existent "{}".'.format(fullname))
-            t = astropy.table.Table.read(fullname, hdu='PLAN')
+            t = astropy.table.Table.read(fullname, hdu='STATUS')
             self.snr2frac = t['DONEFRAC'].copy()
             self.lastexpid = t['LASTEXPID'].copy()
             if self.snr2frac.shape != (ntiles,):
@@ -410,6 +410,7 @@ class Scheduler(object):
             self.completed[idx] = True
             passidx = self.tiles.pass_index[self.tiles.passnum[idx]]
             self.completed_by_pass[passidx] += 1
+
         # Remember the last tile observed this night.
         self.last_idx = idx
 
