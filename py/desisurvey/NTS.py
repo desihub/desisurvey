@@ -51,7 +51,8 @@ import desisurvey.etc
 import desisurvey.utils
 import desisurvey.config
 from astropy.io import ascii
-
+from astropy import coordinates
+from astropy import units as u
 
 class QueuedList():
     def __init__(self, fn):
@@ -70,6 +71,32 @@ class QueuedList():
         self.queued.append(tileid)
         open(self.fn, 'a').write(str(tileid)+'\n')
         # could work harder to make this atomic.
+
+
+def azinzrange(az, low, high):
+    """Return whether azimuth is between low and high, trying to respect the
+    360 deg boundary.
+
+    We transform high so that it is in the range [low, low+360].  We then
+    transform az likewise, so that the test can be done as low <= az <= high.
+    In this scheme, azinrange(0, 2, 1) = True, since low, high = [2, 1] is 
+    interpreted as all angles between 2 and 361 degrees.
+
+    Parameters
+    ----------
+    az: azimuth (deg)
+    low: lower bound on azimuth (deg)
+    high: upper bound on azimuth (deg)
+
+    Returns
+    -------
+    Array of same shape as az, indicating if az is between low and high.
+    """
+
+    if low > high:
+        high = ((high - low) % 360) + low
+    az = ((az - low) % 360) + low
+    return (az >= low) & (az <= high)
 
 
 class NTS():
@@ -127,7 +154,7 @@ class NTS():
 
     def next_tile(self, mjd=None, skylevel=None, transparency=None,
                   seeing=None, program=None, lastexp=None, fiber_assign=None,
-                  previoustiles=[]):
+                  previoustiles=[], azrange=None):
         """
         Select the next tile.
 
@@ -160,6 +187,7 @@ class NTS():
         maxtime : float, do not observe for longer than maxtime (seconds)
         fiber_assign : str, file name of fiber_assign file
         foundtile : bool, a valid tile was found
+        azrange : [lowaz, highaz], azimuth of tile must be in this range
         """
 
         if fiber_assign is not None:
@@ -170,7 +198,8 @@ class NTS():
 
         if mjd is None:
             from astropy import time
-            mjd = time.Time.now().mjd
+            now = time.Time.now()
+            mjd = now.mjd
             print('Warning: no time specified, using current time, MJD: %f' %
                   mjd)
         seeing = self.default_seeing if seeing is None else seeing
@@ -182,11 +211,21 @@ class NTS():
         previoustiles = previoustiles + self.queuedlist.queued
         ind, mask = self.scheduler.tiles.index(previoustiles,
                                                return_mask=True)
+        save_in_night_pool = self.scheduler.in_night_pool[ind[mask]].copy()
         self.scheduler.in_night_pool[ind[mask]] = False
         # remove previous tiles from possible tiles to schedule
-        # note: this will be remembered until NTS is restarted!  EFS
+        if azrange is not None:
+            tra = self.scheduler.tiles.tileRA
+            tdec = self.scheduler.tiles.tileDEC
+            altazframe = desisurvey.utils.get_observer(now)
+            coordrd = coordinates.ICRS(ra=tra*u.deg, dec=tdec*u.deg)
+            coordaz = coordrd.transform_to(altazframe)
+            az = coordaz.az.to(u.deg).value
+            self.scheduler.in_night_pool &= azinrange(az, azrange)
+            
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program)
+        self.scheduler.in_night_pool[ind[mask]] = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
         if tileid is None:
