@@ -325,7 +325,7 @@ def qa(desitiles, nside=1024, npts=1000, compare=False):
     theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
     la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
     m5pass = (desitiles['pass'] <= 4)
-    m0 = desitiles['pass'] == 0
+    m0 = desitiles['centerid'] == desitiles['tileid']
     ran, decn = logradecoffscheme(desitiles['ra'][m0], 
                                   desitiles['dec'][m0], dx=0.6, ang=24)
     tilerd = {}
@@ -368,7 +368,8 @@ def qa(desitiles, nside=1024, npts=1000, compare=False):
     tim = tim.reshape(rg.shape)
     p.imshow(tim.T, cmap='binary', origin='lower', 
              extent=[-delt-dpts/2, delt+dpts/2, -delt-dpts/2, delt+dpts/2])
-    p.plot(((ran[monecen]+180)%360)-180, decn[monecen], 'ro')
+    p.scatter(((ran[monecen]+180)%360)-180, decn[monecen], 
+              c=desitiles['pass'][monecen])
     p.xlim((-delt, delt))
     p.ylim((-delt, delt))
     p.gca().set_aspect('equal')
@@ -463,8 +464,65 @@ def qa(desitiles, nside=1024, npts=1000, compare=False):
         p.xlabel('radius (mm)')
     p.savefig('adjmatrix.png', dpi=200)
     p.savefig('adjmatrix.pdf', dpi=200)
-        
-        
+
+
+def add_info_fields(tiles, gaiadensitymapfile, 
+                    tycho2file, covfile):
+    import healpy
+    nside = 512
+    theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
+    la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
+    try:
+        from desitarget.mock import sfdmap
+        ebva = sfdmap.ebv(la, ba, frame='galactic', 
+                          mapdir=os.getenv('DUST_DIR')+'/maps', scaling=1)
+    except:
+        import dust
+        ebva = dust.getval(la, ba, map='sfd')
+    from astropy.coordinates import SkyCoord
+    from astropy import units as u
+    coord = SkyCoord(ra=tiles['ra']*u.deg, dec=tiles['dec']*u.deg, frame='icrs')
+    coordgal = coord.galactic
+    lt, bt = coordgal.l.value, coordgal.b.value
+    uvt = lb2uv(lt, bt)
+    from astropy.io import fits
+    gaiadens = fits.getdata(gaiadensitymapfile).copy()
+    cov = fits.getdata(covfile).copy()
+    fprad = 1.605
+    for i in range(len(tiles)):
+        ind = healpy.query_disc(nside, uvt[i], fprad*numpy.pi/180.)
+        tiles['ebv_med'][i] = numpy.median(ebva[ind])
+        tiles['star_density'][i] = numpy.median(gaiadens[ind])
+
+    brightstars = fits.getdata(tycho2file)
+    mb, mt, dbt = match_radec(brightstars['ra'], brightstars['dec'], 
+                              tiles['ra'], tiles['dec'], fprad)
+    s = numpy.lexsort((brightstars['vtmag'][mb], mt))
+    mt, mb, dbt = mt[s], mb[s], dbt[s]
+    add = numpy.zeros(len(tiles), dtype=[
+            ('brightra', '3f8'), ('brightdec', '3f8'), ('brightvtmag', '3f4'),
+            ('centerid', 'i4'), ('imagefrac_g', 'f4'), ('imagefrac_r', 'f4'),
+            ('imagefrac_z', 'f4'), ('imagefrac_gr', 'f4'), 
+            ('imagefrac_grz', 'f4'), 
+            ('in_imaging', 'f4')])
+    add['brightvtmag'] = 999.
+    for f, l in subslices(mt):
+        end = numpy.clip(l-f, 0, 3)
+        l = numpy.clip(l, f, f+3)
+        ind = mt[f]
+        add['brightra'][ind, 0:end] = brightstars['ra'][mb[f:l]]
+        add['brightdec'][ind, 0:end] = brightstars['dec'][mb[f:l]]
+        add['brightvtmag'][ind, 0:end] = brightstars['vtmag'][mb[f:l]]
+
+    uvt = lb2uv(tiles['ra'], tiles['dec'])
+    for i in range(len(tiles)):
+        ind = healpy.query_disc(nside, uvt[i], fprad*numpy.pi/180.)
+        for f in ['g', 'r', 'z', 'gr', 'grz']:
+            val = numpy.mean(cov['%s_coverage' % f][ind])
+            add['imagefrac_%s' % f][i] = val
+    return add
+
+
 def maketilefile(desitiles, gaiadensitymapfile, tycho2file, covfile,
                  firstyearoptimized=True):
     """Make tile file.
@@ -479,8 +537,6 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file, covfile,
         firstyearoptimized: bool, use scheme optimized for early full depth
           coverage.
     """
-    import healpy
-    nside = 512  # hack: needs to match gaianumdens map below.
     m0 = desitiles['pass'] == 0
     ran, decn = logradecoffscheme(desitiles['ra'][m0], 
                                   desitiles['dec'][m0], dx=0.6, ang=24,
@@ -503,58 +559,12 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file, covfile,
         [desitilesnew['in_desi'][mc]]*10)
     # just repeat identically for each pass; all passes are close to
     # pass = 0 'centers'.
-    theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
-    la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
-    try:
-        from desitarget.mock import sfdmap
-        ebva = sfdmap.ebv(la, ba, frame='galactic', 
-                          mapdir=os.getenv('DUST_DIR')+'/maps', scaling=1)
-    except:
-        import dust
-        ebva = dust.getval(la, ba, map='sfd')
-    from astropy.coordinates import SkyCoord
-    from astropy import units as u
-    coord = SkyCoord(ra=ran*u.deg, dec=decn*u.deg, frame='icrs')
-    coordgal = coord.galactic
-    lt, bt = coordgal.l.value, coordgal.b.value
-    uvt = lb2uv(lt, bt)
-    from astropy.io import fits
-    gaiadens = fits.getdata(gaiadensitymapfile).copy()
-    cov = fits.getdata(covfile).copy()
-    fprad = 1.605
-    for i in range(len(desitilesnew)):
-        ind = healpy.query_disc(nside, uvt[i], fprad*numpy.pi/180.)
-        desitilesnew['ebv_med'][i] = numpy.median(ebva[ind])
-        desitilesnew['star_density'][i] = numpy.median(gaiadens[ind])
 
-    brightstars = fits.getdata(tycho2file)
-    mb, mt, dbt = match_radec(brightstars['ra'], brightstars['dec'], 
-                              ran, decn, fprad)
-    s = numpy.lexsort((brightstars['vtmag'][mb], mt))
-    mt, mb, dbt = mt[s], mb[s], dbt[s]
-    desitilesnew_add = numpy.zeros(len(ran), dtype=[
-            ('brightra', '3f8'), ('brightdec', '3f8'), ('brightvtmag', '3f4'),
-            ('centerid', 'i4'), ('imagefrac_g', 'f4'), ('imagefrac_r', 'f4'),
-            ('imagefrac_z', 'f4'), ('imagefrac_gr', 'f4'), 
-            ('imagefrac_grz', 'f4'), 
-            ('in_imaging', 'f4')])
+    desitilesnew_add = add_info_fields(desitilesnew, gaiadensitymapfile, 
+                                       tycho2file, covfile)
     from numpy.lib import recfunctions
     desitilesnew = recfunctions.merge_arrays((desitilesnew, desitilesnew_add),
                                              flatten=True)
-    for f, l in subslices(mt):
-        end = numpy.clip(l-f, 0, 3)
-        l = numpy.clip(l, f, f+3)
-        ind = mt[f]
-        desitilesnew['brightra'][ind, 0:end] = brightstars['ra'][mb[f:l]]
-        desitilesnew['brightdec'][ind, 0:end] = brightstars['dec'][mb[f:l]]
-        desitilesnew['brightvtmag'][ind, 0:end] = brightstars['vtmag'][mb[f:l]]
-
-    uvt = lb2uv(desitilesnew['ra'], desitilesnew['dec'])
-    for i in range(len(desitilesnew)):
-        ind = healpy.query_disc(nside, uvt[i], fprad*numpy.pi/180.)
-        for f in ['g', 'r', 'z', 'gr', 'grz']:
-            val = numpy.mean(cov['%s_coverage' % f][ind])
-            desitilesnew['imagefrac_%s' % f][i] = val
 
     p = desitilesnew['pass']
     desitilesnew['program'][p == 0] = 'GRAY'
@@ -576,6 +586,13 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file, covfile,
     centerind = desitilesnew['centerid'] - 1
     desitilesnew['in_imaging'] = desitilesnew['imagefrac_grz'][centerind] > 0.9
     dc = desitilesnew['dec'][centerind]
+
+    from astropy.coordinates import SkyCoord
+    from astropy import units as u
+    coord = SkyCoord(ra=desitilesnew['ra']*u.deg, 
+                     dec=desitilesnew['dec']*u.deg, frame='icrs')
+    coordgal = coord.galactic
+    lt, bt = coordgal.l.value, coordgal.b.value
     lc = lt[centerind]
     bc = bt[centerind]
     desitilesnew['in_desi'] = (
@@ -656,6 +673,28 @@ def extraqa(tiles):
     p.savefig('exposefac.png')
     p.savefig('exposefac.pdf')
 
+    p.figure('Imaging coverage')
+    p.clf()
+    setup_print((8, 5), scalefont=1.2)
+    p.subplots_adjust(left=0.125, bottom=0.1)
+    m0 = tiles['centerid'] == tiles['tileid']
+    mdesi = tiles['in_desi'] != False
+    p.scatter(((tiles['ra'][m0 & mdesi]+60)%360)-60, tiles['dec'][m0 & mdesi], 
+              c=tiles['imagefrac_grz'][m0 & mdesi], marker='s', s=8, 
+              vmin=0, vmax=1)
+    p.scatter(((tiles['ra'][m0 & ~mdesi]+60)%360)-60, tiles['dec'][m0 & ~mdesi], 
+              c=tiles['imagefrac_grz'][m0 & ~mdesi], marker='^', s=4, vmin=0,
+              vmax=1)
+    cbar = p.colorbar()
+    cbar.set_label('$grz$ coverage fraction')
+    p.xlabel(r'$\alpha$ ($\degree$)')
+    p.ylabel(r'$\delta$ ($\degree$)')
+    # p.title('DESI Imaging Coverage')
+    p.ylim(-30, 90)
+    p.xlim(300, -60)
+    p.savefig('imagingcoverage.pdf')
+    p.savefig('imagingcoverage.png')
+
     p.figure('Tile centers')
     p.clf()
     setup_print((8, 5), scalefont=1.2)
@@ -685,7 +724,7 @@ def extraqa(tiles):
                      frame='icrs')
     coordgal = coord.galactic
     lt, bt = coordgal.l.value, coordgal.b.value
-    m0 = (tiles['pass'] == 0)
+    m0 = (tiles['centerid'] == tiles['tileid'])
     mindesi = (tiles['in_desi'] != 0)
     p.plot(bt[m0 & ~mindesi], tiles['star_density'][m0 & ~mindesi], 'ro', 
            markersize=0.5)
@@ -701,12 +740,31 @@ def extraqa(tiles):
     npts = 10**6
     uv = numpy.random.randn(npts, 3)
     rr, dd = uv2lb(uv)
+    mn = bt > 0
+    ms = bt < 0
+    mrn, mtn, drtn = match_radec(rr, dd, tiles['ra'][m5 & mn],
+                                 tiles['dec'][m5 & mn], 1.6)
+    mrs, mts, drts = match_radec(rr, dd, tiles['ra'][m5 & ms],
+                                 tiles['dec'][m5 & ms], 1.6)
+    ncovern = numpy.bincount(mrn, minlength=len(rr))
+    ncovers = numpy.bincount(mrs, minlength=len(rr))
+    print('North area:', (numpy.sum(ncovern >= 4)*4*numpy.pi*
+                          (180/numpy.pi)**2/npts))
+    print('South area:', (numpy.sum(ncovers >= 4)*4*numpy.pi*
+                          (180/numpy.pi)**2/npts))
+
     mr, mt, drt = match_radec(rr, dd, tiles['ra'][m5], tiles['dec'][m5], 1.6)
     ncover = numpy.bincount(mr, minlength=len(rr))
+
     for i in range(10):
         print(r'%4d  &  %6.0f  \\' % 
               (i, numpy.sum(ncover >= i)*4*numpy.pi*(180./numpy.pi)**2/npts))
-    
+
+    m0 = (tiles['in_desi'] != 0) & (tiles['centerid'] == tiles['tileid'])
+    mrc, mtc, drtc = match_radec(rr, dd, tiles['ra'][m0], tiles['dec'][m0], 1.6)
+    print('Average number of coverings for points within 1.6 deg of pass=3:', 
+          numpy.mean(ncover[mrc]))
+
 
 def airmass(ha, dec, lat):
     az, alt = rotate(ha, dec, 0., lat)
