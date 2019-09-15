@@ -73,7 +73,7 @@ class QueuedList():
         # could work harder to make this atomic.
 
 
-def azinzrange(az, low, high):
+def azinrange(az, low, high):
     """Return whether azimuth is between low and high, trying to respect the
     360 deg boundary.
 
