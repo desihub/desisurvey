@@ -7,7 +7,7 @@ desisurvey change log
 
 * No changes yet (but likely to include more AP/NTS/ICS integration)
 
-0.12.0 (unreleased)
+0.12.0 (2019-08-09)
 -------------------
 
 * Minor updates to conform to data model standards (PR `#94`_).
