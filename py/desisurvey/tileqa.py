@@ -473,9 +473,9 @@ def add_info_fields(tiles, gaiadensitymapfile,
     theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
     la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
     try:
-        from desitarget.mock import sfdmap
-        ebva = sfdmap.ebv(la, ba, frame='galactic', 
-                          mapdir=os.getenv('DUST_DIR')+'/maps', scaling=1)
+        from desiutil import dust
+        ebva = dust.ebv(la, ba, frame='galactic',
+                        mapdir=os.getenv('DUST_DIR')+'/maps', scaling=1)
     except:
         import dust
         ebva = dust.getval(la, ba, map='sfd')
