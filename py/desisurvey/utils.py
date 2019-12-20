@@ -165,7 +165,9 @@ def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
         raise ValueError('Expected .ecsv extension for {0}.'.format(save_name))
 
     # Download the latest IERS_A table
-    iers = astropy.utils.iers.IERS_A.open(astropy.utils.iers.IERS_A_URL)
+    if astropy.utils.iers.conf.iers_auto_url == 'frozen':
+        raise ValueError("Attempting to update a frozen IERS A table!")
+    iers = astropy.utils.iers.IERS_A.open(astropy.utils.iers.conf.iers_auto_url)
     last = astropy.time.Time(iers['MJD'][-1], format='mjd').datetime
     log.info('Updating to current IERS-A table with coverage up to {0}.'
              .format(last.date()))
