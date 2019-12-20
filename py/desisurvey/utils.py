@@ -29,6 +29,9 @@ _telescope_location = None
 _iers_is_frozen = False
 _dome_closed_fractions = None
 
+# Workaround for offline primary IERS server.
+astropy.utils.iers.Conf.iers_auto_url.set('ftp://cddis.gsfc.nasa.gov/pub/products/iers/finals2000A.all')
+
 
 def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
     """Use a frozen IERS table saved with this package.
