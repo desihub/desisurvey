@@ -10,9 +10,9 @@ desisurvey change log
 0.12.1 (2019-12-20)
 -------------------
 
-* Workaround for missing IERS server (PR `#100`_).
+* Workaround for missing IERS server (PR `#105`_).
 
-.. _`#100`: https://github.com/desihub/desisurvey/pull/100
+.. _`#105`: https://github.com/desihub/desisurvey/pull/105
 
 0.12.0 (2019-08-09)
 -------------------
