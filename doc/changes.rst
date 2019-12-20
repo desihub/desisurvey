@@ -2,10 +2,17 @@
 desisurvey change log
 =====================
 
-0.12.1 (unreleased)
+0.12.2 (unreleased)
 -------------------
 
 * No changes yet (but likely to include more AP/NTS/ICS integration)
+
+0.12.1 (2019-12-20)
+-------------------
+
+* Workaround for missing IERS server (PR `#100`_).
+
+.. _`#100`: https://github.com/desihub/desisurvey/pull/100
 
 0.12.0 (2019-08-09)
 -------------------
