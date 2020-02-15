@@ -48,6 +48,7 @@ import desisurvey.rules
 import desisurvey.plan
 import desisurvey.scheduler
 import desisurvey.etc
+import desisurvey.utils
 import datetime
 
 
@@ -84,7 +85,13 @@ class NTS():
                   self.night)
         else:
             self.night = night
-        self.rules = desisurvey.rules.Rules()
+
+        config = desisurvey.config.Configuration()
+        commissioning = getattr(config, 'commissioning', False)
+        if commissioning:
+            self.rules = None
+        else:
+            self.rules = desisurvey.rules.Rules()
         # should look for rules file in obsplan dir?
         try:
             nightstr = self.night.isoformat()
@@ -219,7 +226,13 @@ def afternoon_plan(night=None, lastnight=None):
     """
     if night is None:
         night = datetime.date.today().isoformat()
-    rules = desisurvey.rules.Rules()
+
+    config = desisurvey.config.Configuration()
+    commissioning = getattr(config, 'commissioning', False)
+    if commissioning:
+        rules = None
+    else:
+        rules = desisurvey.rules.Rules()
     # should look for rules file in obsplan dir?
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
@@ -232,7 +245,6 @@ def afternoon_plan(night=None, lastnight=None):
     # restore: maybe check directory, and restore if file present?  EFS
     # planner.save(), scheduler.save()
     # planner.restore(), scheduler.restore()
-    import desisurvey.utils
     planner.afternoon_plan(desisurvey.utils.get_date(night),
                            scheduler.completed)
     # currently afternoon planning checks to see what tiles have been marked

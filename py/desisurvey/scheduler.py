@@ -61,6 +61,7 @@ class Scheduler(object):
         self.max_frac = GRAY.max_moon_illumination()
         self.threshold_alt = self.max_prod / self.max_frac
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
+        self.max_ha = config.max_hour_angle().to(u.deg).value
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
@@ -334,7 +335,9 @@ class Scheduler(object):
         if greediness < 0 or greediness > 1:
             raise ValueError('Expected greediness between 0 and 1.')
         # Which program are we in?
-        while mjd_now >= self.night_changes[self.night_index + 1]:
+        self.night_index = 0  # not so bad to recompute this?
+        while ((self.night_index + 1 < len(self.night_changes)) and
+               (mjd_now >= self.night_changes[self.night_index + 1])):
             self.night_index += 1
         if program is None:
             program = self.night_programs[self.night_index]
@@ -361,6 +364,8 @@ class Scheduler(object):
         self.airmass[self.tile_sel] = self.tiles.airmass(
             self.hourangle[self.tile_sel], self.tile_sel)
         self.tile_sel &= self.airmass < self.max_airmass
+        absha = np.abs(((self.hourangle + 180) % 360)-180)
+        self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):
             # No tiles left to observe after airmass cut.
             return None, None, None, None, None, program, mjd_program_end

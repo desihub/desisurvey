@@ -39,11 +39,15 @@ def load_design_hourangle(name='surveyinit.fits'):
     """
     config = desisurvey.config.Configuration()
     fullname = config.get_path(name)
-    with astropy.io.fits.open(fullname, memmap=False) as hdus:
-        HA = hdus['DESIGN'].data['HA'].copy()
     tiles = desisurvey.tiles.get_tiles()
-    if HA.shape != (tiles.ntiles,):
-        raise ValueError('Read unexpected HA shape.')
+    commissioning = getattr(config, 'commissioning', False)
+    if commissioning:
+        HA = np.zeros(len(tiles.tileRA), dtype='f4')
+    else:
+        with astropy.io.fits.open(fullname, memmap=False) as hdus:
+            HA = hdus['DESIGN'].data['HA'].copy()
+        if HA.shape != (tiles.ntiles,):
+            raise ValueError('Read unexpected HA shape.')
     return HA
 
 
