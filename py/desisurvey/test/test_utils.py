@@ -3,6 +3,7 @@ import tempfile
 import shutil
 import datetime
 import os
+from pkg_resources import resource_filename
 
 import numpy as np
 
@@ -13,6 +14,7 @@ import astropy.coordinates
 import astropy.io
 import astropy.utils.data
 import astropy.units as u
+from astropy.utils.iers import conf as iers_conf
 
 from desisurvey.test.base import Tester
 import desisurvey.utils as utils
@@ -42,6 +44,14 @@ class TestUtils(Tester):
 
     def tearDown(self):
         utils._iers_is_frozen = False
+        # iers_conf.reset()
+
+    def test_update_iers_frozen(self):
+        """Test attempt to update a frozen IERS table."""
+        save_name = os.path.join(self.tmpdir, 'iers.ecsv')
+        utils.freeze_iers()
+        with self.assertRaises(ValueError):
+            utils.update_iers(save_name)
 
     def test_update_iers_bad_ext(self):
         """Test save_name extension check"""
@@ -51,11 +61,13 @@ class TestUtils(Tester):
 
     def test_update_iers(self):
         """Test updating the IERS table.  Requires a network connection."""
-        save_name = os.path.join(self.tmpdir, 'iers.ecsv')
-        utils.update_iers(save_name)
-        # Second write should overwrite original file.
-        utils.update_iers(save_name)
-        utils.freeze_iers(save_name)
+        # save_name = os.path.join(self.tmpdir, 'iers.ecsv')
+        save_name = resource_filename('desisurvey', 'data/iers_frozen.ecsv')
+        # utils.update_iers(save_name)
+        self.assertTrue(os.path.exists(save_name))
+        with open(save_name) as i:
+            data = i.readlines()
+        self.assertIn('# - {data_url: frozen}\n', data)
 
     def test_freeze_iers(self):
         """Test freezing from package data/"""

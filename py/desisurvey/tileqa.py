@@ -136,7 +136,14 @@ def render(ra, dec, tilera, tiledec, fiberposfile=None):
         # much slower than my custom-rolled version!
         out += numpy.bincount(ind[mx], minlength=len(out))
     return out
-                                 
+
+
+def render_simple(ra, dec, tilera, tiledec):
+    out = numpy.zeros_like(ra, dtype='i4')
+    mg, mt, dgt = match_radec(ra, dec, tilera, tiledec, 1.63)
+    out += numpy.bincount(mg, minlength=len(out))
+    return out
+
 
 def adjacency_matrix(tilera, tiledec, fiberposfile=None):
     """Overlap area matrix between slit blocks and radial bins, given 
@@ -652,11 +659,12 @@ def writefiles(tiles, fnbase, overwrite=False, viewer=False):
                 'imagefrac_grz':('', 'Fraction of this tile within 1.605 deg with grz imaging'),
                 'in_imaging':('', 'Central tile has imagefrac_grz > 0.9'),
                 }
+    metadatacaps = {k.upper(): v for k, v in metadata.items()}
     from astropy import units as u
     unitdict = {'': None, 'deg': u.deg, 'mag': u.mag, 'deg^-2': 1/u.mag/u.mag}
     for name in tilestab.dtype.names:
-        tilestab[name.upper()].unit = unitdict[metadata[name][0]]
-        tilestab[name.upper()].description = metadata[name][1]
+        tilestab[name].unit = unitdict[metadatacaps[name][0]]
+        tilestab[name].description = metadatacaps[name][1]
     ascii.write(tilestab, fnbase+'.ecsv', format='ecsv', overwrite=overwrite)
 
 
@@ -886,60 +894,3 @@ def edgetiles(tiles, sel):
     edges[mp[mt]] = 1
     edges[sel] = 0
     return edges
-
-
-def firstyeartilefile(tiles):
-    tiles = numpy.array(tiles).copy()
-    tiles.dtype.names = [n.lower() for n in tiles.dtype.names]
-    newtiles = tiles.copy()
-    permute = {0: 2, 1: 3, 2: 4, 3: 0, 4: 1}
-    for npass, opass in permute.items():
-        newtiles[tiles['pass'] == npass] = tiles[tiles['pass'] == opass]
-    keepfields = ['tileid', 'pass', 'program', 'obsconditions']
-    for field in keepfields:
-        newtiles[field] = tiles[field]
-    ntiles = numpy.sum(tiles['pass'] == 0)
-    # ntiles*3 since permute[3] = 0, the original centers
-    newtiles['centerid'] = (newtiles['tileid'] % ntiles) + ntiles*3
-    from numpy.lib.recfunctions import rec_append_fields
-    myr1passes = firstyeartiles(newtiles, orig=False)
-    myr1 = numpy.zeros(len(newtiles), dtype='bool')
-    for m0 in myr1passes:
-        myr1 = myr1 | m0
-    newtiles = rec_append_fields(newtiles, 'year1', myr1)
-    return newtiles
-
-
-def firstyeartiles2(tiles, rad=1.63):
-    racen, deccen = (tiles['ra'][tiles['centerid']-1], 
-                     tiles['dec'][tiles['centerid']-1])
-    # m1 = (deccen > -9.5) & (deccen < 9.5) & (tiles['pass'] == 3)
-    # m2 = (deccen > -9.5) & (deccen < 7) & (tiles['pass'] == 2)
-    # m3 = (deccen > -7) & (deccen < 7) & (tiles['pass'] == 0)
-    # m4 = (deccen > -7) & (deccen < 7) & (tiles['pass'] == 1)
-    m1 = (deccen > -6.5) & (deccen < 6.5) & (tiles['pass'] == 3)
-    mo1 = ~m1 & (tiles['pass'] == 3)
-    m2 = (deccen > -3.9) & (deccen < 6.5) & (tiles['pass'] == 4)
-    mo2 = ~m2 & (tiles['pass'] == 4)
-    m3 = (deccen > -3.9) & (deccen < 3.9) & (tiles['pass'] == 0)
-    mo3 = ~m3 & (tiles['pass'] == 0)
-    m4 = (deccen > -3.9) & (deccen < 3.9) & (tiles['pass'] == 1)
-    mo4 = ~m4 & (tiles['pass'] == 1)
-
-    mp12, mp21, dp12 = match_radec(tiles['ra'][mo1], tiles['dec'][mo1], 
-                                   tiles['ra'][m2], tiles['dec'][m2], 
-                                   rad*2)
-    mp23, mp32, dp23 = match_radec(tiles['ra'][mo2], tiles['dec'][mo2], 
-                                   tiles['ra'][m3], tiles['dec'][m3], 
-                                   rad*2)
-    mp24, mp42, dp24 = match_radec(tiles['ra'][mo2], tiles['dec'][mo2], 
-                                   tiles['ra'][m4], tiles['dec'][m4], 
-                                   rad*2)
-    out = numpy.zeros(len(tiles), dtype=[('ra', 'f4'), ('dec', 'f4'),
-                                         ('pass', 'i4'), ('status', 'i4')])
-    keep = m1 | m2 | m3 | m4
-    status = numpy.zeros(len(tiles), dtype='i4')
-    status[numpy.flatnonzero(m2)[mp21]] = 1
-    status[numpy.flatnonzero(m3)[mp32]] = 1
-    status[numpy.flatnonzero(m4)[mp42]] = 1
-    return [keep, status]
