@@ -86,7 +86,6 @@ class NTS():
         else:
             self.night = night
 
-        config = desisurvey.config.Configuration()
         self.rules = desisurvey.rules.Rules()
         # should look for rules file in obsplan dir?
         try:
