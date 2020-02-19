@@ -85,7 +85,6 @@ class NTS():
                   self.night)
         else:
             self.night = night
-
         self.rules = desisurvey.rules.Rules()
         # should look for rules file in obsplan dir?
         try:
@@ -221,7 +220,6 @@ def afternoon_plan(night=None, lastnight=None):
     """
     if night is None:
         night = datetime.date.today().isoformat()
-
     rules = desisurvey.rules.Rules()
     # should look for rules file in obsplan dir?
     if lastnight is not None:
