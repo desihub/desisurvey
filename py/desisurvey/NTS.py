@@ -223,9 +223,8 @@ def afternoon_plan(night=None, lastnight=None):
     if night is None:
         night = datetime.date.today().isoformat()
 
-    config = desisurvey.config.Configuration()
-    # should look for rules file in obsplan dir?
     rules = desisurvey.rules.Rules()
+    # should look for rules file in obsplan dir?
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
             rules, restore='planner_end_{}.fits' % lastnight)
