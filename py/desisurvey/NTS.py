@@ -87,11 +87,7 @@ class NTS():
             self.night = night
 
         config = desisurvey.config.Configuration()
-        commissioning = getattr(config, 'commissioning', False)
-        if commissioning:
-            self.rules = None
-        else:
-            self.rules = desisurvey.rules.Rules()
+        self.rules = desisurvey.rules.Rules()
         # should look for rules file in obsplan dir?
         try:
             nightstr = self.night.isoformat()
@@ -228,12 +224,8 @@ def afternoon_plan(night=None, lastnight=None):
         night = datetime.date.today().isoformat()
 
     config = desisurvey.config.Configuration()
-    commissioning = getattr(config, 'commissioning', False)
-    if commissioning:
-        rules = None
-    else:
-        rules = desisurvey.rules.Rules()
     # should look for rules file in obsplan dir?
+    rules = desisurvey.rules.Rules()
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
             rules, restore='planner_end_{}.fits' % lastnight)
