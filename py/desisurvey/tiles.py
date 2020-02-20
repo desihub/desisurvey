@@ -50,12 +50,17 @@ class Tiles(object):
         config = desisurvey.config.Configuration()
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
-        tiles = desimodel.io.load_tiles(
-            onlydesi=True, extra=False, tilesfile=self.tiles_file)
+        commissioning = getattr(config, 'commissioning', False)
+        if not commissioning:
+            tiles = desimodel.io.load_tiles(
+                onlydesi=True, extra=False, tilesfile=self.tiles_file)
+        else:
+            tiles = desimodel.io.load_tiles(
+                onlydesi=False, extra=True, tilesfile=self.tiles_file)
         # Check for any unknown program names.
         tile_programs = np.unique(tiles['PROGRAM'])
         unknown = set(tile_programs) - set(self.PROGRAMS)
-        if unknown:
+        if unknown and not commissioning:
             raise RuntimeError('Cannot schedule unknown program(s): {}.'.format(unknown))
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
@@ -74,6 +79,16 @@ class Tiles(object):
         # Can remove this when tile_index no longer uses searchsorted.
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')
+        if commissioning:
+            Tiles.PROGRAMS = [x for x in np.sort(np.unique(tiles['PROGRAM']))]
+            for requiredprogram in ['DARK', 'GRAY', 'BRIGHT']:
+                if requiredprogram not in Tiles.PROGRAMS:
+                    Tiles.PROGRAMS = [requiredprogram] + Tiles.PROGRAMS
+            self.PROGRAMS = Tiles.PROGRAMS
+            Tiles.PROGRAM_INDEX = {pname: pidx
+                                   for pidx, pname in enumerate(Tiles.PROGRAMS)}
+            self.PROGRAM_INDEX = Tiles.PROGRAM_INDEX
+            
         # Build program -> [passes] maps. A program with no tiles will map to an empty array.
         self.program_passes = {
             p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in self.PROGRAMS}
@@ -81,6 +96,9 @@ class Tiles(object):
         self.pass_program = {}
         for p in self.PROGRAMS:
             self.pass_program.update({passnum: p for passnum in self.program_passes[p]})
+        for p in np.unique(self.passnum):
+            if len(np.unique(tiles['PROGRAM'][tiles['PASS'] == p])) != 1:
+                raise ValueError('At most one program per pass.')
         # Build tile masks for each program. A program will no tiles with have an empty mask.
         self.program_mask = {}
         for p in self.PROGRAMS:
