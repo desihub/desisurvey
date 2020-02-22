@@ -184,7 +184,10 @@ class Planner(object):
             raise ValueError('donefrac length must equal lastexpid length.')
         tileind, mask = self.tiles.index(tileid, return_mask=True)
         if np.any(~mask):
-            raise ValueError('some tiles with unknown IDs')
+            self.log.warning('Some tiles with unknown IDs; ignoring')
+            tileind = tileind[mask]
+            donefrac = donefrac[mask]
+            lastexpid = lastexpid[mask]
         self.donefrac[tileind] = donefrac
         self.lastexpid[tileind] = lastexpid
 
@@ -263,8 +266,7 @@ class Planner(object):
     def fiberassign(self, dirname):
         import glob
         import re
-        files = list(glob.iglob(os.path.join(dirname, '**/*.fits'),
-                                recursive=True))
+        files = glob.glob(os.path.join(dirname, '**/*.fits'), recursive=True)
         rgx = re.compile('.*tile-(\d+)\.fits')
         available_tileids = []
         for fn in files:
