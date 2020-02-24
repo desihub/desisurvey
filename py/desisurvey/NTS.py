@@ -55,6 +55,13 @@ from astropy import coordinates
 from astropy import units as u
 
 class QueuedList():
+    """Simple class to manage list of exposures already observed in a night.
+    
+    Parameters
+    ----------
+    fn : str
+        file name where QueuedList is backed to disk.
+    """
     def __init__(self, fn):
         self.fn = fn
         self.restore()

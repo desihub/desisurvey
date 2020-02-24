@@ -36,7 +36,6 @@ def afternoon_plan(night=None, lastnight=None, fiber_assign_dir=None,
     config = desisurvey.config.Configuration()
     tilesob = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
     rules = desisurvey.rules.Rules(config.rules)
-    # should look for rules file in obsplan dir?
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
             rules, restore='desi-status-{}.fits'.format(lastnight))
