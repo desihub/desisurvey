@@ -194,6 +194,20 @@ class Planner(object):
             raise RuntimeError('All tile priorities are all <= 0.')
 
     def set_donefrac(self, tileid, donefrac, lastexpid):
+        """Update planner with new tile donefrac and lastexpid.
+
+        Parameters
+        ----------
+        tileid : array
+            1D array of integer tileIDs to update
+
+        donefrac : array
+            1D array of completion fractions for tiles, matching tileid
+
+        lastexpid : array
+            1D array of last expid, giving last exposure ID on each tile
+            must match tileid
+        """
         if len(donefrac) != len(lastexpid):
             raise ValueError('donefrac length must equal lastexpid length.')
         tileind, mask = self.tiles.index(tileid, return_mask=True)
@@ -285,6 +299,20 @@ class Planner(object):
                       .format(np.count_nonzero(run_now), np.count_nonzero(delayed), night))
 
     def fiberassign(self, dirname):
+        """Update list of tiles available for spectroscopy.
+
+        Scans given directory looking for fiberassign file and populates Plan
+        object accordingly.
+
+        Parameters
+        ----------
+        dirname : str
+            file name of directory where fiberassign files are to be found
+            This directory is recursively scanned for all files with names
+            matching tile-(\d+)\.fits.  TILEIDs are populated according to
+            the name of the fiberassign file, and any header information is 
+            ignored.
+        """
         import glob
         import re
         files = glob.glob(os.path.join(dirname, '**/*.fits'), recursive=True)
@@ -306,6 +334,17 @@ class Planner(object):
                 'but not found in the tile file.')
 
     def afternoon_plan(self, night, fiber_assign_dir=None):
+        """Update plan for a given night.  Update tile availability and priority.
+
+        Parameters
+        ----------
+        night : str
+            night string, YYYY-MM-DD, to be planned.
+            This argument has no effect for when Plan.simulate = False; in this
+            case, tile availability and priority is based entirely on what
+            files are currently present in the fiberassign directory and what
+            the planner believes the current tile completions are.
+        """
         config = desisurvey.config.Configuration()
         completed = self.donefrac > config.min_snr2_fraction()
         self.log.debug('Starting afternoon planning for {} with {} / {} tiles completed.'

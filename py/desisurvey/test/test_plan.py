@@ -16,10 +16,10 @@ class TestPlan(Tester):
         completed = np.zeros(tiles.ntiles, bool)
         num_nights = (self.stop - self.start).days
         gen = np.random.RandomState(123)
-        config = desisurvey.config.Configuration(simulate=True)
+        config = desisurvey.config.Configuration()
         for cadence in 'daily', 'monthly':
             config.fiber_assignment_cadence.set_value(cadence)
-            plan = Planner()
+            plan = Planner(simulate=True)
             plan2 = None
             for i in range(num_nights):
                 night = self.start + datetime.timedelta(i)

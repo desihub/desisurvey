@@ -36,6 +36,16 @@ class subslices:
 
 
 def scan_directory(dirname):
+    """Scan directory for spectra with ETC statistics to collect.
+
+    Parameters
+    ----------
+    dirname : str
+        directory path to scan.  All fits files under dirname are searched
+        for ETC statistics.
+        This needs to be updated to ~DESI files only, with more care given
+        to where these keywords are actually found.
+    """
     files = list(glob.iglob(os.path.join(dirname, '**/*.fits'),
                             recursive=True))
     exps = numpy.zeros(len(files), dtype=[
@@ -73,6 +83,16 @@ def scan_directory(dirname):
 
 
 def write_tile_exp(tiles, exps, fn):
+    """Write tile & exposure ETC statistics from numpy objects.
+
+    Parameters
+    ----------
+    tiles : array
+        tile ETC statistics
+
+    exps : array
+        exposure ETC statistics
+    """
     from astropy.io import fits
     fits.writeto(fn, tiles, header=fits.Header(dict(EXTNAME='TILES')))
     fits.append(fn, exps, header=fits.Header(dict(EXTNAME='EXPS')))
