@@ -86,7 +86,7 @@ def azinrange(az, low, high):
 
     We transform high so that it is in the range [low, low+360].  We then
     transform az likewise, so that the test can be done as low <= az <= high.
-    In this scheme, azinrange(0, 2, 1) = True, since low, high = [2, 1] is 
+    In this scheme, azinrange(0, 2, 1) = True, since low, high = [2, 1] is
     interpreted as all angles between 2 and 361 degrees.
 
     Parameters
