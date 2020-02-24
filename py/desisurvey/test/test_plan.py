@@ -33,10 +33,10 @@ class TestPlan(Tester):
                     self.assertTrue(np.array_equal(plan.tile_countdown, plan2.tile_countdown))
                 # Mark a random set of tiles completed after this night.
                 completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
-                plan.set_donefrac(tiles['tileID'], completed, np.zeros(len(tiles)))
+                plan.set_donefrac(tiles.tileID, completed, np.zeros(tiles.ntiles))
                 # Save and restore our state.
                 plan.save('snapshot.fits')
-                plan2 = Planner(restore='snapshot.fits')
+                plan2 = Planner(restore='snapshot.fits', simulate=True)
 
 
 def test_suite():
