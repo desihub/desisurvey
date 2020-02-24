@@ -100,7 +100,7 @@ def azinrange(az, low, high):
 
 
 class NTS():
-    def __init__(self, obsplan, fiber_assign_dir, defaults={}, night=None):
+    def __init__(self, obsplan='config.yaml', fiber_assign_dir, defaults={}, night=None):
         """Initialize a new instance of the Next Tile Selector.
 
         Parameters
@@ -122,7 +122,11 @@ class NTS():
         """
         self.obsplan = obsplan
         self.fiber_assign_dir = fiber_assign_dir
+        # making a new NTS; clear out old configuration / tile information
+        desisurvey.config.Configuration.reset()
+        _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
         config = desisurvey.config.Configuration()
+
         self.default_seeing = defaults.get('seeing', 1.0)
         self.default_transparency = defaults.get('transparency', 0.9)
         self.default_skylevel = defaults.get('skylevel', 1000.0)
@@ -133,8 +137,7 @@ class NTS():
                   self.night)
         else:
             self.night = night
-        self.rules = desisurvey.rules.Rules()
-        # should look for rules file in obsplan dir?
+        self.rules = desisurvey.rules.Rules(file_name=config.rules)
         try:
             nightstr = desisurvey.utils.night_to_str(self.night)
             self.planner = desisurvey.plan.Planner(

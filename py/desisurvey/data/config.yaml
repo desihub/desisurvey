@@ -160,3 +160,5 @@ tiles_file: desi-tiles.fits
 # writing files managed by this package. The pattern {...} will be expanded
 # using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'
+
+rules: rules.yaml

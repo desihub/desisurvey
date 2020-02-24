@@ -32,7 +32,10 @@ def afternoon_plan(night=None, lastnight=None, fiber_assign_dir=None,
         night = desisurvey.utils.get_current_date()
 
     night = desisurvey.utils.get_date(night)
-    rules = desisurvey.rules.Rules()
+    desisurvey.config.Configuration.reset()
+    config = desisurvey.config.Configuration()
+    tilesob = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
+    rules = desisurvey.rules.Rules(config.rules)
     # should look for rules file in obsplan dir?
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
@@ -42,9 +45,6 @@ def afternoon_plan(night=None, lastnight=None, fiber_assign_dir=None,
     else:
         planner = desisurvey.plan.Planner(rules)
         scheduler = desisurvey.scheduler.Scheduler()
-    # restore: maybe check directory, and restore if file present?  EFS
-    # planner.save(), scheduler.save()
-    # planner.restore(), scheduler.restore()
 
     nightstr = desisurvey.utils.night_to_str(night)
 
@@ -59,15 +59,9 @@ def afternoon_plan(night=None, lastnight=None, fiber_assign_dir=None,
         else:
             tiles, exps = desisurvey.scripts.collect_etc.scan_directory(spectra_dir)
             collect_etc.write_tile_exp(tiles, exps, etcfn)
-        completed[:] = 0
-        tilesob = desisurvey.tiles.Tiles()
-        idx, mok = tilesob.index(tiles['TILEID'], return_mask=True)
-        completed[idx[mok]] = (
-            tiles['DONEFRAC_ETC'][mok] > config.min_snr2_fraction())
+        planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC'], tiles['LASTEXPID'])
 
-    planner.afternoon_plan(
-        night, completed, fiber_assign_dir=fiber_assign_dir)
-
+    planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
     planner.save('desi-status-{}.fits'.format(nightstr))
 
 
