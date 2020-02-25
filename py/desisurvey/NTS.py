@@ -107,13 +107,12 @@ def azinrange(az, low, high):
 
 
 class NTS():
-    def __init__(self, obsplan='config.yaml', fiber_assign_dir, defaults={}, night=None):
+    def __init__(self, obsplan='config.yaml', fiber_assign_dir='', defaults={}, night=None):
         """Initialize a new instance of the Next Tile Selector.
 
         Parameters
         ----------
-        obsplan : not currently used; planner initialized from default
-            scheduler directory.
+        obsplan : config.yaml to load
 
         fiber_assign_dir : directory where fiber assign files are located
 
