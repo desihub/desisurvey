@@ -7,7 +7,7 @@ import os
 from desisurvey.scripts import collect_etc
 
 def afternoon_plan(night=None, lastnight=None, fiber_assign_dir=None,
-                   spectra_dir=None):
+                   spectra_dir=None, simulate=False):
     """
     Perform daily afternoon planning.
 
@@ -35,14 +35,14 @@ def afternoon_plan(night=None, lastnight=None, fiber_assign_dir=None,
     desisurvey.config.Configuration.reset()
     config = desisurvey.config.Configuration()
     tilesob = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
-    rules = desisurvey.rules.Rules(config.rules)
+    rules = desisurvey.rules.Rules(config.rules())
     if lastnight is not None:
         planner = desisurvey.plan.Planner(
-            rules, restore='desi-status-{}.fits'.format(lastnight))
+            rules, restore='desi-status-{}.fits'.format(lastnight), simulate=simulate)
         scheduler = desisurvey.scheduler.Scheduler(
             restore='desi-status-{}.fits'.format(lastnight))
     else:
-        planner = desisurvey.plan.Planner(rules)
+        planner = desisurvey.plan.Planner(rules, simulate=simulate)
         scheduler = desisurvey.scheduler.Scheduler()
 
     nightstr = desisurvey.utils.night_to_str(night)

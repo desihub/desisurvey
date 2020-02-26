@@ -50,6 +50,7 @@ import desisurvey.scheduler
 import desisurvey.etc
 import desisurvey.utils
 import desisurvey.config
+import desiutil.log
 from astropy.io import ascii
 from astropy import coordinates
 from astropy import units as u
@@ -64,20 +65,29 @@ class QueuedList():
     """
     def __init__(self, fn):
         self.fn = fn
+        self.log = desiutil.log.get_logger()
         self.restore()
 
     def restore(self):
         if os.path.exists(self.fn):
-            self.queued = ascii.read(self.fn, comment='#',
-                                     names=['tileid'], format='csv')
+            try:
+                self.queued = ascii.read(self.fn, comment='#',
+                                         names=['tileid'], format='no_header')
+            except OSError:
+                self.log.error('Could not read in queued file; '
+                               'record of past exposures lost!')
             self.queued = list(self.queued['tileid'])
         else:
             self.queued = []
 
     def add(self, tileid):
         self.queued.append(tileid)
-        open(self.fn, 'a').write(str(tileid)+'\n')
-        # could work harder to make this atomic.
+        try:
+            open(self.fn, 'a').write(str(tileid)+'\n')
+            # could work harder to make this atomic.
+        except OSError:
+            self.log.error('Could not write out queued file; '
+                           'record of last exposure lost!')
 
 
 def azinrange(az, low, high):
@@ -128,6 +138,7 @@ class NTS():
         """
         self.obsplan = obsplan
         self.fiber_assign_dir = fiber_assign_dir
+        self.log = desiutil.log.get_logger()
         # making a new NTS; clear out old configuration / tile information
         desisurvey.config.Configuration.reset()
         _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
@@ -139,11 +150,11 @@ class NTS():
         self.default_program = defaults.get('program', 'DESI DARK')
         if night is None:
             self.night = desisurvey.utils.get_current_date()
-            print('Warning: no night selected, using current date!',
-                  self.night)
+            self.log.info('No night selected, '
+                          'using current date: {}.'.format(self.night))
         else:
             self.night = night
-        self.rules = desisurvey.rules.Rules(file_name=config.rules)
+        self.rules = desisurvey.rules.Rules(file_name=config.rules())
         try:
             nightstr = desisurvey.utils.night_to_str(self.night)
             self.planner = desisurvey.plan.Planner(
@@ -209,8 +220,8 @@ class NTS():
             from astropy import time
             now = time.Time.now()
             mjd = now.mjd
-            print('Warning: no time specified, using current time, MJD: %f' %
-                  mjd)
+            self.log.info('No time specified, using current time, MJD: %f' %
+                          mjd)
         seeing = self.default_seeing if seeing is None else seeing
         skylevel = self.default_skylevel if skylevel is None else skylevel
         transparency = (self.default_transparency if transparency is None
