@@ -1,0 +1,14 @@
+#-------------------------------------------------------------------
+# Definition of tile groups that are separately scheduled
+# and prioritized. See doc/rules.rst for an explanation for the format.
+#-------------------------------------------------------------------
+
+# Implement a dummy rules file for commissioning.
+
+A:
+    passes: 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+    dec_min: -90
+    dec_order: +0.2
+    rules:
+        A(0): { START: 1.0 }
+        # looks to me like this is further assumed for all passes

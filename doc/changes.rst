@@ -2,13 +2,31 @@
 desisurvey change log
 =====================
 
-0.11.1 (unreleased)
+0.12.2 (unreleased)
+-------------------
+
+* No changes yet (but likely to include more AP/NTS/ICS integration)
+
+0.12.1 (2019-12-20)
+-------------------
+
+* Workaround for missing IERS server (PR `#105`_).
+
+.. _`#105`: https://github.com/desihub/desisurvey/pull/105
+
+0.12.0 (2019-08-09)
 -------------------
 
 * Minor updates to conform to data model standards (PR `#94`_).
 * Improved documentation (PR `#94`_).
+* Increase tile radius for coverage check (PR `#97`_).
+* Fix RA,DEC vs. DEC,RA bug (PR `#99`_).
+* Adds `desisurvey.scheduler.NTS` (Next Tile Selector) interface to ICS
+  (PR `#99`_)
 
 .. _`#94`: https://github.com/desihub/desisurvey/pull/94
+.. _`#97`: https://github.com/desihub/desisurvey/pull/97
+.. _`#99`: https://github.com/desihub/desisurvey/pull/99
 
 0.11.0 (2018-11-26)
 -------------------

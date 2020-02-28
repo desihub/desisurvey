@@ -48,6 +48,7 @@ import desisurvey.rules
 import desisurvey.plan
 import desisurvey.scheduler
 import desisurvey.etc
+import desisurvey.utils
 import datetime
 
 
@@ -232,7 +233,6 @@ def afternoon_plan(night=None, lastnight=None):
     # restore: maybe check directory, and restore if file present?  EFS
     # planner.save(), scheduler.save()
     # planner.restore(), scheduler.restore()
-    import desisurvey.utils
     planner.afternoon_plan(desisurvey.utils.get_date(night),
                            scheduler.completed)
     # currently afternoon planning checks to see what tiles have been marked
