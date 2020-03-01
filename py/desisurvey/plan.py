@@ -299,7 +299,7 @@ class Planner(object):
         import glob
         import re
         files = glob.glob(os.path.join(dirname, '**/*.fits'), recursive=True)
-        rgx = re.compile('.*tile_(\d+)\.fits')
+        rgx = re.compile('.*fiberassign-(\d+)\.fits')
         available_tileids = []
         for fn in files:
             match = rgx.match(fn)
