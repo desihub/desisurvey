@@ -50,12 +50,8 @@ class Scheduler(object):
     design_hourangles : array or None
         1D array of design hour angles to use in degrees, or use
         :func:`desisurvey.plan.load_design_hourangle` when None.
-    use_brightsky : bool 
-        If True use improved bright sky model in next_tile selection to
-        calculate exposure factor for bright sky. If False, exposure factor
-        does not include bright sky model.
     """
-    def __init__(self, restore=None, design_hourangle=None, use_brightsky=False):
+    def __init__(self, restore=None, design_hourangle=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -66,7 +62,6 @@ class Scheduler(object):
         self.threshold_alt = self.max_prod / self.max_frac
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         self.max_ha = config.max_hour_angle().to(u.deg).value
-        self.use_brightsky = use_brightsky
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
@@ -274,8 +269,8 @@ class Scheduler(object):
         self.sun_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=False) 
         self.sun_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=True) 
 
-    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
-                  program=None):
+    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15.,
+            greediness=0., use_brightsky=False, program=None):
         """Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -315,6 +310,10 @@ class Scheduler(object):
             values will depend on the value of ``HA_sigma`` and how exposure
             factors are calculated. Refer to the equation above for details.
             Must be between 0 and 1.
+        use_brightsky : bool 
+            If True use improved bright sky model in next_tile selection to
+            calculate exposure factor for bright sky. If False, exposure factor
+            does not include bright sky model.
         program : string
             PROGRAM of tile to select.  Default of None selects the appropriate
             PROGRAM given current moon/twilight conditions.  Forcing a particular
@@ -399,7 +398,7 @@ class Scheduler(object):
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
-        if self.use_brightsky: 
+        if use_brightsky: 
             self.exposure_factor[self.tile_sel] *= \
                     self.update_exposure_factor(mjd_now, self.tiles.tileID[self.tile_sel])
         else: 
