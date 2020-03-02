@@ -297,6 +297,17 @@ _notwiCoefficients_4500 = np.array([1.71573612e-09, -5.60790479e-01, -1.48073306
     1.30231834e-01, 6.98885410e-05, -7.61371808e-04, -9.32261381e-04,
     6.59488169e-06, 1.78548384e-05,  1.37397769e-05,  2.42228917e-06])  
 
+_notwiCoefficients_7000 = np.array([-5.02769612e-09,  8.95781363e-01,
+    -1.98949612e+00,  7.59376004e-02, 3.61941895e-02, -6.34124234e-01,
+    9.82024382e-01, -1.45026008e-02, 3.17465022e-02,  5.07497967e+00,
+    -1.61120887e-02, -8.06403621e-02, -6.87578739e-04, -9.03149875e-04,
+    2.94092504e-05, -2.16338069e-02, -1.33114000e+00,  2.10489148e-02,
+    6.51274399e-03,  4.09227919e+00, 1.53579018e-02,  4.02131950e-02,
+    -3.34303641e-04, -7.77138042e-04, -3.93654140e-04, -1.95761616e+00,
+    -3.77209064e-02,  1.03445517e-01, 5.93690315e-05, -3.85028908e-04,
+    -7.90983761e-04,  4.33510170e-06, 1.16096223e-05,  9.03060380e-06,
+    2.37397368e-06]) 
+
 def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt, wavelength=4500): 
     ''' third degree polynomial regression fit to exposure factor of  
     non-twilight bright sky given airmass and moon_conditions 
@@ -325,6 +336,9 @@ def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt, wavele
     if wavelength == 4500: 
         _notwiCoefficients = _notwiCoefficients_4500
         _notwiIntercept = -1.9417946048367711
+    elif wavelength == 7000: 
+        _notwiCoefficients = _notwiCoefficients_7000
+        _notwiIntercept = -1.451246068647658
     
     fexp = np.dot(theta_transform, _notwiCoefficients.T) + _notwiIntercept
     return fexp
@@ -350,6 +364,9 @@ def _bright_exposure_factor_twi(airmass, sun_sep, sun_alt, wavelength=4500):
     if wavelength == 4500:
         _twiCoefficients = np.array([1.37980334, -0.00460065,  0.17337445])
         _twiIntercept = 2.217660156188111
+    elif wavelength == 7000:  
+        _twiCoefficients = np.array([1.1139712, -0.00431072, 0.16183842]) 
+        _twiIntercept = 2.3278959318651733
 
     return np.dot(theta, _twiCoefficients.T) + _twiIntercept
 
