@@ -14,6 +14,7 @@ import h5py
 import pickle
 import numpy as np
 from scipy.interpolate import interp1d
+from itertools import chain, combinations_with_replacement
 
 import astropy.utils.data
 import astropy.units as u
@@ -220,9 +221,8 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     return _moonCoefficients.dot(X)
 
 
-def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airmass):
-    """ calculate exposure time correction factor based on airmass, moon, and sun 
-    parameters. 
+def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_alt):
+    """ Calculate exposure time factor based on airmass, moon, and sun parameters. 
 
     :param moon_frac: 
         Illuminated fraction of the moon within range [0,1].
@@ -248,6 +248,10 @@ def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airm
         account for increased sky brightness due to scattered moonlight.
         Will be 1 when the moon is below the horizon.
     """
+    # exposure_factor = 1 when moon is below the horizon and sun is below -20.
+    if moon_alt < 0 and sun_alt < -20.:
+        return np.ones(len(airmass))  
+
     # check inputs 
     moon_sep    = moon_sep.flatten() 
     sun_sep     = sun_sep.flatten()
@@ -262,66 +266,92 @@ def bright_exposure_factor(moon_frac, moon_alt, moon_sep, sun_alt, sun_sep, airm
         raise ValueError('Got invalid airmass < 1.')
 
     # check size of inputs  
-    assert len(airmass) == len(moon_sep) 
-    assert len(airmass) == len(sun_sep) 
+    nexp = len(airmass) 
+    assert len(moon_sep) == nexp
+    assert len(sun_sep) == nexp
     
-    # nothing happens when moon is below the horizon and sun is below -20.
-    if moon_alt < 0 and sun_alt < -20.:
-        return np.ones(len(airmass))  
-
-    thetas = np.zeros((len(moon_sep), 6))
-    thetas[:,0] = airmass
-    thetas[:,1] = moon_frac
-    thetas[:,2] = moon_alt
-    thetas[:,3] = moon_sep
-    thetas[:,4] = sun_alt
-    thetas[:,5] = sun_sep 
+    exp_factors = _bright_exposure_factor_notwi(
+            airmass, 
+            np.repeat(moon_frac, nexp), 
+            moon_sep, 
+            np.repeat(moon_alt, nexp)) 
 
     if sun_alt >= -20.: 
-        # exposure factor during twilight 
-        _expfactors = texp_factor_bright(thetas, condition='twilight') 
-    else:  
-        # exposure factor during non-twilight 
-        _expfactors = texp_factor_bright(thetas[:,:4], condition='not_twilight')
-    expfactors = np.clip(_expfactors, 1., None) 
-    return expfactors
+        # w/ twilight contribution
+        exp_factors += _bright_exposure_factor_twi(
+                airmass, 
+                sun_sep, 
+                np.repeat(sun_alt, nexp))
+    return np.clip(exp_factors, 1., None) 
 
 
-def texp_factor_bright(thetas, condition=None): 
-    ''' exposure time correction factor for bright sky during non-twilight
-    from a GP emulator fit to correction factors calculated from bright sky
-    surface brightness calculations.  
-    
-    :param thetas: 
-        If condition == 'twilight', (N x 6) array specifying airmass, moon_ill, 
-        moon_alt, moon_sep, sun_alt, sun_sep. cA
-        If condition == 'not_twilihgt', (N x 4) array specifying airmass, moon_ill, 
-        moon_alt, moon_sep
+# polynomial regression cofficients for estimating exposure time factor during
+# non-twilight from airmass, moon_frac, moon_sep, moon_alt  
+_notwiCoefficients_4500 = np.array([1.71573612e-09, -5.60790479e-01, -1.48073306e+00,
+    1.15296186e-01, 4.52848807e-02,  6.87825142e-01, -1.09204980e-01,
+    -2.29003929e-02, 5.43115007e-02,  3.73159137e+00, -1.02979745e-02,
+    -7.54139533e-02, -1.05738392e-03, -1.40087568e-03, -1.61643490e-04,
+    -4.83874245e-01, -1.27069698e+00,  3.10724722e-02,  6.37391242e-03,
+    6.03557732e+00, 1.93135069e-02,  6.44469267e-02, -4.85686295e-04,
+    -1.14612065e-03, -5.46053442e-04,  4.53593491e-01, -6.38120677e-02,
+    1.30231834e-01, 6.98885410e-05, -7.61371808e-04, -9.32261381e-04,
+    6.59488169e-06, 1.78548384e-05,  1.37397769e-05,  2.42228917e-06])  
 
-    :param condition: 
-        Specifies twilight or not. (default: None) 
-    
-    :return texp_factor: 
-        exposure time correction factor
+def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt, wavelength=4500): 
+    ''' third degree polynomial regression fit to exposure factor of  
+    non-twilight bright sky given airmass and moon_conditions 
+
+    :param airmass: 
+        array of airmasses
+    :param moon_frac: 
+        array of moon illumination fractions
+    :param moon_sep: 
+        array of moon separations
+    :param moon_alt: 
+        array of moon altitudes 
+    :param wavelength: 
+        wavelength of the exposure factor (default: 4500) 
+    :return fexp: 
+        exposure factor for non-twlight bright sky 
     '''
-    # read in saved GP parameters 
-    f_gp_param = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.params.hdf5' % condition) 
-    gp_param = h5py.File(f_gp_param, 'r') 
-    _alpha  = gp_param['alpha'][...]
-    _Xtrain = gp_param['Xtrain'][...]
-    # read in pickled GP kernel  
-    f_gp_kernel = astropy.utils.data._find_pkg_data_path('data/GP_bright_exp_factor.%s.kernel.p' % condition) 
-    _kern   = pickle.load(open(f_gp_kernel, 'rb'))
-    
-    # load parametes and kernel to GP 
-    gp = GPR()
-    gp.alpha_ = _alpha
-    gp.kernel_ = _kern
-    gp.X_train_ = _Xtrain
-    gp._y_train_mean = [0] 
+    theta = np.atleast_2d(np.array([airmass, moon_frac, moon_sep, moon_alt]).T)
 
-    texp_factor = gp.predict(np.atleast_2d(thetas))
-    return texp_factor 
+    combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, 4))
+
+    theta_transform = np.empty((theta.shape[0], 35))
+    for i, comb in enumerate(combs):
+        theta_transform[:, i] = theta[:, comb].prod(1)
+
+    if wavelength == 4500: 
+        _notwiCoefficients = _notwiCoefficients_4500
+        _notwiIntercept = -1.9417946048367711
+    
+    fexp = np.dot(theta_transform, _notwiCoefficients.T) + _notwiIntercept
+    return fexp
+
+
+def _bright_exposure_factor_twi(airmass, sun_sep, sun_alt, wavelength=4500):
+    ''' linear regression fit to exposure factor correction from the twilight
+    contirbution given airmass and sun conditions 
+
+    :param airmass: 
+        array of airmasses
+    :param sun_sep: 
+        array of sun separations
+    :param sun_alt: 
+        array of sun altitudes 
+    :param wavelength: 
+        wavelength of the exposure factor (default: 4500) 
+    :return fexp: 
+        exposure factor twilight correction
+    '''
+    theta = np.atleast_2d(np.array([airmass, sun_sep, sun_alt]).T)
+        
+    if wavelength == 4500:
+        _twiCoefficients = np.array([1.37980334, -0.00460065,  0.17337445])
+        _twiIntercept = 2.217660156188111
+
+    return np.dot(theta, _twiCoefficients.T) + _twiIntercept
 
 
 def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
@@ -396,6 +426,18 @@ def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_pha
     # PASP, vol. 98, Mar. 1986, p. 364 (http://dx.doi.org/10.1086/131768)
     return ((20.7233 - np.log(B_moon / 34.08)) / 0.92104 *
             u.mag / (u.arcsec ** 2))
+
+
+def exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_alt): 
+    """Calculate the exposure factor for specified observing conditions
+    """
+    # airmass exposure factor
+    f_airmass = airmass_exposure_factor(airmass)
+    
+    # bright time exposure factor
+    f_bright = bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt,
+            sun_sep, sun_alt) 
+    return f_airmass * f_bright
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,

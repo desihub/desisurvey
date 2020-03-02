@@ -50,8 +50,12 @@ class Scheduler(object):
     design_hourangles : array or None
         1D array of design hour angles to use in degrees, or use
         :func:`desisurvey.plan.load_design_hourangle` when None.
+    use_brightsky : bool 
+        If True use improved bright sky model in next_tile selection to
+        calculate exposure factor for bright sky. If False, exposure factor
+        does not include bright sky model.
     """
-    def __init__(self, restore=None, design_hourangle=None):
+    def __init__(self, restore=None, design_hourangle=None, use_brightsky=False):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -62,6 +66,7 @@ class Scheduler(object):
         self.threshold_alt = self.max_prod / self.max_frac
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         self.max_ha = config.max_hour_angle().to(u.deg).value
+        self.use_brightsky = use_brightsky
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
@@ -265,7 +270,7 @@ class Scheduler(object):
         # Initialize moon tracking during this night.
         self.moon_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
         self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
-
+        # Initialize sun tracking during this night.
         self.sun_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=False) 
         self.sun_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=True) 
 
@@ -373,16 +378,11 @@ class Scheduler(object):
             # No tiles left to observe after airmass cut.
             return None, None, None, None, None, program, mjd_program_end
 
-        # Calculate the moon (RA,DEC).
-        moonDEC, moonRA = self.moon_DECRA(mjd_now)
-        moonALT, moonAZ = self.moon_ALTAZ(mjd_now) 
-        # calculate the sun (RA, DEC)
-        sunDEC, sunRA = self.sun_DECRA(mjd_now)
-        sunALT, sunAZ = self.sun_ALTAZ(mjd_now) 
-
         # Is the moon up?
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
             moon_is_up = True
+            # calculate the moon (RA,DEC).
+            moonDEC, moonRA = self.moon_DECRA(mjd_now)
             # Identify tiles that are too close to the moon to observe now.
             too_close = desisurvey.utils.separation_matrix(
                 [moonRA], [moonDEC],
@@ -395,24 +395,16 @@ class Scheduler(object):
                 return None, None, None, None, None, program, mjd_program_end
         else:
             moon_is_up = False
-        moon_sep = desisurvey.utils.separation_matrix(
-            [moonRA], [moonDEC],
-            self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
-        sun_sep = desisurvey.utils.separation_matrix(
-            [sunRA], [sunDEC],
-            self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
+
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
-        self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
-        _bright_exposure_factor = desisurvey.etc.bright_exposure_factor(
-                self.night_ephem['moon_illum_frac'], 
-                moonALT, 
-                moon_sep, 
-                sunALT, 
-                sun_sep, 
-                self.airmass[self.tile_sel])
-        self.exposure_factor[self.tile_sel] *= _bright_exposure_factor
+        if self.use_brightsky: 
+            self.exposure_factor[self.tile_sel] *= \
+                    self.update_exposure_factor(mjd_now, self.tiles.tileID[self.tile_sel])
+        else: 
+            self.exposure_factor[self.tile_sel] *= \
+                    desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
         self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
 
@@ -466,3 +458,34 @@ class Scheduler(object):
         """Test if all tiles have been completed.
         """
         return self.completed_by_pass.sum() == self.tiles.ntiles
+    
+    def update_exposure_factor(self, mjd, tileid): 
+        """ get updated exposure factor on this night given mjd, and tile ID.
+        """
+        # get tile index 
+        idx = [] 
+        for _id in np.atleast_1d(tileid): 
+            idx.append(np.where(self.tiles.tileID == _id)[0])
+        idx = np.array(idx).flatten() 
+        assert len(idx) > 0  
+
+        # (RA,DEC) of the moon and sun at mjd
+        moonDEC, moonRA = self.moon_DECRA(mjd)
+        moonALT, moonAZ = self.moon_ALTAZ(mjd) 
+        sunDEC, sunRA = self.sun_DECRA(mjd)
+        sunALT, sunAZ = self.sun_ALTAZ(mjd) 
+
+        # moon illumination 
+        moonILL = self.night_ephem['moon_illum_frac']
+
+        # calculate moon and sun separation 
+        moonSEP = desisurvey.utils.separation_matrix(
+            [moonRA], [moonDEC],
+            self.tiles.tileRA[idx], self.tiles.tileDEC[idx])
+        sunSEP = desisurvey.utils.separation_matrix(
+            [sunRA], [sunDEC],
+            self.tiles.tileRA[idx], self.tiles.tileDEC[idx])
+
+        fexp = desisurvey.etc.exposure_factor(
+                self.airmass[idx], moonILL, moonSEP, moonALT, sunSEP, sunALT)
+        return fexp
