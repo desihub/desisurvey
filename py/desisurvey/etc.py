@@ -10,14 +10,12 @@ implemented: twilight sky brightness, clouds, variable OH sky brightness.
 """
 from __future__ import print_function, division
 
-import h5py 
-import pickle
 import numpy as np
-from scipy.interpolate import interp1d
 from itertools import chain, combinations_with_replacement
 
-import astropy.utils.data
 import astropy.units as u
+
+import specsim.atmosphere
 
 import desiutil.log
 
