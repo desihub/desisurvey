@@ -22,8 +22,6 @@ import desiutil.log
 import desisurvey.config
 import desisurvey.tiles
         
-from sklearn.gaussian_process import GaussianProcessRegressor as GPR
-
 
 def seeing_exposure_factor(seeing):
     """Scaling of exposure time with seeing, relative to nominal seeing.
