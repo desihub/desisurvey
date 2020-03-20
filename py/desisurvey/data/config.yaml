@@ -134,9 +134,10 @@ fiber_assignment_cadence: monthly
 # Similarly, a delay of 0 indicates that fibers are assigned on
 # the first day / month after the covering tiles are completed.
 fiber_assignment_order:
-    P1: P0 delay 1
-    P2: P0+P1 delay 1
-    P3: P0+P1 delay 1
+    # Leave P0 (Gray) alone.
+    P2: P1 delay 1
+    P3: P1+P2 delay 1 
+    P4: P1+P2 delay 1
     P6: P5 delay 1
     P7: P5+P6 delay 1
 
@@ -156,7 +157,7 @@ tile_radius: 1.63 deg
 # - Pass numbers are arbitrary integers and do not need to be consecutive
 #   or dense. However use of non-standard values will generally require
 #   an update to fiber_assignment_order, above.
-tiles_file: desi-tiles.fits
+tiles_file:
 
 # Base path to pre-pended to all non-absolute paths used for reading and
 # writing files managed by this package. The pattern {...} will be expanded
