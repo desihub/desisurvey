@@ -161,4 +161,4 @@ tiles_file: desi-tiles.fits
 # using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'
 
-rules: rules.yaml
+rules_file: rules.yaml

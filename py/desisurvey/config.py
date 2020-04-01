@@ -137,6 +137,17 @@ class Configuration(Node):
         Configuration.__instance = None
 
 
+    @staticmethod
+    def _get_full_path(file_name):
+        # Locate the config file in our pkg data/ directory if no path is given.
+        if os.path.split(file_name)[0] == '':
+            full_path = astropy.utils.data._find_pkg_data_path(
+                os.path.join('data', file_name))
+        else:
+            full_path = file_name
+        return full_path
+
+
     def __new__(cls, file_name=None):
         """Implement a singleton access pattern.
         """
@@ -175,12 +186,7 @@ class Configuration(Node):
         # Remember the file name since it is not allowed to change.
         self.file_name = file_name
 
-        # Locate the config file in our pkg data/ directory if no path is given.
-        if os.path.split(file_name)[0] == '':
-            full_path = astropy.utils.data._find_pkg_data_path(
-                os.path.join('data', file_name))
-        else:
-            full_path = file_name
+        full_path = self._get_full_path(file_name)
 
         # Validate that all mapping keys are valid python identifiers
         # and that there are no embedded sequences.

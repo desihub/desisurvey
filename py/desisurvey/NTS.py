@@ -154,16 +154,17 @@ class NTS():
                           'using current date: {}.'.format(self.night))
         else:
             self.night = night
-        self.rules = desisurvey.rules.Rules(file_name=config.rules())
+        self.rules = desisurvey.rules.Rules(
+            config.get_path(config.rules_file()))
         try:
             nightstr = desisurvey.utils.night_to_str(self.night)
             self.planner = desisurvey.plan.Planner(
                 self.rules,
-                restore='desi-status-{}.fits'.format(nightstr))
+                restore='{}/desi-status-{}.fits'.format(nightstr, nightstr))
             self.scheduler = desisurvey.scheduler.Scheduler(
-                restore='desi-status-{}.fits'.format(nightstr))
+                restore='{}/desi-status-{}.fits'.format(nightstr, nightstr))
             self.queuedlist = QueuedList(
-                config.get_path('queued-{}.dat'.format(nightstr)))
+                config.get_path('{}/queued-{}.dat'.format(nightstr, nightstr)))
         except:
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')
