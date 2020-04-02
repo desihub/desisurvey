@@ -335,7 +335,7 @@ def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt, wavele
 
     combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, 5))
 
-    theta_transform = np.empty((theta.shape[0], len(_notwiCoefficients))
+    theta_transform = np.empty((theta.shape[0], len(_notwiCoefficients)))
     for i, comb in enumerate(combs):
         theta_transform[:, i] = theta[:, comb].prod(1)
 
