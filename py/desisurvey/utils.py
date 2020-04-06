@@ -131,65 +131,6 @@ def freeze_iers(name='iers_frozen.ecsv', ignore_warnings=True):
     desisurvey.utils._iers_is_frozen = True
 
 
-def update_iers(save_name='iers_frozen.ecsv', num_avg=1000):
-    """Update the IERS table used by astropy time, coordinates.
-
-    Downloads the current IERS-A table, replaces the last entry (which is
-    repeated for future times) with the average of the last ``num_avg``
-    entries, and saves the table in ECSV format.
-
-    This should only be called every few months, e.g., with major releases.
-    The saved file should then be copied to this package's data/ directory
-    and committed to the git repository.
-
-    Requires a network connection in order to download the current IERS-A table.
-    Prints information about the update process.
-
-    The :func:`desisurvey.utils.plot_iers` function is useful for inspecting
-    IERS tables and how they are extrapolated to DESI survey dates.
-
-    Parameters
-    ----------
-    save_name : str
-        Name where frozen IERS table should be saved. Must end with the
-        .ecsv extension.
-    num_avg : int
-        Number of rows from the end of the current table to average and
-        use for calculating UT1-UTC offsets and polar motion at times
-        beyond the table.
-    """
-    log = desiutil.log.get_logger()
-    # Validate the save_name extension.
-    _, ext = os.path.splitext(save_name)
-    if ext != '.ecsv':
-        raise ValueError('Expected .ecsv extension for {0}.'.format(save_name))
-
-    # Download the latest IERS_A table
-    if astropy.utils.iers.conf.iers_auto_url == 'frozen':
-        raise ValueError("Attempting to update a frozen IERS A table!")
-    iers = astropy.utils.iers.IERS_A.open(astropy.utils.iers.conf.iers_auto_url)
-    last = astropy.time.Time(iers['MJD'][-1], format='mjd').datetime
-    log.info('Updating to current IERS-A table with coverage up to {0}.'
-             .format(last.date()))
-
-    # Loop over the columns used by the astropy IERS routines.
-    for name in 'UT1_UTC', 'PM_x', 'PM_y':
-        # Replace the last entry with the mean of recent samples.
-        mean_value = np.mean(iers[name][-num_avg:].value)
-        unit = iers[name].unit
-        iers[name][-1] = mean_value * unit
-        log.info('Future {0:7s} = {1:.3}'.format(name, mean_value * unit))
-
-    # Strip the original table metadata since ECSV cannot handle it.
-    # We only need a single keyword that is checked by IERS_Auto.open().
-    iers.meta = dict(data_url='frozen')
-
-    # Save the table. The IERS-B table provided with astropy uses the
-    # ascii.cds format but astropy cannot write this format.
-    iers.write(save_name, format='ascii.ecsv', overwrite=True)
-    log.info('Wrote updated table to {0}.'.format(save_name))
-
-
 def get_location():
     """Return the telescope's earth location.
 

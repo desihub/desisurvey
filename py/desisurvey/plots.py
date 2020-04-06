@@ -950,7 +950,7 @@ def plot_iers(which='auto', num_points=500, save=None):
     are predicted then fixed.
 
     This function is primarily intended to document and debug the
-    :func:`desisurvey.utils.update_iers` and :func:`desisurvey.utils.freeze_iers` functions.
+    :func:`desisurvey.utils.freeze_iers` functions.
 
     Requires that the matplotlib and basemap packages are installed.
 
