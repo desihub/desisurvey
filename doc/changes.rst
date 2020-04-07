@@ -2,10 +2,21 @@
 desisurvey change log
 =====================
 
-0.12.2 (unreleased)
+0.13.1 (unreleased)
 -------------------
 
 * No changes yet (but likely to include more AP/NTS/ICS integration)
+
+0.13.0 (2020-04-07)
+-------------------
+
+Requires desimodel/0.12.0 or later with new tile file.
+
+* Change fiber_assignment_order to reflect new pass ordering (PR `#111`_).
+* Enable using NTS/desisurvey with CMX tile file; add HA limit (PR `#107`_).
+
+.. _`#107`: https://github.com/desihub/desisurvey/pull/107
+.. _`#111`: https://github.com/desihub/desisurvey/pull/111
 
 0.12.1 (2019-12-20)
 -------------------
