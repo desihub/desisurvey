@@ -6,6 +6,10 @@ desisurvey change log
 -------------------
 
 * No changes yet (but likely to include more AP/NTS/ICS integration)
+* Move IERS functions to desiutil_ (PR `#111`_).
+
+.. _desiutil: https://github.com/desihub/desiutil
+.. _`#111`: https://github.com/desihub/desisurvey/pull/111
 
 0.12.1 (2019-12-20)
 -------------------

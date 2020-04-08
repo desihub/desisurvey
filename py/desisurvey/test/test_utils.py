@@ -14,7 +14,6 @@ import astropy.coordinates
 import astropy.io
 import astropy.utils.data
 import astropy.units as u
-from astropy.utils.iers import conf as iers_conf
 
 from desisurvey.test.base import Tester
 import desisurvey.utils as utils
@@ -43,29 +42,7 @@ class TestUtils(Tester):
             self.table[old_name].name = new_name
 
     def tearDown(self):
-        utils._iers_is_frozen = False
-        # iers_conf.reset()
-
-    def test_freeze_iers(self):
-        """Test freezing from package data/"""
-        utils.freeze_iers()
-        future = astropy.time.Time('2024-01-01', location=utils.get_location())
-        lst = future.sidereal_time('apparent')
-
-    def test_freeze_iers_bad_ext(self):
-        """Test freezing from package data/"""
-        with self.assertRaises(ValueError):
-            utils.freeze_iers('_non_existent_.fits')
-
-    def test_freeze_iers_bad_name(self):
-        """Test freezing from package data/"""
-        with self.assertRaises(ValueError):
-            utils.freeze_iers('_non_existent_.ecsv')
-
-    def test_freeze_iers_bad_format(self):
-        """Test freezing from valid file with wrong format"""
-        with self.assertRaises(ValueError):
-            utils.freeze_iers('config.yaml')
+        pass
 
     def test_get_observer_to_sky(self):
         """Check (alt,az) -> (ra,dec) against JPL Horizons"""
