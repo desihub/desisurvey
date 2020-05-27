@@ -276,33 +276,26 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
 
 # polynomial regression cofficients for estimating exposure time factor during
 # non-twilight from airmass, moon_frac, moon_sep, moon_alt  
-_notwiCoefficients_4500 = np.array([
-    0.00000000e+00,  6.64249135e-01,  8.74636845e-01,  5.46119086e-02,
-    2.09630540e-01,  7.71533535e-01,  2.43080508e+00, -3.37324907e-02,
-    -1.31562925e-01,  1.76568937e+00, -1.72785334e-01, -4.12519964e-01,
-    2.70218415e-04, -6.74720013e-04, -6.40615701e-04, -6.06114238e-02,
-    4.20083806e+00, -4.01683814e-02, -2.23927383e-02,  4.26750164e+00,
-    -1.24791583e-01, -1.34950879e-02,  9.74987299e-04,  2.04344664e-03,
-    1.45017954e-03,  3.55655361e+00, -2.81204010e-02,  3.69329478e-01,
-    1.74650674e-03,  1.60250805e-03,  3.85155358e-04, -8.17780306e-06,
-    -1.51577067e-05, -1.35840537e-05, -5.20906511e-06])
-
-_notwiCoefficients_7000 = np.array([ 
-    0.00000000e+00,  8.37707994e-01,  1.69728969e+00, -1.22451341e-01,
-    9.88375492e-02,  7.17746023e-01,  2.12069891e+00, -1.96381608e-02,
-    -1.76532675e-01,  2.44060866e+00, -3.09799460e-01, -1.86182063e-01,
-    2.85846222e-03,  1.89986681e-03, -1.89164192e-04, -4.83041795e-01,
-    2.27787205e+00, -2.40012601e-02,  7.80553188e-03,  4.74119022e+00,
-    -9.01332722e-03, -4.83596159e-02,  3.00522374e-04,  1.71774283e-03,
-    1.63075172e-03,  2.83037763e+00, -6.00379169e-02,  2.33975980e-01,
-    2.01831833e-03,  6.89245918e-04,  4.12729616e-05, -1.58488809e-05,
-    -2.70434515e-05, -2.10456280e-05, -6.45928584e-06])
+_notwiCoefficients = np.array([ 
+    0.00000000e+00,  6.50307993e-01,  1.79496954e+00, -2.56140090e-01,
+    -8.32739152e-02,  3.99928975e-01,  7.26639853e-01, -7.28096846e-04,
+    -1.63340434e-01,  1.71311557e+00, -2.57687030e-01,  2.33514148e-01,
+    4.03803033e-03,  3.67516011e-03,  7.68604039e-05, -5.88335475e-01,
+    -1.11052229e+00, -1.09025171e-02,  4.60369201e-02,  2.48093310e+00,
+    1.24610261e-01, -7.91315465e-02, -2.07680461e-04,  9.14779830e-04,
+    1.43263956e-03, -1.64184095e-01, -5.65066967e-02, -1.20641539e-02,
+    9.28011929e-04, -1.18641897e-03, -2.14987988e-04, -1.64854640e-05,
+    -2.78231446e-05, -2.18175775e-05, -5.70691523e-06])
 
 
-def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt,
-        wavelength=7000): 
+def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt): 
     ''' third degree polynomial regression fit to exposure factor of  
-    non-twilight bright sky given airmass and moon_conditions 
+    non-twilight bright sky given airmass and moon_conditions. Exposure factor
+    is calculated from the ratio of (sky brightness)/(nominal dark sky
+    brightness) at 7000A. The coefficients are fit to DESI CMX and BOSS sky
+    surface brightness. See
+    https://github.com/changhoonhahn/feasiBGS/blob/97524545ad98df34c934d777f98761c5aea6a4c5/notebook/cmx/exposure_factor_refit.ipynb
+    for details. 
 
     :param airmass: 
         array of airmasses
@@ -312,17 +305,10 @@ def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt,
         array of moon separations
     :param moon_alt: 
         array of moon altitudes 
-    :param wavelength: 
-        wavelength of the exposure factor (default: 4500) 
     :return fexp: 
         exposure factor for non-twlight bright sky 
     '''
-    if wavelength == 4500: 
-        _notwiCoefficients = _notwiCoefficients_4500
-        _notwiIntercept = -1.2150087847104432
-    elif wavelength == 7000: 
-        _notwiCoefficients = _notwiCoefficients_7000
-        _notwiIntercept = 4.280003788471031
+    _notwiIntercept = 8.620005330083117
     
     theta = np.atleast_2d(np.array([airmass, moon_frac, moon_sep, moon_alt]).T)
 
@@ -336,9 +322,9 @@ def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt,
     return fexp
 
 
-def _bright_exposure_factor_twi(airmass, sun_sep, sun_alt, wavelength=7000):
-    ''' linear regression fit to exposure factor correction from the twilight
-    contirbution given airmass and sun conditions 
+def _bright_exposure_factor_twi(airmass, sun_sep, sun_alt):
+    ''' linear regression fit to exposure factor correction contribution from
+    the twilight given airmass and sun conditions. 
 
     :param airmass: 
         array of airmasses
@@ -353,12 +339,8 @@ def _bright_exposure_factor_twi(airmass, sun_sep, sun_alt, wavelength=7000):
     '''
     theta = np.atleast_2d(np.array([airmass, sun_sep, sun_alt]).T)
         
-    if wavelength == 4500:
-        _twiCoefficients = np.array([1.37980334, -0.00460065,  0.17337445])
-        _twiIntercept = 2.217660156188111
-    elif wavelength == 7000:  
-        _twiCoefficients = np.array([1.1139712, -0.00431072, 0.16183842]) 
-        _twiIntercept = 2.3278959318651733
+    _twiCoefficients = np.array([1.1139712, -0.00431072, 0.16183842]) 
+    _twiIntercept = 2.3278959318651733
 
     return np.dot(theta, _twiCoefficients.T) + _twiIntercept
 
