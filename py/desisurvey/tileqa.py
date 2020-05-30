@@ -551,7 +551,16 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file, covfile,
     # stupid way to make copy of an array, but most other things I tried
     # ended up with the dtype of desitilesnew being a reference to the dtype
     # of desitiles, which I didn't want.
-    desitilesnew = numpy.zeros(len(desitiles), dtype=desitiles.dtype.descr)
+    # dtype munging below needed to make sure that we get things as proper
+    # python unicode strings rather than byte arrays, though this approach
+    # is fragile.
+    dtype = []
+    for name, dt in desitiles.dtype.descr:
+        if name != 'PROGRAM':
+            dtype.append((name, dt))
+        else:
+            dtype.append((name, 'U6'))
+    desitilesnew = numpy.zeros(len(desitiles), dtype=dtype)
     for n in desitilesnew.dtype.names:
         desitilesnew[n] = desitiles[n]
     desitilesnew.dtype.names = [n.lower() for n in desitilesnew.dtype.names]
@@ -631,12 +640,7 @@ def writefiles(tiles, fnbase, overwrite=False, viewer=False):
         fits.writeto(fnbase+'-viewer.fits', tilesviewer, overwrite=True)
 
     tiles.dtype.names = [n.upper() for n in tiles.dtype.names]
-    fits.writeto(fnbase+'.fits', tiles, overwrite=overwrite)
-    hdulist = fits.open(fnbase+'.fits', mode='update')
-    hdulist[1].header['EXTNAME'] = 'TILES'
-    hdulist.close()
-    tilestab = table.Table(
-        rec_drop_fields(tiles, ['BRIGHTRA', 'BRIGHTDEC', 'BRIGHTVTMAG']))
+    tilestab = table.Table(tiles, meta={'EXTNAME': 'TILES'})
     metadata = {'tileid': ('', 'Unique tile ID'),
                 'ra': ('deg', 'Right ascension'),
                 'dec': ('deg', 'Declination'),
@@ -661,10 +665,12 @@ def writefiles(tiles, fnbase, overwrite=False, viewer=False):
                 }
     metadatacaps = {k.upper(): v for k, v in metadata.items()}
     from astropy import units as u
-    unitdict = {'': None, 'deg': u.deg, 'mag': u.mag, 'deg^-2': 1/u.mag/u.mag}
+    unitdict = {'': None, 'deg': u.deg, 'mag': u.mag, 'deg^-2': 1/u.deg/u.deg}
     for name in tilestab.dtype.names:
         tilestab[name].unit = unitdict[metadatacaps[name][0]]
         tilestab[name].description = metadatacaps[name][1]
+    tilestab.write(fnbase+'.fits', format='fits', overwrite=overwrite)
+    tilestab.remove_columns(['BRIGHTRA', 'BRIGHTDEC', 'BRIGHTVTMAG'])
     ascii.write(tilestab, fnbase+'.ecsv', format='ecsv', overwrite=overwrite)
 
 
