@@ -344,8 +344,6 @@ class Scheduler(object):
             # No tiles left to observe after airmass cut.
             return None, None, None, None, None, program, mjd_program_end
         # Is the moon up?
-        import pdb
-        pdb.set_trace()
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
             moon_is_up = True
             # Calculate the moon (RA,DEC).

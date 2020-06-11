@@ -226,10 +226,11 @@ class Rules(object):
         """
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
+        config = desisurvey.config.Configuration()
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
-            if not np.any(group_sel):
+            if not np.any(group_sel) and not config.commissioning:
                 self.log.error('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
             ndone = np.count_nonzero(completed[group_sel])

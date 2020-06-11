@@ -1,5 +1,6 @@
 import os
 import glob
+import re
 import numpy as np
 from astropy.io import fits
 import desiutil.log
@@ -44,8 +45,8 @@ def cull_old_files(files, start_from):
     """
     expid = np.array([int(os.path.basename(f)[5:13]) for f in files])
     # extract just the expid; better to do this with a regex, but...
-    maxexpid = np.max(start_from['expid'])
-    return files[expid > maxmatch]
+    maxexpid = np.max(start_from['EXPID'])
+    return [f for (f, e) in zip(files, expid) if e > maxexpid]
 
 
 def scan_directory(dirname, simulate_donefrac=False, start_from=None):
@@ -67,23 +68,40 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         in DESISURVEY_OUTPUT/YYYYMMDD/etc_stats-{YYYYMMDD}.fits
     """
     log.info('Scanning {} for desi exposures...'.format(dirname))
-    files = glob.glob(os.path.join(dirname, '**/desi*.fits.fz'),
-                      recursive=True)
-    if start_from is not None:
-        try:
+    if start_from is None:
+        files = glob.glob(os.path.join(dirname, '**/desi*.fits.fz'),
+                          recursive=True)
+        start_exps = None
+    else:
+        files = []
+        subdirs = os.listdir(dirname)
+        subdirs = np.sort(subdirs)[::-1]
+        if os.path.exists(start_from):
+            fn = start_from
+        else:
             fn = os.path.join(os.environ['DESISURVEY_OUTPUT'], start_from,
                               'etc_stats-{}.fits'.format(start_from))
-            start_exps = fits.getdata(fn, 'EXPS')
-        except:
-            try:
-                start_exps = fits.getdata(start_from, 'EXPS')
-            except:
-                log.error('Could not find file {} to start from!'.format(
-                    start_from))
-                return
+        if not os.path.exists(fn):
+            log.error('Could not find file {} to start from!'.format(
+                start_from))
+            return
+        start_tiles, start_exps = read_tile_exp(fn)
+        maxexpid = np.max(start_exps['EXPID'])
+        for subdir in subdirs:
+            if not os.path.isdir(os.path.join(dirname, subdir)):
+                continue
+            files0 = glob.glob(os.path.join(dirname, subdir,
+                                            '**/desi*.fits.fz'))
+            expids = [re.findall(r'-(\d+)\.', os.path.basename(f)) for f
+                      in files0]
+            if len(expids) == 0:
+                log.info(f'No desi exposures on night {subdir}')
+                continue
+            expids = [int(expid[0]) for expid in expids if len(expid) > 0]
+            files += files0
+            if min(expids) <= maxexpid:
+                break
         files = cull_old_files(files, start_exps)
-    else:
-        start_exps = None
     
     log.info('Found {} files, extracting header information...'.format(
         len(files)))
@@ -112,7 +130,8 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         exps['EXPTIME'][i] = hdr.get('EXPTIME', -1)
         exps['MJD_OBS'][i] = hdr.get('MJD-OBS', -1)
         exps['FLAVOR'][i] = hdr.get('FLAVOR', 'none')
-    flavors = np.array([f.upper().strip() for f in exps['FLAVOR']])
+    flavors = np.array([f.upper().strip() for f in exps['FLAVOR']],
+                       dtype=exps['FLAVOR'].dtype)
     m = (exps['TILEID'] == -1) | (flavors != 'SCIENCE')
     if np.any(m):
         log.info('Ignoring {} files due to weird FLAVOR or TILEID'.format(
@@ -135,6 +154,8 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         tiles['NOBS_ETC'][i] = len(ind)
         tiles['LASTMJD_ETC'][i] = np.max(exps['MJD_OBS'][ind])
     exps = exps[np.argsort(exps['EXPID'])]
+    if start_exps is not None:
+        exps = np.concatenate([start_exps, exps])
     return tiles, exps
 
 
@@ -149,9 +170,42 @@ def write_tile_exp(tiles, exps, fn):
     exps : array
         exposure ETC statistics
     """
-    from astropy.io import fits
     fits.writeto(fn, tiles, header=fits.Header(dict(EXTNAME='TILES')))
     fits.append(fn, exps, header=fits.Header(dict(EXTNAME='EXPS')))
+
+
+def convert_fits(fits):
+    outdtype = fits.dtype.descr
+    newdtype = []
+    for field in outdtype:
+        newfield = tuple(field)
+        if 'S' in newfield[-1]:
+            newfield = newfield[:-1] + (newfield[-1].replace('S', 'U'),)
+        newdtype += [newfield]
+    out = np.zeros(len(fits), dtype=newdtype)
+    for field in fits.dtype.names:
+        out[field] = fits[field]
+    return out
+
+
+def read_tile_exp(fn):
+    """Read tile & exposure ETC statistics file from filename.
+
+    This function works around some fits string issues in old versions
+    of astropy.
+
+    Parameters
+    ----------
+    fn : str
+
+    Returns
+    -------
+    tiles, exps
+    numpy arrays for the tile and exposure ETC files
+    """
+    tiles = fits.getdata(fn, 'TILES')
+    exps = fits.getdata(fn, 'EXPS')
+    return convert_fits(tiles), convert_fits(exps)
 
 
 if __name__ == "__main__":
@@ -163,8 +217,10 @@ if __name__ == "__main__":
                         help='directory to scan for spectra')
     parser.add_argument('outfile', type=str,
                         help='file to write out')
-    parser.add_argument('--start_from', type=str, defalt=None,
+    parser.add_argument('--start_from', type=str, default=None,
                         help='etc_stats file to start from')
     args = parser.parse_args()
-    tiles, exps = scan_directory(args.directory)
-    write_tile_exp(tiles, exps, args.outfile)
+    res = scan_directory(args.directory, start_from=args.start_from)
+    if res is not None:
+        tiles, exps = res
+        write_tile_exp(tiles, exps, args.outfile)

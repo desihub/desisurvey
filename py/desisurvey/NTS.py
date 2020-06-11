@@ -117,47 +117,54 @@ def azinrange(az, low, high):
 
 
 class NTS():
-    def __init__(self, obsplan='config.yaml', fiber_assign_dir='', defaults={}, night=None):
+    def __init__(self, obsplan='config.yaml', defaults={}, night=None):
         """Initialize a new instance of the Next Tile Selector.
 
         Parameters
         ----------
         obsplan : config.yaml to load
 
-        fiber_assign_dir : directory where fiber assign files are located
-
         defaults : dictionary giving default values of 'seeing',
             'transparency', 'sky_level', and 'program', for next tile
             selection.
 
-        night : night to plan, ISO 8601.
+        night : night for which to assign tiles, YYYMMDD, default tonight.
 
         Returns
         -------
         NTS object. Tiles can be generated via next_tile(...)
         """
         self.obsplan = obsplan
-        self.fiber_assign_dir = fiber_assign_dir
         self.log = desiutil.log.get_logger()
         # making a new NTS; clear out old configuration / tile information
-        desisurvey.config.Configuration.reset()
-        _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
-        config = desisurvey.config.Configuration()
-
-        self.default_seeing = defaults.get('seeing', 1.0)
-        self.default_transparency = defaults.get('transparency', 0.9)
-        self.default_skylevel = defaults.get('skylevel', 1000.0)
-        self.default_program = defaults.get('program', 'DESI DARK')
         if night is None:
             self.night = desisurvey.utils.get_current_date()
             self.log.info('No night selected, '
                           'using current date: {}.'.format(self.night))
         else:
             self.night = night
+        nightstr = desisurvey.utils.night_to_str(self.night)
+        if not os.path.exists(obsplan):
+            obsplannew = os.path.join(os.environ['DESISURVEY_OUTPUT'],
+                                      nightstr, obsplan)
+            if not os.path.exists(obsplannew):
+                self.log.error('Could not find obsplan configuration '
+                               f'{obsplan}!')
+                raise ValueError('Could not find obsplan configuration!')
+            else:
+                obsplan = obsplannew
+        desisurvey.config.Configuration.reset()
+        config = desisurvey.config.Configuration(obsplan)
+        _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
+
+        self.default_seeing = defaults.get('seeing', 1.0)
+        self.default_transparency = defaults.get('transparency', 0.9)
+        self.default_skylevel = defaults.get('skylevel', 1000.0)
+        self.default_program = defaults.get('program', 'DESI DARK')
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
+        self.config = config
         try:
-            nightstr = desisurvey.utils.night_to_str(self.night)
             self.planner = desisurvey.plan.Planner(
                 self.rules,
                 restore='{}/desi-status-{}.fits'.format(nightstr, nightstr))
@@ -269,8 +276,10 @@ class NTS():
         if program is None:
             maxtime = min([maxtime, mjd_program_end-maxtime])
 
-        fiber_assign = os.path.join(self.fiber_assign_dir,
-                                    'tile_%d.fits' % tileid)
+        tileidstr = f'{tileid:06d}'
+        fiber_assign = os.path.join(self.config.fiber_assign_dir(),
+                                    tileidstr[:3],
+                                    'fiberassign-%s.fits' % tileidstr)
         days_to_seconds = 60*60*24
 
         selection = {'tileid': tileid, 's2n': s2n,

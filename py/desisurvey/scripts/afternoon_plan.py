@@ -83,11 +83,13 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     log = desiutil.log.get_logger()
     if night is None:
         night = desisurvey.utils.get_current_date()
+    else:
+        night = desisurvey.utils.get_date(night)
     nightstr = desisurvey.utils.night_to_str(night)
 
     if desisurvey_output is None:
         if os.environ.get('DESISURVEY_OUTPUT') is None:
-            log.error('Must set ap_dir or environment variable '
+            log.error('Must set environment variable '
                       'DESISURVEY_OUTPUT!')
             return
         desisurvey_output = os.environ['DESISURVEY_OUTPUT']
@@ -105,6 +107,8 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     desisurvey.config.Configuration.reset()
     config = desisurvey.config.Configuration(configfn)
     log.info('Loading configuration from {}...'.format(configfn))
+    if not os.path.exists(configfn):
+        configfn = desisurvey.config.Configuration._get_full_path(configfn)
     tilefn = config.get_path(config.tiles_file())
     rulesfn = config.get_path(config.rules_file())
     if not os.path.exists(tilefn):
@@ -159,14 +163,12 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     planner = desisurvey.plan.Planner(rules, simulate=simulate)
     scheduler = desisurvey.scheduler.Scheduler()
 
-    nightstr = desisurvey.utils.night_to_str(night)
-
     if spectra_dir is None:
         spectra_dir = config.spectra_dir()
     tiles, exps = collect_etc.scan_directory(spectra_dir,
                                              start_from=restore_etc_stats)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
-        directory, 'etc_stats-{}.fits'.format(night)))
+        directory, 'etc_stats-{}.fits'.format(nightstr)))
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'],
                          tiles['LASTEXPID_ETC'])
 
@@ -192,7 +194,8 @@ if __name__ == "__main__":
     outputdir = os.environ.get('DESISURVEY_OUTPUT', None)
     log = desiutil.log.get_logger()
     if outputdir is None:
-        log.error('Environment variable $(DESISURVEY_OUTPUT) must be set.')
+        log.error('Environment variable DESISURVEY_OUTPUT must be set.')
+        raise ValueError('Environment variable DESISURVEY_OUTPUT must be set.')
 
     afternoon_plan(night=args.night, restore_etc_stats=args.restore_etc_stats,
                    configfn=args.config)

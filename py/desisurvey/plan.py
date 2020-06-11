@@ -311,6 +311,8 @@ class Planner(object):
         self.tile_available = available.copy()
         self.log.info('Fiber assignment files found for {} tiles.'.format(
             np.count_nonzero(available)))
+        if np.count_nonzero(available) == 0:
+            self.log.error('No fiberassign files available for scheduling!')
         if np.any(~mask):
             self.log.warning(
                 'Ignoring {} tiles that were assigned, '.format(sum(~mask)) +
