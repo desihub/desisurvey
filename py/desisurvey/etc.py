@@ -276,16 +276,15 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
 
 # polynomial regression cofficients for estimating exposure time factor during
 # non-twilight from airmass, moon_frac, moon_sep, moon_alt  
-_notwiCoefficients = np.array([ 
-    0.00000000e+00,  6.50307993e-01,  1.79496954e+00, -2.56140090e-01,
-    -8.32739152e-02,  3.99928975e-01,  7.26639853e-01, -7.28096846e-04,
-    -1.63340434e-01,  1.71311557e+00, -2.57687030e-01,  2.33514148e-01,
-    4.03803033e-03,  3.67516011e-03,  7.68604039e-05, -5.88335475e-01,
-    -1.11052229e+00, -1.09025171e-02,  4.60369201e-02,  2.48093310e+00,
-    1.24610261e-01, -7.91315465e-02, -2.07680461e-04,  9.14779830e-04,
-    1.43263956e-03, -1.64184095e-01, -5.65066967e-02, -1.20641539e-02,
-    9.28011929e-04, -1.18641897e-03, -2.14987988e-04, -1.64854640e-05,
-    -2.78231446e-05, -2.18175775e-05, -5.70691523e-06])
+_notwiCoefficients = np.array([ 0.00000000e+00, -3.25370591e-02,  3.24502646e-01, -7.06229367e-02,
+       -4.48817655e-02, -1.08639662e-01,  1.67330251e-01,  1.26047574e-02,
+       -2.06369392e-02,  4.27089974e-01, -1.82413474e-02,  8.98795572e-02,
+        7.85960945e-04,  9.21368404e-04,  1.34633923e-05,  7.32368512e-02,
+       -1.04924141e-01, -1.33399319e-02,  2.74422079e-03,  6.16555294e-01,
+        7.95012256e-03, -2.54404656e-02,  1.44795563e-04,  3.74838366e-04,
+        4.28923997e-04, -1.07082915e-01, -2.56369357e-02,  7.97087025e-03,
+        1.75981316e-04, -4.61519409e-04, -2.50772895e-04, -4.00060046e-06,
+       -7.95325622e-06, -6.57333165e-06, -5.42867923e-07])
 
 
 def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt): 
@@ -308,7 +307,7 @@ def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt):
     :return fexp: 
         exposure factor for non-twlight bright sky 
     '''
-    _notwiIntercept = 8.620005330083117
+    _notwiIntercept = 3.0493419627360243
     
     theta = np.atleast_2d(np.array([airmass, moon_frac, moon_sep, moon_alt]).T)
 
