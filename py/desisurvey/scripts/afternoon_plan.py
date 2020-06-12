@@ -101,14 +101,14 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     if configfn is None:
         configfn = desisurvey.config.Configuration._get_full_path(
             'config.yaml')
+    if not os.path.exists(configfn):
+        configfn = desisurvey.config.Configuration._get_full_path(configfn)
 
     # figuring out the current date requires having already loaded a
     # configuration file; we need to get rid of that.
     desisurvey.config.Configuration.reset()
     config = desisurvey.config.Configuration(configfn)
     log.info('Loading configuration from {}...'.format(configfn))
-    if not os.path.exists(configfn):
-        configfn = desisurvey.config.Configuration._get_full_path(configfn)
     tilefn = config.get_path(config.tiles_file())
     rulesfn = config.get_path(config.rules_file())
     if not os.path.exists(tilefn):

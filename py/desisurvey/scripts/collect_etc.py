@@ -219,8 +219,11 @@ if __name__ == "__main__":
                         help='file to write out')
     parser.add_argument('--start_from', type=str, default=None,
                         help='etc_stats file to start from')
+    parser.add_argument('--simulate_donefrac', action='store_true',
+                        help='use exptime/1000 instead of DONEFRAC')
     args = parser.parse_args()
-    res = scan_directory(args.directory, start_from=args.start_from)
+    res = scan_directory(args.directory, start_from=args.start_from,
+                         simulate_donefrac=args.simulate_donefrac)
     if res is not None:
         tiles, exps = res
         write_tile_exp(tiles, exps, args.outfile)
