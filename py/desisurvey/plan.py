@@ -170,19 +170,22 @@ class Planner(object):
             if self.simulate:
                 self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
                 self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
+                self.tile_countdown = np.zeros(self.tiles.ntiles, dtype='i4')
+                self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
                 if t.meta['CADENCE'] != self.fiberassign_cadence:
                     raise ValueError('Fiberassign cadence mismatch.')
-                self.tile_covered = np.full(self.tiles.ntiles, -1)
-                self.tile_countdown = self.tiles.fiberassign_delay.copy()
-                self.tile_covered[ind] = t['COVERED'].data[mask].copy()
-                self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
-            self.tile_available = np.zeros(self.tiles.ntiles, bool)
+            self.tile_started = np.zeros(self.tiles.ntiles, dtype='i4')
+            self.tile_observed = np.zeros(self.tiles.ntiles, dtype='i4')
+            self.tile_completed = np.zeros(self.tiles.ntiles, dtype='i4')
+            self.tile_started[ind] = t['STARTED'].data[mask].copy()
+            self.tile_observed[ind] = t['OBSERVED'].data[mask].copy()
+            self.tile_completed[ind] = t['COMPLETED'].data[mask].copy()
+
             self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = np.zeros(self.tiles.ntiles, 'f4')
             self.designhacond = dict()
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
-            self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
             self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
             self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
             self.lastexpid[ind] = t['LASTEXPID'].data[mask].copy()
@@ -191,11 +194,16 @@ class Planner(object):
                           else ['DARK', 'GRAY', 'BRIGHT'])
             for cond in conditions:
                 self.designhacond[cond] = t['DESIGNHA'+cond].data[mask].copy()
-            self.log.debug('Restored plan with {} / {} tiles available from "{}".'.format(
-                np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
-        else:
+            self.log.debug(('Restored plan with {} unobserved, {} pending, and {} '
+                            'completed tiles from {}.').format(
+                                np.sum(self.tile_donefrac <= 0),
+                                np.sum((self.tile_donefrac > 0) &
+                                       (self.tile_completed < 0)),
+                                np.sum(self.tile_completed > 0)))
+            assert not np.any((self.tile_started < 0) & (self.tile_observed > 0))
+            assert not np.any((self.tile_started < 0) & (self.tile_completed > 0))
+            assert not np.any((self.tile_observed < 0) & (self.tile_completed > 0)        else:
             # Initialize the plan for a a new survey.
-            self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.designha = load_design_hourangle()
@@ -206,21 +214,15 @@ class Planner(object):
             if not self.nogray:
                 self.designhacond['GRAY'] = (
                     load_design_hourangle(condition='GRAY'))
+
+            self.first_night = self.last_night = None
+            # Initialize per-tile arrays.
+            self.tile_started = np.full(self.tiles.ntiles, -1)
+            self.tile_observed = np.full(self.tiles.ntiles, -1)
+            self.tile_completed = np.full(self.tiles.ntiles, -1)
             if self.simulate:
-                self.first_night = self.last_night = None
-                # Initialize per-tile arrays.
-                self.tile_covered = np.full(self.tiles.ntiles, -1)
                 # Initailize the delay countdown for each tile.
                 self.tile_countdown = self.tiles.fiberassign_delay.copy()
-                # Mark tiles that are initially available.
-                fiberassign_order = config.fiber_assignment_order
-                for passnum in self.tiles.passes:
-                    if 'P{}'.format(passnum) not in fiberassign_order.keys:
-                        # Mark tiles in this pass as initially available.
-                        under = self.tiles.passnum == passnum
-                        self.tile_covered[under] = 0
-                        self.tile_available[under] = True
-                        self.log.info('Pass {} available for initial observing.'.format(passnum))
             # Initialize priorities.
             if self.rules is not None:
                 none_started = np.zeros(self.tiles.ntiles, 'f4')
@@ -260,8 +262,9 @@ class Planner(object):
         """Save a snapshot of our current state that can be restored.
 
         The output file has a binary table (extname PLAN) with columns
-        TILEID, COVERED, COUNTDOWN, AVAILABLE and PRIORITY and header keywords
-        CADENCE, FIRST, LAST. The saved file size is about 400Kb.
+        TILEID, STARTED, OBSERVED, COMPLETED, COUNTDOWN, and PRIORITY and
+        header keywords CADENCE, FIRST, LAST. The saved file size is about
+        400Kb.
 
         Parameters
         ----------
@@ -284,51 +287,39 @@ class Planner(object):
         t['DEC'] = self.tiles.tileDEC
         t['DONEFRAC'] = self.donefrac
         t['LASTEXPID'] = self.lastexpid
-        t['AVAILABLE'] = self.tile_available
+        t['STARTED'] = self.tile_started
+        t['OBSERVED'] = self.tile_observed
+        t['COMPLETED'] = self.tile_completed
         t['PRIORITY'] = self.tile_priority
         t['DESIGNHA'] = self.designha
         for cond in self.designhacond:
             t['DESIGNHA'+cond.upper()] = self.designhacond[cond]
         if self.simulate:
-            t['COVERED'] = self.tile_covered
             t['COUNTDOWN'] = self.tile_countdown
         t.write(fullname+'.tmp', overwrite=True, format='fits')
         os.rename(fullname+'.tmp', fullname)
         self.log.debug(
-                'Restored plan with {} / {} tiles available from "{}".'
-                .format(np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
+            ('Saved plan with {} unobserved, {} pending, and {} '
+             'completed tiles from {}.').format(
+                 np.sum(self.tile_started < 0),
+            np.sum((self.tile_started >= 0) &
+                   (self.tile_completed < 0)),
+            np.sum(self.tile_completed > 0),
+            fullname))
 
-    def fiberassign_simulate(self, night, completed):
+    def fiberassign(self, night):
         """Update fiber assignments.
         """
         # Calculate the number of elapsed nights in the survey.
         day_number = (night - self.first_night).days
-        for passnum in self.tiles.passes:
-            under = self.tiles.passnum == passnum
-            over = self.tiles.tile_over[passnum]
-            if not np.any(over):
-                continue
-            overlapping = self.tiles.overlapping[passnum]
-            # Identify all tiles in this pass whose covering tiles are completed.
-            covered = np.all(~overlapping | completed[over], axis=1)
-            # Which tiles have been newly covered since the last call to fiberassign?
-            new_covered = covered & (self.tile_covered[under] == -1)
-            if np.any(new_covered):
-                new_tiles = self.tiles.tileID[under][new_covered]
-               # Record the day number when these tiles were first covered.
-                new = under.copy()
-                new[under] = new_covered
-                self.tile_covered[new] = day_number
-        # Identify tiles that have been covered but not yet had fiber assignment run.
-        ready = ~self.tile_available & (self.tile_covered >= 0)
-        # Run fiber assignment on ready tiles that have completed their countdown.
-        run_now = ready & (self.tile_countdown == 0)
-        self.tile_available[run_now] = True
-        # Update delay countdown for the remaining ready tiles.
-        delayed = ready & (self.tile_countdown > 0)
+        pending = (self.tile_observed > 0) & (self.tile_completed < 0)
+        run_now = pending & (self.tile_countdown <= 0)
+        self.tile_completed[run_now] = day_number
+        delayed = pending & (self.tile_countdown > 0)
         self.tile_countdown[delayed] -= 1
         self.log.info('Fiber assigned {} tiles with {} delayed on {}.'
-                      .format(np.count_nonzero(run_now), np.count_nonzero(delayed), night))
+                      .format(np.count_nonzero(run_now),
+                              np.count_nonzero(delayed), night))
 
     def fiberassign(self, dirname):
         """Update list of tiles available for spectroscopy.
@@ -381,16 +372,18 @@ class Planner(object):
 
         Returns
         -------
-        newavail (array), newplanned (array)
-            1D arrays of indices into tiles giving indices of newly planned
-            and available tiles
+        pending (array), tile_priority (array)
+            pending is a 1D bool array indicating pending tiles.
+            tile_priority gives the priorities of all tiles.
         """
         config = desisurvey.config.Configuration()
-        completed = self.donefrac >= config.min_snr2_fraction()
-        oldavail = self.tile_available.copy()
-        oldplanned = self.tile_priority > 0
+        newlyobserved = ((donefrac > config.min_snr2_fraction()) &
+                         (self.tile_observed < 0))
+        self.tile_observed[newlyobserved] = day_number - 1
+        newlystarted = ((donefrac > 0) & (self.tile_started < 0))
+        self.tile_started[newlystarted] = day_number - 1
         self.log.debug('Starting afternoon planning for {} with {} / {} tiles completed.'
-                       .format(night, np.count_nonzero(completed), self.tiles.ntiles))
+                       .format(night, np.count_nonzero(self.tile_observed >= 0), self.tiles.ntiles))
         if self.simulate:
             if self.first_night is None:
                 # Remember the first night of the survey.
@@ -417,16 +410,6 @@ class Planner(object):
         # Update tile priorities.
         if self.rules is not None:
             self.tile_priority = self.rules.apply(self.donefrac)
-        mnewavail = self.tile_available != oldavail
-        mnewplanned = (self.tile_priority > 0) != oldplanned
-        if np.any(~self.tile_available & mnewavail):
-            raise RuntimeError('some previously available tiles are '
-                               'now unavailable')
-        if np.any(self.tile_priority < 0):
-            raise ValueError('All priorities must be >= 0.')
-        if np.any(oldplanned & (self.tile_priority <= 0)):
-            raise RuntimeError('Some previously planned tiles have zero '
-                               'priority.')
-        if ~np.any(self.tile_available & (self.tile_priority > 0)):
-            raise RuntimeError('No available tiles with >0 priority')
-        return np.flatnonzero(mnewavail), np.flatnonzero(mnewplanned)
+        self.last_night = night
+        pending = (self.tile_started >= 0) & (self.tile_completed < 0)
+        return pending, self.tile_priority

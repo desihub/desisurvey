@@ -169,7 +169,8 @@ class Forecast(object):
         df['Exposure time margin (%)'] = 100 * (
             df['Average available / tile (s)'] /
             df['Average required / tile (s)'] - 1)
-        self.pass_progress = np.zeros((self.tiles.npasses, self.num_nights))
+        self.program_progress = np.zeros((len(self.tiles.programs),
+                                          self.num_nights))
         for program in self.tiles.programs:
             progidx = self.tiles.program_index[program]
             dtexp = (
@@ -183,9 +184,7 @@ class Forecast(object):
             # Compute progress assuming tiles are observed in pass order,
             # separated by exactly dtexp.
             ntiles_observed = 0
-            for passnum in self.tiles.program_passes[program]:
-                passidx = self.tiles.pass_index[passnum]
-                ntiles = self.tiles.pass_ntiles[passnum]
-                self.pass_progress[passidx] = np.clip(
-                    progress - ntiles_observed, 0, ntiles)
-                ntiles_observed += ntiles
+            ntiles = np.sum(self.tiles.program_mask(program))
+            self.program_progress[programidx] = np.clip(
+                progress - ntiles_observed, 0, ntiles)
+            ntiles_observed += ntiles

@@ -3,104 +3,50 @@
 # and prioritized. See doc/rules.rst for an explanation for the format.
 #-------------------------------------------------------------------
 
-# 15 < DEC < 25 stripe in NGC. Our goal is to observe this strip in DARK-1,2
-# GRAY-0 and BRIGHT-5,6 in year-1, then observe DARK-3,4 and BRIGHT-7 in year-2,
-# resulting in full depth for all programs by the end of year-2.
+# 15 < DEC < 25 stripe in NGC. Our goal is to observe this strip in DARK, GRAY,
+# BRIGHT first, then rest of area.
 N10:
     cap: N
     dec_min: 15
     dec_max: 25
     dec_order: +0.2
-    passes: 0,3,4,7
+    programs: GRAY, DARK, BRIGHT
     rules:
-        N10(0): { START: 1.0 }
-        N10(3): { N10LO(1): 0.8, N10HI(1): 1.0 }
-        N10(4): { N10LO(1): 0.6, N10HI(1): 0.8, N10(3): 1.0 }
-        N10(7): { N10LO(5): 0.8, N10HI(5): 1.0 }
+        N10(GRAY): { START: 1.0 }
+        N10(DARK): { START: 1.0 }
+        N10(BRIGHT): { START: 1.0 }
 
-# Pass-2 tiles in N10 need to cover passes 3, 4 for fiber assignment.
-N10P2:
-    covers: N10(3)+N10(4)
-    dec_order: +0.2
-    passes: 2
-    rules:
-        N10P2(2): { START: 0.8, N10P1(1): 1.0 }
-
-# Pass-1 tiles in N10 need to cover passes 2, 3, 4 for fiber assignment.
-N10P1:
-    covers: N10P2(2)+N10(3)+N10(4)
-    dec_order: +0.2
-    passes: 1
-    rules:
-        N10P1(1): { START: 1.0 }
-
-# Pass-6 tiles in N10 need to cover pass 7 for fiber assignment.
-N10P6:
-    covers: N10(7)
-    dec_order: +0.2
-    passes: 6
-    rules:
-        N10P6(6): { START: 0.8, N10P5(5): 1.0 }
-
-# Pass-5 tiles in N10 need to cover pass 6 for fiber assignment.
-N10P5:
-    covers: N10P6(6)+N10(7)
-    dec_order: +0.2
-    passes: 5
-    rules:
-        N10P5(5): { START: 1.0 }
-
-# NGC below DEC=15.  Tiles with DEC < 15 already assigned in the covering
-# regions defined above will not be reassigned here.
 N10LO:
     cap: N
     dec_max: 20
     dec_order: -0.2
     max_orphans: 4
-    passes: 0,1,2,3,4,5,6,7
+    programs: GRAY, DARK, BRIGHT
     rules:
-        N10LO(0): { START: 0.6, N10(0): 1.0 }
-        N10LO(1): { START: 0.7, N10P2(2): 1.0 }
-        N10LO(2): { N10HI(1): 0.6, N10(4): 1.0 }
-        N10LO(3): { N10HI(2): 1.0 }
-        N10LO(4): { N10HI(2): 1.0 }
-        N10LO(5): { START: 0.6, N10P6(6): 1.0 }
-        N10LO(6): { N10HI(5): 0.6, N10(7): 1.0 }
-        N10LO(7): { N10HI(6): 1.0 }
+        N10LO(GRAY): { START: 0.5, N10(GRAY): 1.0 }
+        N10LO(DARK): { START: 0.5, N10(DARK): 1.0 }
+        N10LO(BRIGHT): { START: 0.5, N10(BRIGHT): 1.0 }
 
-# NGC above DEC=25.  Tiles with DEC > 25 already assigned in the covering
-# regions defined above will not be reassigned here.
 N10HI:
     cap: N
     dec_min: 20
     dec_order: +0.2
-    passes: 0,1,2,3,4,5,6,7
+    programs: GRAY, DARK, BRIGHT
     rules:
-        N10HI(0): { START: 0.4, N10(0): 0.8, N10LO(0): 1.0 }
-        N10HI(1): { START: 0.3, N10LO(1): 0.6, N10P2(2): 1.0 }
-        N10HI(2): { N10HI(1): 0.4, N10(4): 0.8, N10LO(2): 1.0 }
-        N10HI(3): { N10HI(2): 0.8, N10LO(3): 1.0 }
-        N10HI(4): { N10HI(2): 0.8, N10LO(4): 1.0 }
-        N10HI(5): { START: 0.4, N10P6(6): 0.8, N10LO(4): 1.0 }
-        N10HI(6): { N10(7): 0.8, N10LO(6): 1.0 }
-        N10HI(7): { N10HI(6): 0.8, N10LO(7): 1.0 }
+        N10HI(GRAY): { START: 0.3, N10(GRAY): 0.5, N10LO(GRAY): 1.0 }
+        N10HI(DARK): { START: 0.3, N10(DARK): 0.5, N10LO(DARK): 1.0 }
+        N10HI(BRIGHT): { START: 0.3, N10(BRIGHT): 0.5, N10LO(BRIGHT): 1.0 }
 
-# SGC below DEC=5
 SLO:
     cap: S
     dec_max: 5
     dec_order: -0.2
     max_orphans: 2
-    passes: 0,1,2,3,4,5,6,7
+    programs: GRAY, DARK, BRIGHT
     rules:
-        SLO(0): { START: 1.0 }
-        SLO(1): { START: 1.0 }
-        SLO(2): { START: 0.5, SLO(1): 1.0 }
-        SLO(3): { SLO(1): 0.5, SLO(2): 1.0 }
-        SLO(4): { SLO(2): 0.5, SLO(3): 1.0 }
-        SLO(5): { START: 1.0 }
-        SLO(6): { START: 0.5, SLO(5): 1.0 }
-        SLO(7): { SLO(5): 0.5, SLO(6): 1.0 }
+        SLO(GRAY): { START: 1.0 }
+        SLO(DARK): { START: 1.0 }
+        SLO(BRIGHT): { START: 1.0 }
 
 # SGC above DEC=5
 SHI:
@@ -108,13 +54,8 @@ SHI:
     dec_min: 5
     dec_order: +0.2
     max_orphans: 2
-    passes: 0,1,2,3,4,5,6,7
+    programs: GRAY, DARK, BRIGHT
     rules:
-        SHI(0): { START: 0.5, SLO(0): 1.0 }
-        SHI(1): { START: 0.5, SLO(1): 1.0 }
-        SHI(2): { SLO(1): 0.5, SLO(2): 1.0 }
-        SHI(3): { SLO(2): 0.5, SLO(3): 1.0 }
-        SHI(4): { SLO(3): 0.5, SLO(4): 1.0 }
-        SHI(5): { START: 0.5, SLO(5): 1.0 }
-        SHI(6): { SLO(5): 0.5, SLO(6): 1.0 }
-        SHI(7): { SLO(6): 0.5, SLO(7): 1.0 }
+        SHI(GRAY): { START: 0.5, SLO(GRAY): 1.0 }
+        SHI(DARK): { START: 0.5, SLO(DARK): 1.0 }
+        SHI(BRIGHT): { START: 0.5, SLO(BRIGHT): 1.0 }

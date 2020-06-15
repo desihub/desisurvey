@@ -74,14 +74,19 @@ class Scheduler(object):
         ntiles = self.tiles.ntiles
         self.plan = plan
 
+        # Check hourangles.
+        if design_hourangle is not None:
+            self.design_hourangle = design_hourangle
+        if self.design_hourangle.shape != (self.tiles.ntiles,):
+            raise ValueError('Array design_hourangle has wrong shape.')
+
         # Initialize arrays derived from snr2frac.
-        # Note that indexing of completed_by_pass uses tiles.pass_index, which is not necessarily
-        # the same as range(tiles.npasses).
         self.completed = (self.plan.donefrac >= self.min_snr2frac)
-        self.completed_by_pass = np.zeros(self.tiles.npasses, np.int32)
-        for passnum in self.tiles.passes:
-            idx = self.tiles.pass_index[passnum]
-            self.completed_by_pass[idx] = np.count_nonzero(self.completed[self.tiles.passnum == passnum])
+        self.completed_by_program = np.zeros(len(self.tiles.programs), np.int32)
+        for program in self.tiles.programs:
+            progidx = self.tiles.program_index[program]
+            m = self.tiles.program_mask[program]
+            self.completed_by_program[progidx] = np.sum(self.completed[m])
 
         # Allocate memory for internal arrays.
         self.exposure_factor = np.zeros(ntiles)
@@ -103,6 +108,22 @@ class Scheduler(object):
         for body in config.avoid_bodies.keys:
             self.avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg).value
 
+    def add_pending_tile(self, tile_rownum):
+        """Add a newly observed, now-pending tile to the pending tile list.
+
+        Updates tile availability so that this tile's neighbors will not
+        be observed until this tile is completed.
+
+        Parameters
+        ----------
+        tile_rownum : int
+            the row number of the tile in the internal Tile object corresponding
+            to this tile.
+        """
+        overlapping = self.tiles.overlapping[tile_rownum]
+        self.plan.tile_available[overlapping] = 0
+        self.in_night_pool[overlapping] = 0
+
     def init_night(self, night, use_twilight=False):
         """Initialize scheduling for the specified night.
 
@@ -115,7 +136,7 @@ class Scheduler(object):
          - Have not already reached their target SNR (aka "completed").
          - Are not too close to a planet during this night.
 
-        Tile availability and priority is assumed fixed during the night.
+        Tile priority is assumed fixed during the night.
         When the moon is up, tiles are also vetoed if they are too
         close to the moon. The angles that define "too close" to a
         planet or the moon are specified in config.avoid_bodies.
@@ -154,6 +175,7 @@ class Scheduler(object):
         self.in_night_pool[:] = (self.plan.tile_priority > 0) & self.plan.tile_available
         if self.ignore_completed_priority <= 0:
              self.in_night_pool &= ~self.completed
+
         # Check if any tiles cannot be observed because they are too close to a planet this night.
         poolRA = self.tiles.tileRA[self.in_night_pool]
         poolDEC = self.tiles.tileDEC[self.in_night_pool]
@@ -261,11 +283,11 @@ class Scheduler(object):
             some dead-time delay.  The tuple fields are:
 
              - TILEID: ID of the tile to observe.
-             - PASSNUM: pass number of the tile to observe.
+             - PROGRAM: program of the tile to observe.
              - DONEFRAC: fractional SNR2 already accumulated for the selected tile.
              - EXPFAC: initial exposure-time factor for the selected tile.
              - AIRMASS: initial airmass of the selected tile.
-             - PROGRAM: scheduled program at ``mjd_now``, which might be
+             - SCHEDPROGRAM: scheduled program at ``mjd_now``, which might be
                different from the program of the selected (TILEID, PASSNUM).
              - PROGEND: MJD timestamp when the scheduled program ends.
         """
@@ -370,7 +392,7 @@ class Scheduler(object):
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
 
         # Return info about the selected tile and scheduled program.
-        return (self.tiles.tileID[idx], self.tiles.passnum[idx],
+        return (self.tiles.tileID[idx], self.tiles.tileprogram[idx],
                 self.plan.donefrac[idx], self.exposure_factor[idx],
                 self.airmass[idx], program, mjd_program_end)
 
@@ -389,16 +411,18 @@ class Scheduler(object):
             New value of the fractional SNR2 accumulated for this tile, including
             all previous exposures.
         """
+        idx = self.tiles.index(tileID)
         self.plan.set_donefrac([tileID], [donefrac], [lastexpid])
+        if donefrac > 0:
+            self.add_pending_tile(idx)
         if donefrac >= self.min_snr2frac:
-            idx = self.tiles.index(tileID)
             if self.ignore_completed_priority <= 0:
                 self.in_night_pool[idx] = False
             self.completed[idx] = True
-            passidx = self.tiles.pass_index[self.tiles.passnum[idx]]
-            self.completed_by_pass[passidx] += 1
+            progidx = self.tiles.program_index[self.tiles.tileprogram[idx]]
+            self.completed_by_program[passidx] += 1
 
     def survey_completed(self):
         """Test if all tiles have been completed.
         """
-        return self.completed_by_pass.sum() == self.tiles.ntiles
+        return np.sum(self.completed) == self.tiles.ntiles
