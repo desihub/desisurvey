@@ -142,10 +142,10 @@ class Planner(object):
         self.rules = rules
         config = desisurvey.config.Configuration()
         self.simulate = simulate
-
         if self.simulate:
             self.fiberassign_cadence = config.fiber_assignment_cadence()
-            if self.fiberassign_cadence not in ('daily', 'monthly'):
+            if ((self.fiberassign_cadence not in ('daily', 'monthly')) and
+                (not isinstance(self.fiberassign_cadence, int))):
                 raise ValueError('Invalid fiberassign_cadence: "{}".'.format(
                     self.fiberassign_cadence))
 
@@ -377,10 +377,12 @@ class Planner(object):
             tile_priority gives the priorities of all tiles.
         """
         config = desisurvey.config.Configuration()
-        newlyobserved = ((donefrac > config.min_snr2_fraction()) &
+        day_number = (night - self.first_night).days
+
+        newlyobserved = ((self.donefrac > config.min_snr2_fraction()) &
                          (self.tile_observed < 0))
         self.tile_observed[newlyobserved] = day_number - 1
-        newlystarted = ((donefrac > 0) & (self.tile_started < 0))
+        newlystarted = ((self.donefracx > 0) & (self.tile_started < 0))
         self.tile_started[newlystarted] = day_number - 1
         self.log.debug('Starting afternoon planning for {} with {} / {} tiles completed.'
                        .format(night, np.count_nonzero(self.tile_observed >= 0), self.tiles.ntiles))
@@ -395,6 +397,8 @@ class Planner(object):
                 run_fiberassign = (dt > -0.5) and (dt <= 0.5)
                 assert run_fiberassign == self.ephem.is_full_moon(
                     night, num_nights=1)
+            elif isinstance(self.fiberassign_cadence, int):
+                run_fiberassign = (day_number % self.fiberassign_cadence) == 0
             else:
                 run_fiberassign = True
             if run_fiberassign:
