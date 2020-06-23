@@ -146,14 +146,14 @@ class Animator(object):
         # We require a standard set of passes.
         if not np.array_equal(self.tiles.passes, np.arange(8)):
             raise RuntimeError('Expected passes 0-7.')
-        self.prognames = ['DARK', 'DARK', 'DARK', 'DARK', 'GRAY',
+        self.prognames = ['GRAY', 'DARK', 'DARK', 'DARK', 'DARK',
                           'BRIGHT', 'BRIGHT', 'BRIGHT']
         npass = np.max(self.passnum) + 1
         self.tiles_per_pass = self.tiles.pass_ntiles
         self.psels = [
-            self.passnum < 4,  # DARK
-            self.passnum == 4, # GRAY
-            self.passnum > 4,  # BRIGHT
+            self.tiles.program_mask['DARK'],  # DARK
+            self.tiles.program_mask['GRAY'],  # GRAY
+            self.tiles.program_mask['BRIGHT'],  # BRIGHT
         ]
         self.start_date = self.config.first_day()
         self.survey_weeks = int(np.ceil((self.config.last_day() - self.start_date).days / 7))
