@@ -95,7 +95,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
             expids = [re.findall(r'-(\d+)\.', os.path.basename(f)) for f
                       in files0]
             if len(expids) == 0:
-                log.info(f'No desi exposures on night {subdir}')
+                log.info('No desi exposures on night {}'.format(subdir))
                 continue
             expids = [int(expid[0]) for expid in expids if len(expid) > 0]
             files += files0

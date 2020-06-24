@@ -305,8 +305,9 @@ class ExposureTimeCalculator(object):
         for program in desisurvey.tiles.Tiles.PROGRAMS:
             nomtime = getattr(config.nominal_exposure_time, program, None)
             if nomtime is None:
-                self.log.warning(f'Unrecognized program {program}, using default '
-                                 'exposure time of 1000 s')
+                self.log.warning(
+                    'Unrecognized program {}, '.format(program) +
+                    'using default exposure time of 1000 s')
                 nomtime = 1000/24/60/60
             else:
                 nomtime = nomtime().to(u.day).value

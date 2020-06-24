@@ -149,7 +149,7 @@ class NTS():
                                       nightstr, obsplan)
             if not os.path.exists(obsplannew):
                 self.log.error('Could not find obsplan configuration '
-                               f'{obsplan}!')
+                               '{}!'.format(obsplan))
                 raise ValueError('Could not find obsplan configuration!')
             else:
                 obsplan = obsplannew
@@ -276,7 +276,7 @@ class NTS():
         if program is None:
             maxtime = min([maxtime, mjd_program_end-maxtime])
 
-        tileidstr = f'{tileid:06d}'
+        tileidstr = '{:06d}'.format(tileid)
         fiber_assign = os.path.join(self.config.fiber_assign_dir(),
                                     tileidstr[:3],
                                     'fiberassign-%s.fits' % tileidstr)
