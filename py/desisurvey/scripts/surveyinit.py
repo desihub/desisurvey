@@ -157,6 +157,7 @@ def calculate_initial_plan(args):
     design['INIT'] = np.zeros(tiles.ntiles)
     design['HA'] = np.zeros(tiles.ntiles)
     design['TEXP'] = np.zeros(tiles.ntiles)
+    design['TILEID'] = tiles.tileID
 
     # Optimize each program separately.
     stretches = dict(

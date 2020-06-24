@@ -126,8 +126,6 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     if os.path.exists(newrulesfn):
         log.error('{} already exists, failing!'.format(newrulesfn))
         return
-    shutil.copy(tilefn, newtilefn)
-    shutil.copy(rulesfn, newrulesfn)
 
     editedtiles = False
     editedrules = False
@@ -155,6 +153,9 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
         return
     with open(newconfigfn, 'w') as fp:
         fp.writelines(lines)
+
+    shutil.copy(tilefn, newtilefn)
+    shutil.copy(rulesfn, newrulesfn)
 
     desisurvey.config.Configuration.reset()
     config = desisurvey.config.Configuration(newconfigfn)

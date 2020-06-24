@@ -79,10 +79,12 @@ class Scheduler(object):
             if not os.path.exists(fullname):
                 raise RuntimeError('Cannot restore scheduler from non-existent "{}".'.format(fullname))
             t = astropy.table.Table.read(fullname, hdu='STATUS')
-            self.snr2frac = t['DONEFRAC'].copy()
-            self.lastexpid = t['LASTEXPID'].copy()
-            if self.snr2frac.shape != (ntiles,):
-                raise ValueError('Invalid snr2frac array shape.')
+            ind, mask = self.tiles.index(t['TILEID'], return_mask=True)
+            ind = ind[mask]
+            self.snr2frac = np.zeros(ntiles, 'f4')
+            self.lastexpid = np.zeros(ntiles, 'i4')
+            self.snr2frac[ind] = t['DONEFRAC'][mask].copy()
+            self.lastexpid[ind] = t['LASTEXPID'][mask].copy()
             self.log.debug('Restored scheduler snapshot from "{}".'.format(fullname))
         else:
             # Initialize for a new survey.

@@ -16,6 +16,8 @@ import desiutil.log
 import desimodel.io
 
 import desisurvey.utils
+import desisurvey.tiles
+import desisurvey.ephem
 
 
 def load_design_hourangle(name='surveyinit.fits'):
@@ -44,10 +46,13 @@ def load_design_hourangle(name='surveyinit.fits'):
     if commissioning:
         HA = np.zeros(len(tiles.tileRA), dtype='f4')
     else:
-        with astropy.io.fits.open(fullname, memmap=False) as hdus:
-            HA = hdus['DESIGN'].data['HA'].copy()
-        if HA.shape != (tiles.ntiles,):
-            raise ValueError('Read unexpected HA shape.')
+        design = astropy.io.fits.getdata(fullname, 'DESIGN')
+        ind, mask = tiles.index(design['tileID'], return_mask=True)
+        HA = np.zeros(tiles.ntiles, dtype='f4')
+        HA[ind[mask]] = design['HA'][mask]
+        if not np.all(mask) or len(design) != tiles.ntiles:
+            log = desiutil.log.get_logger()
+            log.warning('The tile file and HA optimizations do not match.')
     return HA
 
 
@@ -147,12 +152,18 @@ class Planner(object):
                 self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
                 if t.meta['CADENCE'] != self.fiberassign_cadence:
                     raise ValueError('Fiberassign cadence mismatch.')
-                self.tile_covered = t['COVERED'].data[ind].copy()
-                self.tile_countdown = t['COUNTDOWN'].data[ind].copy()
-            self.tile_available = t['AVAILABLE'].data[ind].copy()
-            self.tile_priority = t['PRIORITY'].data[ind].copy()
-            self.donefrac = t['DONEFRAC'].data[ind].copy()
-            self.lastexpid = t['LASTEXPID'].data[ind].copy()
+                self.tile_covered = np.full(self.tiles.ntiles, -1)
+                self.tile_countdown = self.tiles.fiberassign_delay.copy()
+                self.tile_covered[ind] = t['COVERED'].data[mask].copy()
+                self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
+            self.tile_available = np.zeros(self.tiles.ntiles, bool)
+            self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
+            self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
+            self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
+            self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
+            self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
+            self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
+            self.lastexpid[ind] = t['LASTEXPID'].data[mask].copy()
             self.log.debug('Restored plan with {} / {} tiles available from "{}".'.format(
                 np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
         else:

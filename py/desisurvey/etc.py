@@ -301,8 +301,17 @@ class ExposureTimeCalculator(object):
         self.MAX_EXPTIME = config.cosmic_ray_split().to(u.day).value
         self.MIN_NEXP = config.min_exposures()
         self.TEXP_TOTAL = {}
+        self.log = desiutil.log.get_logger()
         for program in desisurvey.tiles.Tiles.PROGRAMS:
-            self.TEXP_TOTAL[program] = getattr(config.nominal_exposure_time, program)().to(u.day).value
+            nomtime = getattr(config.nominal_exposure_time, program, None)
+            if nomtime is None:
+                self.log.warning(f'Unrecognized program {program}, using default '
+                                 'exposure time of 1000 s')
+                nomtime = 1000/24/60/60
+            else:
+                nomtime = nomtime().to(u.day).value
+
+            self.TEXP_TOTAL[program] = nomtime
         # Temporary hardcoded exposure factors for moon-up observing.
         self.TEXP_TOTAL['GRAY'] *= 1.1
         self.TEXP_TOTAL['BRIGHT'] *= 1.33
