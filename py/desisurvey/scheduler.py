@@ -315,15 +315,17 @@ class Scheduler(object):
         while ((self.night_index + 1 < len(self.night_changes)) and
                (mjd_now >= self.night_changes[self.night_index + 1])):
             self.night_index += 1
+        self.tile_sel = np.ones(self.tiles.ntiles, dtype=bool)
         if program is None:
             program = self.night_programs[self.night_index]
             # How much time remaining in this program?
             mjd_program_end = self.night_changes[self.night_index + 1]
+            self.tile_sel &= self.tiles.allowed_in_conditions[program]
         else:
+            self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
-        t_remaining = mjd_program_end - mjd_now
         # Select available tiles in this program.
-        self.tile_sel = self.tiles.program_mask[program] & self.in_night_pool
+        self.tile_sel &= self.in_night_pool
         if not np.any(self.tile_sel):
             # No tiles available to observe tonight in this program.
             return None, None, None, None, None, program, mjd_program_end

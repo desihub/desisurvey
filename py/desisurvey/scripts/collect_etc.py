@@ -208,7 +208,7 @@ def read_tile_exp(fn):
     return convert_fits(tiles), convert_fits(exps)
 
 
-if __name__ == "__main__":
+def parse(options=None):
     import argparse
     parser = argparse.ArgumentParser(
         description='Collect ETC statistics from spectra.',
@@ -221,9 +221,19 @@ if __name__ == "__main__":
                         help='etc_stats file to start from')
     parser.add_argument('--simulate_donefrac', action='store_true',
                         help='use exptime/1000 instead of DONEFRAC')
-    args = parser.parse_args()
+    if options is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(options)
+
+    return args
+
+
+def main(args):
     res = scan_directory(args.directory, start_from=args.start_from,
                          simulate_donefrac=args.simulate_donefrac)
     if res is not None:
         tiles, exps = res
         write_tile_exp(tiles, exps, args.outfile)
+    else:
+        raise ValueError('Could not collect ETC files.')

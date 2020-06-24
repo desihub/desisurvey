@@ -177,7 +177,9 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     planner.save('{}/desi-status-{}.fits'.format(nightstr, nightstr))
 
 
-if __name__ == "__main__":
+def parse(options=None):
+    """Parse command-line options for running afternoon planning.
+    """
     import argparse
     parser = argparse.ArgumentParser(
         description='Perform afternoon planning.',
@@ -190,8 +192,14 @@ if __name__ == "__main__":
                         default=None)
     parser.add_argument('--config', type=str, default=None,
                         help='config file to use for night')
-    args = parser.parse_args()
+    if options is None:
+        args = parser.parse_args()
+    else:
+        args = parser.parse_args(options)
+    return args
 
+
+def main(args):
     outputdir = os.environ.get('DESISURVEY_OUTPUT', None)
     log = desiutil.log.get_logger()
     if outputdir is None:
