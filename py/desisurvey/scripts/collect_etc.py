@@ -103,7 +103,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
                 break
         files = cull_old_files(files, start_exps)
     
-    log.info('Found {} files, extracting header information...'.format(
+    log.info('Found {} new raw spectra, extracting header information...'.format(
         len(files)))
     exps = np.zeros(len(files), dtype=[
         ('EXPID', 'i4'), ('FILENAME', 'U200'),

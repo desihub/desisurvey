@@ -11,38 +11,6 @@ import shutil
 from desisurvey.scripts import collect_etc
 
 
-"""
-This needs a bit more thought.
-
-"Currently" config is a real path, and it uses DESISURVEY_OUTPUT.
-DESISURVEY_OUTPUT gets prepended to the status file.
-The tiles file is specified in config.yaml as a real path.
-The rules file is specified in config.yaml as a real path (especially
-if I define that to be the case; could instead have it look in config.yaml
-by default; otherwise go to existing rules file).
-
-This all sounds fine; these files could get copied to the AP directory
-for the night and then used.  The config.yaml file would need to be
-updated on copy to point to these copied versions, but that sounds fine, if
-a little annoying.
-
-I want to propose that DESISURVEY_OUTPUT is something like:
-/path/to/desisurvey_output/YYYMMDD/
-NTS gets run pointed to /path/to/desisurvey_output/YYYYMMDD/config.yaml
-where it then sees all the other files it needs (rules, tiles, status file)
-That all sounds okay.
-
-Also need to find a past status file.
-
-Okay, so say DESISURVEY_OUTPUT is a /path/to/desisurvey_output.
-Make NTS and afternoon planning always careful to call config.get_path()
-with a night argument.
-
-Then we can easily find past nights.
-
-
-"""
-
 def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None, simulate=False,
                    desisurvey_output=None):
@@ -109,8 +77,8 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     desisurvey.config.Configuration.reset()
     config = desisurvey.config.Configuration(configfn)
     log.info('Loading configuration from {}...'.format(configfn))
-    tilefn = config.get_path(config.tiles_file())
-    rulesfn = config.get_path(config.rules_file())
+    tilefn = find_tile_file(config.tiles_file())
+    rulesfn = find_rules_file(config.rules_file())
     if not os.path.exists(tilefn):
         log.error('{} does not exist, failing!'.format(tilefn))
         return
@@ -175,6 +143,29 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
     planner.save('{}/desi-status-{}.fits'.format(nightstr, nightstr))
+
+
+def find_rules_file(file_name):
+    from pkg_resources import resource_filename
+    if os.path.isabs(file_name):
+        full_path = file_name
+    elif os.path.exists(file_name):
+        return os.path.abspath(file_name)
+    else:
+        full_path = resource_filename('desisurvey',
+                                      os.path.join('data', file_name))
+    return full_path
+
+
+def find_tile_file(file_name):
+    if os.path.isabs(file_name):
+        full_path = file_name
+    elif os.path.exists(file_name):
+        return os.path.abspath(file_name)
+    else:
+        # Locate the config file in our package data/ directory.
+        full_path = desimodel.io.findfile(os.path.join('tilesfile', file_name))
+    return full_path
 
 
 def parse(options=None):
