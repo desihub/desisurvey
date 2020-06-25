@@ -6,6 +6,7 @@ import numpy as np
 import desisurvey.plan
 import desisurvey.etc
 import desisurvey.config
+import desisurvey.utils
 from desisurvey.test.base import Tester
 from desisurvey.scripts import surveyinit
 from desisurvey.scheduler import Scheduler
@@ -19,13 +20,15 @@ class TestScheduler(Tester):
         surveyinit.main(args)
         config = desisurvey.config.Configuration()
         config.fiber_assignment_cadence.set_value('daily')
-        planner = desisurvey.plan.Planner()
+        planner = desisurvey.plan.Planner(simulate=True)
+        planner.first_night = desisurvey.utils.get_date('2020-01-01')
+        planner.last_night = desisurvey.utils.get_date('2025-01-01')
         scheduler = Scheduler()
         num_nights = (self.stop - self.start).days
         for i in range(num_nights):
             night = self.start + datetime.timedelta(i)
             # Save and restore scheduler state.
-            scheduler.save('snapshot.fits')
+            planner.save('snapshot.fits')
             scheduler2 = Scheduler(restore='snapshot.fits')
             self.assertTrue(np.all(scheduler.snr2frac == scheduler2.snr2frac))
             self.assertTrue(np.all(scheduler.completed == scheduler2.completed))
@@ -48,8 +51,9 @@ class TestScheduler(Tester):
                     self.assertEqual(field, field2)
                 tileid = next[0]                
                 if tileid is not None:
-                    scheduler.update_snr(tileid, 1.)
-                    scheduler2.update_snr(tileid, 1.)
+                    scheduler.update_snr(tileid, 1., 0)
+                    scheduler2.update_snr(tileid, 1., 0)
+                planner.set_donefrac(scheduler.tiles.tileID, scheduler.snr2frac, 0*scheduler.snr2frac)
 
 
 def test_suite():

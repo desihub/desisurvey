@@ -78,14 +78,18 @@ class Scheduler(object):
             fullname = config.get_path(restore)
             if not os.path.exists(fullname):
                 raise RuntimeError('Cannot restore scheduler from non-existent "{}".'.format(fullname))
-            with astropy.io.fits.open(fullname, memmap=False) as hdus:
-                self.snr2frac = hdus[0].data.copy()
-            if self.snr2frac.shape != (ntiles,):
-                raise ValueError('Invalid snr2frac array shape.')
+            t = astropy.table.Table.read(fullname, hdu='STATUS')
+            ind, mask = self.tiles.index(t['TILEID'], return_mask=True)
+            ind = ind[mask]
+            self.snr2frac = np.zeros(ntiles, 'f4')
+            self.lastexpid = np.zeros(ntiles, 'i4')
+            self.snr2frac[ind] = t['DONEFRAC'][mask].copy()
+            self.lastexpid[ind] = t['LASTEXPID'][mask].copy()
             self.log.debug('Restored scheduler snapshot from "{}".'.format(fullname))
         else:
             # Initialize for a new survey.
             self.snr2frac = np.zeros(ntiles, float)
+            self.lastexpid = np.zeros(ntiles, float)
         # Initialize arrays derived from snr2frac.
         # Note that indexing of completed_by_pass uses tiles.pass_index, which is not necessarily
         # the same as range(tiles.npasses).
@@ -113,34 +117,6 @@ class Scheduler(object):
         self.avoid_bodies = {}
         for body in config.avoid_bodies.keys:
             self.avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg).value
-
-    def save(self, name):
-        """Save a snapshot of our current state that can be restored.
-
-        The only internal state required to restore a Scheduler is the array
-        of snr2frac values per tile.
-
-        The snapshot file size is about 130Kb.
-
-        Parameters
-        ----------
-        name : str
-            Name of FITS file where the snapshot will be saved. The file will
-            be saved under our configuration's output path unless name is
-            already an absolute path.  Pass the same name to the constructor's
-            ``restore`` argument to restore this snapshot.
-        """
-        config = desisurvey.config.Configuration()
-        fullname = config.get_path(name)
-        hdr = astropy.io.fits.Header()
-        # Record the last night this scheduler was initialized for.
-        hdr['NIGHT'] = self.night.isoformat() if self.night else ''
-        # Record the number of completed tiles.
-        hdr['NDONE'] = self.completed_by_pass.sum()
-        # Save a copy of our snr2frac array.
-        astropy.io.fits.PrimaryHDU(self.snr2frac, header=hdr).writeto(fullname+'.tmp', overwrite=True)
-        os.rename(fullname+'.tmp', fullname)
-        self.log.debug('Saved scheduler snapshot to "{}".'.format(fullname))
 
     def update_tiles(self, tile_available, tile_priority):
         """Update tile availability and priority.
@@ -339,15 +315,17 @@ class Scheduler(object):
         while ((self.night_index + 1 < len(self.night_changes)) and
                (mjd_now >= self.night_changes[self.night_index + 1])):
             self.night_index += 1
+        self.tile_sel = np.ones(self.tiles.ntiles, dtype=bool)
         if program is None:
             program = self.night_programs[self.night_index]
             # How much time remaining in this program?
             mjd_program_end = self.night_changes[self.night_index + 1]
+            self.tile_sel &= self.tiles.allowed_in_conditions[program]
         else:
+            self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
-        t_remaining = mjd_program_end - mjd_now
         # Select available tiles in this program.
-        self.tile_sel = self.tiles.program_mask[program] & self.in_night_pool
+        self.tile_sel &= self.in_night_pool
         if not np.any(self.tile_sel):
             # No tiles available to observe tonight in this program.
             return None, None, None, None, None, program, mjd_program_end
@@ -413,7 +391,7 @@ class Scheduler(object):
                 self.snr2frac[idx], self.exposure_factor[idx],
                 self.airmass[idx], program, mjd_program_end)
 
-    def update_snr(self, tileID, snr2frac):
+    def update_snr(self, tileID, snr2frac, lastexpid):
         """Update SNR for one tile.
 
         A tile whose update ``snr2frac`` exceeds the ``min_snr2frac``
@@ -430,11 +408,13 @@ class Scheduler(object):
         """
         idx = self.tiles.index(tileID)
         self.snr2frac[idx] = snr2frac
+        self.lastexpid[idx] = lastexpid
         if self.snr2frac[idx] >= self.min_snr2frac:
             self.in_night_pool[idx] = False
             self.completed[idx] = True
             passidx = self.tiles.pass_index[self.tiles.passnum[idx]]
             self.completed_by_pass[passidx] += 1
+
         # Remember the last tile observed this night.
         self.last_idx = idx
 

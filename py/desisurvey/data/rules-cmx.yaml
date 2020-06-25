@@ -6,9 +6,28 @@
 # Implement a dummy rules file for commissioning.
 
 A:
-    passes: 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19
+    passes: 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20
     dec_min: -90
     dec_order: +0.2
     rules:
         A(0): { START: 1.0 }
-        # looks to me like this is further assumed for all passes
+        A(1): { START: 1.0 }
+        A(2): { START: 1.0 }
+        A(3): { START: 1.0 }
+        A(4): { START: 1.0 }
+        A(5): { START: 1.0 }
+        A(6): { START: 1.0 }
+        A(7): { START: 1.0 }
+        A(8): { START: 1.0 }
+        A(9): { START: 1.0 }
+        A(10): { START: 1.0 }
+        A(11): { START: 1.0 }
+        A(12): { START: 1.0 }
+        A(13): { START: 1.0 }
+        A(14): { START: 1.0 }
+        A(15): { START: 1.0 }
+        A(16): { START: 1.0 }
+        A(17): { START: 1.0 }
+        A(18): { START: 1.0 }
+        A(19): { START: 1.0 }
+        A(20): { START: 1.0 }

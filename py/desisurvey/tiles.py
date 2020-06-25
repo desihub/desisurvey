@@ -67,6 +67,7 @@ class Tiles(object):
         self.passnum = tiles['PASS'].copy()
         self.tileRA = tiles['RA'].copy()
         self.tileDEC = tiles['DEC'].copy()
+        self.tileobsconditions = tiles['OBSCONDITIONS'].copy()
         # Count tiles.
         self.ntiles = len(self.tileID)
         self.pass_ntiles = {p: np.count_nonzero(self.passnum == p)
@@ -106,6 +107,10 @@ class Tiles(object):
             for pnum in self.program_passes[p]:
                 mask |= (self.passnum == pnum)
             self.program_mask[p] = mask
+        self.allowed_in_conditions = {}
+        for p in self.OBSCONDITIONS:
+            mask = (self.tileobsconditions & self.OBSCONDITIONS[p]) != 0
+            self.allowed_in_conditions[p] = mask
         # Calculate and save dust exposure factors.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'])
         # Precompute coefficients to calculate tile observing airmass.
@@ -127,6 +132,13 @@ class Tiles(object):
 
     Note that this mapping is independent of the programs actually present
     in a tiles file.
+    """
+
+    OBSCONDITIONS = {'DARK': 1, 'GRAY': 2, 'BRIGHT': 4}
+    """Mapping of night conditions to OBSCONDITIONS bit mask.
+
+    Tiles that may be observed in DARK/GRAY/BRIGHT conditions should have
+    (obsconditions & OBSCONDITIONS[program]) != 0.
     """
 
     def airmass(self, hour_angle, mask=None):
@@ -171,6 +183,7 @@ class Tiles(object):
         scalar = np.isscalar(tileID)
         tileID = np.atleast_1d(tileID)
         idx = np.searchsorted(self.tileID, tileID)
+        idx = np.clip(idx, 0, len(self.tileID)-1)
         bad = self.tileID[idx] != tileID
         if not return_mask and np.any(bad):
             raise ValueError('Invalid tile ID(s): {}.'.format(tileID[bad]))

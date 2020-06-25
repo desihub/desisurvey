@@ -19,23 +19,24 @@ class TestPlan(Tester):
         config = desisurvey.config.Configuration()
         for cadence in 'daily', 'monthly':
             config.fiber_assignment_cadence.set_value(cadence)
-            plan = Planner()
+            plan = Planner(simulate=True)
             plan2 = None
             for i in range(num_nights):
                 night = self.start + datetime.timedelta(i)
                 # Run afternoon plan using original and restored objects.
-                avail, pri = plan.afternoon_plan(night, completed)
+                avail, pri = plan.afternoon_plan(night)
                 if plan2 is not None:
                     # Check that the restored planner gives identical results.
-                    avail2, pri2 = plan2.afternoon_plan(night, completed)
+                    avail2, pri2 = plan2.afternoon_plan(night)
                     self.assertTrue(np.array_equal(avail, avail2))
                     self.assertTrue(np.array_equal(pri, pri2))
                     self.assertTrue(np.array_equal(plan.tile_countdown, plan2.tile_countdown))
                 # Mark a random set of tiles completed after this night.
                 completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
+                plan.set_donefrac(tiles.tileID, completed, np.zeros(tiles.ntiles))
                 # Save and restore our state.
                 plan.save('snapshot.fits')
-                plan2 = Planner(restore='snapshot.fits')
+                plan2 = Planner(restore='snapshot.fits', simulate=True)
 
 
 def test_suite():

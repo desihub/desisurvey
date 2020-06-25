@@ -16,6 +16,8 @@ import desiutil.log
 import desimodel.io
 
 import desisurvey.utils
+import desisurvey.tiles
+import desisurvey.ephem
 
 
 def load_design_hourangle(name='surveyinit.fits'):
@@ -44,10 +46,13 @@ def load_design_hourangle(name='surveyinit.fits'):
     if commissioning:
         HA = np.zeros(len(tiles.tileRA), dtype='f4')
     else:
-        with astropy.io.fits.open(fullname, memmap=False) as hdus:
-            HA = hdus['DESIGN'].data['HA'].copy()
-        if HA.shape != (tiles.ntiles,):
-            raise ValueError('Read unexpected HA shape.')
+        design = astropy.io.fits.getdata(fullname, 'DESIGN')
+        ind, mask = tiles.index(design['tileID'], return_mask=True)
+        HA = np.zeros(tiles.ntiles, dtype='f4')
+        HA[ind[mask]] = design['HA'][mask]
+        if not np.all(mask) or len(design) != tiles.ntiles:
+            log = desiutil.log.get_logger()
+            log.warning('The tile file and HA optimizations do not match.')
     return HA
 
 
@@ -118,13 +123,17 @@ class Planner(object):
         provided. Raise a RuntimeError if the saved tile IDs do not
         match the current tiles_file values.
     """
-    def __init__(self, rules=None, restore=None):
+    def __init__(self, rules=None, restore=None, simulate=False):
         self.log = desiutil.log.get_logger()
         self.rules = rules
         config = desisurvey.config.Configuration()
-        self.fiberassign_cadence = config.fiber_assignment_cadence()
-        if self.fiberassign_cadence not in ('daily', 'monthly'):
-            raise ValueError('Invalid fiberassign_cadence: "{}".'.format(self.fiberassign_cadence))
+        self.simulate = simulate
+
+        if self.simulate:
+            self.fiberassign_cadence = config.fiber_assignment_cadence()
+            if self.fiberassign_cadence not in ('daily', 'monthly'):
+                raise ValueError('Invalid fiberassign_cadence: "{}".'.format(
+                    self.fiberassign_cadence))
         self.tiles = desisurvey.tiles.get_tiles()
         self.ephem = desisurvey.ephem.get_ephem()
         if restore is not None:
@@ -132,48 +141,85 @@ class Planner(object):
             fullname = config.get_path(restore)
             if not os.path.exists(fullname):
                 raise RuntimeError('Cannot restore planner from non-existent "{}".'.format(fullname))
-            t = astropy.table.Table.read(fullname, hdu='PLAN')
-            if t.meta['CADENCE'] != self.fiberassign_cadence:
-                raise ValueError('Fiberassign cadence mismatch.')
-            first, last = t.meta['FIRST'], t.meta['LAST']
-            self.first_night = desisurvey.utils.get_date(first) if first else None
-            self.last_night = desisurvey.utils.get_date(last) if last else None
-            if not np.array_equal(t['TILEID'].data, self.tiles.tileID):
-                raise RuntimeError('Saved tile IDs do not match current tiles_file.')
-            self.tile_covered = t['COVERED'].data.copy()
-            self.tile_countdown = t['COUNTDOWN'].data.copy()
-            self.tile_available = t['AVAILABLE'].data.copy()
-            self.tile_priority = t['PRIORITY'].data.copy()
-            self.log.debug(
-                'Restored plan with {} ({}) / {} tiles covered (available) from "{}".'
-                .format(np.count_nonzero(self.tile_covered),
-                        np.count_nonzero(self.tile_available), self.tiles.ntiles,
-                        fullname))
+            t = astropy.table.Table.read(fullname, hdu='STATUS')
+            ind, mask = self.tiles.index(t['TILEID'], return_mask=True)
+            if np.any(~mask):
+                self.log.warning('Ignoring {} tiles not in tile file.'.format(sum(mask)))
+            ind = ind[mask]
+            # in operations, we don't really need CADENCE
+            if self.simulate:
+                self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
+                self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
+                if t.meta['CADENCE'] != self.fiberassign_cadence:
+                    raise ValueError('Fiberassign cadence mismatch.')
+                self.tile_covered = np.full(self.tiles.ntiles, -1)
+                self.tile_countdown = self.tiles.fiberassign_delay.copy()
+                self.tile_covered[ind] = t['COVERED'].data[mask].copy()
+                self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
+            self.tile_available = np.zeros(self.tiles.ntiles, bool)
+            self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
+            self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
+            self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
+            self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
+            self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
+            self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
+            self.lastexpid[ind] = t['LASTEXPID'].data[mask].copy()
+            self.log.debug('Restored plan with {} / {} tiles available from "{}".'.format(
+                np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
         else:
             # Initialize the plan for a a new survey.
-            self.first_night = self.last_night = None
-            # Initialize per-tile arrays.
-            self.tile_covered = np.full(self.tiles.ntiles, -1)
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
-            # Initailize the delay countdown for each tile.
-            self.tile_countdown = self.tiles.fiberassign_delay.copy()
+            self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
+            self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
+            if self.simulate:
+                self.first_night = self.last_night = None
+                # Initialize per-tile arrays.
+                self.tile_covered = np.full(self.tiles.ntiles, -1)
+                # Initailize the delay countdown for each tile.
+                self.tile_countdown = self.tiles.fiberassign_delay.copy()
+                # Mark tiles that are initially available.
+                fiberassign_order = config.fiber_assignment_order
+                for passnum in self.tiles.passes:
+                    if 'P{}'.format(passnum) not in fiberassign_order.keys:
+                        # Mark tiles in this pass as initially available.
+                        under = self.tiles.passnum == passnum
+                        self.tile_covered[under] = 0
+                        self.tile_available[under] = True
+                        self.log.info('Pass {} available for initial observing.'.format(passnum))
             # Initialize priorities.
             if self.rules is not None:
                 none_completed = np.zeros(self.tiles.ntiles, bool)
                 self.tile_priority = self.rules.apply(none_completed)
             else:
                 self.tile_priority = np.ones(self.tiles.ntiles, float)
-            # Mark tiles that are initially available.
-            fiberassign_order = config.fiber_assignment_order
-            for passnum in self.tiles.passes:
-                if 'P{}'.format(passnum) not in fiberassign_order.keys:
-                    # Mark tiles in this pass as initially available.
-                    under = self.tiles.passnum == passnum
-                    self.tile_covered[under] = 0
-                    self.tile_available[under] = True
-                    self.log.info('Pass {} available for initial observing.'.format(passnum))
         if not np.any(self.tile_priority > 0):
             raise RuntimeError('All tile priorities are all <= 0.')
+
+    def set_donefrac(self, tileid, donefrac, lastexpid):
+        """Update planner with new tile donefrac and lastexpid.
+
+        Parameters
+        ----------
+        tileid : array
+            1D array of integer tileIDs to update
+
+        donefrac : array
+            1D array of completion fractions for tiles, matching tileid
+
+        lastexpid : array
+            1D array of last expid, giving last exposure ID on each tile
+            must match tileid
+        """
+        if len(donefrac) != len(lastexpid):
+            raise ValueError('donefrac length must equal lastexpid length.')
+        tileind, mask = self.tiles.index(tileid, return_mask=True)
+        if np.any(~mask):
+            self.log.warning('Some tiles with unknown IDs; ignoring')
+            tileind = tileind[mask]
+            donefrac = donefrac[mask]
+            lastexpid = lastexpid[mask]
+        self.donefrac[tileind] = donefrac
+        self.lastexpid[tileind] = lastexpid
 
     def save(self, name):
         """Save a snapshot of our current state that can be restored.
@@ -192,26 +238,29 @@ class Planner(object):
         """
         config = desisurvey.config.Configuration()
         fullname = config.get_path(name)
-        t = astropy.table.Table(meta={
-            'CADENCE': self.fiberassign_cadence,
-            'FIRST': self.first_night.isoformat() if self.first_night else '',
-            'LAST': self.last_night.isoformat() if self.last_night else '',
-            'EXTNAME': 'PLAN'
-            })
+        meta = dict(EXTNAME='STATUS')
+        if self.simulate:
+            meta['CADENCE'] = self.fiberassign_cadence
+            meta['FIRST'] = self.first_night.isoformat()
+            meta['LAST'] = self.last_night.isoformat()
+        t = astropy.table.Table(meta=meta)
         t['TILEID'] = self.tiles.tileID
-        t['COVERED'] = self.tile_covered
-        t['COUNTDOWN'] = self.tile_countdown
+        t['RA'] = self.tiles.tileRA
+        t['DEC'] = self.tiles.tileDEC
+        t['DONEFRAC'] = self.donefrac
+        t['LASTEXPID'] = self.lastexpid
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
+        if self.simulate:
+            t['COVERED'] = self.tile_covered
+            t['COUNTDOWN'] = self.tile_countdown
         t.write(fullname+'.tmp', overwrite=True, format='fits')
         os.rename(fullname+'.tmp', fullname)
         self.log.debug(
-            'Saved plan with {} ({}) / {} tiles covered (available) to "{}".'
-            .format(np.count_nonzero(self.tile_covered),
-                    np.count_nonzero(self.tile_available), self.tiles.ntiles,
-                    fullname))
+                'Restored plan with {} / {} tiles available from "{}".'
+                .format(np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
 
-    def fiberassign(self, night, completed):
+    def fiberassign_simulate(self, night, completed):
         """Update fiber assignments.
         """
         # Calculate the number of elapsed nights in the survey.
@@ -243,24 +292,85 @@ class Planner(object):
         self.log.info('Fiber assigned {} tiles with {} delayed on {}.'
                       .format(np.count_nonzero(run_now), np.count_nonzero(delayed), night))
 
-    def afternoon_plan(self, night, completed):
+    def fiberassign(self, dirname):
+        """Update list of tiles available for spectroscopy.
+
+        Scans given directory looking for fiberassign file and populates Plan
+        object accordingly.
+
+        Parameters
+        ----------
+        dirname : str
+            file name of directory where fiberassign files are to be found
+            This directory is recursively scanned for all files with names
+            matching tile-(\d+)\.fits.  TILEIDs are populated according to
+            the name of the fiberassign file, and any header information is 
+            ignored.
+        """
+        import glob
+        import re
+        files = glob.glob(os.path.join(dirname, '**/*.fits'), recursive=True)
+        rgx = re.compile('.*fiberassign-(\d+)\.fits')
+        available_tileids = []
+        for fn in files:
+            match = rgx.match(fn)
+            if match:
+                available_tileids.append(int(match.group(1)))
+        available = np.zeros(len(self.tiles.tileID), dtype='bool')
+        ind, mask = self.tiles.index(available_tileids, return_mask=True)
+        available[ind[mask]] = True
+        self.tile_available = available.copy()
+        self.log.info('Fiber assignment files found for {} tiles.'.format(
+            np.count_nonzero(available)))
+        if np.count_nonzero(available) == 0:
+            self.log.error('No fiberassign files available for scheduling!')
+        if np.any(~mask):
+            self.log.warning(
+                'Ignoring {} tiles that were assigned, '.format(sum(~mask)) +
+                'but not found in the tile file.')
+
+    def afternoon_plan(self, night, fiber_assign_dir=None):
+        """Update plan for a given night.  Update tile availability and priority.
+
+        Parameters
+        ----------
+        night : str
+            night string, YYYY-MM-DD, to be planned.
+            This argument has no effect for when Plan.simulate = False; in this
+            case, tile availability and priority is based entirely on what
+            files are currently present in the fiberassign directory and what
+            the planner believes the current tile completions are.
+        """
+        config = desisurvey.config.Configuration()
+        completed = self.donefrac > config.min_snr2_fraction()
         self.log.debug('Starting afternoon planning for {} with {} / {} tiles completed.'
                        .format(night, np.count_nonzero(completed), self.tiles.ntiles))
-        if self.first_night is None:
-            # Remember the first night of the survey.
-            self.first_night = night
-        # Update fiber assignments this afternoon?
-        if self.fiberassign_cadence == 'monthly':
-            # Run fiber assignment on the afternoon before the full moon.
-            dt = self.ephem.get_night(night)['nearest_full_moon']
-            run_fiberassign = (dt > -0.5) and (dt <= 0.5)
-            assert run_fiberassign == self.ephem.is_full_moon(night, num_nights=1)
+        if self.simulate:
+            if self.first_night is None:
+                # Remember the first night of the survey.
+                self.first_night = night
+            # Update fiber assignments this afternoon?
+            if self.fiberassign_cadence == 'monthly':
+                # Run fiber assignment on the afternoon before the full moon.
+                dt = self.ephem.get_night(night)['nearest_full_moon']
+                run_fiberassign = (dt > -0.5) and (dt <= 0.5)
+                assert run_fiberassign == self.ephem.is_full_moon(
+                    night, num_nights=1)
+            else:
+                run_fiberassign = True
+            if run_fiberassign:
+                self.fiberassign_simulate(night, completed)
+            self.last_night = night
         else:
-            run_fiberassign = True
-        if run_fiberassign:
-            self.fiberassign(night, completed)
+            if fiber_assign_dir is None:
+                fiber_assign_dir = os.environ.get('FIBER_ASSIGN_DIR', None)
+            if fiber_assign_dir is None:
+                config = desisurvey.config.Configuration()
+                fiber_assign_dir = config.fiber_assign_dir()
+            if fiber_assign_dir is None:
+                raise ValueError('Could not find FIBER_ASSIGN_DIR; failing!')
+            self.fiberassign(fiber_assign_dir)
         # Update tile priorities.
         if self.rules is not None:
             self.tile_priority = self.rules.apply(completed)
-        self.last_night = night
         return self.tile_available, self.tile_priority

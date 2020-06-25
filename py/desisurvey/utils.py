@@ -235,6 +235,17 @@ def local_noon_on_date(day):
     return astropy.time.Time(utc_noon)
 
 
+def get_current_date():
+    """Give current date following get_date convention (date changes at noon).
+
+    Returns
+    -------
+    datetime.date object for current night, following get_date convention
+    """
+    date = datetime.datetime.now().astimezone()
+    return get_date(date)
+
+
 def get_date(date):
     """Convert different date specifications into a datetime.date object.
 
@@ -318,6 +329,21 @@ def get_date(date):
     if not isinstance(date, datetime.date):
         raise ValueError('Invalid date specification: {0}.'.format(input_date))
     return date
+
+
+def night_to_str(date):
+    """Return DESI string format (YYYYMMDD) of datetime night.
+
+    Parameters
+    ----------
+    date : datetime.date object, as from get_date()
+
+    Returns
+    -------
+    str
+        YYYMMDD formatted date string
+    """
+    return date.isoformat().replace('-', '')
 
 
 def day_number(date):

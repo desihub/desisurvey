@@ -8,18 +8,18 @@
 
 DARK:
     dec_order: +0.2
-    passes: 0,1,2,3
+    passes: 1,2,3,4
     rules:
-        DARK(0): { START: 1.0 }
-        DARK(1): { DARK(0): 1.0 }
+        DARK(1): { START: 1.0 }
         DARK(2): { DARK(1): 1.0 }
         DARK(3): { DARK(2): 1.0 }
+        DARK(4): { DARK(3): 1.0 }
 
 GRAY:
     dec_order: +0.2
-    passes: 4
+    passes: 0
     rules:
-        GRAY(4): { START: 1.0 }
+        GRAY(0): { START: 1.0 }
 
 BRIGHT:
     dec_order: +0.2
