@@ -8,6 +8,7 @@ import glob
 import re
 import os
 import shutil
+import subprocess
 from desisurvey.scripts import collect_etc
 
 
@@ -137,12 +138,16 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     tiles, exps = collect_etc.scan_directory(spectra_dir,
                                              start_from=restore_etc_stats)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
-        directory, 'etc_stats-{}.fits'.format(nightstr)))
+        directory, 'etc-stats-{}.fits'.format(nightstr)))
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'],
                          tiles['LASTEXPID_ETC'])
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
     planner.save('{}/desi-status-{}.fits'.format(nightstr, nightstr))
+    for fn in [newtilefn, newrulesfn, newconfigfn,
+               os.path.join(directory, 'desi-status-{}.fits'.format(nightstr)),
+               os.path.join(directory, 'etc-stats-{}.fits'.format(nightstr))]:
+        subprocess.run(['chmod', 'a-w', fn])
 
 
 def find_rules_file(file_name):
