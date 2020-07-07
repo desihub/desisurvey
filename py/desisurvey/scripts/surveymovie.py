@@ -1,4 +1,4 @@
-es"""Script wrapper for creating a movie of survey progress.
+"""Script wrapper for creating a movie of survey progress.
 
 To run this script from the command line, use the ``surveymovie`` entry point
 that is created when this package is installed, and should be in your shell
