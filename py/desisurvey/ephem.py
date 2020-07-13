@@ -195,7 +195,8 @@ class Ephemerides(object):
         # Add (ra,dec) arrays for each object that we need to avoid and
         # check that ephem has a model for it.
         models = {}
-        for name in config.avoid_bodies.keys:
+        print(config.avoid_bodies.keys)
+        for name in list(config.avoid_bodies.keys)+['sun']:
             models[name] = getattr(ephem, name.capitalize())()
             self._table[name + '_ra'] = astropy.table.Column(
                 length=num_nights, shape=(num_obj_steps,), format='%.2f',

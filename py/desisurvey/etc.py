@@ -11,6 +11,7 @@ implemented: twilight sky brightness, clouds, variable OH sky brightness.
 from __future__ import print_function, division
 
 import numpy as np
+from itertools import chain, combinations_with_replacement
 
 import astropy.units as u
 
@@ -20,7 +21,7 @@ import desiutil.log
 
 import desisurvey.config
 import desisurvey.tiles
-
+        
 
 def seeing_exposure_factor(seeing):
     """Scaling of exposure time with seeing, relative to nominal seeing.
@@ -138,6 +139,7 @@ _moonCoefficients = np.array([
 # See specsim.atmosphere.krisciunas_schaefer for details.
 _vband_extinction = 0.15154
 
+
 def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     """Calculate exposure time factor due to scattered moonlight.
 
@@ -206,6 +208,152 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     # Evaluate the linear regression model.
     X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
     return _moonCoefficients.dot(X)
+
+
+def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_alt):
+    """ Calculate exposure time factor based on airmass, moon, and sun parameters. 
+
+    :param moon_frac: 
+        Illuminated fraction of the moon within range [0,1].
+
+    :param moon_alt:
+        Altitude angle of the moon above the horizon in degrees within range [-90,90].
+
+    :param moon_sep:
+        Array of separation angles between field center and moon in degrees within the
+        range [0,180].
+
+    :param sun_alt:
+        Altitude angle of the sunin degrees
+
+    :param sun_sep: 
+        Arry of separations angles between field center and sun in degrees
+
+    :param airmass:
+        Array of airmass used for observing this tile, must be >= 1.
+
+    :returns expfactors: 
+        Dimensionless factors that exposure time should be increased to
+        account for increased sky brightness due to scattered moonlight.
+        Will be 1 when the moon is below the horizon.
+    """
+    # exposure_factor = 1 when moon is below the horizon and sun is below -20.
+    if moon_alt < 0 and sun_alt < -20.:
+        return np.ones(len(airmass))  
+
+    # check inputs 
+    moon_sep    = moon_sep.flatten() 
+    sun_sep     = sun_sep.flatten()
+    airmass     = airmass.flatten() 
+    if (moon_frac < 0) or (moon_frac > 1):
+        raise ValueError('Got invalid moon_frac outside [0,1].')
+    if (moon_alt < -90) or (moon_alt > 90):
+        raise ValueError('Got invalid moon_alt outside [-90,+90].')
+    if (moon_sep.min() < 0) or (moon_sep.max() > 180):
+        raise ValueError('Got invalid moon_sep outside [0,180].')
+    if airmass.min() < 1:
+        raise ValueError('Got invalid airmass < 1.')
+
+    # check size of inputs  
+    nexp = len(airmass) 
+    assert len(moon_sep) == nexp
+    assert len(sun_sep) == nexp
+    
+    exp_factors = _bright_exposure_factor_notwi(
+            airmass, 
+            np.repeat(moon_frac, nexp), 
+            moon_sep, 
+            np.repeat(moon_alt, nexp)) 
+
+    if sun_alt >= -20.: 
+        # w/ twilight contribution
+        exp_factors += _bright_exposure_factor_twi(
+                airmass, 
+                sun_sep, 
+                np.repeat(sun_alt, nexp))
+    return np.clip(exp_factors, 1., None) 
+
+
+# polynomial regression cofficients for estimating exposure time factor during
+# non-twilight from airmass, moon_frac, moon_sep, moon_alt  
+_notwiCoefficients = np.array([ 0.00000000e+00, -3.25370591e-02,  3.24502646e-01, -7.06229367e-02,
+       -4.48817655e-02, -1.08639662e-01,  1.67330251e-01,  1.26047574e-02,
+       -2.06369392e-02,  4.27089974e-01, -1.82413474e-02,  8.98795572e-02,
+        7.85960945e-04,  9.21368404e-04,  1.34633923e-05,  7.32368512e-02,
+       -1.04924141e-01, -1.33399319e-02,  2.74422079e-03,  6.16555294e-01,
+        7.95012256e-03, -2.54404656e-02,  1.44795563e-04,  3.74838366e-04,
+        4.28923997e-04, -1.07082915e-01, -2.56369357e-02,  7.97087025e-03,
+        1.75981316e-04, -4.61519409e-04, -2.50772895e-04, -4.00060046e-06,
+       -7.95325622e-06, -6.57333165e-06, -5.42867923e-07])
+
+
+def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt): 
+    ''' third degree polynomial regression fit to exposure factor of  
+    non-twilight bright sky given airmass and moon_conditions. Exposure factor
+    is calculated from the ratio of (sky brightness)/(nominal dark sky
+    brightness) at 7000A. The coefficients are fit to DESI CMX and BOSS sky
+    surface brightness. See
+    https://github.com/changhoonhahn/feasiBGS/blob/97524545ad98df34c934d777f98761c5aea6a4c5/notebook/cmx/exposure_factor_refit.ipynb
+    for details. 
+
+    :param airmass: 
+        array of airmasses
+    :param moon_frac: 
+        array of moon illumination fractions
+    :param moon_sep: 
+        array of moon separations
+    :param moon_alt: 
+        array of moon altitudes 
+    :return fexp: 
+        exposure factor for non-twlight bright sky 
+    '''
+    _notwiIntercept = 3.0493419627360243
+    
+    theta = np.atleast_2d(np.array([airmass, moon_frac, moon_sep, moon_alt]).T)
+
+    combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, 4))
+
+    theta_transform = np.empty((theta.shape[0], len(_notwiCoefficients)))
+    for i, comb in enumerate(combs):
+        theta_transform[:, i] = theta[:, comb].prod(1)
+
+    fexp = np.dot(theta_transform, _notwiCoefficients.T) + _notwiIntercept
+    return fexp
+
+
+def _bright_exposure_factor_twi(airmass, sun_sep, sun_alt):
+    ''' linear regression fit to exposure factor correction contribution from
+    the twilight given airmass and sun conditions. 
+
+    :param airmass: 
+        array of airmasses
+    :param sun_sep: 
+        array of sun separations
+    :param sun_alt: 
+        array of sun altitudes 
+    :param wavelength: 
+        wavelength of the exposure factor (default: 4500) 
+    :return fexp: 
+        exposure factor twilight correction
+    '''
+    theta = np.atleast_2d(np.array([airmass, sun_sep, sun_alt]).T)
+        
+    _twiCoefficients = np.array([1.1139712, -0.00431072, 0.16183842]) 
+    _twiIntercept = 2.3278959318651733
+
+    return np.dot(theta, _twiCoefficients.T) + _twiIntercept
+
+
+def exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_alt): 
+    """Calculate the exposure factor for specified observing conditions
+    """
+    # airmass exposure factor
+    f_airmass = airmass_exposure_factor(airmass)
+    
+    # bright time exposure factor
+    f_bright = bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt,
+            sun_sep, sun_alt) 
+    return f_airmass * f_bright
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,
@@ -314,8 +462,8 @@ class ExposureTimeCalculator(object):
 
             self.TEXP_TOTAL[program] = nomtime
         # Temporary hardcoded exposure factors for moon-up observing.
-        self.TEXP_TOTAL['GRAY'] *= 1.1
-        self.TEXP_TOTAL['BRIGHT'] *= 1.33
+        #self.TEXP_TOTAL['GRAY'] *= 1.1
+        #self.TEXP_TOTAL['BRIGHT'] *= 1.33
 
         # Initialize model of exposure time dependence on seeing.
         self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
