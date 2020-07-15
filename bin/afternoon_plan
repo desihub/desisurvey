@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+
+import desisurvey.scripts.afternoon_plan
+
+if __name__ == '__main__':
+    try:
+        args = desisurvey.scripts.afternoon_plan.parse()
+        desisurvey.scripts.afternoon_plan.main(args)
+    except RuntimeError as e: #Exception as e:
+        print(e)
+        sys.exit(-1)

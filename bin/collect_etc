@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+
+import desisurvey.scripts.collect_etc
+
+if __name__ == '__main__':
+    try:
+        args = desisurvey.scripts.collect_etc.parse()
+        desisurvey.scripts.collect_etc.main(args)
+    except RuntimeError as e: #Exception as e:
+        print(e)
+        sys.exit(-1)
