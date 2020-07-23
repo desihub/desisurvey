@@ -244,7 +244,7 @@ class Scheduler(object):
 
     def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
                   program=None):
-        """Select the next tile to observe.
+        r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
         method during a night.
@@ -253,10 +253,10 @@ class Scheduler(object):
 
         .. math::
 
-            -(1 - g)\\,\\frac{1}{2} \\left( \\frac{\\text{HA} - \\text{HA}_0}{\\sigma_{\\text{HA}}}
-            \\right)^2 - g \\log \\frac{t_\\text{exp}}{t_\\text{nom}} + \log P
+            -(1 - g)\,\frac{1}{2} \left( \frac{\text{HA} - \text{HA}_0}{\sigma_{\text{HA}}}
+            \right)^2 - g \log \frac{t_\text{exp}}{t_\text{nom}} + \log P
 
-        where :math:`\\text{HA}` and :math:`\\text{HA}_0` are the current and design
+        where :math:`\text{HA}` and :math:`\text{HA}_0` are the current and design
         hour angles, respectively, :math:`g` is the ``greediness`` parameter below,
         and :math:`P` are the tile priorities used to implement survey strategy
         and updated via :meth:`update_tiles`.
