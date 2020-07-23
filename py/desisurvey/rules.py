@@ -60,7 +60,7 @@ class Rules(object):
         SGC = ~NGC
 
         # Initialize regexp for parsing "GROUP_NAME(PASS)"
-        parser = re.compile('([^\(]+)\(([0-99]+)\)$')
+        parser = re.compile(r'([^\(]+)\(([0-99]+)\)$')
 
         # Get the full path of the YAML file to read.
         if os.path.isabs(file_name):
