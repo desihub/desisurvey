@@ -2,12 +2,21 @@
 desisurvey change log
 =====================
 
-0.13.1 (unreleased)
+0.14.1 (unreleased)
 -------------------
 
 * No changes yet (but likely to include more AP/NTS/ICS integration)
+
+0.14.0 (2020-08-03)
+-------------------
+
+* Fix py3.8 invalid escape sequences (PR `#120`_).
+* Update rules.yaml to use new tile file pass ordering (PR `#114`_);
+  requires desimodel>=0.11.0
 * Move IERS functions to desiutil_ (PR `#113`_).
 
+.. _`#120`: https://github.com/desihub/desisurvey/pull/120
+.. _`#114`: https://github.com/desihub/desisurvey/pull/114
 .. _desiutil: https://github.com/desihub/desiutil
 .. _`#113`: https://github.com/desihub/desisurvey/pull/113
 
