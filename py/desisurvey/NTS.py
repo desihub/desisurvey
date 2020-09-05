@@ -55,9 +55,16 @@ from astropy.io import ascii
 from astropy import coordinates
 from astropy import units as u
 
+try:
+    import DOSlib.logger as Log
+    logob = Log
+except ImportError:
+    logob = desiutil.log.get_logger()
+
+
 class QueuedList():
     """Simple class to manage list of exposures already observed in a night.
-    
+
     Parameters
     ----------
     fn : str
@@ -65,7 +72,7 @@ class QueuedList():
     """
     def __init__(self, fn):
         self.fn = fn
-        self.log = desiutil.log.get_logger()
+        self.log = logob
         self.restore()
 
     def restore(self):
@@ -160,7 +167,7 @@ class NTS():
         self.default_seeing = defaults.get('seeing', 1.0)
         self.default_transparency = defaults.get('transparency', 0.9)
         self.default_skylevel = defaults.get('skylevel', 1000.0)
-        self.default_program = defaults.get('program', 'DESI DARK')
+        self.default_program = defaults.get('program', 'DARK')
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
         self.config = config
@@ -172,7 +179,7 @@ class NTS():
                 restore='{}/desi-status-{}.fits'.format(nightstr, nightstr))
             self.queuedlist = QueuedList(
                 config.get_path('{}/queued-{}.dat'.format(nightstr, nightstr)))
-        except:
+        except Exception:
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')
         self.scheduler.update_tiles(self.planner.tile_available,
@@ -180,30 +187,18 @@ class NTS():
         self.scheduler.init_night(self.night, use_twilight=True)
         self.ETC = desisurvey.etc.ExposureTimeCalculator()
 
-    def next_tile(self, mjd=None, skylevel=None, transparency=None,
-                  seeing=None, program=None, lastexp=None, fiber_assign=None,
-                  previoustiles=[], azrange=None):
+    def next_tile(self, conditions=None, exposure=None, constraints=None):
         """
         Select the next tile.
 
         Parameters
         ----------
-        mjd : float, MJD of time tile is desired.  Default to now.
+        conditions : dict, dictionary containing conditions
 
-        skylevel : float, sky level to assume.  Currently unused.
+        exposure : dict, dictionary containing information about exposures
 
-        transparency : float, current sky transparency.
-
-        seeing : float, current seeing.
-
-        program : desired tile program
-
-        lastexp : location of last observed tile; potentially useful for
-            slew minimization
-
-        fiber_assign : not used.
-
-        previoustiles : list of tileIDs.  Do not provide a tile in this list.
+        constraints : dict, dictionary containing constraints on where
+            observations may be made
 
         Returns
         -------
@@ -218,11 +213,23 @@ class NTS():
         azrange : [lowaz, highaz], azimuth of tile must be in this range
         """
 
-        if fiber_assign is not None:
-            raise ValueError('NTS: not sure what to do with '
-                             'fiberassign != None')  # EFS
+        if conditions is None:
+            conditions = {}
+        if exposure is None:
+            exposure = {}
+        if constraints is None:
+            constraints = {}
 
-        # tileid, s2n, exptime, maxtime
+        mjd = exposure.get('mjd', None)
+        seeing = conditions.get('seeing', None)
+        skylevel = conditions.get('skylevel', None)
+        transparency = conditions.get('transparency', None)
+        if seeing is None:
+            seeing = self.default_seeing
+        if skylevel is None:
+            skylevel = self.default_skylevel
+        if transparency is None:
+            transparency = self.default_transparency
 
         if mjd is None:
             from astropy import time
@@ -230,18 +237,20 @@ class NTS():
             mjd = now.mjd
             self.log.info('No time specified, using current time, MJD: %f' %
                           mjd)
-        seeing = self.default_seeing if seeing is None else seeing
-        skylevel = self.default_skylevel if skylevel is None else skylevel
-        transparency = (self.default_transparency if transparency is None
-                        else transparency)
 
         self.queuedlist.restore()
+
+        previoustiles = exposure.get('previoustiles', [])
+        if previoustiles is None:
+            previoustiles = []
         previoustiles = previoustiles + self.queuedlist.queued
+        # remove previous tiles from possible tiles to schedule
         ind, mask = self.scheduler.tiles.index(previoustiles,
                                                return_mask=True)
         save_in_night_pool = self.scheduler.in_night_pool[ind[mask]].copy()
         self.scheduler.in_night_pool[ind[mask]] = False
-        # remove previous tiles from possible tiles to schedule
+
+        azrange = conditions.get('azrange', None)
         if azrange is not None:
             tra = self.scheduler.tiles.tileRA
             tdec = self.scheduler.tiles.tileDEC
@@ -250,7 +259,9 @@ class NTS():
             coordaz = coordrd.transform_to(altazframe)
             az = coordaz.az.to(u.deg).value
             self.scheduler.in_night_pool &= azinrange(az, azrange)
-            
+
+        program = exposure.get('PROGRAM', None)
+
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program)
         self.scheduler.in_night_pool[ind[mask]] = save_in_night_pool
@@ -260,7 +271,6 @@ class NTS():
             return {'tileid': None, 's2n': 0., 'esttime': 0., 'maxtime': 0.,
                     'fiber_assign': '', 'foundtile': False}
 
-        # lastexp ignored, fiberassign ignored.  EFS
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
             sched_program, snr2frac_start, exposure_factor, nexp_completed=0)
 
@@ -273,8 +283,10 @@ class NTS():
             self.ETC.TEXP_TOTAL[sched_program]*exposure_factor)  # EFS hack
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
-        if program is None:
-            maxtime = min([maxtime, mjd_program_end-maxtime])
+        # this forces an exposure to end at the end of the program, and
+        # can lead to awkward behavior if an exposure starts just as a program
+        # ends.  Ignoring at present.
+        # maxtime = min([maxtime, mjd_program_end-mjd])
 
         tileidstr = '{:06d}'.format(tileid)
         fiber_assign = os.path.join(self.config.fiber_assign_dir(),
@@ -288,5 +300,5 @@ class NTS():
                      'fiber_assign': fiber_assign,
                      'foundtile': True}
         self.queuedlist.add(tileid)
-
+        self.log.info('Next selection: %r' % selection)
         return selection
