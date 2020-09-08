@@ -171,14 +171,19 @@ class NTS():
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
         self.config = config
+        nts_dir = getattr(config, 'nts_dir', None)
+        if nts_dir is not None:
+            nts_dir = nts_dir()
+        else:
+            nts_dir = nightstr
         try:
             self.planner = desisurvey.plan.Planner(
                 self.rules,
-                restore='{}/desi-status-{}.fits'.format(nightstr, nightstr))
+                restore='{}/desi-status-{}.fits'.format(nts_dir, nts_dir))
             self.scheduler = desisurvey.scheduler.Scheduler(
-                restore='{}/desi-status-{}.fits'.format(nightstr, nightstr))
+                restore='{}/desi-status-{}.fits'.format(nts_dir, nts_dir))
             self.queuedlist = QueuedList(
-                config.get_path('{}/queued-{}.dat'.format(nightstr, nightstr)))
+                config.get_path('{}/queued-{}.dat'.format(nts_dir, nts_dir)))
         except Exception:
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')

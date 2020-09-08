@@ -9,14 +9,13 @@ import os
 import shutil
 import subprocess
 from desisurvey.scripts import collect_etc
-import desimodel
 import desimodel.io
 
 
 def afternoon_plan(night=None, restore_etc_stats='most_recent',
                    configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None, simulate=False,
-                   desisurvey_output=None):
+                   desisurvey_output=None, nts_dir=None):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -51,6 +50,12 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     desisurvey_output : str
         Afternoon planning config is stored to desisurvey_output/{night}/.
         Default to DESISURVEY_OUTPUT if None.
+
+    nts_dir : str
+        Store afternoon planning to desisurvey_output/{nts_dir} rather than
+        to desisurvey_output/{night}.
+        Default to None.
+
     """
     log = desiutil.log.get_logger()
     if night is None:
@@ -65,7 +70,8 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                       'DESISURVEY_OUTPUT!')
             return
         desisurvey_output = os.environ['DESISURVEY_OUTPUT']
-    directory = os.path.join(desisurvey_output, nightstr)
+    subdir = nts_dir if nts_dir is not None else nightstr
+    directory = os.path.join(desisurvey_output, subdir)
     if not os.path.exists(directory):
         os.mkdir(directory)
 
@@ -122,6 +128,10 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         log.error('Could not find either tiles, rules, or output_path '
                   'in config file; failing!')
         return
+
+    if subdir != nightstr:
+        lines += ['\n', 'nts_dir: {}\n'.format(subdir)]
+
     with open(newconfigfn, 'w') as fp:
         fp.writelines(lines)
 
@@ -144,15 +154,15 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     tiles, exps = collect_etc.scan_directory(spectra_dir,
                                              start_from=restore_etc_stats)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
-        directory, 'etc-stats-{}.fits'.format(nightstr)))
+        directory, 'etc-stats-{}.fits'.format(subdir)))
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'],
                          tiles['LASTEXPID_ETC'])
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
-    planner.save('{}/desi-status-{}.fits'.format(nightstr, nightstr))
+    planner.save('{}/desi-status-{}.fits'.format(subdir, subdir))
     for fn in [newtilefn, newrulesfn, newconfigfn,
-               os.path.join(directory, 'desi-status-{}.fits'.format(nightstr)),
-               os.path.join(directory, 'etc-stats-{}.fits'.format(nightstr))]:
+               os.path.join(directory, 'desi-status-{}.fits'.format(subdir)),
+               os.path.join(directory, 'etc-stats-{}.fits'.format(subdir))]:
         subprocess.run(['chmod', 'a-w', fn])
 
 
@@ -196,6 +206,9 @@ def parse(options=None):
                         default='most_recent')
     parser.add_argument('--config', type=str, default=None,
                         help='config file to use for night')
+    parser.add_argument('--nts_dir', type=str, default=None,
+                        help=('subdirectory of DESISURVEY_OUTPUT in which to '
+                              'store plan.'))
     if options is None:
         args = parser.parse_args()
     else:
@@ -211,4 +224,4 @@ def main(args):
         raise ValueError('Environment variable DESISURVEY_OUTPUT must be set.')
 
     afternoon_plan(night=args.night, restore_etc_stats=args.restore_etc_stats,
-                   configfn=args.config)
+                   configfn=args.config, nts_dir=args.nts_dir)
