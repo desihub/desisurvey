@@ -187,7 +187,8 @@ class NTS():
         self.scheduler.init_night(self.night, use_twilight=True)
         self.ETC = desisurvey.etc.ExposureTimeCalculator()
 
-    def next_tile(self, conditions=None, exposure=None, constraints=None):
+    def next_tile(self, conditions=None, exposure=None, constraints=None,
+                  speculative=False):
         """
         Select the next tile.
 
@@ -199,6 +200,9 @@ class NTS():
 
         constraints : dict, dictionary containing constraints on where
             observations may be made
+
+        speculative: bool, if True, NTS may propose this tile again on later
+            calls to next_tile this night.
 
         Returns
         -------
@@ -299,6 +303,7 @@ class NTS():
                      'maxtime': maxtime*days_to_seconds,
                      'fiber_assign': fiber_assign,
                      'foundtile': True}
-        self.queuedlist.add(tileid)
+        if not speculative:
+            self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)
         return selection

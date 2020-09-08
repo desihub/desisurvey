@@ -4,15 +4,16 @@ import desisurvey.rules
 import desisurvey.plan
 import desisurvey.scheduler
 import desiutil.log
-import glob
 import re
 import os
 import shutil
 import subprocess
 from desisurvey.scripts import collect_etc
+import desimodel.io
 
 
-def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
+def afternoon_plan(night=None, restore_etc_stats='most_recent',
+                   configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None, simulate=False,
                    desisurvey_output=None):
     """Perform daily afternoon planning.
@@ -27,14 +28,15 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
         Night to plan (YYYMMDD).  Default tonight.
 
     restore_etc_stats : str
-        Previous planned night (YYYMMDD) or etc_stats filename.  
+        Previous planned night (YYYMMDD) or etc_stats filename.
+        Special strings 'start_fresh' and 'most_recent' trigger starting fresh
+        and searching for the most recent file.
         Used for restoring the previous completion status of all tiles.
-        Defaults to not restoring status, i.e., all previous tile completion
-        information is recomputed from the spectra_dir.
+        Defaults to 'most_recent'.
 
     configfn : str
         File name of desisurvey config to use for plan.
-       
+
 
     fiber_assign_dir : str
         Directory where fiber assign files are found.
@@ -65,7 +67,6 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
     directory = os.path.join(desisurvey_output, nightstr)
     if not os.path.exists(directory):
         os.mkdir(directory)
-
 
     if configfn is None:
         configfn = desisurvey.config.Configuration._get_full_path(
@@ -106,7 +107,7 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
             if re.match('^output_path:.*', lines[i]):
                 lines[i] = (
                     'output_path: {}'.format(desisurvey_output) +
-                            '  # edited by afternoon planning\n')
+                    '  # edited by afternoon planning\n')
                 editedoutputpath = True
             elif re.match('^tiles_file:.*', lines[i]):
                 lines[i] = ('tiles_file: {}'.format(newtilefn) +
@@ -128,13 +129,17 @@ def afternoon_plan(night=None, restore_etc_stats=None, configfn='config.yaml',
 
     desisurvey.config.Configuration.reset()
     config = desisurvey.config.Configuration(newconfigfn)
-    tilesob = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
+    _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
     rules = desisurvey.rules.Rules(config.rules_file())
     planner = desisurvey.plan.Planner(rules, simulate=simulate)
     scheduler = desisurvey.scheduler.Scheduler()
 
     if spectra_dir is None:
-        spectra_dir = config.spectra_dir()
+        spectra_dir = os.environ.get('DESI_SPECTRA_DIR', None)
+    if spectra_dir is None:
+        raise ValueError('Must pass spectra_dir to afternoon_plan or set '
+                         'DESI_SPECTRA_DIR.')
+
     tiles, exps = collect_etc.scan_directory(spectra_dir,
                                              start_from=restore_etc_stats)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
@@ -169,7 +174,7 @@ def find_tile_file(file_name):
         return os.path.abspath(file_name)
     else:
         # Locate the config file in our package data/ directory.
-        full_path = desimodel.io.findfile(os.path.join('tilesfile', file_name))
+        full_path = desimodel.io.findfile(os.path.join('footprint', file_name))
     return full_path
 
 
@@ -184,8 +189,10 @@ def parse(options=None):
                         help='night to plan, default: tonight',
                         default=None)
     parser.add_argument('--restore_etc_stats', type=str,
-                        help='etc_stats file to restore. Default: start fresh.',
-                        default=None)
+                        help=('etc_stats file to restore. Default: '
+                              '"most_recent", search for most recent.  '
+                              '"fresh" to start fresh.'),
+                        default='most_recent')
     parser.add_argument('--config', type=str, default=None,
                         help='config file to use for night')
     if options is None:

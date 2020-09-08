@@ -32,7 +32,7 @@ def load_design_hourangle(name='surveyinit.fits'):
     name : str
         Name of the FITS file to read. A relative path is assumed to
         refer to the output path specified in the configuration.
-    
+
     Returns
     -------
     array
@@ -58,7 +58,7 @@ def load_design_hourangle(name='surveyinit.fits'):
 
 def load_weather(start_date=None, stop_date=None, name='surveyinit.fits'):
     """Load dome-open fraction expected during each night of the survey.
-    
+
     Reads Image HDU 'WEATHER'. This is the format saved by the
     ``surveyinit`` script, but any FITS file following the same
     convention can be used.
@@ -304,7 +304,7 @@ class Planner(object):
             file name of directory where fiberassign files are to be found
             This directory is recursively scanned for all files with names
             matching tile-(\d+)\.fits.  TILEIDs are populated according to
-            the name of the fiberassign file, and any header information is 
+            the name of the fiberassign file, and any header information is
             ignored.
         """
         import glob
@@ -366,9 +366,12 @@ class Planner(object):
                 fiber_assign_dir = os.environ.get('FIBER_ASSIGN_DIR', None)
             if fiber_assign_dir is None:
                 config = desisurvey.config.Configuration()
-                fiber_assign_dir = config.fiber_assign_dir()
+                fiber_assign_dir = config.getattr('fiber_assign_dir', None)
+                if fiber_assign_dir is not None:
+                    fiber_assign_dir = fiber_assign_dir()
             if fiber_assign_dir is None:
-                raise ValueError('Could not find FIBER_ASSIGN_DIR; failing!')
+                self.log.error('fiber_assign_dir must be set either in '
+                               'config.yaml or in FIBER_ASSIGN_DIR; failing!')
             self.fiberassign(fiber_assign_dir)
         # Update tile priorities.
         if self.rules is not None:

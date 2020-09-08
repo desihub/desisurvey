@@ -40,7 +40,7 @@ class subslices:
 
 
 def cull_old_files(files, start_from):
-    """Return only subset of files with EXPID larger than any EXPID in 
+    """Return only subset of files with EXPID larger than any EXPID in
     start_from.
     """
     expid = np.array([int(os.path.basename(f)[5:13]) for f in files])
@@ -66,9 +66,12 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         etc_stats file to start from.  Nights already in the etc_stats file
         will not be collected.  If a YYYMMDD string, look for etc_stats file
         in DESISURVEY_OUTPUT/YYYYMMDD/etc_stats-{YYYYMMDD}.fits
+        "fresh" or None indicates starting fresh.
+        "most_recent" indicates searching DESISURVEY_OUTPUT for the most recent
+        file to restore.
     """
     log.info('Scanning {} for desi exposures...'.format(dirname))
-    if start_from is None:
+    if start_from is None or (start_from == "fresh"):
         files = glob.glob(os.path.join(dirname, '**/desi*.fits.fz'),
                           recursive=True)
         start_exps = None
@@ -76,7 +79,21 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         files = []
         subdirs = os.listdir(dirname)
         subdirs = np.sort(subdirs)[::-1]
-        if os.path.exists(start_from):
+        if start_from == 'most_recent':
+            etcfns = glob.glob(os.path.join(os.environ['DESISURVEY_OUTPUT'],
+                                            '**/etc-stats-*.fits'))
+            yyyymmdd = []
+            for fn in etcfns:
+                rgx = re.compile('etc-stats-([0-9]{8}).fits')
+                match = rgx.match(os.path.basename(fn))
+                if match is not None:
+                    yyyymmdd.append(match.groups(1))
+                else:
+                    yyyymmdd.append(-1)
+            maxind = np.argmax(yyyymmdd)
+            fn = etcfns[maxind]
+            log.info('Restoring etc-stats from {}'.format(fn))
+        elif os.path.exists(start_from):
             fn = start_from
         else:
             fn = os.path.join(os.environ['DESISURVEY_OUTPUT'], start_from,
@@ -102,7 +119,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
             if min(expids) <= maxexpid:
                 break
         files = cull_old_files(files, start_exps)
-    
+
     log.info('Found {} new raw spectra, extracting header information...'.format(
         len(files)))
     exps = np.zeros(len(files), dtype=[

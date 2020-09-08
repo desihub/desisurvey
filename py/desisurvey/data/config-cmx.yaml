@@ -181,5 +181,3 @@ output_path: '{DESISURVEY_OUTPUT}'
 rules_file: rules-cmx.yaml
 
 fiber_assign_dir: /global/cfs/cdirs/desi/target/fiberassign/tiles/trunk/
-
-spectra_dir: /global/cfs/cdirs/desi/spectro/data
