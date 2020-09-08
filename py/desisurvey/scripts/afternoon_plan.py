@@ -9,6 +9,7 @@ import os
 import shutil
 import subprocess
 from desisurvey.scripts import collect_etc
+import desimodel
 import desimodel.io
 
 
