@@ -87,7 +87,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
                 rgx = re.compile('etc-stats-([0-9]{8}).fits')
                 match = rgx.match(os.path.basename(fn))
                 if match is not None:
-                    yyyymmdd.append(match.groups(1))
+                    yyyymmdd.append(int(match.groups(1)[0]))
                 else:
                     yyyymmdd.append(-1)
             maxind = np.argmax(yyyymmdd)

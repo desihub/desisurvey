@@ -49,7 +49,8 @@ class Scheduler(object):
         provided.
     design_hourangles : array or None
         1D array of design hour angles to use in degrees, or use
-        :func:`desisurvey.plan.load_design_hourangle` when None.
+        :func:`desisurvey.plan.load_design_hourangle` when None,
+        when not restoring.
     """
     def __init__(self, restore=None, design_hourangle=None):
         self.log = desiutil.log.get_logger()
@@ -65,13 +66,6 @@ class Scheduler(object):
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
-        # Check hourangles.
-        if design_hourangle is None:
-            self.design_hourangle = desisurvey.plan.load_design_hourangle()
-        else:
-            self.design_hourangle = np.asarray(design_hourangle)
-        if self.design_hourangle.shape != (self.tiles.ntiles,):
-            raise ValueError('Array design_hourangle has wrong shape.')
         # Initialize snr2frac, which is our only internal state.
         if restore is not None:
             # Restore the snr2frac array for a survey in progress.
@@ -83,13 +77,19 @@ class Scheduler(object):
             ind = ind[mask]
             self.snr2frac = np.zeros(ntiles, 'f4')
             self.lastexpid = np.zeros(ntiles, 'i4')
+            self.design_hourangle = np.zeros(ntiles, 'f4')
             self.snr2frac[ind] = t['DONEFRAC'][mask].copy()
             self.lastexpid[ind] = t['LASTEXPID'][mask].copy()
+            self.design_hourangle[ind] = t['DESIGNHA'][mask].copy()
             self.log.debug('Restored scheduler snapshot from "{}".'.format(fullname))
         else:
             # Initialize for a new survey.
             self.snr2frac = np.zeros(ntiles, float)
             self.lastexpid = np.zeros(ntiles, float)
+            self.design_hourangle = desisurvey.plan.load_design_hourangle()
+            if self.design_hourangle.shape[0] != self.tiles.ntiles:
+                raise ValueError('design_hourangle has the wrong shape!')
+
         # Initialize arrays derived from snr2frac.
         # Note that indexing of completed_by_pass uses tiles.pass_index, which is not necessarily
         # the same as range(tiles.npasses).
@@ -98,6 +98,14 @@ class Scheduler(object):
         for passnum in self.tiles.passes:
             idx = self.tiles.pass_index[passnum]
             self.completed_by_pass[idx] = np.count_nonzero(self.completed[self.tiles.passnum == passnum])
+
+        # Check hourangles.
+        if design_hourangle is not None:
+            self.design_hourangle = design_hourangle
+        if self.design_hourangle.shape != (self.tiles.ntiles,):
+            raise ValueError('Array design_hourangle has wrong shape.')
+
+
         # Allocate memory for internal arrays.
         self.exposure_factor = np.zeros(ntiles)
         self.hourangle = np.zeros(ntiles)
@@ -315,6 +323,11 @@ class Scheduler(object):
         while ((self.night_index + 1 < len(self.night_changes)) and
                (mjd_now >= self.night_changes[self.night_index + 1])):
             self.night_index += 1
+        self.night_index = min(len(self.night_programs)-1, self.night_index)
+        if mjd_now < self.night_changes[0]:
+            self.log.warning('Tile requested before start of night.')
+        if mjd_now > self.night_changes[-1]:
+            self.log.warning('Tile requested after end of night.')
         self.tile_sel = np.ones(self.tiles.ntiles, dtype=bool)
         if program is None:
             program = self.night_programs[self.night_index]

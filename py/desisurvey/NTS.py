@@ -150,16 +150,17 @@ class NTS():
                           'using current date: {}.'.format(self.night))
         else:
             self.night = night
-        nightstr = desisurvey.utils.night_to_str(self.night)
+        nts_dir, _ = os.path.split(obsplan)
+        if len(os.path.split(nts_dir)[0]) > 0:
+            raise ValueError('NTS expects to find config in '
+                             '$DESISURVEY_OUTPUT/dir/config-file.yaml')
+        fulldir = os.path.join(os.environ['DESISURVEY_OUTPUT'], nts_dir)
+        obsplan = os.path.join(os.environ['DESISURVEY_OUTPUT'],
+                               obsplan)
         if not os.path.exists(obsplan):
-            obsplannew = os.path.join(os.environ['DESISURVEY_OUTPUT'],
-                                      nightstr, obsplan)
-            if not os.path.exists(obsplannew):
-                self.log.error('Could not find obsplan configuration '
-                               '{}!'.format(obsplan))
-                raise ValueError('Could not find obsplan configuration!')
-            else:
-                obsplan = obsplannew
+            self.log.error('Could not find obsplan configuration '
+                           '{}!'.format(obsplan))
+            raise ValueError('Could not find obsplan configuration!')
         desisurvey.config.Configuration.reset()
         config = desisurvey.config.Configuration(obsplan)
         _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
@@ -171,20 +172,16 @@ class NTS():
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
         self.config = config
-        nts_dir = getattr(config, 'nts_dir', None)
-        if nts_dir is not None:
-            nts_dir = nts_dir()
-        else:
-            nts_dir = nightstr
         try:
             self.planner = desisurvey.plan.Planner(
                 self.rules,
-                restore='{}/desi-status-{}.fits'.format(nts_dir, nts_dir))
+                restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
             self.scheduler = desisurvey.scheduler.Scheduler(
-                restore='{}/desi-status-{}.fits'.format(nts_dir, nts_dir))
+                restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
             self.queuedlist = QueuedList(
-                config.get_path('{}/queued-{}.dat'.format(nts_dir, nts_dir)))
-        except Exception:
+                config.get_path('{}/queued-{}.dat'.format(fulldir, nts_dir)))
+        except Exception as e:
+            print(e)
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')
         self.scheduler.update_tiles(self.planner.tile_available,
@@ -269,7 +266,7 @@ class NTS():
             az = coordaz.az.to(u.deg).value
             self.scheduler.in_night_pool &= azinrange(az, azrange)
 
-        program = exposure.get('PROGRAM', None)
+        program = exposure.get('program', None)
 
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program)
@@ -298,7 +295,9 @@ class NTS():
         # maxtime = min([maxtime, mjd_program_end-mjd])
 
         tileidstr = '{:06d}'.format(tileid)
-        fiber_assign = os.path.join(self.config.fiber_assign_dir(),
+
+        fiber_assign_dir = desisurvey.plan.get_fiber_assign_dir(None)
+        fiber_assign = os.path.join(fiber_assign_dir,
                                     tileidstr[:3],
                                     'fiberassign-%s.fits' % tileidstr)
         days_to_seconds = 60*60*24

@@ -129,9 +129,6 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                   'in config file; failing!')
         return
 
-    if subdir != nightstr:
-        lines += ['\n', 'nts_dir: {}\n'.format(subdir)]
-
     with open(newconfigfn, 'w') as fp:
         fp.writelines(lines)
 
@@ -143,7 +140,6 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
     rules = desisurvey.rules.Rules(config.rules_file())
     planner = desisurvey.plan.Planner(rules, simulate=simulate)
-    scheduler = desisurvey.scheduler.Scheduler()
 
     if spectra_dir is None:
         spectra_dir = os.environ.get('DESI_SPECTRA_DIR', None)

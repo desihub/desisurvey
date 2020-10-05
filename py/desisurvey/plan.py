@@ -56,6 +56,17 @@ def load_design_hourangle(name='surveyinit.fits'):
     return HA
 
 
+def get_fiber_assign_dir(fiber_assign_dir):
+    if fiber_assign_dir is None:
+        fiber_assign_dir = os.environ.get('FIBER_ASSIGN_DIR', None)
+    if fiber_assign_dir is None:
+        config = desisurvey.config.Configuration()
+        fiber_assign_dir = getattr(config, 'fiber_assign_dir', None)
+        if fiber_assign_dir is not None:
+            fiber_assign_dir = fiber_assign_dir()
+    return fiber_assign_dir
+
+
 def load_weather(start_date=None, stop_date=None, name='surveyinit.fits'):
     """Load dome-open fraction expected during each night of the survey.
 
@@ -158,12 +169,14 @@ class Planner(object):
                 self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
+            self.designha = np.zeros(self.tiles.ntiles, 'f4')
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
             self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
             self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
             self.lastexpid[ind] = t['LASTEXPID'].data[mask].copy()
+            self.designha[ind] = t['DESIGNHA'].data[mask].copy()
             self.log.debug('Restored plan with {} / {} tiles available from "{}".'.format(
                 np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
         else:
@@ -171,6 +184,7 @@ class Planner(object):
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
+            self.designha = load_design_hourangle()
             if self.simulate:
                 self.first_night = self.last_night = None
                 # Initialize per-tile arrays.
@@ -251,6 +265,7 @@ class Planner(object):
         t['LASTEXPID'] = self.lastexpid
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
+        t['DESIGNHA'] = self.designha
         if self.simulate:
             t['COVERED'] = self.tile_covered
             t['COUNTDOWN'] = self.tile_countdown
@@ -362,16 +377,11 @@ class Planner(object):
                 self.fiberassign_simulate(night, completed)
             self.last_night = night
         else:
+            fiber_assign_dir = get_fiber_assign_dir(fiber_assign_dir)
             if fiber_assign_dir is None:
-                fiber_assign_dir = os.environ.get('FIBER_ASSIGN_DIR', None)
-            if fiber_assign_dir is None:
-                config = desisurvey.config.Configuration()
-                fiber_assign_dir = config.getattr('fiber_assign_dir', None)
-                if fiber_assign_dir is not None:
-                    fiber_assign_dir = fiber_assign_dir()
-            if fiber_assign_dir is None:
-                self.log.error('fiber_assign_dir must be set either in '
-                               'config.yaml or in FIBER_ASSIGN_DIR; failing!')
+                raise ValueError(
+                    'fiber_assign_dir must be set either in '
+                    'config.yaml or in FIBER_ASSIGN_DIR; failing!')
             self.fiberassign(fiber_assign_dir)
         # Update tile priorities.
         if self.rules is not None:
