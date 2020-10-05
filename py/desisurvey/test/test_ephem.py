@@ -60,7 +60,7 @@ class TestEphemerides(Tester):
         self.assertEqual(id(ephem._table), id(ephem.table))
 
         etable = ephem._table
-        self.assertEqual(len(etable), 31)
+        self.assertEqual(len(etable), 59)
         self.assertTrue(np.all(etable['dusk'] > etable['noon']))
         self.assertTrue(np.all(etable['dawn'] > etable['dusk']))
         self.assertTrue(np.all(etable['dusk'] > etable['brightdusk']))

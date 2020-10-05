@@ -357,7 +357,7 @@ class Planner(object):
             the planner believes the current tile completions are.
         """
         config = desisurvey.config.Configuration()
-        completed = self.donefrac > config.min_snr2_fraction()
+        completed = self.donefrac >= config.min_snr2_fraction()
         self.log.debug('Starting afternoon planning for {} with {} / {} tiles completed.'
                        .format(night, np.count_nonzero(completed), self.tiles.ntiles))
         if self.simulate:

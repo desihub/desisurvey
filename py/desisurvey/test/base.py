@@ -33,7 +33,7 @@ class Tester(unittest.TestCase):
         config.set_output_path(cls.tmpdir)
         # Run for 1 week for testing (but include some time in each program).
         cls.start = datetime.date(2019,12,31)
-        cls.stop = datetime.date(2020,1,31)
+        cls.stop = datetime.date(2020,2,28)
         cls.start_save = desisurvey.ephem.START_DATE
         cls.stop_save = desisurvey.ephem.STOP_DATE
         desisurvey.ephem.START_DATE = cls.start
@@ -49,6 +49,11 @@ class Tester(unittest.TestCase):
         tiles_file = os.path.join(cls.tmpdir, 'tiles-subset.fits')
         tiles[subset].write(tiles_file)
         config.tiles_file.set_value(tiles_file)
+        surveyinit = astropy.table.Table()
+        surveyinit['tileID'] = tiles['TILEID']
+        surveyinit['HA'] = tiles['TILEID']*0.0
+        surveyinit.meta['EXTNAME'] = 'DESIGN'
+        surveyinit[subset].write(os.path.join(cls.tmpdir, 'surveyinit.fits'))
 
     @classmethod
     def tearDownClass(cls):

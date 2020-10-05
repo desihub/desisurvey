@@ -31,6 +31,9 @@ class TestPlan(Tester):
                     self.assertTrue(np.array_equal(avail, avail2))
                     self.assertTrue(np.array_equal(pri, pri2))
                     self.assertTrue(np.array_equal(plan.tile_countdown, plan2.tile_countdown))
+                    self.assertTrue(np.array_equal(plan.donefrac, plan2.donefrac))
+                    self.assertTrue(np.array_equal(plan.lastexpid, plan2.lastexpid))
+                    self.assertTrue(np.array_equal(plan.designha, plan2.designha))
                 # Mark a random set of tiles completed after this night.
                 completed[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = True
                 plan.set_donefrac(tiles.tileID, completed, np.zeros(tiles.ntiles))
