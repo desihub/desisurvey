@@ -253,7 +253,7 @@ class NTS():
         # remove previous tiles from possible tiles to schedule
         ind, mask = self.scheduler.tiles.index(previoustiles,
                                                return_mask=True)
-        save_in_night_pool = self.scheduler.in_night_pool[ind[mask]].copy()
+        save_in_night_pool = self.scheduler.in_night_pool.copy()
         self.scheduler.in_night_pool[ind[mask]] = False
 
         azrange = constraints.get('azrange', None)
@@ -271,7 +271,7 @@ class NTS():
 
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program)
-        self.scheduler.in_night_pool[ind[mask]] = save_in_night_pool
+        self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
         if tileid is None:
