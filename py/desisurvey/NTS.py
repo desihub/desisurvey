@@ -256,7 +256,7 @@ class NTS():
         save_in_night_pool = self.scheduler.in_night_pool[ind[mask]].copy()
         self.scheduler.in_night_pool[ind[mask]] = False
 
-        azrange = conditions.get('azrange', None)
+        azrange = constraints.get('azrange', None)
         if azrange is not None:
             tra = self.scheduler.tiles.tileRA
             tdec = self.scheduler.tiles.tileDEC
@@ -264,7 +264,8 @@ class NTS():
             coordrd = coordinates.ICRS(ra=tra*u.deg, dec=tdec*u.deg)
             coordaz = coordrd.transform_to(altazframe)
             az = coordaz.az.to(u.deg).value
-            self.scheduler.in_night_pool &= azinrange(az, azrange)
+            self.scheduler.in_night_pool &= azinrange(az, azrange[0],
+                                                      azrange[1])
 
         program = exposure.get('program', None)
 
