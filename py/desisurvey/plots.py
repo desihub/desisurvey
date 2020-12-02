@@ -71,8 +71,6 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
     for p in range(8):
         color = program_color[pass_program[p]]
         basemap = desiutil.plots.init_sky(ax=ax[pass_map[p]],
-                                          ra_labels=[-120, 0, 120],
-                                          dec_labels=None,
                                           galactic_plane_color=color)
         # Select the tiles in this pass.
         sel = np.where(passnum == p)[0]
@@ -81,7 +79,7 @@ def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
         # Plot the sky map for this pass.
         desiutil.plots.plot_sky_circles(
             ra_center=ra[sel], dec_center=dec[sel], data=z_sel, cmap=cmap,
-            colorbar=True, basemap=basemap, edgecolor='none', label=label)
+            colorbar=True, ax=basemap, edgecolor='none', label=label)
         # Plot the histogram of values for this pass.
         hist_sel = (passnum == p) & (z > vmin) & (z < vmax)
         counts, _, _ = ax[0, 2].hist(z[hist_sel], color=color, **hopts)
