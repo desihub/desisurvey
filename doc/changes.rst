@@ -2,10 +2,18 @@
 desisurvey change log
 =====================
 
+0.15.0 (planned)
+----------------
+
+* No changes yet (but likely to include more AP/NTS/ICS integration)
+
 0.14.1 (unreleased)
 -------------------
 
-* No changes yet (but likely to include more AP/NTS/ICS integration)
+* Update desisurvey.plots.plot_sky_passes for compatibility with
+  desiutil >= 3.0.0 (PR `#122`_).
+
+.. _`#122`: https://github.com/desihub/desisurvey/pull/122
 
 0.14.0 (2020-08-03)
 -------------------
