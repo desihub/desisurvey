@@ -1,6 +1,19 @@
 import os
+import glob
 import numpy
 from desimodel import focalplane
+from astropy.io import fits
+
+basetiledtype = [
+    ('tileid', 'i4'), ('ra', 'f8'), ('dec', 'f8'), ('pass', 'i4'),
+    ('in_desi', 'bool'), ('ebv_med', 'f4'), ('airmass', 'f4'),
+    ('star_density', 'f4'), ('exposefac', 'f4'), 
+    ('program', 'U20'), ('obsconditions', 'i4')]
+addtiledtype = [
+    ('brightra', '3f8'), ('brightdec', '3f8'), ('brightvtmag', '3f4'),
+    ('centerid', 'i4'), ('imagefrac_g', 'f4'), ('imagefrac_r', 'f4'),
+    ('imagefrac_z', 'f4'), ('imagefrac_gr', 'f4'), ('imagefrac_grz', 'f4'), 
+    ('in_imaging', 'f4')]
 
 
 def match2d(x1, y1, x2, y2, rad):
@@ -125,7 +138,6 @@ def render(ra, dec, tilera, tiledec, fiberposfile=None):
     if fiberposfile is None:
         fiberposfile = os.path.join(os.environ['DESIMODEL'], 'data', 
                                     'focalplane', 'fiberpos.fits')
-    from astropy.io import fits
     fpos = fits.getdata(fiberposfile)
     for f, l in subslices(mt[s]):
         tileno = mt[s[f]]
@@ -155,7 +167,6 @@ def adjacency_matrix(tilera, tiledec, fiberposfile=None):
     if fiberposfile is None:
         fiberposfile = os.path.join(os.environ['DESIMODEL'], 'data', 
                                     'focalplane', 'fiberpos.fits')
-    from astropy.io import fits
     fpos = fits.getdata(fiberposfile)
     # really slow, not vectorized.
     pos = [[focalplane.xy2radec(tra, tdec, fx, fy) 
@@ -492,7 +503,6 @@ def add_info_fields(tiles, gaiadensitymapfile,
     coordgal = coord.galactic
     lt, bt = coordgal.l.value, coordgal.b.value
     uvt = lb2uv(lt, bt)
-    from astropy.io import fits
     gaiadens = fits.getdata(gaiadensitymapfile).copy()
     cov = fits.getdata(covfile).copy()
     fprad = 1.605
@@ -506,12 +516,7 @@ def add_info_fields(tiles, gaiadensitymapfile,
                               tiles['ra'], tiles['dec'], fprad)
     s = numpy.lexsort((brightstars['vtmag'][mb], mt))
     mt, mb, dbt = mt[s], mb[s], dbt[s]
-    add = numpy.zeros(len(tiles), dtype=[
-            ('brightra', '3f8'), ('brightdec', '3f8'), ('brightvtmag', '3f4'),
-            ('centerid', 'i4'), ('imagefrac_g', 'f4'), ('imagefrac_r', 'f4'),
-            ('imagefrac_z', 'f4'), ('imagefrac_gr', 'f4'), 
-            ('imagefrac_grz', 'f4'), 
-            ('in_imaging', 'f4')])
+    add = numpy.zeros(len(tiles), dtype=addtiledtype)
     add['brightvtmag'] = 999.
     for f, l in subslices(mt):
         end = numpy.clip(l-f, 0, 3)
@@ -527,6 +532,7 @@ def add_info_fields(tiles, gaiadensitymapfile,
         for f in ['g', 'r', 'z', 'gr', 'grz']:
             val = numpy.mean(cov['%s_coverage' % f][ind])
             add['imagefrac_%s' % f][i] = val
+    add['in_imaging'] = add['imagefrac_grz'] > 0.9
     return add
 
 
@@ -620,7 +626,6 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file, covfile,
 
 
 def writefiles(tiles, fnbase, overwrite=False, viewer=False):
-    from astropy.io import fits
     from astropy.io import ascii
     from matplotlib.mlab import rec_drop_fields
     from astropy import table
@@ -900,3 +905,42 @@ def edgetiles(tiles, sel):
     edges[mp[mt]] = 1
     edges[sel] = 0
     return edges
+
+
+def make_tiles_from_fiberassign(dirname, gaiadensitymapfile, 
+                                tycho2file, covfile):
+    fn = glob.glob(os.path.join(dirname, '**/fiberassign*.fits.gz'),
+                   recursive=True)
+    tiles = numpy.zeros(len(fn), dtype=basetiledtype)
+    for i, fn0 in enumerate(fn):
+        h = fits.getheader(fn0)
+        tiles['tileid'][i] = h['TILEID']
+        tiles['ra'][i] = h['TILERA']
+        tiles['dec'][i] = h['TILEDEC']
+        tiles['program'][i] = h['FA_SURV'].strip()+'_'+h['FLAVOR'].strip()
+    tiles['airmass'] = airmass(
+        numpy.ones(len(tiles), dtype='f4')*15., tiles['dec'], 31.96)
+    tiles_add = add_info_fields(tiles, gaiadensitymapfile, 
+                                tycho2file, covfile)
+    from numpy.lib import recfunctions
+    tiles = recfunctions.merge_arrays((tiles, tiles_add), flatten=True)
+    signalfac = 10.**(3.303*tiles['ebv_med']/2.5)
+    tiles['exposefac'] = signalfac**2 * tiles['airmass']**1.25
+    tiles['centerid'] = tiles['tileid']
+    for i, prog in enumerate(numpy.unique(tiles['program'])):
+        m = tiles['program'] == prog
+        tiles['pass'][m] = i
+    from astropy.coordinates import SkyCoord
+    from astropy import units as u
+    coord = SkyCoord(ra=tiles['ra']*u.deg, 
+                     dec=tiles['dec']*u.deg, frame='icrs')
+    coordgal = coord.galactic
+    lt, bt = coordgal.l.value, coordgal.b.value
+    dt = tiles['dec']
+    tiles['in_desi'] = (
+        (tiles['in_imaging'] != 0) & (dt >= -18) & (dt <= 77.7) & 
+        ((bt > 0) | (dt < 32.2)) &
+        (((numpy.abs(bt) > 22) & ((lt < 90) | (lt > 270))) | 
+         ((numpy.abs(bt) > 20) & (lt > 90) & (lt < 270))))
+    tiles['obsconditions'] = 2**31-1
+    return tiles
