@@ -7,19 +7,12 @@
         skylevel: current sky level [counts s-1 cm-2 arcsec-2]   (from ETC, at the end of last exposure)
         seeing: current atmospheric seeing PSF FWHM [arcsec]     (from ETC, at the end of last exposure)
         transparency: current atmospheric transparency [0-1, where 0=total cloud cover]   (from ETC, at the end of last exposure)
-        lastexp:  completion time in UTC of most recent exposure
-            EFS: this is currently not used.
 
-        obsplan: filename containing that nights observing plan, defaults to planYEARMMDD.fits
-            EFS: this is currently not used.
-        fiber_assign_dir: (output) directory for fiber assign files.
-            EFS: this is currently not used for more than prepending to the tileid.
+        obsplan: filename containing that nights observing plan
         program (optional): request a tile will be in that program,
                             otherwise get next field chooses program based on current conditions
 
-        previoustiles (optional): list of tiles that have been observed that night (IS THIS RECORDED IN A FILE?)
-                                  This should be handled internally if at all possible. THe NTS could also scan the
-                                  fiber_assign_dir directory.
+        previoustiles (optional): list of tiles that have been observed that night
 
   These variables are in the
         RA _prior:  in degrees, used only for user over-ride, defaults to -99
@@ -30,7 +23,7 @@
 
 
   The primary output of the NTS will be a dictionary with the name of the fiber assign file (full path)
-  The naming convention is tile_<tileid>.fits
+  The naming convention is fiberassign_<tileid>.fits
 
   In addition, the following keys/information is returned by the NTS:
         tileid: (int) DESI Tile ID
@@ -43,6 +36,7 @@
 """
 
 import os
+import json
 import desisurvey
 import desisurvey.rules
 import desisurvey.plan
@@ -54,6 +48,8 @@ import desiutil.log
 from astropy.io import ascii
 from astropy import coordinates
 from astropy import units as u
+from astropy import time
+
 
 try:
     import DOSlib.logger as Log
@@ -90,11 +86,44 @@ class QueuedList():
     def add(self, tileid):
         self.queued.append(tileid)
         try:
-            open(self.fn, 'a').write(str(tileid)+'\n')
+            fp = open(self.fn, 'a')
+            fp.write(str(tileid)+'\n')
+            fp.flush()
             # could work harder to make this atomic.
         except OSError:
             self.log.error('Could not write out queued file; '
                            'record of last exposure lost!')
+
+
+class RequestLog():
+    """Simple class to log requests to NTS.
+
+    Parameters
+    ----------
+    fn : str
+        file name where RequestLog is stored.
+    """
+
+    def __init__(self, fn):
+        self.fn = fn
+        self.fp = open(fn, 'a')
+
+    def logrequest(self, conditions, exposure, constraints, speculative):
+        now = time.Time.now()
+        mjd = now.mjd
+        res = dict(requesttime=mjd, conditions=conditions, exposure=exposure,
+                   constraints=constraints, speculative=speculative)
+        s = json.dumps(res)
+        self.fp.write(s+'\n')
+        self.fp.flush()
+
+    def logresponse(self, tile):
+        now = time.Time.now()
+        mjd = now.mjd
+        res = dict(requesttime=mjd, tile=tile)
+        s = json.dumps(res)
+        self.fp.write(s+'\n')
+        self.fp.flush()
 
 
 def azinrange(az, low, high):
@@ -180,6 +209,8 @@ class NTS():
                 restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
             self.queuedlist = QueuedList(
                 config.get_path('{}/queued-{}.dat'.format(fulldir, nts_dir)))
+            self.requestlog = RequestLog(
+                config.get_path('{}/requestlog-{}.dat'.format(fulldir, nts_dir)))
         except Exception as e:
             print(e)
             raise ValueError('Error restoring scheduler & planner files; '
@@ -197,11 +228,22 @@ class NTS():
         Parameters
         ----------
         conditions : dict, dictionary containing conditions
+            Recognized keywords include:
+            skylevel : current sky level
+            seeing : current seeing
+            transparency : current transparency
 
         exposure : dict, dictionary containing information about exposures
+            Recognized keywords include:
+            mjd : time at which tile is to be observed
+            previoustiles : list of tileids that should not be observed
+            program : program of tile to select
 
         constraints : dict, dictionary containing constraints on where
-            observations may be made
+            observations may be made.  Recognized constraints include:
+            azrange : [lowaz, highaz], azimuth of tile must be in this range
+            elrange : [lowel, highel], elevation of tile must be in this range
+
 
         speculative: bool, if True, NTS may propose this tile again on later
             calls to next_tile this night.
@@ -216,7 +258,6 @@ class NTS():
         maxtime : float, do not observe for longer than maxtime (seconds)
         fiber_assign : str, file name of fiber_assign file
         foundtile : bool, a valid tile was found
-        azrange : [lowaz, highaz], azimuth of tile must be in this range
         """
 
         if conditions is None:
@@ -225,6 +266,9 @@ class NTS():
             exposure = {}
         if constraints is None:
             constraints = {}
+
+        self.requestlog.logrequest(conditions, exposure, constraints,
+                                   speculative)
 
         mjd = exposure.get('mjd', None)
         seeing = conditions.get('seeing', None)
@@ -238,7 +282,6 @@ class NTS():
             transparency = self.default_transparency
 
         if mjd is None:
-            from astropy import time
             now = time.Time.now()
             mjd = now.mjd
             self.log.info('No time specified, using current time, MJD: %f' %
@@ -257,15 +300,21 @@ class NTS():
         self.scheduler.in_night_pool[ind[mask]] = False
 
         azrange = constraints.get('azrange', None)
-        if azrange is not None:
+        elrange = constraints.get('elrange', None)
+        if (azrange is not None) or (elrange is not None):
             tra = self.scheduler.tiles.tileRA
             tdec = self.scheduler.tiles.tileDEC
             altazframe = desisurvey.utils.get_observer(now)
             coordrd = coordinates.ICRS(ra=tra*u.deg, dec=tdec*u.deg)
             coordaz = coordrd.transform_to(altazframe)
             az = coordaz.az.to(u.deg).value
-            self.scheduler.in_night_pool &= azinrange(az, azrange[0],
-                                                      azrange[1])
+            el = coordaz.alt.to(u.deg).value
+            if azrange is not None:
+                self.scheduler.in_night_pool &= azinrange(az, azrange[0],
+                                                          azrange[1])
+            if elrange is not None:
+                self.scheduler.in_night_pool &= (
+                    (el >= elrange[0]) & (el <= elrange[1]))
 
         program = exposure.get('program', None)
 
@@ -275,8 +324,10 @@ class NTS():
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
         if tileid is None:
-            return {'tileid': None, 's2n': 0., 'esttime': 0., 'maxtime': 0.,
+            tile = {'tileid': None, 's2n': 0., 'esttime': 0., 'maxtime': 0.,
                     'fiber_assign': '', 'foundtile': False}
+            self.requestlog.logresponse(tile)
+            return tile
 
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
             sched_program, snr2frac_start, exposure_factor, nexp_completed=0)
@@ -303,7 +354,7 @@ class NTS():
                                     'fiberassign-%s.fits' % tileidstr)
         days_to_seconds = 60*60*24
 
-        selection = {'tileid': tileid, 's2n': s2n,
+        selection = {'tileid': int(tileid), 's2n': s2n,
                      'esttime': exptime*days_to_seconds,
                      'maxtime': maxtime*days_to_seconds,
                      'fiber_assign': fiber_assign,
@@ -311,4 +362,5 @@ class NTS():
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)
+        self.requestlog.logresponse(selection)
         return selection
