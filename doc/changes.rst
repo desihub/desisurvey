@@ -7,7 +7,7 @@ desisurvey change log
 
 * No changes yet (but likely to include more AP/NTS/ICS integration)
 
-0.14.1 (unreleased)
+0.14.1 (2020-12-11)
 -------------------
 
 * Update desisurvey.plots.plot_sky_passes for compatibility with
