@@ -912,13 +912,14 @@ def make_tiles_from_fiberassign(dirname, gaiadensitymapfile,
                                 tycho2file, covfile):
     fn = glob.glob(os.path.join(dirname, '**/fiberassign*.fits.gz'),
                    recursive=True)
+    fn = sorted(fn)
     tiles = numpy.zeros(len(fn), dtype=basetiledtype)
     for i, fn0 in enumerate(fn):
         h = fits.getheader(fn0)
         tiles['tileid'][i] = h['TILEID']
         tiles['ra'][i] = h['TILERA']
         tiles['dec'][i] = h['TILEDEC']
-        tiles['program'][i] = h['FA_SURV'].strip()+'_'+h['FLAVOR'].strip()
+        tiles['program'][i] = h['FA_SURV'].strip()+'_'+h['FAFLAVOR'].strip()
         if 'OBSCON' in h:
             tiles['obsconditions'] = targetmask.obsconditions.mask(h['OBSCON'])
         else:

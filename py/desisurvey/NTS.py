@@ -89,6 +89,7 @@ class QueuedList():
             fp = open(self.fn, 'a')
             fp.write(str(tileid)+'\n')
             fp.flush()
+            os.chmod(self.fn, 0o666)
             # could work harder to make this atomic.
         except OSError:
             self.log.error('Could not write out queued file; '
@@ -107,6 +108,7 @@ class RequestLog():
     def __init__(self, fn):
         self.fn = fn
         self.fp = open(fn, 'a')
+        os.chmod(fn, 0o666)
 
     def logrequest(self, conditions, exposure, constraints, speculative):
         now = time.Time.now()

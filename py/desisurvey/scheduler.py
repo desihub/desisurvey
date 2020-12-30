@@ -343,7 +343,7 @@ class Scheduler(object):
         # Select available tiles in this program.
         self.tile_sel &= self.in_night_pool
         if not np.any(self.tile_sel):
-            # No tiles available to observe tonight in this program.
+            self.log.warning('No available tiles in requested program.')
             return None, None, None, None, None, program, mjd_program_end
         # Calculate the local apparent sidereal time in degrees.
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
@@ -361,7 +361,7 @@ class Scheduler(object):
         absha = np.abs(((self.hourangle + 180) % 360)-180)
         self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):
-            # No tiles left to observe after airmass cut.
+            self.log.warning('No tiles left to observe after airmass cut.')
             return None, None, None, None, None, program, mjd_program_end
         # Is the moon up?
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
