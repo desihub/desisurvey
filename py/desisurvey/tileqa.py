@@ -919,7 +919,17 @@ def make_tiles_from_fiberassign(dirname, gaiadensitymapfile,
         tiles['tileid'][i] = h['TILEID']
         tiles['ra'][i] = h['TILERA']
         tiles['dec'][i] = h['TILEDEC']
-        tiles['program'][i] = h['FA_SURV'].strip()+'_'+h['FAFLAVOR'].strip()
+        isdither = False
+        try:
+            dat = fits.getdata(fn0, 'EXTRA')
+            if 'UNDITHER_RA' in dat.dtype.names:
+                isdither = True
+        except Exception as e:
+            isdither = False
+        progstr =  h['FA_SURV'].strip()+'_'+h['FAFLAVOR'].strip()
+        if isdither:
+            progstr += '_dith'
+        tiles['program'][i] = progstr
         if 'OBSCON' in h:
             tiles['obsconditions'] = targetmask.obsconditions.mask(h['OBSCON'])
         else:
