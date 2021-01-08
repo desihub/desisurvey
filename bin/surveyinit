@@ -13,6 +13,6 @@ if __name__ == '__main__':
     try:
         args = desisurvey.scripts.surveyinit.parse()
         desisurvey.scripts.surveyinit.main(args)
-    except RuntimeError as e: #Exception as e:
+    except RuntimeError as e:
         print(e)
         sys.exit(-1)

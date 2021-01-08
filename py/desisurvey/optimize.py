@@ -31,16 +31,16 @@ class Optimizer(object):
 
     Parameters
     ----------
-    program : 'DARK', 'GRAY' or 'BRIGHT'
-        Which program to optimize.  Determines the nominal exposure time.
+    condition : 'DARK', 'GRAY' or 'BRIGHT'
+        Which obsconditions to optimize.
     lst_edges : array
         Array of N+1 LST bin edges.
     lst_hist : array
         Array of N bins giving the available LST distribution in units of
         sidereal hours per bin.
     subset : array or None
-        An array of tile ID values to optimize within the specified program.
-        Optimizes all tiles in the program if None.
+        An array of tile ID values to optimize.
+        Optimizes all tiles with the relevant conditions if None.
     start : date or None
         Only consider available LST starting from this date.  Use the
         nominal survey start date if None.
@@ -75,14 +75,17 @@ class Optimizer(object):
         The length of the weights array determines how many candidates to
         consider, in decreasing order, and the weight values determines their
         relative weight. The next bin to optimize is then selected at random.
+    completed : array
+        Array of tileid, donefrac_{bright/gray/dark} indicating what fraction
+        of particular tiles has already been observed in a particular
+        condition.
     """
-    def __init__(self, program, lst_edges, lst_hist, subset=None, start=None, stop=None,
+    def __init__(self, condition, lst_edges, lst_hist, subset=None, start=None, stop=None,
                  init='flat', initial_ha=None, stretch=1.0, smoothing_radius=10,
-                 center=None, seed=123, weights=[5, 4, 3, 2, 1]):
+                 center=None, seed=123, weights=[5, 4, 3, 2, 1],
+                 completed=None):
 
         tiles = desisurvey.tiles.get_tiles()
-        if program not in tiles.PROGRAMS:
-            raise ValueError('Invalid program name: "{}".'.format(program))
         if not isinstance(smoothing_radius, u.Quantity):
             smoothing_radius = smoothing_radius * u.deg
         self.log = desiutil.log.get_logger()
@@ -113,23 +116,37 @@ class Optimizer(object):
         self.origin = self.lst_edges[0]
         self.binsize = 360. / self.nbins
 
-        # Get nominal exposure time for this program,
-        # converted to LST equivalent in degrees.
-        texp_nom = getattr(config.nominal_exposure_time, program)()
-        self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583
-
         # Select the tiles to plan.
         if subset is not None:
             idx = tiles.index(subset)
-            # Check that all tiles in the subset belong to program.
-            passes = np.unique(tiles.passnum[idx])
-            if np.any(tiles.pass_program[passes] != program):
-                raise ValueError('Subset contains non-{} tiles.'.format(program))
+            # Check that all tiles in the subset are observable in these
+            # conditions.
+            if not np.all(tiles.allowed_in_conditions[condition][subset]):
+                raise ValueError('Subset contains non-{} tiles.'.format(condition))
             tile_sel = np.zeros(tiles.ntiles, bool)
             tile_sel[idx] = True
         else:
             # Use all tiles in the program by default.
-            tile_sel = tiles.program_mask[program]
+            tile_sel = tiles.allowed_in_conditions[condition]
+
+        # Get nominal exposure time for this program,
+        # converted to LST equivalent in degrees.
+        texp_nom = u.Quantity([
+            getattr(config.nominal_exposure_time, program)()
+            for program in tiles.tileprogram[tile_sel]])
+        if completed is not None:
+            completed = astropy.table.Table.read(completed)
+            nobtained = np.zeros(tiles.ntiles, dtype='f4')
+            nneeded = np.zeros(tiles.ntiles, dtype='f4')
+            idx, mask = tiles.index(completed['tileid'], return_mask=True)
+            idx = idx[mask]
+            nobtained[idx] = (
+                completed['nnight_'+condition.lower()][mask])
+            nneeded[idx] = (
+                completed['nnight_needed_'+condition.lower()][mask])
+            boost = np.clip(nneeded-nobtained, 0, np.inf)
+            texp_nom *= boost[tile_sel]
+        self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583
 
         # Save arrays for the tiles to plan.
         self.ra = wrap(tiles.tileRA[tile_sel], self.origin)
@@ -146,6 +163,8 @@ class Optimizer(object):
             (cosZ_min - np.sin(self.dec * u.deg) * np.sin(latitude)) /
             (np.cos(self.dec * u.deg) * np.cos(latitude))).value
         self.max_abs_ha = np.degrees(np.arccos(cosHA_min))
+        m = ~np.isfinite(self.max_abs_ha) | (self.max_abs_ha < 3.75)
+        self.max_abs_ha[m] = 7.5  # always give at least a half hour window.
 
         # Lookup static dust exposure factors for each tile.
         self.dust_factor = tiles.dust_factor[tile_sel]
@@ -155,7 +174,8 @@ class Optimizer(object):
 
         self.log.info(
             '{0}: {1:.1f}h for {2} tiles (texp_nom {3:.1f}).'
-            .format(program, self.lst_hist_sum, self.ntiles, texp_nom))
+            .format(condition, self.lst_hist_sum, self.ntiles,
+                    np.median(texp_nom)))
 
         # Initialize metric histories.
         self.scale_history = []
@@ -278,7 +298,8 @@ class Optimizer(object):
         # in degrees for the specified HA assignments.
         tiles = desisurvey.tiles.get_tiles()
         X = tiles.airmass(ha, self.idx[subset])
-        exptime = (self.dlst_nom * desisurvey.etc.airmass_exposure_factor(X) *
+        exptime = (self.dlst_nom[subset] *
+                   desisurvey.etc.airmass_exposure_factor(X) *
                    self.dust_factor[subset]) * self.stretch
         return exptime, subset
 
@@ -318,7 +339,7 @@ class Optimizer(object):
         hi = np.clip(
             lst_max[:, np.newaxis] - self.lst_edges[:-1], 0, self.binsize)
         plan = lo + hi
-        plan[lst_max > lst_min] -= self.binsize
+        plan[lst_max >= lst_min] -= self.binsize
         ##assert np.allclose(plan.sum(axis=1), exptime)
         # Convert from degrees to sidereal hours.
         return plan * 24. / 360.

@@ -321,7 +321,8 @@ class NTS():
         program = exposure.get('program', None)
 
         result = self.scheduler.next_tile(
-            mjd, self.ETC, seeing, transparency, skylevel, program=program)
+            mjd, self.ETC, seeing, transparency, skylevel, program=program,
+            verbose=True)
         self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result

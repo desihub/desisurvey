@@ -251,7 +251,7 @@ class Scheduler(object):
         #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
     def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
-                  program=None):
+                  program=None, verbose=False):
         r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -325,25 +325,29 @@ class Scheduler(object):
             self.night_index += 1
         self.night_index = min(len(self.night_programs)-1, self.night_index)
         if mjd_now < self.night_changes[0]:
-            self.log.warning('Tile requested before start of night.')
+            if verbose:
+                self.log.warning('Tile requested before start of night.')
         if mjd_now > self.night_changes[-1]:
-            self.log.warning('Tile requested after end of night.')
+            if verbose:
+                self.log.warning('Tile requested after end of night.')
         self.tile_sel = np.ones(self.tiles.ntiles, dtype=bool)
         if program is None:
             program = self.night_programs[self.night_index]
             # How much time remaining in this program?
             mjd_program_end = self.night_changes[self.night_index + 1]
             self.tile_sel &= self.tiles.allowed_in_conditions[program]
-            self.log.info(
-                'Selecting a tile observable in {} conditions.'.format(
-                    program))
+            if verbose:
+                self.log.info(
+                    'Selecting a tile observable in {} conditions.'.format(
+                        program))
         else:
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
         # Select available tiles in this program.
         self.tile_sel &= self.in_night_pool
         if not np.any(self.tile_sel):
-            self.log.warning('No available tiles in requested program.')
+            if verbose:
+                self.log.warning('No available tiles in requested program.')
             return None, None, None, None, None, program, mjd_program_end
         # Calculate the local apparent sidereal time in degrees.
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
@@ -361,7 +365,8 @@ class Scheduler(object):
         absha = np.abs(((self.hourangle + 180) % 360)-180)
         self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):
-            self.log.warning('No tiles left to observe after airmass cut.')
+            if verbose:
+                self.log.warning('No tiles left to observe after airmass cut.')
             return None, None, None, None, None, program, mjd_program_end
         # Is the moon up?
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
