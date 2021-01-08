@@ -68,6 +68,7 @@ class Tiles(object):
         self.tileRA = tiles['RA'].copy()
         self.tileDEC = tiles['DEC'].copy()
         self.tileobsconditions = tiles['OBSCONDITIONS'].copy()
+        self.tileprogram = tiles['PROGRAM'].copy()
         # Count tiles.
         self.ntiles = len(self.tileID)
         self.pass_ntiles = {p: np.count_nonzero(self.passnum == p)
@@ -81,15 +82,14 @@ class Tiles(object):
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')
         if commissioning:
-            Tiles.PROGRAMS = [x for x in np.sort(np.unique(tiles['PROGRAM']))]
-            for requiredprogram in ['DARK', 'GRAY', 'BRIGHT']:
-                if requiredprogram not in Tiles.PROGRAMS:
-                    Tiles.PROGRAMS = [requiredprogram] + Tiles.PROGRAMS
+            Tiles.PROGRAMS = (Tiles.PROGRAMS +
+                              [x for x in np.unique(tiles['PROGRAM'])
+                               if x not in Tiles.PROGRAMS])
             self.PROGRAMS = Tiles.PROGRAMS
             Tiles.PROGRAM_INDEX = {pname: pidx
                                    for pidx, pname in enumerate(Tiles.PROGRAMS)}
             self.PROGRAM_INDEX = Tiles.PROGRAM_INDEX
-            
+
         # Build program -> [passes] maps. A program with no tiles will map to an empty array.
         self.program_passes = {
             p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in self.PROGRAMS}

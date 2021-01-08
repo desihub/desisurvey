@@ -42,17 +42,13 @@ def load_design_hourangle(name='surveyinit.fits'):
     config = desisurvey.config.Configuration()
     fullname = config.get_path(name)
     tiles = desisurvey.tiles.get_tiles()
-    commissioning = getattr(config, 'commissioning', False)
-    if commissioning:
-        HA = np.zeros(len(tiles.tileRA), dtype='f4')
-    else:
-        design = astropy.io.fits.getdata(fullname, 'DESIGN')
-        ind, mask = tiles.index(design['tileID'], return_mask=True)
-        HA = np.zeros(tiles.ntiles, dtype='f4')
-        HA[ind[mask]] = design['HA'][mask]
-        if not np.all(mask) or len(design) != tiles.ntiles:
-            log = desiutil.log.get_logger()
-            log.warning('The tile file and HA optimizations do not match.')
+    design = astropy.io.fits.getdata(fullname, 'DESIGN')
+    ind, mask = tiles.index(design['tileID'], return_mask=True)
+    HA = np.zeros(tiles.ntiles, dtype='f4')
+    HA[ind[mask]] = design['HA'][mask]
+    if not np.all(mask) or len(design) != tiles.ntiles:
+        log = desiutil.log.get_logger()
+        log.warning('The tile file and HA optimizations do not match.')
     return HA
 
 

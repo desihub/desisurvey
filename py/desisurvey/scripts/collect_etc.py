@@ -120,12 +120,12 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
                 break
         files = cull_old_files(files, start_exps)
 
-    log.info('Found {} new raw spectra, extracting header information...'.format(
-        len(files)))
+    log.info(('Found {} new raw spectra, extracting header ' +
+              'information...').format(len(files)))
     exps = np.zeros(len(files), dtype=[
         ('EXPID', 'i4'), ('FILENAME', 'U200'),
         ('TILEID', 'f4'), ('DONEFRAC_EXP_ETC', 'f4'),
-        ('EXPTIME', 'f4'), ('MJD_OBS', 'f4'), ('FLAVOR', 'U80')])
+        ('EXPTIME', 'f4'), ('MJD_OBS', 'f8'), ('FLAVOR', 'U80')])
     for i, fn in enumerate(files):
         if (i % 1000) == 0:
             log.info('Extracting headers from file {} of {}...'.format(
@@ -135,7 +135,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
             try:
                 hdr = fits.getheader(fn, ename)
                 break
-            except:
+            except Exception:
                 continue
         exps['EXPID'][i] = hdr.get('EXPID', -1)
         exps['FILENAME'][i] = hdr.get('filename', fn)
@@ -157,7 +157,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
     ntiles = len(np.unique(exps['TILEID']))
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('DONEFRAC_ETC', 'f4'), ('EXPTIME', 'f4'),
-        ('LASTEXPID_ETC', 'i4'), ('NOBS_ETC', 'i4'), ('LASTMJD_ETC', 'f4')])
+        ('LASTEXPID_ETC', 'i4'), ('NOBS_ETC', 'i4'), ('LASTMJD_ETC', 'f8')])
     s = np.argsort(exps['TILEID'])
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
@@ -202,6 +202,91 @@ def convert_fits(fits):
     out = np.zeros(len(fits), dtype=newdtype)
     for field in fits.dtype.names:
         out[field] = fits[field]
+    return out
+
+
+def get_conditions(mjd):
+    """Determine DARK/GRAY/BRIGHT for a set of exposures.
+
+    Parameters
+    ----------
+    mjd: array of mjds to query
+
+    Returns
+    -------
+    conditions: conditions mask, 1 for DARK, 2 for GRAY, 4 for BRIGHT
+    -1 for problematic MJD (too early, NaN, or during the day)
+    """
+    import desisurvey.ephem
+    import desisurvey.tiles
+    tiles = desisurvey.tiles.get_tiles()
+    ephem = desisurvey.ephem.get_ephem()
+    # taken in 2019 or later, with known MJD---removes some test exposures
+    okmjd = np.isfinite(mjd) & (mjd > 58484)
+    nights = ephem.table
+    indices = np.repeat(np.arange(len(nights)), 2)
+    startstop = np.concatenate([[night['brightdusk'], night['brightdawn']]
+                                for night in nights])
+    nightind = np.zeros(len(mjd), dtype='f8')
+    nightind[~okmjd] = -1
+    nightind[okmjd] = np.interp(mjd[okmjd], startstop, indices)
+    # a lot of exposures apparently taken during the day?
+    # We should mark these as belonging to the "day" program?
+    mday = nightind != nightind.astype('i4')
+    log.info('%d/%d exposures were taken during the day.' %
+             (np.sum(mday & okmjd), np.sum(okmjd)))
+    nightind = nightind.astype('i4')
+    conditions = []
+    for mjd0, night in zip(mjd[~mday & okmjd],
+                           nights[nightind[~mday & okmjd]]):
+        nighttimes = np.concatenate([[night['brightdusk'], night['dusk']],
+                                     night['changes'][night['changes'] != 0],
+                                     [night['dawn'], night['brightdawn']]])
+        nightprograms = np.concatenate([
+            [tiles.PROGRAM_INDEX['BRIGHT']],
+            night['programs'][night['programs'] != -1],
+            [tiles.PROGRAM_INDEX['BRIGHT']]])
+        if len(nightprograms) != len(nighttimes)-1:
+            raise ValueError('number of program changes does not match '
+                             'number of programs!')
+        condind = np.interp(mjd0, nighttimes,
+                            np.arange(len(nighttimes)))
+        condition = nightprograms[condind.astype('i4')]
+        conditions.append(condition)
+    out = np.zeros(len(mjd), dtype='i4')
+    out[:] = -1
+    out[~mday & okmjd] = conditions
+    # this program index is ~backwards from OBSCONDITIONS.
+    newout = out.copy()
+    for condition in tiles.OBSCONDITIONS:
+        m = out == tiles.PROGRAM_INDEX[condition]
+        newout[m] = tiles.OBSCONDITIONS[condition]
+    return newout
+
+
+def number_in_conditions(exps):
+    import desisurvey.tiles
+    tiles = desisurvey.tiles.get_tiles()
+    m = exps['exptime'] > 30
+    exps = exps[m]
+    conditions = get_conditions(exps['mjd_obs']+exps['exptime']/2/60/60/24)
+    s = np.argsort(exps['tileid'])
+    out = np.zeros(len(np.unique(exps['tileid'])),
+                   dtype=[('tileid', 'i4'), ('nexp_bright', 'i4'),
+                          ('nexp_gray', 'i4'), ('nexp_dark', 'i4'),
+                          ('nnight_bright', 'i4'), ('nnight_gray', 'i4'),
+                          ('nnight_dark', 'i4')])
+    for i, (f, l) in enumerate(subslices(exps['tileid'][s])):
+        ind = s[f:l]
+        out['tileid'][i] = exps['tileid'][ind[0]]
+        for cond in ['DARK', 'BRIGHT', 'GRAY']:
+            m = conditions[ind] == tiles.OBSCONDITIONS[cond]
+            out['nexp_'+cond.lower()][i] = np.sum(m)
+            out['nnight_'+cond.lower()][i] = len(np.unique(
+                exps['mjd_obs'][ind[m]].astype('i4')))
+            # at Kitt Peak, a night never crosses an MJD boundary.
+            # So we count nights by counting the number of unique
+            # mjd integers.
     return out
 
 

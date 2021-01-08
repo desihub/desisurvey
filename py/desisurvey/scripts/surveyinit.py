@@ -95,6 +95,9 @@ def parse(options=None):
     parser.add_argument(
         '--config-file', default='config.yaml', metavar='CONFIG',
         help='input configuration file')
+    parser.add_argument(
+        '--completed', default=None,
+        help='filename with information on already completed tiles')
 
     if options is None:
         args = parser.parse_args()
@@ -164,18 +167,28 @@ def calculate_initial_plan(args):
         DARK=args.dark_stretch,
         GRAY=args.gray_stretch,
         BRIGHT=args.bright_stretch)
-    for pindex, program in enumerate(tiles.PROGRAMS):
-        sel = tiles.program_mask[program]
+
+    conditions = ['DARK', 'GRAY', 'BRIGHT']
+    tile_is_assignable = np.zeros(tiles.ntiles, dtype='bool')
+    for condition in conditions:
+        tile_is_assignable |= tiles.allowed_in_conditions[condition]
+    if ~np.all(tile_is_assignable):
+        log.info('Warning: some tiles are not observable in '
+                 'gray/dark/bright.  These will not be observable by the NTS '
+                 'by default.')
+
+    for index, condition in enumerate(conditions):
+        sel = tiles.allowed_in_conditions[condition]
         if not np.any(sel):
-            log.info('Skipping {} program with no tiles.'.format(program))
+            log.info('Skipping {} program with no tiles.'.format(condition))
             continue
         # Initialize an LST summary table.
         table = astropy.table.Table(meta={'ORIGIN': lst_bins[0]})
-        table['AVAIL'] = lst_hist[pindex]
+        table['AVAIL'] = lst_hist[index]
         # Initailize an optimizer for this program.
         opt = desisurvey.optimize.Optimizer(
-            program, lst_bins, lst_hist[pindex], init=args.init, center=None,
-            stretch=stretches[program])
+            condition, lst_bins, lst_hist[index], init=args.init, center=None,
+            stretch=stretches[condition], completed=args.completed)
         table['INIT'] = opt.plan_hist.copy()
         design['INIT'][sel] = opt.ha_initial
         # Initialize annealing cycles.
@@ -209,10 +222,10 @@ def calculate_initial_plan(args):
         avail_sum = opt.lst_hist_sum
         margin = (avail_sum - plan_sum) / plan_sum
         log.info('{} plan uses {:.1f}h with {:.1f}h avail ({:.1f}% margin).'
-                 .format(program, plan_sum, avail_sum, 1e2 * margin))
+                 .format(condition, plan_sum, avail_sum, 1e2 * margin))
         # Save planned LST usage.
         table['PLAN'] = opt.plan_hist
-        hdus.append(fits.BinTableHDU(table, name=program))
+        hdus.append(fits.BinTableHDU(table, name=condition))
 
         # Calculate exposure times in (solar) seconds.
         texp, _ = opt.get_exptime(opt.ha)
