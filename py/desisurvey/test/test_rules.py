@@ -12,14 +12,14 @@ class TestRules(Tester):
     def test_rules(self):
         rules = Rules('rules-layers.yaml')
         tiles = desisurvey.tiles.get_tiles()
-        completed = np.ones(tiles.ntiles, bool)
-        rules.apply(completed)
-        completed[:] = False
-        rules.apply(completed)
+        donefrac = np.ones(tiles.ntiles, 'f4')
+        rules.apply(donefrac)
+        donefrac[:] = 0
+        rules.apply(donefrac)
         gen = np.random.RandomState(123)
         for i in range(10):
-            completed[gen.choice(tiles.ntiles, tiles.ntiles // 10, replace=False)] = True
-            rules.apply(completed)
+            donefrac[gen.choice(tiles.ntiles, tiles.ntiles // 10, replace=False)] = 1
+            rules.apply(donefrac)
 
 
 def test_suite():

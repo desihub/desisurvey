@@ -211,7 +211,7 @@ class Rules(object):
         self.dec_priority = dec_priority
         self.group_max_orphans = group_max_orphans
 
-    def apply(self, completed):
+    def apply(self, donefrac):
         """Apply rules to determine tile priorites based on those completed so far.
 
         Parameters
@@ -234,6 +234,7 @@ class Rules(object):
             if not np.any(group_sel) and not commissioning:
                 self.log.error('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
+            completed = donefrac > config.min_snr2_fraction()
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]
             triggered[name] = (ndone + max_orphans >= ngroup)
@@ -246,4 +247,8 @@ class Rules(object):
                     priority = max(priority, value)
             sel = self.group_ids == gid
             priorities[sel] = priority * self.dec_priority[sel]
+        started_boost = getattr(config, 'finish_started_priority', 0)
+        if not isinstance(started_boost, int):
+            started_boost = started_boost()
+        priorities *= 1 + started_boost*(donefrac > 0)
         return priorities

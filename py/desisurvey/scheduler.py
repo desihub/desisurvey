@@ -78,15 +78,22 @@ class Scheduler(object):
             self.snr2frac = np.zeros(ntiles, 'f4')
             self.lastexpid = np.zeros(ntiles, 'i4')
             self.design_hourangle = np.zeros(ntiles, 'f4')
+            self.design_hourangle_cond = np.zeros(ntiles, '3f4')
             self.snr2frac[ind] = t['DONEFRAC'][mask].copy()
             self.lastexpid[ind] = t['LASTEXPID'][mask].copy()
             self.design_hourangle[ind] = t['DESIGNHA'][mask].copy()
+            self.design_hourangle_cond[ind] = t['DESIGNHACOND'][mask].copy()
             self.log.debug('Restored scheduler snapshot from "{}".'.format(fullname))
         else:
             # Initialize for a new survey.
             self.snr2frac = np.zeros(ntiles, float)
             self.lastexpid = np.zeros(ntiles, float)
             self.design_hourangle = desisurvey.plan.load_design_hourangle()
+            if self.design_hourangle.shape[0] != self.tiles.ntiles:
+                raise ValueError('design_hourangle has the wrong shape!')
+            self.design_hourangle_cond = np.array([
+                desisurvey.plan.load_design_hourangle(condition=cond)
+                for cond in ['DARK', 'GRAY', 'BRIGHT']]).T
             if self.design_hourangle.shape[0] != self.tiles.ntiles:
                 raise ValueError('design_hourangle has the wrong shape!')
 
@@ -395,7 +402,7 @@ class Scheduler(object):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for
         # observing tiles away from their design hour angle.
-        dHA = self.hourangle[self.tile_sel] - self.design_hourangle[self.tile_sel]
+        dHA = self.hourangle[self.tile_sel] - self.design_hourangle_cond[self.tile_sel, self.tiles.PROGRAM_INDEX[program]]
         dHA[dHA >= 180.] -= 360
         dHA[dHA < -180] += 360
         assert np.all((dHA >= -180) & (dHA < 180))
@@ -407,6 +414,7 @@ class Scheduler(object):
         log_score += self.log_priority[self.tile_sel]
         # Select the tile with the highest (log) score.
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
+
         # Return info about the selected tile and scheduled program.
         return (self.tiles.tileID[idx], self.tiles.passnum[idx],
                 self.snr2frac[idx], self.exposure_factor[idx],

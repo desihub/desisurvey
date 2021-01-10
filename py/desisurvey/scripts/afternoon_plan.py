@@ -10,12 +10,14 @@ import shutil
 import subprocess
 from desisurvey.scripts import collect_etc
 import desimodel.io
+import numpy as np
+from astropy.io import fits
 
 
 def afternoon_plan(night=None, restore_etc_stats='most_recent',
                    configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None, simulate=False,
-                   desisurvey_output=None, nts_dir=None):
+                   desisurvey_output=None, nts_dir=None, sv=False):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -56,6 +58,9 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         to desisurvey_output/{night}.
         Default to None.
 
+    sv : bool
+        if True, trigger special tweaking of OBSCONDITIONS in tile file,
+        donefrac in status file.
     """
     log = desiutil.log.get_logger()
     if night is None:
@@ -74,6 +79,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     directory = os.path.join(desisurvey_output, subdir)
     if not os.path.exists(directory):
         os.mkdir(directory)
+        os.chmod(directory, 0o777)
 
     if configfn is None:
         configfn = desisurvey.config.Configuration._get_full_path(
@@ -96,7 +102,9 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         return
     newtilefn = os.path.join(directory, os.path.basename(tilefn))
     newrulesfn = os.path.join(directory, os.path.basename(rulesfn))
-    newconfigfn = os.path.join(directory, os.path.basename(configfn))
+
+    # config file will always be called config.yaml so ICS knows where to look
+    newconfigfn = os.path.join(directory, 'config.yaml')
     if os.path.exists(newtilefn):
         log.error('{} already exists, failing!'.format(newtilefn))
         return
@@ -151,8 +159,40 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                                              start_from=restore_etc_stats)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
         directory, 'etc-stats-{}.fits'.format(subdir)))
+
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'],
                          tiles['LASTEXPID_ETC'])
+
+    if sv:
+        # overwrite donefracs
+        from desisurvey import svstats
+        numcond = collect_etc.number_in_conditions(exps)
+        donefraccond = svstats.donefrac_in_conditions(numcond)
+        nneeded = np.zeros(len(donefraccond))
+        nobserved = np.zeros(len(donefraccond))
+        allcond = ['DARK', 'GRAY', 'BRIGHT']
+        for cond in allcond:
+            nneeded += donefraccond['NNIGHT_NEEDED_'+cond]
+            nobserved += donefraccond['NNIGHT_'+cond]
+        _, md, mt = np.intersect1d(donefraccond['TILEID'],
+                                   tiles['TILEID'], return_indices=True)
+        lastexp = np.zeros(len(donefraccond), dtype='i4')-1
+        lastexp[md] = tiles['LASTEXPID_ETC'][mt]
+        planner.set_donefrac(donefraccond['TILEID'],
+                             nobserved / nneeded, lastexp)
+        hdulist = fits.open(newtilefn)
+        hdu = hdulist['TILES']
+        tilefiledat = hdu.data
+        _, md, mt = np.intersect1d(donefraccond['TILEID'],
+                                   tilefiledat['TILEID'], return_indices=True)
+        for cond in allcond:
+            # make tile unobservable in given conditions if it's finished
+            # in those conditions.
+            m = (donefraccond['NNIGHT_'+cond][md] >=
+                 donefraccond['NNIGHT_NEEDED_'+cond][md])
+            condmask = desisurvey.tiles.Tiles.OBSCONDITIONS[cond]
+            tilefiledat['OBSCONDITIONS'][mt[m]] &= ~condmask
+        hdulist.writeto(newtilefn, overwrite=True)
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
     planner.save('{}/desi-status-{}.fits'.format(subdir, subdir))
@@ -205,6 +245,9 @@ def parse(options=None):
     parser.add_argument('--nts_dir', type=str, default=None,
                         help=('subdirectory of DESISURVEY_OUTPUT in which to '
                               'store plan.'))
+    parser.add_argument('--sv',
+                        action='store_true',
+                        help='turn on special SV planning mode.')
     if options is None:
         args = parser.parse_args()
     else:
@@ -220,4 +263,4 @@ def main(args):
         raise ValueError('Environment variable DESISURVEY_OUTPUT must be set.')
 
     afternoon_plan(night=args.night, restore_etc_stats=args.restore_etc_stats,
-                   configfn=args.config, nts_dir=args.nts_dir)
+                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv)

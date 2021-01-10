@@ -138,12 +138,12 @@ class Optimizer(object):
             completed = astropy.table.Table.read(completed)
             nobtained = np.zeros(tiles.ntiles, dtype='f4')
             nneeded = np.zeros(tiles.ntiles, dtype='f4')
-            idx, mask = tiles.index(completed['tileid'], return_mask=True)
+            idx, mask = tiles.index(completed['TILEID'], return_mask=True)
             idx = idx[mask]
             nobtained[idx] = (
-                completed['nnight_'+condition.lower()][mask])
+                completed['NNIGHT_'+condition][mask])
             nneeded[idx] = (
-                completed['nnight_needed_'+condition.lower()][mask])
+                completed['NNIGHT_NEEDED_'+condition][mask])
             boost = np.clip(nneeded-nobtained, 0, np.inf)
             texp_nom *= boost[tile_sel]
         self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583

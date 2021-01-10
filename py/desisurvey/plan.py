@@ -20,7 +20,7 @@ import desisurvey.tiles
 import desisurvey.ephem
 
 
-def load_design_hourangle(name='surveyinit.fits'):
+def load_design_hourangle(name='surveyinit.fits', condition=None):
     """Load design hour-angle assignments from disk.
 
     Reads column 'HA' from binary table HDU 'DESIGN'. This is the format
@@ -32,6 +32,9 @@ def load_design_hourangle(name='surveyinit.fits'):
     name : str
         Name of the FITS file to read. A relative path is assumed to
         refer to the output path specified in the configuration.
+    condition : str
+        DARK/GRAY/BRIGHT.  For SV tiles that may be observed in multple
+        conditions, load the appropriate design HA for this conditions.
 
     Returns
     -------
@@ -45,7 +48,11 @@ def load_design_hourangle(name='surveyinit.fits'):
     design = astropy.io.fits.getdata(fullname, 'DESIGN')
     ind, mask = tiles.index(design['tileID'], return_mask=True)
     HA = np.zeros(tiles.ntiles, dtype='f4')
-    HA[ind[mask]] = design['HA'][mask]
+    if condition is not None:
+        hacolname = 'HA_' + condition
+    else:
+        hacolname = 'HA'
+    HA[ind[mask]] = design[hacolname][mask]
     if not np.all(mask) or len(design) != tiles.ntiles:
         log = desiutil.log.get_logger()
         log.warning('The tile file and HA optimizations do not match.')
@@ -166,6 +173,7 @@ class Planner(object):
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = np.zeros(self.tiles.ntiles, 'f4')
+            self.designhacond = np.zeros(self.tiles.ntiles, '3f4')
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
@@ -173,6 +181,7 @@ class Planner(object):
             self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
             self.lastexpid[ind] = t['LASTEXPID'].data[mask].copy()
             self.designha[ind] = t['DESIGNHA'].data[mask].copy()
+            self.designhacond[ind] = t['DESIGNHACOND'].data[mask].copy()
             self.log.debug('Restored plan with {} / {} tiles available from "{}".'.format(
                 np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
         else:
@@ -181,6 +190,10 @@ class Planner(object):
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.designha = load_design_hourangle()
+            self.designhacond = np.zeros(self.tiles.ntiles, '3f4')
+            self.designhacond[:, 0] = load_design_hourangle(condition='DARK')
+            self.designhacond[:, 1] = load_design_hourangle(condition='GRAY')
+            self.designhacond[:, 2] = load_design_hourangle(condition='BRIGHT')
             if self.simulate:
                 self.first_night = self.last_night = None
                 # Initialize per-tile arrays.
@@ -198,8 +211,8 @@ class Planner(object):
                         self.log.info('Pass {} available for initial observing.'.format(passnum))
             # Initialize priorities.
             if self.rules is not None:
-                none_completed = np.zeros(self.tiles.ntiles, bool)
-                self.tile_priority = self.rules.apply(none_completed)
+                none_started = np.zeros(self.tiles.ntiles, 'f4')
+                self.tile_priority = self.rules.apply(none_started)
             else:
                 self.tile_priority = np.ones(self.tiles.ntiles, float)
         if not np.any(self.tile_priority > 0):
@@ -262,6 +275,7 @@ class Planner(object):
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
         t['DESIGNHA'] = self.designha
+        t['DESIGNHACOND'] = self.designhacond
         if self.simulate:
             t['COVERED'] = self.tile_covered
             t['COUNTDOWN'] = self.tile_countdown
@@ -320,8 +334,8 @@ class Planner(object):
         """
         import glob
         import re
-        files = glob.glob(os.path.join(dirname, '**/*.fits'), recursive=True)
-        rgx = re.compile('.*fiberassign-(\d+)\.fits')
+        files = glob.glob(os.path.join(dirname, '**/*.fits*'), recursive=True)
+        rgx = re.compile('.*fiberassign-(\d+)\.fits(\.gz)?')
         available_tileids = []
         for fn in files:
             match = rgx.match(fn)
@@ -381,5 +395,5 @@ class Planner(object):
             self.fiberassign(fiber_assign_dir)
         # Update tile priorities.
         if self.rules is not None:
-            self.tile_priority = self.rules.apply(completed)
+            self.tile_priority = self.rules.apply(self.donefrac)
         return self.tile_available, self.tile_priority

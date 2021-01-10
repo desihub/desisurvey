@@ -49,6 +49,7 @@ from astropy.io import ascii
 from astropy import coordinates
 from astropy import units as u
 from astropy import time
+import numpy as np
 
 
 try:
@@ -85,15 +86,17 @@ class QueuedList():
 
     def add(self, tileid):
         self.queued.append(tileid)
+        exists = os.path.exists(self.fn)
         try:
             fp = open(self.fn, 'a')
             fp.write(str(tileid)+'\n')
             fp.flush()
-            os.chmod(self.fn, 0o666)
             # could work harder to make this atomic.
         except OSError:
             self.log.error('Could not write out queued file; '
                            'record of last exposure lost!')
+        if not exists:
+            os.chmod(self.fn, 0o666)
 
 
 class RequestLog():
@@ -107,8 +110,10 @@ class RequestLog():
 
     def __init__(self, fn):
         self.fn = fn
+        exists = os.path.exists(fn)
         self.fp = open(fn, 'a')
-        os.chmod(fn, 0o666)
+        if not exists:
+            os.chmod(self.fn, 0o666)
 
     def logrequest(self, conditions, exposure, constraints, speculative):
         now = time.Time.now()
@@ -155,7 +160,7 @@ def azinrange(az, low, high):
 
 
 class NTS():
-    def __init__(self, obsplan='config.yaml', defaults={}, night=None):
+    def __init__(self, obsplan=None, defaults={}, night=None):
         """Initialize a new instance of the Next Tile Selector.
 
         Parameters
@@ -172,7 +177,6 @@ class NTS():
         -------
         NTS object. Tiles can be generated via next_tile(...)
         """
-        self.obsplan = obsplan
         self.log = desiutil.log.get_logger()
         # making a new NTS; clear out old configuration / tile information
         if night is None:
@@ -181,6 +185,10 @@ class NTS():
                           'using current date: {}.'.format(self.night))
         else:
             self.night = night
+        if obsplan is None:
+            obsplan = os.path.join(desisurvey.utils.night_to_str(self.night),
+                                   'config.yaml')
+        self.obsplan = obsplan
         nts_dir, _ = os.path.split(obsplan)
         if len(os.path.split(nts_dir)[0]) > 0:
             raise ValueError('NTS expects to find config in '
@@ -202,6 +210,9 @@ class NTS():
         self.default_program = defaults.get('program', 'DARK')
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
+        self.commissioning = getattr(config, 'commissioning', False)
+        if not isinstance(self.commissioning, bool):
+            self.commissioning = self.commissioning()
         self.config = config
         try:
             self.planner = desisurvey.plan.Planner(
@@ -254,12 +265,16 @@ class NTS():
         -------
         A dictionary representing the next tile, containing the following
         fields:
-        tileid : int, the next tileID.
+        fiberassign : int, the next tileID.
         s2n : float, the addition s2n needed on this tile
-        esttime : float, expected time needed to achieve this s2n (seconds)
+        esttime : float, expected total time needed to achieve this s2n (seconds)
+        exptime : float, amount of time per (split) exposure
+        count : int, number of exposures to make
         maxtime : float, do not observe for longer than maxtime (seconds)
-        fiber_assign : str, file name of fiber_assign file
         foundtile : bool, a valid tile was found
+        conditions : DARK / GRAY / BRIGHT
+        program : program of this tile
+        exposure_factor : exptime scale factor applied for E(B-V) and airmass
         """
 
         if conditions is None:
@@ -327,21 +342,28 @@ class NTS():
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
         if tileid is None:
-            tile = {'tileid': None, 's2n': 0., 'esttime': 0., 'maxtime': 0.,
-                    'fiber_assign': '', 'foundtile': False}
+            tile = {'s2n': 0., 'esttime': 0., 'exptime': 0.,
+                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
+                    'foundtile': False,
+                    'conditions': '', 'program': '', 'exposure_factor': 0}
             self.requestlog.logresponse(tile)
             return tile
 
+        if self.commissioning:
+            self.log.info('Ignoring existing donefrac in SV1.')
+            snr2frac_start = 0
+
+        idx = self.scheduler.tiles.index(int(tileid))
+        tile_program = self.scheduler.tiles.tileprogram[idx]
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
-            sched_program, snr2frac_start, exposure_factor, nexp_completed=0)
+            tile_program, snr2frac_start, exposure_factor, nexp_completed=0)
+        if tile_program not in ['DARK', 'GRAY', 'BRIGHT']:
+            moon_up_factor = getattr(self.config, 'moon_up_factor')
+            moon_up_factor = getattr(moon_up_factor, sched_program)()
+            texp_tot *= moon_up_factor
+            texp_remaining *= moon_up_factor
 
-        # s2n: this is really what we should be passing back, but currently
-        # scheduler thinks in terms of texp in 'nominal' conditions.  Want
-        # guidance converting this to s2n...
-        # what cosmic split related elements should I be thinking about here?
-
-        s2n = 50.0 * texp_remaining/(
-            self.ETC.TEXP_TOTAL[sched_program]*exposure_factor)  # EFS hack
+        s2n = 50.0 * texp_remaining/texp_tot
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
         # this forces an exposure to end at the end of the program, and
@@ -349,19 +371,28 @@ class NTS():
         # ends.  Ignoring at present.
         # maxtime = min([maxtime, mjd_program_end-mjd])
 
-        tileidstr = '{:06d}'.format(tileid)
-
-        fiber_assign_dir = desisurvey.plan.get_fiber_assign_dir(None)
-        fiber_assign = os.path.join(fiber_assign_dir,
-                                    tileidstr[:3],
-                                    'fiberassign-%s.fits' % tileidstr)
         days_to_seconds = 60*60*24
+        if exptime > maxtime:
+            count = int((exptime / maxtime).astype('i4') + 1)
+        else:
+            count = 2
+        splitexptime = exptime / count
+        minexptime = getattr(self.config, 'minimum_exposure_time', None)
+        if minexptime:
+            minexptime = getattr(minexptime, sched_program)()
+            minexptime = minexptime.to(u.s).value
+            splitexptime = max([splitexptime, minexptime/days_to_seconds])
 
-        selection = {'tileid': int(tileid), 's2n': s2n,
+        selection = {'s2n': s2n,
                      'esttime': exptime*days_to_seconds,
+                     'exptime': splitexptime*days_to_seconds,
+                     'count': count,
                      'maxtime': maxtime*days_to_seconds,
-                     'fiber_assign': fiber_assign,
-                     'foundtile': True}
+                     'fiberassign': int(tileid),
+                     'foundtile': True,
+                     'conditions': sched_program,
+                     'program': tile_program,
+                     'exposure_factor': exposure_factor}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)
