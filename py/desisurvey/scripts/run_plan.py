@@ -25,7 +25,7 @@ def run_plan(obsplan=None):
     desiutil.log.get_logger().setLevel(desiutil.log.WARNING)
     previoustiles = []
     print('local   lst   cond  tile    ra   dec    program fac  tot  split '
-          'b/g/d')
+          'd/g/b')
     while t0 < nts.scheduler.night_ephem['brightdawn']:
         expdict = dict(mjd=t0, previoustiles=previoustiles)
         res = nts.next_tile(exposure=expdict, speculative=True)
