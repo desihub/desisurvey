@@ -313,9 +313,14 @@ class ExposureTimeCalculator(object):
                 nomtime = nomtime().to(u.day).value
 
             self.TEXP_TOTAL[program] = nomtime
-        # Temporary hardcoded exposure factors for moon-up observing.
-        self.TEXP_TOTAL['GRAY'] *= 1.1
-        self.TEXP_TOTAL['BRIGHT'] *= 1.33
+        moon_up_factor = getattr(config, 'moon_up_factor', None)
+        if moon_up_factor:
+            for cond in ['DARK', 'GRAY', 'BRIGHT']:
+                self.TEXP_TOTAL[cond] *= getattr(moon_up_factor, cond)()
+        else:
+            # Temporary hardcoded exposure factors for moon-up observing.
+            self.TEXP_TOTAL['GRAY'] *= 1.1
+            self.TEXP_TOTAL['BRIGHT'] *= 1.33
 
         # Initialize model of exposure time dependence on seeing.
         self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
@@ -356,7 +361,7 @@ class ExposureTimeCalculator(object):
             Exposure-time factor for the tile(s) to estimate.
         nexp_completed : int or array
             Number of exposures completed so far for tile(s) to estimate.
-        
+
         Returns
         -------
         tuple
@@ -459,7 +464,7 @@ class ExposureTimeCalculator(object):
             self.history['signal'].append(0.)
             self.history['background'].append(0.)
             self.history['snr2frac'].append(snr2frac)
-    
+
     def update(self, mjd_now, seeing, transp, sky):
         """Track changing conditions during an exposure.
 
@@ -487,11 +492,11 @@ class ExposureTimeCalculator(object):
         dt = mjd_now - self.mjd_last
         self.mjd_last = mjd_now
         srate = self.weather_factor(seeing, transp)
-        brate = sky        
+        brate = sky
         self.signal += dt * srate / self.srate0
         #self.background += dt * (srate + brate) / (self.srate0 + self.brate0)
         self.background += dt * brate / self.brate0
-        self._snr2frac = self._snr2frac_start + self.signal ** 2 / self.background / self.texp_total            
+        self._snr2frac = self._snr2frac_start + self.signal ** 2 / self.background / self.texp_total
         if self.save_history:
             self.history['mjd'].append(mjd_now)
             self.history['signal'].append(self.signal)

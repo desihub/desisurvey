@@ -51,6 +51,8 @@ class Tiles(object):
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
         commissioning = getattr(config, 'commissioning', False)
+        if not isinstance(commissioning, bool):
+            commissioning = commissioning()
         if not commissioning:
             tiles = desimodel.io.load_tiles(
                 onlydesi=True, extra=False, tilesfile=self.tiles_file)

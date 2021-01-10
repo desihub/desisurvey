@@ -52,6 +52,9 @@ class Tester(unittest.TestCase):
         surveyinit = astropy.table.Table()
         surveyinit['tileID'] = tiles['TILEID']
         surveyinit['HA'] = tiles['TILEID']*0.0
+        surveyinit['HA_DARK'] = tiles['TILEID']*0.0
+        surveyinit['HA_GRAY'] = tiles['TILEID']*0.0
+        surveyinit['HA_BRIGHT'] = tiles['TILEID']*0.0
         surveyinit.meta['EXTNAME'] = 'DESIGN'
         surveyinit[subset].write(os.path.join(cls.tmpdir, 'surveyinit.fits'))
 

@@ -154,6 +154,9 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         log.info('Ignoring {} files due to weird FLAVOR or TILEID'.format(
             np.sum(m)))
         exps = exps[~m]
+    exps = exps[np.argsort(exps['EXPID'])]
+    if start_exps is not None:
+        exps = np.concatenate([start_exps, exps])
     ntiles = len(np.unique(exps['TILEID']))
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('DONEFRAC_ETC', 'f4'), ('EXPTIME', 'f4'),
@@ -170,9 +173,6 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         # potentially only want to consider "good" exposures here?
         tiles['NOBS_ETC'][i] = len(ind)
         tiles['LASTMJD_ETC'][i] = np.max(exps['MJD_OBS'][ind])
-    exps = exps[np.argsort(exps['EXPID'])]
-    if start_exps is not None:
-        exps = np.concatenate([start_exps, exps])
     return tiles, exps
 
 
@@ -267,23 +267,23 @@ def get_conditions(mjd):
 def number_in_conditions(exps):
     import desisurvey.tiles
     tiles = desisurvey.tiles.get_tiles()
-    m = exps['exptime'] > 30
+    m = exps['EXPTIME'] > 30
     exps = exps[m]
-    conditions = get_conditions(exps['mjd_obs']+exps['exptime']/2/60/60/24)
-    s = np.argsort(exps['tileid'])
-    out = np.zeros(len(np.unique(exps['tileid'])),
-                   dtype=[('tileid', 'i4'), ('nexp_bright', 'i4'),
-                          ('nexp_gray', 'i4'), ('nexp_dark', 'i4'),
-                          ('nnight_bright', 'i4'), ('nnight_gray', 'i4'),
-                          ('nnight_dark', 'i4')])
-    for i, (f, l) in enumerate(subslices(exps['tileid'][s])):
+    conditions = get_conditions(exps['MJD_OBS']+exps['EXPTIME']/2/60/60/24)
+    s = np.argsort(exps['TILEID'])
+    out = np.zeros(len(np.unique(exps['TILEID'])),
+                   dtype=[('TILEID', 'i4'), ('NEXP_BRIGHT', 'i4'),
+                          ('NEXP_GRAY', 'i4'), ('NEXP_DARK', 'i4'),
+                          ('NNIGHT_BRIGHT', 'i4'), ('NNIGHT_GRAY', 'i4'),
+                          ('NNIGHT_DARK', 'i4')])
+    for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
-        out['tileid'][i] = exps['tileid'][ind[0]]
+        out['TILEID'][i] = exps['TILEID'][ind[0]]
         for cond in ['DARK', 'BRIGHT', 'GRAY']:
             m = conditions[ind] == tiles.OBSCONDITIONS[cond]
-            out['nexp_'+cond.lower()][i] = np.sum(m)
-            out['nnight_'+cond.lower()][i] = len(np.unique(
-                exps['mjd_obs'][ind[m]].astype('i4')))
+            out['NEXP_'+cond][i] = np.sum(m)
+            out['NNIGHT_'+cond][i] = len(np.unique(
+                exps['MJD_OBS'][ind[m]].astype('i4')))
             # at Kitt Peak, a night never crosses an MJD boundary.
             # So we count nights by counting the number of unique
             # mjd integers.
