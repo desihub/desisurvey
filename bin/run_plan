@@ -1,0 +1,12 @@
+#!/usr/bin/env python
+
+import sys
+import desisurvey.scripts.run_plan
+
+if __name__ == '__main__':
+    try:
+        args = desisurvey.scripts.run_plan.parse()
+        desisurvey.scripts.run_plan.main(args)
+    except RuntimeError as e:
+        print(e)
+        sys.exit(-1)
