@@ -156,11 +156,14 @@ def calculate_initial_plan(args):
         nbins=args.nbins, weather=weather[ilo:ihi], include_twilight=args.include_twilight)
 
     # Initialize the output results table.
+    conditions = ['DARK', 'GRAY', 'BRIGHT']
     design = astropy.table.Table()
     design['INIT'] = np.zeros(tiles.ntiles)
     design['HA'] = np.zeros(tiles.ntiles)
     design['TEXP'] = np.zeros(tiles.ntiles)
     design['TILEID'] = tiles.tileID
+    for cond in conditions:
+        design['HA_'+cond] = np.full(tiles.ntiles, np.nan, dtype='f4')
 
     # Optimize each program separately.
     stretches = dict(
@@ -168,7 +171,6 @@ def calculate_initial_plan(args):
         GRAY=args.gray_stretch,
         BRIGHT=args.bright_stretch)
 
-    conditions = ['DARK', 'GRAY', 'BRIGHT']
     tile_is_assignable = np.zeros(tiles.ntiles, dtype='bool')
     for condition in conditions:
         tile_is_assignable |= tiles.allowed_in_conditions[condition]
@@ -232,6 +234,7 @@ def calculate_initial_plan(args):
         texp *= 24. * 3600. / 360. * 0.99726956583
         # Save results for this program.
         design['HA'][sel] = opt.ha
+        design['HA_'+condition][sel] = opt.ha
         design['TEXP'][sel] = texp
 
     hdus.append(fits.BinTableHDU(design, name='DESIGN'))
