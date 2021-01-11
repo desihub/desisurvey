@@ -229,7 +229,6 @@ class Scheduler(object):
             self.night_ephem['brightdusk_LST'], self.night_ephem['brightdawn_LST']]
         self.dLST = (LST1 - self.LST0) / (MJD1 - self.MJD0)
         # Initialize tracking of the program through the night.
-        self.night_index = 0
         # Remember the last tile observed this night.
         self.last_idx = None
         # Initialize the pool of tiles that could be observed this night.
@@ -256,6 +255,30 @@ class Scheduler(object):
         # Initialize moon tracking during this night.
         self.moon_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
         #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
+
+    def select_program(self, mjd_now, ETC, verbose=False):
+        """Select program to observe now.
+        """
+        if mjd_now < self.night_changes[0]:
+            if verbose:
+                self.log.warning('Tile requested before start of night.')
+        if mjd_now > self.night_changes[-1]:
+            if verbose:
+                self.log.warning('Tile requested after end of night.')
+        idx = 0
+        while ((idx + 1 < len(self.night_changes)) and
+               (mjd_now >= self.night_changes[idx + 1])):
+            idx += 1
+        idx = min(len(self.night_programs)-1, idx)
+        program = self.night_programs[idx]
+        # How much time remaining in this program?
+        mjd_program_end = self.night_changes[idx + 1]
+        nommidpt = mjd_now + (ETC.TEXP_TOTAL[program]/2)/60/60/24
+        if (nommidpt > mjd_program_end) & (idx != len(self.night_programs)-1):
+            idx += 1
+            program = self.night_programs[idx]
+            mjd_program_end = self.night_changes[idx + 1]
+        return program, mjd_program_end
 
     def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
                   program=None, verbose=False):
@@ -325,23 +348,11 @@ class Scheduler(object):
             raise ValueError('Must call init_night() before next_tile().')
         if greediness < 0 or greediness > 1:
             raise ValueError('Expected greediness between 0 and 1.')
-        # Which program are we in?
-        self.night_index = 0  # not so bad to recompute this?
-        while ((self.night_index + 1 < len(self.night_changes)) and
-               (mjd_now >= self.night_changes[self.night_index + 1])):
-            self.night_index += 1
-        self.night_index = min(len(self.night_programs)-1, self.night_index)
-        if mjd_now < self.night_changes[0]:
-            if verbose:
-                self.log.warning('Tile requested before start of night.')
-        if mjd_now > self.night_changes[-1]:
-            if verbose:
-                self.log.warning('Tile requested after end of night.')
         self.tile_sel = np.ones(self.tiles.ntiles, dtype=bool)
         if program is None:
-            program = self.night_programs[self.night_index]
-            # How much time remaining in this program?
-            mjd_program_end = self.night_changes[self.night_index + 1]
+            # Which program are we in?
+            program, mjd_program_end = self.select_program(
+                mjd_now, ETC, verbose=verbose)
             self.tile_sel &= self.tiles.allowed_in_conditions[program]
             if verbose:
                 self.log.info(

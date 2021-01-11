@@ -11,9 +11,14 @@ from astropy.coordinates import EarthLocation
 from astropy import units as u
 
 
-def run_plan(obsplan=None):
+def mjd_to_azstr(mjd):
     utc = pytz.timezone('utc')
     tz = pytz.timezone('US/Arizona')
+    tt = Time(mjd, format='mjd').to_datetime(timezone=utc)
+    return tt.astimezone(tz).strftime('%H:%M')
+
+
+def run_plan(obsplan=None):
     kpno = EarthLocation.of_site('kpno')
     nts = desisurvey.NTS.NTS(obsplan=obsplan)
     t0 = nts.scheduler.night_ephem['brightdusk']
@@ -24,6 +29,18 @@ def run_plan(obsplan=None):
     donecond = desisurvey.svstats.donefrac_in_conditions(nincond)
     desiutil.log.get_logger().setLevel(desiutil.log.WARNING)
     previoustiles = []
+    ephem = nts.scheduler.night_ephem
+    night_labels = np.array(['noon', '12 deg dusk', '18 deg dusk',
+                             '18 deg dawn', '12 deg dawn',
+                             'moonrise', 'moonset'])
+    night_names = np.array(['noon', 'brightdusk', 'dusk', 'dawn', 'brightdawn',
+                            'moonrise', 'moonset'])
+    night_times = np.array([ephem[name] for name in night_names])
+    s = np.argsort(night_times)
+    print(nts.scheduler.night)
+    for name, tt in zip(night_labels[s], night_times[s]):
+        print('%11s %s' % (name, mjd_to_azstr(tt)))
+
     print('local   lst   cond  tile    ra   dec    program fac  tot  split '
           'd/g/b')
     while t0 < nts.scheduler.night_ephem['brightdawn']:
@@ -36,7 +53,6 @@ def run_plan(obsplan=None):
         previoustiles.append(res['fiberassign'])
         lst = Time(t0, format='mjd', location=kpno).sidereal_time('apparent')
         lst = lst.to(u.deg).value
-        tt = Time(t0, format='mjd').to_datetime(timezone=utc)
         nsofar = (donecond[donecond['TILEID'] == res['fiberassign']])
         ind = np.flatnonzero(
             nts.scheduler.tiles.tileID == res['fiberassign'])[0]
@@ -48,7 +64,7 @@ def run_plan(obsplan=None):
         else:
             nsofar = [0, 0, 0]
         print('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f %4d %6s %d/%d/%d' % (
-            tt.astimezone(tz).strftime('%H:%M'), lst, res['conditions'],
+            mjd_to_azstr(t0), lst, res['conditions'],
             res['fiberassign'], ra, dec, res['program'],
             res['exposure_factor'], res['esttime'].astype('i4'),
             ('%dx%d' % (res['count'], res['exptime'])), *nsofar))

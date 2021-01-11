@@ -363,13 +363,11 @@ class NTS():
             texp_tot *= moon_up_factor
             texp_remaining *= moon_up_factor
 
+        # avoid crossing program boundaries.
+        texp_remaining = min([texp_remaining, mjd_program_end-mjd])
         s2n = 50.0 * texp_remaining/texp_tot
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
-        # this forces an exposure to end at the end of the program, and
-        # can lead to awkward behavior if an exposure starts just as a program
-        # ends.  Ignoring at present.
-        # maxtime = min([maxtime, mjd_program_end-mjd])
 
         days_to_seconds = 60*60*24
         if exptime > maxtime:
