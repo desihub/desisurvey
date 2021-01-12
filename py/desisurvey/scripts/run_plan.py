@@ -18,9 +18,15 @@ def mjd_to_azstr(mjd):
     return tt.astimezone(tz).strftime('%H:%M')
 
 
-def run_plan(obsplan=None):
+def run_plan(nts_dir=None):
     kpno = EarthLocation.of_site('kpno')
-    nts = desisurvey.NTS.NTS(obsplan=obsplan)
+    if nts_dir is None:
+        obsplan = None
+        night = None
+    else:
+        night = desisurvey.utils.get_date(nts_dir)
+        obsplan = os.path.join(nts_dir, 'config.yaml')
+    nts = desisurvey.NTS.NTS(obsplan=obsplan, night=night)
     t0 = nts.scheduler.night_ephem['brightdusk']
     nts_dir, _ = os.path.split(nts.obsplan)
     etcfn = os.path.join(nts_dir, 'etc-stats-{}.fits'.format(nts_dir))
@@ -76,8 +82,8 @@ def parse(options=None):
     parser = argparse.ArgumentParser(
         description='run an example night plan',
         epilog='EXAMPLE: %(prog)s [YYYYMMDD/config.yaml]')
-    parser.add_argument('obsplan', nargs='?', default=None, type=str,
-                        help='obsplan to use; default YYYYMMDD/config.yaml')
+    parser.add_argument('nts_dir', nargs='?', default=None, type=str,
+                        help='nts_dir to use; default YYYYMMDD')
     if options is None:
         args = parser.parse_args()
     else:
@@ -86,4 +92,4 @@ def parse(options=None):
 
 
 def main(args):
-    run_plan(obsplan=args.obsplan)
+    run_plan(nts_dir=args.nts_dir)
