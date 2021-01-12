@@ -368,12 +368,24 @@ class NTS():
         s2n = 50.0 * texp_remaining/texp_tot
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
-
         days_to_seconds = 60*60*24
+        if ((mjd <= self.scheduler.night_ephem['dusk']) or
+                (mjd >= self.scheduler.night_ephem['dawn'])):
+            maxtime = 300/days_to_seconds
+            # in twilight, exposures should never be longer than 300 s
+            # according to DJS.
+
         if exptime > maxtime:
             count = int((exptime / maxtime).astype('i4') + 1)
         else:
-            count = 2
+            if (self.night.day % 2) != 0:
+                count = 2  # do cosmic splits
+            else:
+                count = 1
+        # always get at least 2 300s exposures of sv1bgsmws exposures
+        # when they are scheduled in dark time
+        if (sched_program == 'DARK') & (tile_program == 'sv1bgsmws'):
+            count = int(np.max([count, 2]))
         splitexptime = exptime / count
         minexptime = getattr(self.config, 'minimum_exposure_time', None)
         if minexptime:
