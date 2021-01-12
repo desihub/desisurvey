@@ -364,7 +364,7 @@ class NTS():
             texp_remaining *= moon_up_factor
 
         # avoid crossing program boundaries.
-        texp_remaining = min([texp_remaining, mjd_program_end-mjd])
+        texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd])
         s2n = 50.0 * texp_remaining/texp_tot
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
