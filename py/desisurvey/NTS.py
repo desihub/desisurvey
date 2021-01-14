@@ -369,7 +369,7 @@ class NTS():
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
         days_to_seconds = 60*60*24
-        fivemin = 5/60/24
+        fivemin = 5/60/24  # 5 minutes... pretty arbitrary.
         if ((mjd <= self.scheduler.night_ephem['dusk']-fivemin) or
                 (mjd >= self.scheduler.night_ephem['dawn']+fivemin)):
             maxtime = 300/days_to_seconds
