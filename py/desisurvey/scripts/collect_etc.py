@@ -325,7 +325,10 @@ def update_donefrac_from_offline(exps, offlinefn):
     tileprograms[:] = 'UNKNOWN'
     tileprograms[me] = tileprogram[mt]
     me, mo = desisurvey.utils.match(exps['EXPID'], offline['EXPID'])
-    offline_eff_time = offline['R_DEPTH']
+    try:
+        offline_eff_time = offline['R_DEPTH_EBVAIR']
+    except Exception:
+        offline_eff_time = offline['R_DEPTH']
     if ((len(np.unique(exps['EXPID'])) != len(exps)) or
             (len(np.unique(offline['EXPID'])) != len(offline))):
         raise ValueError('weird duplicate EXPID in exps or offline')
