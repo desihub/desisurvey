@@ -293,8 +293,6 @@ def number_in_conditions(exps, nightly_donefrac_requirement=0.5):
         for cond in ['DARK', 'BRIGHT', 'GRAY']:
             m = conditions[ind] == tiles.OBSCONDITIONS[cond]
             out['NEXP_'+cond][i] = np.sum(m)
-            out['NNIGHT_'+cond][i] = len(np.unique(
-                exps['MJD_OBS'][ind[m]].astype('i4')))
         # at Kitt Peak, a night never crosses an MJD boundary.
         # So we count nights by counting the number of unique
         # mjd integers.
