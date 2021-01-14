@@ -4,6 +4,9 @@ import re
 import numpy as np
 from astropy.io import fits
 import desiutil.log
+import desisurvey.etc
+from astropy import units as u
+
 
 log = desiutil.log.get_logger()
 
@@ -49,7 +52,8 @@ def cull_old_files(files, start_from):
     return [f for (f, e) in zip(files, expid) if e > maxexpid]
 
 
-def scan_directory(dirname, simulate_donefrac=False, start_from=None):
+def scan_directory(dirname, simulate_donefrac=False, start_from=None,
+                   offlinedepth=None):
     """Scan directory for spectra with ETC statistics to collect.
 
     Parameters
@@ -69,6 +73,9 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
         "fresh" or None indicates starting fresh.
         "most_recent" indicates searching DESISURVEY_OUTPUT for the most recent
         file to restore.
+    offlinedepth : str
+        offline depth file to use.  Fills out donefracs according to
+        R_DEPTH in the file, plus config.nominal_exposure_time
     """
     log.info('Scanning {} for desi exposures...'.format(dirname))
     if start_from is None or (start_from == "fresh"):
@@ -124,7 +131,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
               'information...').format(len(files)))
     exps = np.zeros(len(files), dtype=[
         ('EXPID', 'i4'), ('FILENAME', 'U200'),
-        ('TILEID', 'f4'), ('DONEFRAC_EXP_ETC', 'f4'),
+        ('TILEID', 'i4'), ('DONEFRAC_EXP_ETC', 'f4'),
         ('EXPTIME', 'f4'), ('MJD_OBS', 'f8'), ('FLAVOR', 'U80')])
     for i, fn in enumerate(files):
         if (i % 1000) == 0:
@@ -157,6 +164,8 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None):
     exps = exps[np.argsort(exps['EXPID'])]
     if start_exps is not None:
         exps = np.concatenate([start_exps, exps])
+    if offlinedepth is not None:
+        exps = update_donefrac_from_offline(exps, offlinedepth)
     ntiles = len(np.unique(exps['TILEID']))
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('DONEFRAC_ETC', 'f4'), ('EXPTIME', 'f4'),
@@ -233,8 +242,9 @@ def get_conditions(mjd):
     # a lot of exposures apparently taken during the day?
     # We should mark these as belonging to the "day" program?
     mday = nightind != nightind.astype('i4')
-    log.info('%d/%d exposures were taken during the day.' %
-             (np.sum(mday & okmjd), np.sum(okmjd)))
+    if np.sum(mday & okmjd) > 0:
+        log.info('%d/%d exposures were taken during the day.' %
+                 (np.sum(mday & okmjd), np.sum(okmjd)))
     nightind = nightind.astype('i4')
     conditions = []
     for mjd0, night in zip(mjd[~mday & okmjd],
@@ -264,7 +274,7 @@ def get_conditions(mjd):
     return newout
 
 
-def number_in_conditions(exps):
+def number_in_conditions(exps, nightly_donefrac_requirement=0.5):
     import desisurvey.tiles
     tiles = desisurvey.tiles.get_tiles()
     m = exps['EXPTIME'] > 30
@@ -274,8 +284,9 @@ def number_in_conditions(exps):
     out = np.zeros(len(np.unique(exps['TILEID'])),
                    dtype=[('TILEID', 'i4'), ('NEXP_BRIGHT', 'i4'),
                           ('NEXP_GRAY', 'i4'), ('NEXP_DARK', 'i4'),
-                          ('NNIGHT_BRIGHT', 'i4'), ('NNIGHT_GRAY', 'i4'),
-                          ('NNIGHT_DARK', 'i4')])
+                          ('NNIGHT_BRIGHT', 'f4'), ('NNIGHT_GRAY', 'f4'),
+                          ('NNIGHT_DARK', 'f4')])
+    conddict = {ind: cond for cond, ind in tiles.OBSCONDITIONS.items()}
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
         out['TILEID'][i] = exps['TILEID'][ind[0]]
@@ -284,10 +295,63 @@ def number_in_conditions(exps):
             out['NEXP_'+cond][i] = np.sum(m)
             out['NNIGHT_'+cond][i] = len(np.unique(
                 exps['MJD_OBS'][ind[m]].astype('i4')))
-            # at Kitt Peak, a night never crosses an MJD boundary.
-            # So we count nights by counting the number of unique
-            # mjd integers.
+        # at Kitt Peak, a night never crosses an MJD boundary.
+        # So we count nights by counting the number of unique
+        # mjd integers.
+        nights = exps['MJD_OBS'][ind].astype('i4')
+        for night in np.unique(nights):
+            m = nights == night
+            totaldonefrac = np.sum(exps['DONEFRAC_EXP_ETC'][ind[m]])
+            cond = conditions[ind[m]]
+            cond = cond[cond >= 0]
+            if len(cond) == 0:
+                # all images taken ~during the day, don't know what to do.
+                continue
+            cond = conddict[cond[0]]
+            if totaldonefrac > nightly_donefrac_requirement:
+                out['NNIGHT_'+cond][i] += 1
+            else:
+                out['NNIGHT_'+cond][i] += 0.1
+                # still gets credit for having been started
     return out
+
+
+def update_donefrac_from_offline(exps, offlinefn):
+    offline = fits.getdata(offlinefn)
+    tiles = desisurvey.tiles.Tiles()
+    tileprogram = tiles.tileprogram
+    tileprograms = np.zeros(len(exps), dtype='U80')
+    mt, me = desisurvey.utils.match(tiles.tileID, exps['TILEID'])
+    tileprograms[:] = 'UNKNOWN'
+    tileprograms[me] = tileprogram[mt]
+    me, mo = desisurvey.utils.match(exps['EXPID'], offline['EXPID'])
+    offline_eff_time = offline['R_DEPTH']
+    if ((len(np.unique(exps['EXPID'])) != len(exps)) or
+            (len(np.unique(offline['EXPID'])) != len(offline))):
+        raise ValueError('weird duplicate EXPID in exps or offline')
+    # offline has R_DEPTH in units of time
+    # now we need the goal exposure times
+    # these are just the nominal times
+    config = desisurvey.config.Configuration()
+    cfgnomtimes = config.nominal_exposure_time
+    nomtimes = []
+    unknownprograms = []
+    nunknown = 0
+    for ei, oi in zip(me, mo):
+        nomprogramtime = getattr(cfgnomtimes, tileprograms[ei], 300)
+        if not isinstance(nomprogramtime, int):
+            nomprogramtime = nomprogramtime().to(u.s).value
+        else:
+            unknownprograms.append(tileprograms[ei])
+            nunknown += 1
+        nomtimes.append(nomprogramtime)
+    if nunknown > 0:
+        print('%d observations of unknown programs' % nunknown)
+        print('unknown programs: ', np.unique(unknownprograms))
+    nomtimes = np.array(nomtimes)
+    exps = exps.copy()
+    exps['DONEFRAC_EXP_ETC'][me] = offline_eff_time[mo]/nomtimes
+    return exps
 
 
 def read_tile_exp(fn):
@@ -323,6 +387,10 @@ def parse(options=None):
                         help='etc_stats file to start from')
     parser.add_argument('--simulate_donefrac', action='store_true',
                         help='use exptime/1000 instead of DONEFRAC')
+    parser.add_argument('--offlinedepth', type=str,
+                        help='offline depth file to use')
+    parser.add_argument('--config', type=str, default=None,
+                        help='configuration file to use')
     if options is None:
         args = parser.parse_args()
     else:
@@ -332,8 +400,11 @@ def parse(options=None):
 
 
 def main(args):
+    import desisurvey.config
+    _ = desisurvey.config.Configuration(args.config)
     res = scan_directory(args.directory, start_from=args.start_from,
-                         simulate_donefrac=args.simulate_donefrac)
+                         simulate_donefrac=args.simulate_donefrac,
+                         offlinedepth=args.offlinedepth)
     if res is not None:
         tiles, exps = res
         write_tile_exp(tiles, exps, args.outfile)

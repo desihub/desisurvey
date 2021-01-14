@@ -302,17 +302,19 @@ class ExposureTimeCalculator(object):
         self.MIN_NEXP = config.min_exposures()
         self.TEXP_TOTAL = {}
         self.log = desiutil.log.get_logger()
+        unknownprograms = []
         for program in desisurvey.tiles.Tiles.PROGRAMS:
             nomtime = getattr(config.nominal_exposure_time, program, None)
             if nomtime is None:
-                self.log.warning(
-                    'Unrecognized program {}, '.format(program) +
-                    'using default exposure time of 1000 s')
+                unknownprograms.append(program)
                 nomtime = 1000/24/60/60
             else:
                 nomtime = nomtime().to(u.day).value
-
             self.TEXP_TOTAL[program] = nomtime
+        if len(unknownprograms) > 0:
+            self.log.warning(
+                'Unrecognized program {}, '.format(' '.join(unknownprograms)) +
+                'using default exposure time of 1000 s')
         moon_up_factor = getattr(config, 'moon_up_factor', None)
         if moon_up_factor:
             for cond in ['DARK', 'GRAY', 'BRIGHT']:

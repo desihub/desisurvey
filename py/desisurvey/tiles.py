@@ -323,7 +323,6 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
             pinfo = []
             for passnum in tiles.program_passes[pname]:
                 pinfo.append('{}({})'.format(passnum, tiles.pass_ntiles[passnum]))
-            log.info('{:6s} passes(tiles): {}.'.format(pname, ', '.join(pinfo)))
 
     if write_cache:
         _cached_tiles[tiles_file] = tiles

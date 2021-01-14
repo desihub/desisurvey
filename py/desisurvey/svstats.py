@@ -6,7 +6,7 @@ def donefrac_in_conditions(condnexp, configfn=None):
     """Get donefrac corresponding to number of tiles observed
     in different conditions.
 
-    condnexp from desisurvey.scripts.collect_etc.nexp_in_conditions
+    condnexp from desisurvey.scripts.collect_etc.number_in_conditions
     """
     import desisurvey.config
     config = desisurvey.config.Configuration(configfn)
@@ -15,8 +15,8 @@ def donefrac_in_conditions(condnexp, configfn=None):
         ('TILEID', 'i4'),
         ('DONEFRAC_DARK', 'f4'), ('DONEFRAC_GRAY', 'f4'),
         ('DONEFRAC_BRIGHT', 'f4'),
-        ('NNIGHT_DARK', 'i4'), ('NNIGHT_GRAY', 'i4'),
-        ('NNIGHT_BRIGHT', 'i4'),
+        ('NNIGHT_DARK', 'f4'), ('NNIGHT_GRAY', 'f4'),
+        ('NNIGHT_BRIGHT', 'f4'),
         ('NNIGHT_NEEDED_DARK', 'i4'), ('NNIGHT_NEEDED_GRAY', 'i4'),
         ('NNIGHT_NEEDED_BRIGHT', 'i4'),
     ])
@@ -29,8 +29,10 @@ def donefrac_in_conditions(condnexp, configfn=None):
     out['TILEID'] = tiles.tileID
     for i, program in enumerate(tiles.tileprogram):
         for cond in CONDITIONS:
-            needed = getattr(getattr(config.completeness, program), cond, None)
-            needed = 0 if needed is None else needed()
+            needed = getattr(config.completeness, program, 0)
+            if not isinstance(needed, int):
+                needed = getattr(needed, cond, None)
+                needed = 0 if needed is None else needed()
             out['NNIGHT_NEEDED_'+cond][i] = needed
     for ic, it in zip(mc, mt):
         for cond in CONDITIONS:

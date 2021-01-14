@@ -419,3 +419,28 @@ def separation_matrix(ra1, dec1, ra2, dec2, max_separation=None):
         return havPHI <= threshold
     else:
         return np.rad2deg(np.arccos(np.clip(1 - 2 * havPHI, -1, +1)))
+
+
+def match(a, b):
+    """Find matching elements of b in unique array a by index.
+
+    Returns indices ma, mb such that a[ma] == b[mb]
+
+    Parameters
+    ----------
+    a : unique array
+    b : array
+
+    Returns
+    -------
+    ma, mb : indices such that a[ma] == b[mb]
+    """
+    sa = np.argsort(a)
+    _, ua = np.unique(a[sa], return_index=True)
+    if len(ua) != len(a):
+        raise ValueError('All keys in a must be unique.')
+    ind = np.searchsorted(a[sa], b)
+    m = (ind >= 0) & (ind < len(a))
+    matches = a[sa[ind[m]]] == b[m]
+    m[m] &= matches
+    return sa[ind[m]], np.flatnonzero(m)

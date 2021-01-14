@@ -69,7 +69,9 @@ def run_plan(nts_dir=None):
                       nsofar['NNIGHT_BRIGHT']]
         else:
             nsofar = [0, 0, 0]
-        print('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f %4d %6s %d/%d/%d' % (
+        print(
+            ('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f '
+             '%4d %6s %3.1f/%3.1f/%3.1f') % (
             mjd_to_azstr(t0), lst, res['conditions'],
             res['fiberassign'], ra, dec, res['program'],
             res['exposure_factor'], res['esttime'].astype('i4'),

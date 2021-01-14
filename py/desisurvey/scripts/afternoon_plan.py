@@ -155,8 +155,22 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         raise ValueError('Must pass spectra_dir to afternoon_plan or set '
                          'DESI_SPECTRA_DIR.')
 
-    tiles, exps = collect_etc.scan_directory(spectra_dir,
-                                             start_from=restore_etc_stats)
+    if sv:
+        if os.environ.get('DESI_COLLAB_PASSWORD', None) is not None:
+            pwstr = '--password ' + os.environ['DESI_COLLAB_PASSWORD'] + ' '
+        else:
+            print('Enter desi collaboration password to download status file.')
+            pwstr = '--ask-password '
+        os.system('wget -q https://data.desi.lbl.gov/desi/users/raichoor/'
+                  'fiberassign-sv1/sv1-exposures.fits ' + pwstr +
+                  '--user=desi -O ./sv1-exposures.fits')
+        offlinedepthfn = './sv1-exposures.fits'
+    else:
+        offlinedepthfn = None
+
+    tiles, exps = collect_etc.scan_directory(
+        spectra_dir, start_from=restore_etc_stats,
+        offlinedepth=offlinedepthfn)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
         directory, 'etc-stats-{}.fits'.format(subdir)))
 
@@ -168,8 +182,8 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         from desisurvey import svstats
         numcond = collect_etc.number_in_conditions(exps)
         donefraccond = svstats.donefrac_in_conditions(numcond)
-        nneeded = np.zeros(len(donefraccond))
-        nobserved = np.zeros(len(donefraccond))
+        nneeded = np.zeros(len(donefraccond), dtype='f4')
+        nobserved = np.zeros(len(donefraccond), dtype='f4')
         allcond = ['DARK', 'GRAY', 'BRIGHT']
         for cond in allcond:
             nneeded += donefraccond['NNIGHT_NEEDED_'+cond]
@@ -178,6 +192,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                                    tiles['TILEID'], return_indices=True)
         lastexp = np.zeros(len(donefraccond), dtype='i4')-1
         lastexp[md] = tiles['LASTEXPID_ETC'][mt]
+        nneeded = nneeded + (nneeded == 0)
         planner.set_donefrac(donefraccond['TILEID'],
                              nobserved / nneeded, lastexp)
         hdulist = fits.open(newtilefn)
@@ -235,7 +250,7 @@ def parse(options=None):
     parser.add_argument('--night', type=str,
                         help='night to plan, default: tonight',
                         default=None)
-    parser.add_argument('--restore_etc_stats', type=str,
+    parser.add_argument('--restore-etc-stats', type=str,
                         help=('etc_stats file to restore. Default: '
                               '"most_recent", search for most recent.  '
                               '"fresh" to start fresh.'),

@@ -917,12 +917,15 @@ def edgetiles(tiles, sel):
 
 def make_tiles_from_fiberassign(dirname, gaiadensitymapfile,
                                 tycho2file, covfile):
-    fn = glob.glob(os.path.join(dirname, '**/fiberassign*.fits.gz'),
+    fn = glob.glob(os.path.join(dirname, '**/fiberassign*.fits*'),
                    recursive=True)
     fn = sorted(fn)
     tiles = numpy.zeros(len(fn), dtype=basetiledtype)
     for i, fn0 in enumerate(fn):
         h = fits.getheader(fn0)
+        if 'TILEID' not in h:
+            tiles['tileid'][i] = -1
+            continue
         tiles['tileid'][i] = h['TILEID']
         tiles['ra'][i] = h['TILERA']
         tiles['dec'][i] = h['TILEDEC']
@@ -933,7 +936,7 @@ def make_tiles_from_fiberassign(dirname, gaiadensitymapfile,
                 isdither = True
         except Exception:
             isdither = False
-        progstr = h['FAFLAVOR'].strip()
+        progstr = h.get('FAFLAVOR', 'unknown').strip()
         fa_surv = h['FA_SURV'].strip()
         if progstr[:len(fa_surv)] != fa_surv:
             progstr = fa_surv + '_' + progstr
@@ -944,6 +947,7 @@ def make_tiles_from_fiberassign(dirname, gaiadensitymapfile,
             tiles['obsconditions'] = targetmask.obsconditions.mask(h['OBSCON'])
         else:
             tiles['obsconditions'] = 2**31-1
+    tiles = tiles[tiles['tileid'] != -1]
     tiles['airmass'] = airmass(
         numpy.ones(len(tiles), dtype='f4')*15., tiles['dec'], 31.96)
     tiles_add = add_info_fields(tiles, gaiadensitymapfile,
