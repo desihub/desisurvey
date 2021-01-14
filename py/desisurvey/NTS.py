@@ -369,8 +369,9 @@ class NTS():
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
         days_to_seconds = 60*60*24
-        if ((mjd <= self.scheduler.night_ephem['dusk']) or
-                (mjd >= self.scheduler.night_ephem['dawn'])):
+        fivemin = 5/60/24
+        if ((mjd <= self.scheduler.night_ephem['dusk']-fivemin) or
+                (mjd >= self.scheduler.night_ephem['dawn']+fivemin)):
             maxtime = 300/days_to_seconds
             # in twilight, exposures should never be longer than 300 s
             # according to DJS.

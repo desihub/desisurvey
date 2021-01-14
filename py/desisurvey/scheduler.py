@@ -273,7 +273,7 @@ class Scheduler(object):
         program = self.night_programs[idx]
         # How much time remaining in this program?
         mjd_program_end = self.night_changes[idx + 1]
-        nommidpt = mjd_now + (ETC.TEXP_TOTAL[program]/2)/60/60/24
+        nommidpt = mjd_now + (ETC.TEXP_TOTAL[program]/2)
         if (nommidpt > mjd_program_end) & (idx != len(self.night_programs)-1):
             idx += 1
             program = self.night_programs[idx]
