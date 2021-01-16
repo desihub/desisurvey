@@ -27,6 +27,7 @@ import re
 import numpy as np
 
 import astropy.units as u
+from astropy.time import Time
 
 import desimodel.io
 import desiutil.log
@@ -164,6 +165,29 @@ class Tiles(object):
             mask = slice(None)
         cosZ = self.tile_coef_A[mask] + self.tile_coef_B[mask] * np.cos(hour_angle)
         return desisurvey.utils.cos_zenith_to_airmass(cosZ)
+
+    def airmass_at_mjd(self, mjd, mask=None):
+        """Calculate tile airmass at given MJD.
+
+        Parameters
+        ----------
+        mjd : array
+            Array of MJD to use.  If mask is None, then should have length
+            ``self.ntiles``.  Otherwise, should have a value per non-zero entry
+            in the mask.
+        mask : array or None
+            Boolean mask of which tiles to perform the calculation for.
+
+        Returns
+        -------
+        array
+            Array of airmasses corresponding to each input hour angle.
+        """
+        tt = Time(mjd, format='mjd', location=desisurvey.utils.get_location())
+        lst = tt.sidereal_time('apparent').to(u.deg).value
+
+        ha = lst - self.tileRA[mask]
+        return self.airmass(ha, mask=mask)
 
     def index(self, tileID, return_mask=False):
         """Map tile ID to array index.

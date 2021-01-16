@@ -5,6 +5,8 @@ import numpy as np
 from astropy.io import fits
 import desiutil.log
 import desisurvey.etc
+import desisurvey.tiles
+import desisurvey.ephem
 from astropy import units as u
 
 
@@ -64,7 +66,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
         This needs to be updated to ~DESI files only, with more care given
         to where these keywords are actually found.
     simulate_donefrac : bool
-        instead of tabulating DONEFRAC, tabulate EXPTIME / 1000 instead.
+        instead of tabulating DONEFRAC, tabulate EXPTIME / fac instead.
         this is useful when DONEFRAC is not being computed.
     start_from : str
         etc_stats file to start from.  Nights already in the etc_stats file
@@ -147,10 +149,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
         exps['EXPID'][i] = hdr.get('EXPID', -1)
         exps['FILENAME'][i] = hdr.get('filename', fn)
         exps['TILEID'][i] = hdr.get('TILEID', -1)
-        if not simulate_donefrac:
-            exps['DONEFRAC_EXP_ETC'][i] = hdr.get('DONEFRAC', -1)
-        else:
-            exps['DONEFRAC_EXP_ETC'][i] = hdr.get('EXPTIME', -1)/1000
+        exps['DONEFRAC_EXP_ETC'][i] = hdr.get('DONEFRAC', -1)
         exps['EXPTIME'][i] = hdr.get('EXPTIME', -1)
         exps['MJD_OBS'][i] = hdr.get('MJD-OBS', -1)
         exps['FLAVOR'][i] = hdr.get('FLAVOR', 'none')
@@ -161,6 +160,19 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
         log.info('Ignoring {} files due to weird FLAVOR or TILEID'.format(
             np.sum(m)))
         exps = exps[~m]
+    if simulate_donefrac:
+        tiles = desisurvey.tiles.get_tiles()
+        program = np.full(len(exps), 'UNKNOWN', dtype='U80')
+        ind, mask = tiles.index(exps['TILEID'], return_mask=True)
+        program[mask] = tiles.tileprogram[ind[mask]]
+        nomtime = get_nominal_program_times(program)
+        airmass = np.ones(len(exps), dtype='f4')
+        airmass[mask] = tiles.airmass_at_mjd(exps['MJD_OBS'][mask],
+                                             mask=ind[mask])
+        expfac = np.ones(len(exps), dtype='f4')
+        expfac *= desisurvey.etc.airmass_exposure_factor(airmass)
+        expfac[mask] *= tiles.dust_factor[ind[mask]]
+        exps['DONEFRAC_EXP_ETC'] = exps['EXPTIME']/expfac/nomtime
     exps = exps[np.argsort(exps['EXPID'])]
     if start_exps is not None:
         exps = np.concatenate([start_exps, exps])
@@ -226,8 +238,6 @@ def get_conditions(mjd):
     conditions: conditions mask, 1 for DARK, 2 for GRAY, 4 for BRIGHT
     -1 for problematic MJD (too early, NaN, or during the day)
     """
-    import desisurvey.ephem
-    import desisurvey.tiles
     tiles = desisurvey.tiles.get_tiles()
     ephem = desisurvey.ephem.get_ephem()
     # taken in 2019 or later, with known MJD---removes some test exposures
@@ -275,7 +285,6 @@ def get_conditions(mjd):
 
 
 def number_in_conditions(exps, nightly_donefrac_requirement=0.5):
-    import desisurvey.tiles
     tiles = desisurvey.tiles.get_tiles()
     m = exps['EXPTIME'] > 30
     exps = exps[m]
@@ -299,7 +308,8 @@ def number_in_conditions(exps, nightly_donefrac_requirement=0.5):
         nights = exps['MJD_OBS'][ind].astype('i4')
         for night in np.unique(nights):
             m = nights == night
-            totaldonefrac = np.sum(exps['DONEFRAC_EXP_ETC'][ind[m]])
+            totaldonefrac = np.sum(
+                np.clip(exps['DONEFRAC_EXP_ETC'][ind[m]], 0, np.inf))
             cond = conditions[ind[m]]
             cond = cond[cond >= 0]
             if len(cond) == 0:
@@ -314,6 +324,27 @@ def number_in_conditions(exps, nightly_donefrac_requirement=0.5):
     return out
 
 
+def get_nominal_program_times(tileprogram):
+    config = desisurvey.config.Configuration()
+    cfgnomtimes = config.nominal_exposure_time
+    nomtimes = []
+    unknownprograms = []
+    nunknown = 0
+    for program in tileprogram:
+        nomprogramtime = getattr(cfgnomtimes, program, 300)
+        if not isinstance(nomprogramtime, int):
+            nomprogramtime = nomprogramtime().to(u.s).value
+        else:
+            unknownprograms.append(program)
+            nunknown += 1
+        nomtimes.append(nomprogramtime)
+    if nunknown > 0:
+        log.info(('%d observations of unknown programs\n' % nunknown) +
+                 'unknown programs: '+' '.join(np.unique(unknownprograms)))
+    nomtimes = np.array(nomtimes)
+    return nomtimes
+
+
 def update_donefrac_from_offline(exps, offlinefn):
     offline = fits.getdata(offlinefn)
     tiles = desisurvey.tiles.Tiles()
@@ -323,6 +354,7 @@ def update_donefrac_from_offline(exps, offlinefn):
     tileprograms[:] = 'UNKNOWN'
     tileprograms[me] = tileprogram[mt]
     me, mo = desisurvey.utils.match(exps['EXPID'], offline['EXPID'])
+    nomtimes = get_nominal_program_times(tileprograms[me])
     try:
         offline_eff_time = offline['R_DEPTH_EBVAIR']
     except Exception:
@@ -333,23 +365,6 @@ def update_donefrac_from_offline(exps, offlinefn):
     # offline has R_DEPTH in units of time
     # now we need the goal exposure times
     # these are just the nominal times
-    config = desisurvey.config.Configuration()
-    cfgnomtimes = config.nominal_exposure_time
-    nomtimes = []
-    unknownprograms = []
-    nunknown = 0
-    for ei, oi in zip(me, mo):
-        nomprogramtime = getattr(cfgnomtimes, tileprograms[ei], 300)
-        if not isinstance(nomprogramtime, int):
-            nomprogramtime = nomprogramtime().to(u.s).value
-        else:
-            unknownprograms.append(tileprograms[ei])
-            nunknown += 1
-        nomtimes.append(nomprogramtime)
-    if nunknown > 0:
-        print('%d observations of unknown programs' % nunknown)
-        print('unknown programs: ', np.unique(unknownprograms))
-    nomtimes = np.array(nomtimes)
     exps = exps.copy()
     exps['DONEFRAC_EXP_ETC'][me] = offline_eff_time[mo]/nomtimes
     return exps
@@ -387,7 +402,7 @@ def parse(options=None):
     parser.add_argument('--start_from', type=str, default=None,
                         help='etc_stats file to start from')
     parser.add_argument('--simulate_donefrac', action='store_true',
-                        help='use exptime/1000 instead of DONEFRAC')
+                        help='use exptime/fac instead of DONEFRAC')
     parser.add_argument('--offlinedepth', type=str,
                         help='offline depth file to use')
     parser.add_argument('--config', type=str, default=None,

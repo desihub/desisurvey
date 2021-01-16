@@ -16,7 +16,8 @@ from astropy.io import fits
 
 def afternoon_plan(night=None, restore_etc_stats='most_recent',
                    configfn='config.yaml',
-                   fiber_assign_dir=None, spectra_dir=None, simulate=False,
+                   fiber_assign_dir=None, spectra_dir=None,
+                   simulate_donefrac=False,
                    desisurvey_output=None, nts_dir=None, sv=False):
     """Perform daily afternoon planning.
 
@@ -39,15 +40,14 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     configfn : str
         File name of desisurvey config to use for plan.
 
-
     fiber_assign_dir : str
         Directory where fiber assign files are found.
 
     spectra_dir : str
         Directory where spectra are found.
 
-    simulate : bool
-        Use simulated afternoon planning rather than real afternoon planning.
+    simulate_donefrac : bool
+        Simulate donefrac rather than getting it from the ETC.
 
     desisurvey_output : str
         Afternoon planning config is stored to desisurvey_output/{night}/.
@@ -147,7 +147,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     config = desisurvey.config.Configuration(newconfigfn)
     _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
     rules = desisurvey.rules.Rules(config.rules_file())
-    planner = desisurvey.plan.Planner(rules, simulate=simulate)
+    planner = desisurvey.plan.Planner(rules)
 
     if spectra_dir is None:
         spectra_dir = os.environ.get('DESI_SPECTRA_DIR', None)
@@ -170,7 +170,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
 
     tiles, exps = collect_etc.scan_directory(
         spectra_dir, start_from=restore_etc_stats,
-        offlinedepth=offlinedepthfn)
+        offlinedepth=offlinedepthfn, simulate_donefrac=simulate_donefrac)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
         directory, 'etc-stats-{}.fits'.format(subdir)))
 
@@ -257,12 +257,15 @@ def parse(options=None):
                         default='most_recent')
     parser.add_argument('--config', type=str, default=None,
                         help='config file to use for night')
-    parser.add_argument('--nts_dir', type=str, default=None,
+    parser.add_argument('--nts-dir', type=str, default=None,
                         help=('subdirectory of DESISURVEY_OUTPUT in which to '
                               'store plan.'))
     parser.add_argument('--sv',
                         action='store_true',
                         help='turn on special SV planning mode.')
+    parser.add_argument('--simulate_donefrac',
+                        action='store_true',
+                        help='simulate donefrac rather than deriving from ETC')
     if options is None:
         args = parser.parse_args()
     else:
@@ -278,4 +281,5 @@ def main(args):
         raise ValueError('Environment variable DESISURVEY_OUTPUT must be set.')
 
     afternoon_plan(night=args.night, restore_etc_stats=args.restore_etc_stats,
-                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv)
+                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
+                   simulate_donefrac=args.simulate_donefrac)
