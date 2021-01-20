@@ -384,7 +384,7 @@ class Scheduler(object):
         self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):
             if verbose:
-                self.log.warning('No tiles left to observe after airmass cut.')
+                self.log.warning('No tiles left to observe after HA/airmass cut.')
             return None, None, None, None, None, program, mjd_program_end
         # Is the moon up?
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
@@ -399,6 +399,8 @@ class Scheduler(object):
             idx = np.where(self.tile_sel)[0][too_close]
             self.tile_sel[idx] = False
             if not np.any(self.tile_sel):
+                if verbose:
+                    self.log.warning('No tiles left to observe after moon separation cut.')
                 # No tiles left to observe after moon avoidance veto.
                 return None, None, None, None, None, program, mjd_program_end
         else:
