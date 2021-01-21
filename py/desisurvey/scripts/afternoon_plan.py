@@ -200,13 +200,24 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         tilefiledat = hdu.data
         _, md, mt = np.intersect1d(donefraccond['TILEID'],
                                    tilefiledat['TILEID'], return_indices=True)
+        newobsconditions = tilefiledat['OBSCONDITIONS'].copy()
         for cond in allcond:
             # make tile unobservable in given conditions if it's finished
             # in those conditions.
             m = (donefraccond['NNIGHT_'+cond][md] >=
                  donefraccond['NNIGHT_NEEDED_'+cond][md])
             condmask = desisurvey.tiles.Tiles.OBSCONDITIONS[cond]
-            tilefiledat['OBSCONDITIONS'][mt[m]] &= ~condmask
+            newobsconditions[mt[m]] &= ~condmask
+        ignore_completed_priority = getattr(config,
+                                            'ignore_completed_priority', -1)
+        if not isinstance(ignore_completed_priority, int):
+            ignore_completed_priority = ignore_completed_priority()
+        # tiles that are completely done should have their OBSCONDITIONS
+        # restored so that they can be observed in any conditions at
+        # very low priority.
+        if ignore_completed_priority > 0:
+            m = (newobsconditions == 0) & (tilefiledat['OBSCONDITIONS'] != 0)
+            newobsconditions[m] = tilefiledat['OBSCONDITIONS'][m]
         hdulist.writeto(newtilefn, overwrite=True)
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)

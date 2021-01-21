@@ -53,6 +53,22 @@ class Rules(object):
     def __init__(self, file_name='rules.yaml'):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
+        commissioning = getattr(config, 'commissioning', False)
+        if not isinstance(commissioning, bool):
+            commissioning = commissioning()
+        self.commissioning = commissioning
+        self.min_snr2_fraction = config.min_snr2_fraction()
+        finish_started_priority = getattr(config, 'finish_started_priority', 0)
+        import numbers
+        if not isinstance(finish_started_priority, numbers.Number):
+            finish_started_priority = finish_started_priority()
+        self.finish_started_priority = finish_started_priority
+        ignore_completed_priority = getattr(config,
+                                            'ignore_completed_priority', -1)
+        if not isinstance(ignore_completed_priority, numbers.Number):
+            ignore_completed_priority = ignore_completed_priority()
+        self.ignore_completed_priority = ignore_completed_priority
+
         tile_radius = config.tile_radius().to(u.deg).value
 
         tiles = desisurvey.tiles.get_tiles()
@@ -226,15 +242,13 @@ class Rules(object):
         """
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
-        config = desisurvey.config.Configuration()
-        commissioning = getattr(config, 'commissioning', False)
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
-            if not np.any(group_sel) and not commissioning:
+            if not np.any(group_sel) and not self.commissioning:
                 self.log.error('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
-            completed = donefrac > config.min_snr2_fraction()
+            completed = donefrac > self.min_snr2_fraction
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]
             triggered[name] = (ndone + max_orphans >= ngroup)
@@ -247,8 +261,8 @@ class Rules(object):
                     priority = max(priority, value)
             sel = self.group_ids == gid
             priorities[sel] = priority * self.dec_priority[sel]
-        started_boost = getattr(config, 'finish_started_priority', 0)
-        if not isinstance(started_boost, int):
-            started_boost = started_boost()
-        priorities *= 1 + started_boost*(donefrac > 0)
+        priorities *= (1 + self.finish_started_priority*(donefrac > 0))
+        if self.ignore_completed_priority > 0:
+            priorities *= np.where(donefrac >= 1,
+                                   self.ignore_completed_priority, 1)
         return priorities

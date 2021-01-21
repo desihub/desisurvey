@@ -56,6 +56,11 @@ class Scheduler(object):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
+        ignore_completed_priority = getattr(config,
+                                            'ignore_completed_priority', -1)
+        if not isinstance(ignore_completed_priority, int):
+            ignore_completed_priority = ignore_completed_priority()
+        self.ignore_completed_priority = ignore_completed_priority
         self.min_snr2frac = config.min_snr2_fraction()
         GRAY = desisurvey.config.Configuration().programs.GRAY
         self.max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
@@ -232,7 +237,9 @@ class Scheduler(object):
         # Remember the last tile observed this night.
         self.last_idx = None
         # Initialize the pool of tiles that could be observed this night.
-        self.in_night_pool[:] = ~self.completed & self.tile_planned & self.tile_available
+        self.in_night_pool[:] = self.tile_planned & self.tile_available
+        if self.ignore_completed_priority <= 0:
+             self.in_night_pool &= ~self.completed
         # Check if any tiles cannot be observed because they are too close to a planet this night.
         poolRA = self.tiles.tileRA[self.in_night_pool]
         poolDEC = self.tiles.tileDEC[self.in_night_pool]
@@ -452,7 +459,8 @@ class Scheduler(object):
         self.snr2frac[idx] = snr2frac
         self.lastexpid[idx] = lastexpid
         if self.snr2frac[idx] >= self.min_snr2frac:
-            self.in_night_pool[idx] = False
+            if self.ignore_completed_priority <= 0:
+                self.in_night_pool[idx] = False
             self.completed[idx] = True
             passidx = self.tiles.pass_index[self.tiles.passnum[idx]]
             self.completed_by_pass[passidx] += 1
