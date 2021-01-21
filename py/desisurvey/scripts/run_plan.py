@@ -18,7 +18,7 @@ def mjd_to_azstr(mjd):
     return tt.astimezone(tz).strftime('%H:%M')
 
 
-def run_plan(nts_dir=None):
+def run_plan(nts_dir=None, verbose=False):
     kpno = EarthLocation.of_site('kpno')
     if nts_dir is None:
         obsplan = None
@@ -33,7 +33,8 @@ def run_plan(nts_dir=None):
     exps = fits.getdata(etcfn, 'EXPS')
     nincond = collect_etc.number_in_conditions(exps)
     donecond = desisurvey.svstats.donefrac_in_conditions(nincond)
-    desiutil.log.get_logger().setLevel(desiutil.log.WARNING)
+    if not verbose:
+        desiutil.log.get_logger().setLevel(desiutil.log.WARNING)
     previoustiles = []
     ephem = nts.scheduler.night_ephem
     night_labels = np.array(['noon', '12 deg dusk', '18 deg dusk',
@@ -54,7 +55,7 @@ def run_plan(nts_dir=None):
         res = nts.next_tile(exposure=expdict, speculative=True)
         if not res['foundtile']:
             print('no tiles!')
-            t0 += 60
+            t0 += 60/60/60/24
             continue
         previoustiles.append(res['fiberassign'])
         lst = Time(t0, format='mjd', location=kpno).sidereal_time('apparent')
@@ -86,6 +87,8 @@ def parse(options=None):
         epilog='EXAMPLE: %(prog)s [YYYYMMDD/config.yaml]')
     parser.add_argument('nts_dir', nargs='?', default=None, type=str,
                         help='nts_dir to use; default YYYYMMDD')
+    parser.add_argument('--verbose', action='store_true', default=False,
+                        help='verbose output')
     if options is None:
         args = parser.parse_args()
     else:
@@ -94,4 +97,4 @@ def parse(options=None):
 
 
 def main(args):
-    run_plan(nts_dir=args.nts_dir)
+    run_plan(nts_dir=args.nts_dir, verbose=args.verbose)
