@@ -161,8 +161,8 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         else:
             print('Enter desi collaboration password to download status file.')
             pwstr = '--ask-password '
-        os.system('wget -q https://data.desi.lbl.gov/desi/users/raichoor/'
-                  'fiberassign-sv1/sv1-exposures.fits ' + pwstr +
+        os.system('wget -q https://data.desi.lbl.gov/desi/survey/observations/'
+                  'SV1/sv1-exposures.fits ' + pwstr +
                   '--user=desi -O ./sv1-exposures.fits')
         offlinedepthfn = './sv1-exposures.fits'
     else:
