@@ -18,7 +18,7 @@ import desimodel.io
 import desisurvey.utils
 
 
-def load_design_hourangle(name='surveyinit.fits'):
+def load_design_hourangle(name='surveyinit.fits', bgs_footprint=None):
     """Load design hour-angle assignments from disk.
 
     Reads column 'HA' from binary table HDU 'DESIGN'. This is the format
@@ -46,6 +46,8 @@ def load_design_hourangle(name='surveyinit.fits'):
     else:
         with astropy.io.fits.open(fullname, memmap=False) as hdus:
             HA = hdus['DESIGN'].data['HA'].copy()
+        if bgs_footprint is not None: 
+            HA = HA[tiles._reduced_footprint]
         if HA.shape != (tiles.ntiles,):
             raise ValueError('Read unexpected HA shape.')
     return HA

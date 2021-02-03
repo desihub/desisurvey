@@ -51,7 +51,7 @@ class Scheduler(object):
         1D array of design hour angles to use in degrees, or use
         :func:`desisurvey.plan.load_design_hourangle` when None.
     """
-    def __init__(self, restore=None, design_hourangle=None):
+    def __init__(self, restore=None, design_hourangle=None, bgs_footprint=None):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -63,11 +63,11 @@ class Scheduler(object):
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         self.max_ha = config.max_hour_angle().to(u.deg).value
         # Load static tile info.
-        self.tiles = desisurvey.tiles.get_tiles()
+        self.tiles = desisurvey.tiles.get_tiles(bgs_footprint=bgs_footprint)
         ntiles = self.tiles.ntiles
         # Check hourangles.
         if design_hourangle is None:
-            self.design_hourangle = desisurvey.plan.load_design_hourangle()
+            self.design_hourangle = desisurvey.plan.load_design_hourangle(bgs_footprint=bgs_footprint)
         else:
             self.design_hourangle = np.asarray(design_hourangle)
         if self.design_hourangle.shape != (self.tiles.ntiles,):
@@ -398,7 +398,7 @@ class Scheduler(object):
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
-        if use_brightsky: 
+        if use_brightsky and program == 'BRIGHT': 
             self.exposure_factor[self.tile_sel] *= \
                     self.update_exposure_factor(mjd_now, self.tiles.tileID[self.tile_sel])
         else: 

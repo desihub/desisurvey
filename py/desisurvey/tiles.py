@@ -45,7 +45,7 @@ class Tiles(object):
         Name of the tiles file to use or None for the default specified
         in our configuration.
     """
-    def __init__(self, tiles_file=None):
+    def __init__(self, tiles_file=None, bgs_footprint=None):
         log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         # Read the specified tiles file.
@@ -62,6 +62,13 @@ class Tiles(object):
         unknown = set(tile_programs) - set(self.PROGRAMS)
         if unknown and not commissioning:
             raise RuntimeError('Cannot schedule unknown program(s): {}.'.format(unknown))
+
+        if bgs_footprint is not None: 
+            # impose reduced footprint for BRIGHT tiles 
+            tiles, _reduced_footprint = self._reduced_bgs_footprint(tiles, bgs_footprint) 
+            self._reduced_footprint = _reduced_footprint.copy() 
+        print(tiles.shape) 
+
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
         self.passnum = tiles['PASS'].copy()
@@ -271,10 +278,58 @@ class Tiles(object):
                     self.tileRA[under_sel], self.tileDEC[under_sel],
                     self.tileRA[over_sel], self.tileDEC[over_sel], tile_diameter)
 
+    def _reduced_bgs_footprint(self, tiles, bgs_footprint): 
+        ''' impose reduced footprint for BGS. Depending on the specified number
+        of square degrees in bgs_footprint, remove BRIGHT tiles close to the
+        ecliptic while keeping NGC a contiguous piece.  
+        '''
+        from astropy.coordinates import SkyCoord
+        assert bgs_footprint < 14000.
+
+        # bgs tiles 
+        is_bgs = (tiles['PROGRAM'] == 'BRIGHT')
+
+        # get ecliptic coordinates of tiles 
+        tile_coord = SkyCoord(ra=tiles['RA'] * u.deg, dec=tiles['DEC'] * u.deg, frame='icrs')
+        ecl_lat = tile_coord.barycentrictrueecliptic.lat.to(u.deg).value
+
+        is_ngc = (tile_coord.galactic.b.value >= 0)
+        is_sgc = (tile_coord.galactic.b.value < 0)
+    
+        # reduced BGS footprint based on specified sq. deg.
+        if bgs_footprint == 13000: 
+            bgsfoot = (
+                    (is_bgs & is_ngc) |
+                    (is_bgs & is_sgc & (np.abs(tile_coord.barycentrictrueecliptic.lat.to(u.deg).value) > 6.5)))
+        elif bgs_footprint == 12000: 
+            bgsfoot = (
+                    (is_bgs & is_ngc & (tile_coord.barycentrictrueecliptic.lat.to(u.deg).value > 8.1)) | 
+                    (is_bgs & is_sgc))
+        elif bgs_footprint == 11000:
+            bgsfoot = (
+                    (is_bgs & is_ngc & (tile_coord.barycentrictrueecliptic.lat.to(u.deg).value > 8.1)) | 
+                    (is_bgs & is_sgc & (np.abs(tile_coord.barycentrictrueecliptic.lat.to(u.deg).value) > 6.5)))
+        elif bgs_footprint == 10000: 
+            bgsfoot = (
+                    (is_bgs & is_ngc & (tile_coord.barycentrictrueecliptic.lat.to(u.deg).value > 12.6)) | 
+                    (is_bgs & is_sgc & (np.abs(tile_coord.barycentrictrueecliptic.lat.to(u.deg).value) > 9.7)))
+        else: 
+            raise NotImplementedError
+
+        # only keep non BRIGHT tiles or BRIGHT tiles far from ecliptic
+        reduced_footprint = (~is_bgs) | bgsfoot 
+
+        print('  reduced BGS footprint (v2)')
+        print('  %i of %i BRIGHT tiles removed for reduced footprint' %
+                (np.sum(is_bgs & ~bgsfoot), np.sum(is_bgs)))
+        print('  ~%f sq.deg' % (np.sum(bgsfoot)/np.sum(is_bgs) * 14000.))
+
+        return tiles[reduced_footprint], reduced_footprint 
+
 
 _cached_tiles = {}
 
-def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
+def get_tiles(tiles_file=None, use_cache=True, write_cache=True, bgs_footprint=None):
     """Return a Tiles object with optional caching.
 
     You should normally always use the default arguments to ensure
@@ -301,13 +356,21 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
     if use_cache and tiles_file in _cached_tiles:
         tiles = _cached_tiles[tiles_file]
         log.debug('Using cached tiles for "{}".'.format(tiles_file))
-    else:
-        tiles = Tiles(tiles_file)
-        log.info('Initialized tiles from "{}".'.format(tiles_file))
+        print('  Using cached tiles for "{}".'.format(tiles_file))
         for pname in Tiles.PROGRAMS:
             pinfo = []
             for passnum in tiles.program_passes[pname]:
                 pinfo.append('{}({})'.format(passnum, tiles.pass_ntiles[passnum]))
+            print('{:6s} passes(tiles): {}.'.format(pname, ', '.join(pinfo)))
+    else:
+        tiles = Tiles(tiles_file, bgs_footprint=bgs_footprint)
+        log.info('Initialized tiles from "{}".'.format(tiles_file))
+        print('  Initialized tiles from "{}".'.format(tiles_file))
+        for pname in Tiles.PROGRAMS:
+            pinfo = []
+            for passnum in tiles.program_passes[pname]:
+                pinfo.append('{}({})'.format(passnum, tiles.pass_ntiles[passnum]))
+            print('{:6s} passes(tiles): {}.'.format(pname, ', '.join(pinfo)))
             log.info('{:6s} passes(tiles): {}.'.format(pname, ', '.join(pinfo)))
 
     if write_cache:
