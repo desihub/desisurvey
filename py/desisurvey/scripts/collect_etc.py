@@ -164,7 +164,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
         tiles = desisurvey.tiles.get_tiles()
         program = np.full(len(exps), 'UNKNOWN', dtype='U80')
         ind, mask = tiles.index(exps['TILEID'], return_mask=True)
-        program[mask] = tiles.tileprogram[ind[mask]]
+        program[mask] = [p.strip() for p in tiles.tileprogram[ind[mask]]]
         nomtime = get_nominal_program_times(program)
         airmass = np.ones(len(exps), dtype='f4')
         airmass[mask] = tiles.airmass_at_mjd(exps['MJD_OBS'][mask],
