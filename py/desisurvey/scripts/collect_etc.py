@@ -352,7 +352,7 @@ def update_donefrac_from_offline(exps, offlinefn):
     tileprograms = np.zeros(len(exps), dtype='U80')
     mt, me = desisurvey.utils.match(tiles.tileID, exps['TILEID'])
     tileprograms[:] = 'UNKNOWN'
-    tileprograms[me] = tileprogram[mt]
+    tileprograms[me] = [p.strip() for p in tileprogram[mt]]
     me, mo = desisurvey.utils.match(exps['EXPID'], offline['EXPID'])
     nomtimes = get_nominal_program_times(tileprograms[me])
     try:
