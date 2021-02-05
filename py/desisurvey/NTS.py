@@ -368,6 +368,16 @@ class NTS():
         s2n = 50.0 * texp_remaining/texp_tot
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
+        maxtimecond = getattr(self.config, 'maximum_time_in_conditions',
+                              None)
+        if maxtimecond is not None:
+            maxtimecond = getattr(maxtimecond, sched_program, None)
+            if maxtimecond is not None:
+                maxtimecond = maxtimecond().to(u.day).value
+        if maxtimecond is None:
+            maxtimecond = np.inf
+        maxtime = np.min([maxtime, maxtimecond])
+
         days_to_seconds = 60*60*24
         fivemin = 5/60/24  # 5 minutes... pretty arbitrary.
         if ((mjd <= self.scheduler.night_ephem['dusk']-fivemin) or

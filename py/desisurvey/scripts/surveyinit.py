@@ -98,6 +98,9 @@ def parse(options=None):
     parser.add_argument(
         '--completed', default=None,
         help='filename with information on already completed tiles')
+    parser.add_argument(
+        '--include-weather', default=True, type=bool,
+        help='Use past weather to discount available LST when planning.')
 
     if options is None:
         args = parser.parse_args()
@@ -137,6 +140,8 @@ def calculate_initial_plan(args):
     for year in years:
         fractions.append(
             desimodel.weather.dome_closed_fractions(first, last, replay='Y{}'.format(year)))
+    from scipy.ndimage import gaussian_filter
+    fractions = gaussian_filter(fractions, 7, mode='wrap')
     weather = 1 - np.mean(fractions, axis=0)
     # Save the weather fractions as the primary HDU.
     hdr['FIRST'] = first.isoformat()
@@ -152,8 +157,14 @@ def calculate_initial_plan(args):
     # Calculate the distribution of available LST in each program
     # during the nominal survey [start, stop).
     ilo, ihi = (start - first).days, (stop - first).days
+    print('weather', args.include_weather)
+    if args.include_weather:
+        tweather = weather[ilo:ihi]
+    else:
+        tweather = None
     lst_hist, lst_bins = ephem.get_available_lst(
-        nbins=args.nbins, weather=weather[ilo:ihi], include_twilight=args.include_twilight)
+        nbins=args.nbins, weather=tweather,
+        include_twilight=args.include_twilight)
 
     # Initialize the output results table.
     conditions = ['DARK', 'GRAY', 'BRIGHT']
@@ -227,6 +238,7 @@ def calculate_initial_plan(args):
                  .format(condition, plan_sum, avail_sum, 1e2 * margin))
         # Save planned LST usage.
         table['PLAN'] = opt.plan_hist
+        table['HA0'] = opt.plan_hist_ha0
         hdus.append(fits.BinTableHDU(table, name=condition))
 
         # Calculate exposure times in (solar) seconds.

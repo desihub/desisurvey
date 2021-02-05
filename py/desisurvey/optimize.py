@@ -134,6 +134,10 @@ class Optimizer(object):
         texp_nom = u.Quantity([
             getattr(config.nominal_exposure_time, program)()
             for program in tiles.tileprogram[tile_sel]])
+        moon_up_factor = getattr(config, 'moon_up_factor', None)
+        if moon_up_factor is not None:
+            moon_up_factor = getattr(moon_up_factor, condition)()
+            texp_nom *= moon_up_factor
         if completed is not None:
             completed = astropy.table.Table.read(completed)
             nobtained = np.zeros(tiles.ntiles, dtype='f4')
@@ -146,6 +150,7 @@ class Optimizer(object):
                 completed['NNIGHT_NEEDED_'+condition][mask])
             boost = np.clip(nneeded-nobtained, 0, np.inf)
             texp_nom *= boost[tile_sel]
+
         self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583
 
         # Save arrays for the tiles to plan.
@@ -193,6 +198,10 @@ class Optimizer(object):
         self.use_plan(save_history=False)
         self.min_total_time = self.plan_hist.sum()
 
+        self.plan_tiles = self.get_plan(np.zeros(self.ntiles))
+        self.use_plan()
+        self.plan_hist_ha0 = self.plan_hist.copy()
+
         # Initialize HA assignments for each tile.
         if init == 'zero':
             self.ha = np.zeros(self.ntiles)
@@ -220,6 +229,8 @@ class Optimizer(object):
                 lst_cdf = np.zeros_like(edges)
                 lst_cdf[1:] = np.cumsum(hist)
                 lst_cdf /= lst_cdf[-1]
+                lst_cen = (edges[1:]+edges[:-1])/2
+                lst_cdf = (lst_cdf[1:]+lst_cdf[:-1])/2
                 # Calculate the CDF of planned LST usage relative to the same
                 # central LST, assuming HA=0. Instead of spreading each exposure
                 # over multiple LST bins, add its entire HA=0 exposure time at
@@ -229,9 +240,10 @@ class Optimizer(object):
                 sort_idx = np.argsort(tile_ra)
                 tile_cdf = np.cumsum(exptime[sort_idx])
                 tile_cdf /= tile_cdf[-1]
+                tile_cdf = (np.concatenate([[0], tile_cdf[:-1]])+tile_cdf)/2
                 # Use linear interpolation to find an LST for each tile that
                 # matches the plan CDF to the available LST CDF.
-                new_lst = np.interp(tile_cdf, lst_cdf, edges)
+                new_lst = np.interp(tile_cdf, lst_cdf, lst_cen)
                 # Calculate each tile's HA as the difference between its HA=0
                 # LST and its new LST after CDF matching.
                 ha = np.empty(self.ntiles)
