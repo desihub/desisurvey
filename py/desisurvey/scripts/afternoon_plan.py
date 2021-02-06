@@ -218,6 +218,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         if ignore_completed_priority > 0:
             m = (newobsconditions == 0) & (tilefiledat['OBSCONDITIONS'] != 0)
             newobsconditions[m] = tilefiledat['OBSCONDITIONS'][m]
+        tilefiledat['OBSCONDITIONS'] = newobsconditions
         hdulist.writeto(newtilefn, overwrite=True)
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
