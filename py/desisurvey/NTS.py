@@ -111,7 +111,7 @@ class RequestLog():
     def __init__(self, fn):
         self.fn = fn
         exists = os.path.exists(fn)
-        self.fp = open(fn, 'a')
+        fp = open(self.fn, 'a')
         if not exists:
             os.chmod(self.fn, 0o666)
 
@@ -121,16 +121,18 @@ class RequestLog():
         res = dict(requesttime=mjd, conditions=conditions, exposure=exposure,
                    constraints=constraints, speculative=speculative)
         s = json.dumps(res)
-        self.fp.write(s+'\n')
-        self.fp.flush()
+        fp = open(self.fn, 'a')
+        fp.write(s+'\n')
+        fp.flush()
 
     def logresponse(self, tile):
         now = time.Time.now()
         mjd = now.mjd
         res = dict(requesttime=mjd, tile=tile)
         s = json.dumps(res)
-        self.fp.write(s+'\n')
-        self.fp.flush()
+        fp = open(self.fn, 'a')
+        fp.write(s+'\n')
+        fp.flush()
 
 
 def azinrange(az, low, high):
