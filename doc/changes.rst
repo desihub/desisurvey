@@ -2,10 +2,18 @@
 desisurvey change log
 =====================
 
-0.15.0 (planned)
-----------------
+0.15.1 (unreleased)
+-------------------
 
-* No changes yet (but likely to include more AP/NTS/ICS integration)
+* No changes yet
+
+0.15.0 (2021-02-15)
+-------------------
+
+* NTS updates for SV tiles (PRs `#123`_ and `#124`).
+
+.. _`#123`: https://github.com/desihub/desisurvey/pull/123
+.. _`#124`: https://github.com/desihub/desisurvey/pull/124
 
 0.14.1 (2020-12-11)
 -------------------
