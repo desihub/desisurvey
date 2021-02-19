@@ -258,179 +258,96 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
     nexp = len(airmass) 
     assert len(moon_sep) == nexp
     assert len(sun_sep) == nexp
+
+    # calculate exposure factor 
+    config = desisurvey.config.Configuration()
+
+    # sky brightness at 5000A for reference BGS exposure  
+    Isky5000_ref = 3.6956611461286966 # 1e-17 erg/s/cm^2/A/arcsec^2
     
-    exp_factors = _bright_exposure_factor_notwi(
-            airmass, 
+    # exposure time for reference BGS exposure 
+    tref = getattr(config.nominal_exposure_time, 'BRIGHT')().to(u.s).value
+    
+    # sky brightness at 5000A for observing conditions 
+    Isky5000_exp = bright_Isky5000_notwilight_regression(
+            airmass,
             np.repeat(moon_frac, nexp), 
             moon_sep, 
-            np.repeat(moon_alt, nexp)) 
+            np.repeat(moon_alt, nexp))
 
-    if sun_alt >= -18.: 
-        # w/ twilight contribution
-        exp_factors += _bright_exposure_factor_twi(
+     # add twilight contribution 
+    if sun_alt >= -18.:
+        Isky5000_exp += np.clip(bright_Isky5000_twilight_regression(
                 airmass, 
                 sun_sep, 
-                np.repeat(sun_alt, nexp))
-    return np.clip(exp_factors, 1., None) 
+                np.repeat(sun_alt, nexp)), 0, None) 
+    
+    # calculate exposure factor 
+    fibflux5000_ref = Isky5000_ref * 1.862089 # 1e-17 erg/s/cm^2/A
+    fibflux5000_exp = Isky5000_exp * 1.862089 # 1e-17 erg/s/cm^2/A
+    
+    # 0.0629735016982807 = 1e-17 x (photons per bin) x throughput) at 5000A 
+    sky_photon_per_sec_ref = fibflux5000_ref * 0.0629735016982807
+    sky_photon_per_sec_exp = fibflux5000_exp * 0.0629735016982807
+    
+    # (read noise)^2 at 5000A 
+    RNsq5000 = 56.329457658891435 # photon^2 
+
+    # solve the following: 
+    # S x tref / sqrt(sky_ref * tref + RN^2) = S x texp / sqrt(sky_exp * texp + RN^2)
+    texp = 0.5 * (
+            (tref * np.sqrt(4 * sky_photon_per_sec_ref * RNsq5000 * tref + sky_photon_per_sec_exp**2 * tref**2 + 4 * RNsq5000**2))/(sky_photon_per_sec_ref * tref + RNsq5000) +
+            (sky_photon_per_sec_exp * tref**2)/(sky_photon_per_sec_ref * tref + RNsq5000))
+    return texp/tref 
 
 
-# polynomial regression cofficients for estimating exposure time factor during
-# non-twilight from airmass, moon_frac, moon_sep, moon_alt  
-_coeff_150 = np.array([
-    0.00000000e+00, -7.65192309e-02,  4.50339775e-01, -1.97942832e-02,
-    -3.41415322e-02, -6.12718783e-01,  2.92105504e-01,  6.35543300e-03,
-    4.33218913e-02,  4.52094789e-02, -9.84060307e-03, -7.08736998e-03,
-    1.87100312e-04,  1.29286060e-04,  2.29783430e-04,  4.82259115e-01,
-    1.98321998e-01, -1.93484942e-02, -2.97180320e-02,  6.69777743e-02,
-    -4.61085961e-03,  3.41750827e-02,  3.30879455e-04,  3.81656037e-04,
-    9.06394046e-05,  1.49819306e-02, -1.36399405e-03,  1.96793987e-02,
-    8.62206556e-05, -4.98643387e-04, -3.98201905e-04, -2.55149678e-06,
-    -2.84521671e-06, -2.17588659e-06, -1.22082693e-06])
-_coeff_170 = np.array([
-    0.00000000e+00, -8.47161918e-02,  5.09140318e-01, -2.21689858e-02,
-    -3.82829563e-02, -6.82547805e-01,  3.30443697e-01,  6.96121973e-03,
-    4.85970310e-02,  5.16826651e-02, -1.11869516e-02, -7.84891835e-03,
-    2.11236410e-04,  1.44634107e-04,  2.56482375e-04,  5.39172275e-01,
-    2.17955039e-01, -2.16472707e-02, -3.33864806e-02,  7.37805327e-02,
-    -5.05383302e-03,  3.82830633e-02,  3.70874089e-04,  4.29673186e-04,
-    1.02787431e-04,  1.72136448e-02, -1.50046818e-03,  2.18334958e-02,
-    9.65000425e-05, -5.57451902e-04, -4.44714387e-04, -2.86562898e-06,
-    -3.20549339e-06, -2.45240669e-06, -1.37286608e-06]) 
-_coeff_200 = np.array([ 
-    0.00000000e+00, -9.58679635e-02,  5.93841512e-01, -2.55861615e-02,
-    -4.41591474e-02, -7.79678593e-01,  3.85818939e-01,  7.79679323e-03,
-    5.59921835e-02,  6.11104223e-02, -1.31110611e-02, -8.79745360e-03,
-    2.46048016e-04,  1.67042274e-04,  2.94236583e-04,  6.18672422e-01,
-    2.44202035e-01, -2.48791060e-02, -3.85417472e-02,  8.30483197e-02,
-    -5.63610422e-03,  4.40148404e-02,  4.27190211e-04,  4.97703948e-04,
-    1.20209680e-04,  1.93038858e-02, -1.68032918e-03,  2.47257673e-02,
-    1.10776356e-04, -6.39467548e-04, -5.09258980e-04, -3.31065269e-06,
-    -3.72136838e-06, -2.85115773e-06, -1.59214888e-06])
-_coeff_220 = np.array([
-    0.00000000e+00, -1.02634030e-01,  6.47694841e-01, -2.77657185e-02,
-    -4.78539584e-02, -8.39732104e-01,  4.21104384e-01,  8.31458698e-03,
-    6.05850892e-02,  6.71532006e-02, -1.43223633e-02, -9.31516873e-03,
-    2.68225131e-04,  1.81542250e-04,  3.17943153e-04,  6.67947574e-01,
-    2.59892026e-01, -2.68947718e-02, -4.17491712e-02,  8.87103338e-02,
-    -5.97815265e-03,  4.75607734e-02,  4.62337315e-04,  5.40334638e-04,
-    1.31226062e-04,  1.99295303e-02, -1.78664043e-03,  2.64513742e-02,
-    1.19566281e-04, -6.90228023e-04, -5.49024884e-04, -3.58983421e-06,
-    -4.04795876e-06, -3.10523364e-06, -1.73200204e-06]) 
-_coeff_250 = np.array([ 
-    0.00000000e+00, -1.11912051e-01,  7.24347149e-01, -3.08864148e-02,
-    -5.30738429e-02, -9.23417456e-01,  4.71405783e-01,  9.04313900e-03,
-    6.69974746e-02,  7.58053205e-02, -1.60278115e-02, -9.94667623e-03,
-    2.99868335e-04,  2.02584664e-04,  3.51440427e-04,  7.36685710e-01,
-    2.81171709e-01, -2.97227802e-02, -4.62324288e-02,  9.65747399e-02,
-    -6.43403705e-03,  5.24964865e-02,  5.11648523e-04,  6.00281853e-04,
-    1.46814556e-04,  1.98955305e-02, -1.93034573e-03,  2.87764134e-02,
-    1.31742822e-04, -7.60961220e-04, -6.04217621e-04, -3.98317550e-06,
-    -4.51152222e-06, -3.46790508e-06, -1.93190291e-06])
-_coeff_270 = np.array([ 
-    0.00000000e+00, -1.17579680e-01,  7.72686098e-01, -3.28687496e-02,
-    -5.63486867e-02, -9.75308571e-01,  5.03159813e-01,  9.50093595e-03,
-    7.09752381e-02,  8.12876610e-02, -1.70912364e-02, -1.02857976e-02,
-    3.19877375e-04,  2.16119447e-04,  3.72477413e-04,  7.79317910e-01,
-    2.94068329e-01, -3.14861601e-02, -4.90157292e-02,  1.01463331e-01,
-    -6.70544226e-03,  5.55508404e-02,  5.42384271e-04,  6.37693165e-04,
-    1.56587555e-04,  1.93351377e-02, -2.01786152e-03,  3.01726857e-02,
-    1.39241535e-04, -8.04798184e-04, -6.38300921e-04, -4.22922199e-06,
-    -4.80332352e-06, -3.69734761e-06, -2.05856404e-06])
-_coeff_300 = np.array([
-    0.00000000e+00, -1.25394980e-01,  8.41149934e-01, -3.56986952e-02,
-    -6.09725109e-02, -1.04787098e+00,  5.48156473e-01,  1.01508052e-02,
-    7.65335799e-02,  8.90819550e-02, -1.85806736e-02, -1.06941027e-02,
-    3.48296663e-04,  2.35659273e-04,  4.02228481e-04,  8.38907583e-01,
-    3.11773061e-01, -3.39628218e-02, -5.29068606e-02,  1.08348195e-01,
-    -7.07151143e-03,  5.98111877e-02,  5.85524975e-04,  6.90223878e-04,
-    1.70352797e-04,  1.78631701e-02, -2.13966070e-03,  3.20694562e-02,
-    1.49651454e-04, -8.66050659e-04, -6.85776304e-04, -4.57557932e-06,
-    -5.21619748e-06, -4.02340355e-06, -2.23884453e-06])
-
-
-def _bright_exposure_factor_notwi(airmass, moon_frac, moon_sep, moon_alt): 
-    ''' third degree polynomial regression fit to exposure factor of  
-    non-twilight bright sky given airmass and moon_conditions. Exposure factor
-    is calculated from the ratio of (sky brightness)/(nominal dark sky
-    brightness) at 7000A. The coefficients are fit to DESI CMX and BOSS sky
-    surface brightness. See
-    https://github.com/changhoonhahn/feasiBGS/blob/97524545ad98df34c934d777f98761c5aea6a4c5/notebook/cmx/exposure_factor_refit.ipynb
-    for details. 
-
-    :param airmass: 
-        array of airmasses
-    :param moon_frac: 
-        array of moon illumination fractions
-    :param moon_sep: 
-        array of moon separations
-    :param moon_alt: 
-        array of moon altitudes 
-    :return fexp: 
-        exposure factor for non-twlight bright sky 
+def bright_Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt): 
+    ''' polynomial regression model for bright sky surface brightness at 5000A
+    *without twilight*. The regression model was fit using observed sky surface
+    brightnesses from 
+    * DESI SV1 bright exposures
+    * DESI CMX exposures with transparency > 0.9 
+    * BOSS exposures with sun alt < -18 
+    
+    see
+    https://github.com/desi-bgs/bgs-cmxsv/blob/4c5f124164b649c595cd2dca87d14ba9f3b2c64d/doc/nb/sv1_sky_model_fit.ipynb
+    for detials.
     '''
-    config = desisurvey.config.Configuration()
-    tnom = getattr(config.nominal_exposure_time, 'BRIGHT')().to(u.s).value
-    #print('nominal exposure time %.f' % tnom)
-    assert tnom <= 300, 'BGS nominal exposure time longer than 300s not supported'
+    # polynomial regression cofficients for estimating exposure time factor during
+    # non-twilight from airmass, moon_frac, moon_sep, moon_alt  
+    coeffs = np.array([
+        1.22875526e+00,  1.91591548e-01,  3.17313759e+00,  5.22047416e-02,
+       -3.87652985e-02, -5.33224507e-01,  4.63261325e+00,  1.13410640e-02,
+       -1.01921126e-02,  1.06314395e+00,  7.26049602e-02, -1.08328690e-01,
+       -8.95312945e-04, -5.59394346e-04,  7.99072084e-04])
 
-    tnoms = np.array([150, 170, 200, 220, 250, 270, 300])
-    coeffs = [_coeff_150, _coeff_170, _coeff_200, _coeff_220, _coeff_250,
-            _coeff_270, _coeff_300]
-    inters = [1.8711798724721023, 1.9732660265121995, 2.1185346942680368,
-            2.2103067178854525, 2.3407011847663415, 2.4230117145582475, 
-            2.539948136676698]
-    
-    i_tnom = np.arange(len(tnoms))[(tnoms - tnom) >= 0][0]
-    #print('we will use nominal exposure time %.f' % tnoms[i_tnom])
+    theta = np.atleast_2d(np.array([airmass, moon_frac, moon_alt, moon_sep]).T)
 
-    notwiCoeff = coeffs[i_tnom]
-    notwiInter = inters[i_tnom]
-    
-    theta = np.atleast_2d(np.array([airmass, moon_frac, moon_sep, moon_alt]).T)
+    combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, 3))
 
-    combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, 4))
-
-    theta_transform = np.empty((theta.shape[0], len(notwiCoeff)))
+    theta_transform = np.empty((theta.shape[0], len(coeffs)))
     for i, comb in enumerate(combs):
         theta_transform[:, i] = theta[:, comb].prod(1)
 
-    fexp = np.dot(theta_transform, notwiCoeff.T) + notwiInter
-    return fexp
+    return np.dot(theta_transform, coeffs.T)
 
 
-def _bright_exposure_factor_twi(airmass, sun_sep, sun_alt):
-    ''' linear regression fit to exposure factor correction contribution from
-    the twilight given airmass and sun conditions. 
-
-    :param airmass: 
-        array of airmasses
-    :param sun_sep: 
-        array of sun separations
-    :param sun_alt: 
-        array of sun altitudes 
-    :param wavelength: 
-        wavelength of the exposure factor (default: 4500) 
-    :return fexp: 
-        exposure factor twilight correction
+def bright_Isky5000_twilight_regression(airmass, sun_sep, sun_alt): 
+    ''' polynomial regression model for twilight contribution to the sky
+    surface brightness at 5000A. The regression model was fit using 
+    * BOSS exposures with sun alt > -18.
     '''
-    theta = np.atleast_2d(np.array([airmass, sun_sep, sun_alt]).T)
-        
-    _twiCoefficients = np.array([1.1139712, -0.00431072, 0.16183842]) 
-    _twiIntercept = 2.3278959318651733
+    norder = 1
+    skymodel_coeff = np.array([2.00474700e+00, 3.19827604e+00, 3.13212960e-01, 2.69673079e-03])
 
-    return np.dot(theta, _twiCoefficients.T) + _twiIntercept
+    theta = np.atleast_2d(np.array([airmass, sun_alt, sun_sep]).T)
 
+    combs = chain.from_iterable(combinations_with_replacement(range(3), i) for i in range(0, norder+1))
+    theta_transform = np.empty((theta.shape[0], len(skymodel_coeff)))
+    for i, comb in enumerate(combs):
+        theta_transform[:, i] = theta[:, comb].prod(1)
 
-def exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_alt): 
-    """Calculate the exposure factor for specified observing conditions
-    """
-    # airmass exposure factor
-    f_airmass = airmass_exposure_factor(airmass)
-    
-    # bright time exposure factor
-    f_bright = bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt,
-            sun_sep, sun_alt) 
-    return f_airmass * f_bright
+    return np.dot(theta_transform, skymodel_coeff.T)
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,

@@ -458,7 +458,7 @@ class Scheduler(object):
         """
         return self.completed_by_pass.sum() == self.tiles.ntiles
     
-    def update_exposure_factor(self, mjd, tileid): 
+    def update_exposure_factor(self, mjd, tileid, return_obs_cond=False): 
         """ get updated exposure factor on this night given mjd, and tile ID.
         """
         # get tile index 
@@ -485,6 +485,39 @@ class Scheduler(object):
             [sunRA], [sunDEC],
             self.tiles.tileRA[idx], self.tiles.tileDEC[idx])
 
-        fexp = desisurvey.etc.exposure_factor(
+        fexp = desisurvey.etc.bright_exposure_factor(
                 self.airmass[idx], moonILL, moonSEP, moonALT, sunSEP, sunALT)
-        return fexp
+        if not return_obs_cond: 
+            return fexp
+        else: 
+            return fexp, moonILL, moonSEP, moonALT, sunSEP, sunALT
+
+    def get_observing_conditions(self, mjd, tileid): 
+        """ get observing conditions this night given mjd, and tile ID.
+        """
+        # get tile index 
+        idx = [] 
+        for _id in np.atleast_1d(tileid): 
+            idx.append(np.where(self.tiles.tileID == _id)[0])
+        idx = np.array(idx).flatten() 
+        assert len(idx) > 0  
+
+        # (RA,DEC) of the moon and sun at mjd
+        moonDEC, moonRA = self.moon_DECRA(mjd)
+        moonALT, moonAZ = self.moon_ALTAZ(mjd) 
+        sunDEC, sunRA = self.sun_DECRA(mjd)
+        sunALT, sunAZ = self.sun_ALTAZ(mjd) 
+
+        # moon illumination 
+        moonILL = self.night_ephem['moon_illum_frac']
+
+        # calculate moon and sun separation 
+        moonSEP = desisurvey.utils.separation_matrix(
+            [moonRA], [moonDEC],
+            self.tiles.tileRA[idx], self.tiles.tileDEC[idx])
+        sunSEP = desisurvey.utils.separation_matrix(
+            [sunRA], [sunDEC],
+            self.tiles.tileRA[idx], self.tiles.tileDEC[idx])
+
+        return moonILL, moonSEP, moonALT, sunSEP, sunALT
+
