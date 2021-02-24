@@ -513,12 +513,11 @@ class ExposureTimeCalculator(object):
                 'using default exposure time of 1000 s')
         moon_up_factor = getattr(config, 'moon_up_factor', None)
         if moon_up_factor:
-            for cond in ['DARK', 'GRAY', 'BRIGHT']:
+            for cond in ['DARK', 'GRAY']:
                 self.TEXP_TOTAL[cond] *= getattr(moon_up_factor, cond)()
         else:
             # Temporary hardcoded exposure factors for moon-up observing.
             self.TEXP_TOTAL['GRAY'] *= 1.1
-            self.TEXP_TOTAL['BRIGHT'] *= 1.33
 
         # Initialize model of exposure time dependence on seeing.
         self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
