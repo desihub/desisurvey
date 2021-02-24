@@ -345,7 +345,7 @@ class ExposureTimeCalculator(object):
         transp : float
             Atmospheric transparency in the range (0,1).
         """
-        return transp * (self.seeing_coefs[0] + seeing * (self.seeing_coefs[1] + seeing * self.seeing_coefs[2])) ** 2
+        return (transp * (self.seeing_coefs[0] + seeing * (self.seeing_coefs[1] + seeing * self.seeing_coefs[2]))) ** 2
 
     def estimate_exposure(self, program, snr2frac, exposure_factor, nexp_completed=0):
         """Estimate exposure time(s).
