@@ -418,7 +418,31 @@ class Scheduler(object):
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
-        self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
+        if program == 'BRIGHT': 
+            # Calculate the moon (RA,DEC).
+            moonDEC, moonRA = self.moon_DECRA(mjd_now)
+            # Calculate the moon (ALT,AZ).
+            moonALT, moonAZ = self.moon_ALTAZ(mjd_now) 
+            # Calculate the sun (RA,DEC).
+            sunDEC, sunRA = self.sun_DECRA(mjd_now) 
+            # Calculate the sun (ALT,AZ).
+            sunALT, sunAZ = self.sun_ALTAZ(mjd_now) 
+            # moon illumination 
+            moonILL = self.night_ephem['moon_illum_frac'] 
+            # Calculate moon separation 
+            moonSEP = desisurvey.utils.separation_matrix(
+                    [moonRA], [moonDEC],
+                    self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
+            # Calculate sun separation 
+            sunSEP = desisurvey.utils.separation_matrix(
+                    [sunRA], [sunDEC],
+                    self.tiles.tileRA[self.tile_sel], self.tiles.tileDEC[self.tile_sel])
+
+            self.exposure_factor[self.tile_sel] *= \
+                    desisurvey.etc.bright_exposure_factor(
+                            self.airmass[self.tile_sel], moonILL, moonSEP, moonALT, sunSEP, sunALT)
+        else: 
+            self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
         self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
         if not np.any(self.tile_sel):
