@@ -74,7 +74,7 @@ def run_plan(nts_dir=None, verbose=False):
             ('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f '
              '%4d %6s %3.1f/%3.1f/%3.1f') % (
             mjd_to_azstr(t0), lst, res['conditions'],
-            res['fiberassign'], ra, dec, res['tile_program'],
+            res['fiberassign'], ra, dec, res['program'],
             res['exposure_factor'], res['esttime'].astype('i4'),
             ('%dx%d' % (res['count'], res['exptime'])), *nsofar))
         t0 += (res['exptime']+180)*res['count']/60/60/24
