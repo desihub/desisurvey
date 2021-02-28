@@ -429,7 +429,7 @@ class NTS():
                      'fiberassign': int(tileid),
                      'foundtile': True,
                      'conditions': sched_program,
-                     'tile_program': tile_program,
+                     'program': tile_program,
                      'exposure_factor': exposure_factor,
                      'req_efftime': efftime,
                      'sbprof': sbprof}
