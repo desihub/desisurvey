@@ -114,6 +114,12 @@ nominal_conditions:
     transparency: 1.0
     EBV: 0.0
 
+sbprof:
+    DARK: ELG
+    GRAY: ELG
+    BRIGHT: BGS
+    BACKUP: PSF
+
 # Reobserve tiles that have not reached this fraction of their target SNR**2.
 # Keep this at one until we simulate errors in ETC integration.
 min_snr2_fraction: 1.0

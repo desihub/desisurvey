@@ -344,10 +344,11 @@ class NTS():
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
         if tileid is None:
-            tile = {'s2n': 0., 'esttime': 0., 'exptime': 0.,
+            tile = {'esttime': 0., 'exptime': 0.,
                     'count': 0, 'maxtime': 0., 'fiberassign': 0,
                     'foundtile': False,
-                    'conditions': '', 'program': '', 'exposure_factor': 0}
+                    'conditions': '', 'program': '', 'exposure_factor': 0,
+                    'req_efftime': 0., 'sbprof': 'PSF'}
             self.requestlog.logresponse(tile)
             return tile
 
@@ -359,6 +360,22 @@ class NTS():
         tile_program = self.scheduler.tiles.tileprogram[idx]
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
             tile_program, snr2frac_start, exposure_factor, nexp_completed=0)
+        efftime = getattr(self.config.nominal_exposure_time, tile_program,
+                          None)
+        if efftime is not None:
+            efftime = efftime()
+        else:
+            efftime = 1000*u.s
+        efftime = float(efftime.to(u.s).value)
+
+        sbprof = getattr(self.config, 'sbprof', None)
+        if sbprof is not None:
+            sbprof = getattr(sbprof, tile_program, None)
+            if sbprof is not None:
+                sbprof = sbprof()
+        if not isinstance(sbprof, str):
+            sbprof = 'PSF'
+
         if tile_program not in ['DARK', 'GRAY', 'BRIGHT']:
             moon_up_factor = getattr(self.config, 'moon_up_factor')
             moon_up_factor = getattr(moon_up_factor, sched_program)()
@@ -367,7 +384,6 @@ class NTS():
 
         # avoid crossing program boundaries.
         texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd])
-        s2n = 50.0 * texp_remaining/texp_tot
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
         maxtimecond = getattr(self.config, 'maximum_time_in_conditions',
@@ -406,16 +422,17 @@ class NTS():
             minexptime = minexptime.to(u.s).value
             splitexptime = max([splitexptime, minexptime/days_to_seconds])
 
-        selection = {'s2n': s2n,
-                     'esttime': exptime*days_to_seconds,
+        selection = {'esttime': exptime*days_to_seconds,
                      'exptime': splitexptime*days_to_seconds,
                      'count': count,
-                     'maxtime': maxtime*days_to_seconds,
+                     'maxtime': 3600.0,
                      'fiberassign': int(tileid),
                      'foundtile': True,
                      'conditions': sched_program,
                      'program': tile_program,
-                     'exposure_factor': exposure_factor}
+                     'exposure_factor': exposure_factor,
+                     'req_efftime': efftime,
+                     'sbprof': sbprof}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)
