@@ -455,7 +455,7 @@ class ExposureTimeCalculator(object):
         # Estimate SNR2 to integrate in the next exposure.
         self.snr2frac_target = snr2frac + (texp_remaining / nexp) / self.texp_total
         # Initialize signal and background rate factors.
-        self.srate0 = self.weather_factor(seeing, transp)
+        self.srate0 = np.sqrt(self.weather_factor(seeing, transp))
         self.brate0 = sky
         self.signal = 0.
         self.background = 0.
@@ -493,7 +493,7 @@ class ExposureTimeCalculator(object):
         """
         dt = mjd_now - self.mjd_last
         self.mjd_last = mjd_now
-        srate = self.weather_factor(seeing, transp)
+        srate = np.sqrt(self.weather_factor(seeing, transp))
         brate = sky
         self.signal += dt * srate / self.srate0
         #self.background += dt * (srate + brate) / (self.srate0 + self.brate0)
