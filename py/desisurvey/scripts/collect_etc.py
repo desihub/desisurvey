@@ -165,7 +165,7 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
         program = np.full(len(exps), 'UNKNOWN', dtype='U80')
         ind, mask = tiles.index(exps['TILEID'], return_mask=True)
         program[mask] = [p.strip() for p in tiles.tileprogram[ind[mask]]]
-        nomtime = get_nominal_program_times(program)
+        nomtime = desisurvey.tiles.get_nominal_program_times(program)
         airmass = np.ones(len(exps), dtype='f4')
         airmass[mask] = tiles.airmass_at_mjd(exps['MJD_OBS'][mask],
                                              mask=ind[mask])
@@ -324,27 +324,6 @@ def number_in_conditions(exps, nightly_donefrac_requirement=0.5):
     return out
 
 
-def get_nominal_program_times(tileprogram):
-    config = desisurvey.config.Configuration()
-    cfgnomtimes = config.nominal_exposure_time
-    nomtimes = []
-    unknownprograms = []
-    nunknown = 0
-    for program in tileprogram:
-        nomprogramtime = getattr(cfgnomtimes, program, 300)
-        if not isinstance(nomprogramtime, int):
-            nomprogramtime = nomprogramtime().to(u.s).value
-        else:
-            unknownprograms.append(program)
-            nunknown += 1
-        nomtimes.append(nomprogramtime)
-    if nunknown > 0:
-        log.info(('%d observations of unknown programs\n' % nunknown) +
-                 'unknown programs: '+' '.join(np.unique(unknownprograms)))
-    nomtimes = np.array(nomtimes)
-    return nomtimes
-
-
 def update_donefrac_from_offline(exps, offlinefn):
     offline = fits.getdata(offlinefn)
     tiles = desisurvey.tiles.Tiles()
@@ -354,7 +333,7 @@ def update_donefrac_from_offline(exps, offlinefn):
     tileprograms[:] = 'UNKNOWN'
     tileprograms[me] = [p.strip() for p in tileprogram[mt]]
     me, mo = desisurvey.utils.match(exps['EXPID'], offline['EXPID'])
-    nomtimes = get_nominal_program_times(tileprograms[me])
+    nomtimes = desisurvey.tiles.get_nominal_program_times(tileprograms[me])
     try:
         offline_eff_time = offline['R_DEPTH_EBVAIR']
     except Exception:

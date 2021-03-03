@@ -47,7 +47,6 @@ class Tiles(object):
         in our configuration.
     """
     def __init__(self, tiles_file=None):
-        log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
@@ -356,3 +355,27 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
         log.info('Tiles not cached for "{}".'.format(tiles_file))
 
     return tiles
+
+
+def get_nominal_program_times(tileprogram, config=None):
+    """Return nominal times for given programs in seconds."""
+    if config is None:
+        config = desisurvey.config.Configuration()
+    cfgnomtimes = config.nominal_exposure_time
+    nomtimes = []
+    unknownprograms = []
+    nunknown = 0
+    for program in tileprogram:
+        nomprogramtime = getattr(cfgnomtimes, program, 300)
+        if not isinstance(nomprogramtime, int):
+            nomprogramtime = nomprogramtime().to(u.s).value
+        else:
+            unknownprograms.append(program)
+            nunknown += 1
+        nomtimes.append(nomprogramtime)
+    if nunknown > 0:
+        log = desiutil.log.get_logger()
+        log.info(('%d observations of unknown programs\n' % nunknown) +
+                 'unknown programs: '+' '.join(np.unique(unknownprograms)))
+    nomtimes = np.array(nomtimes)
+    return nomtimes
