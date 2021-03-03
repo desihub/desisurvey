@@ -5,7 +5,8 @@ desisurvey change log
 0.15.1 (unreleased)
 -------------------
 
-* No changes yet
+* Fix bug in transparency and ETC snr2 accumulation rate calculation
+  (PR `#128`_)
 
 0.15.0 (2021-02-15)
 -------------------
