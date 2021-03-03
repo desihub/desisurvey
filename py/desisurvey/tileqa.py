@@ -133,7 +133,7 @@ class subslices:
         return self.next()
 
 
-def render(ra, dec, tilera, tiledec, fiberposfile=None):
+def render(ra, dec, tilera, tiledec, fiberposfile=None, oneperim=False):
     """Return number of possible observations of ra, dec, given focal
     plane centers tilera, tiledec."""
     out = numpy.zeros_like(ra, dtype='i4')
@@ -149,6 +149,8 @@ def render(ra, dec, tilera, tiledec, fiberposfile=None):
         x, y = focalplane.radec2xy(tilera[tileno], tiledec[tileno],
                                    ra[ind], dec[ind])
         mx, mf, dxf = match2d(x, y, fpos['x'], fpos['y'], 6)
+        if oneperim:
+            mx = numpy.unique(mx)
         # much slower than my custom-rolled version!
         out += numpy.bincount(ind[mx], minlength=len(out))
     return out
@@ -343,21 +345,25 @@ def gc_dist(lon1, lat1, lon2, lat2):
                       cos(lat1)*cos(lat2)*(sin((lon1-lon2)*0.5))**2)))
 
 
-def qa(desitiles, nside=1024, npts=1000, compare=False):
+def qa(desitiles, nside=1024, npts=1000, compare=False,
+       npass=5, makenew=True, oneperim=False):
     """Make tiling QA plots; demonstrate usage."""
     import healpy
     theta, phi = healpy.pix2ang(nside, numpy.arange(12*nside**2))
     la, ba = phi*180./numpy.pi, 90-theta*180./numpy.pi
-    m5pass = (desitiles['pass'] <= 4)
+    m5pass = (desitiles['pass'] < npass)
     m0 = desitiles['centerid'] == desitiles['tileid']
-    ran, decn = logradecoffscheme(desitiles['ra'][m0],
-                                  desitiles['dec'][m0], dx=0.6, ang=24)
+    if makenew:
+        ran, decn = logradecoffscheme(desitiles['ra'][m0],
+                                      desitiles['dec'][m0], dx=0.6, ang=24)
+    else:
+        ran, decn = desitiles['ra'], desitiles['dec']
     tilerd = {}
     if compare:
         tilerd['default'] = (desitiles['ra'], desitiles['dec'])
     tilerd['Tiles v3'] = (ran, decn)
-    ims = {name: render(la, ba, rd[0][m5pass], rd[1][m5pass])
-           for name, rd in tilerd.items()}
+    ims = {name: render(la, ba, rd[0][m5pass], rd[1][m5pass],
+                        oneperim=oneperim) for name, rd in tilerd.items()}
     pseudoindesi = ((gc_dist(la, ba, 180, 30) < 40)
                     | (gc_dist(la, ba, 0, 5) < 30))
     from matplotlib import pyplot as p
@@ -370,7 +376,8 @@ def qa(desitiles, nside=1024, npts=1000, compare=False):
                             numpy.linspace(-delt, delt, npts))
     dpts = 4./(npts - 1)
     p.clf()
-    tim = render(rg.ravel(), dg.ravel(), numpy.zeros(1), numpy.zeros(1))
+    tim = render(rg.ravel(), dg.ravel(), numpy.zeros(1), numpy.zeros(1),
+                 oneperim=oneperim)
     tim = tim.reshape(rg.shape)
     p.imshow(tim.T, cmap='binary', origin='lower',
              extent=[-delt-dpts/2, delt+dpts/2, -delt-dpts/2, delt+dpts/2])
@@ -381,21 +388,29 @@ def qa(desitiles, nside=1024, npts=1000, compare=False):
     p.savefig('onefootprint.pdf', dpi=200)
 
     p.figure('One Center')
+    delt = 2.3
     setup_print((5, 4), scalefont=1.2)
     p.subplots_adjust(left=0.15, bottom=0.15)
-    dg, rg = numpy.meshgrid(numpy.linspace(-delt, delt, npts),
-                            numpy.linspace(-delt, delt, npts))
+    zzind = numpy.argmin(
+        gc_dist(desitiles['ra'][m0], desitiles['dec'][m0], 0, 0))
+    monecen = (m5pass &
+               (desitiles['centerid'] == desitiles['centerid'][m0][zzind]))
+    xcen = desitiles['ra'][m0][zzind]
+    ycen = desitiles['dec'][m0][zzind]
+    dg, rg = numpy.meshgrid(numpy.linspace(-delt+ycen, delt+ycen, npts),
+                            numpy.linspace(-delt+xcen, delt+xcen, npts))
     dpts = 4./(npts - 1)
     p.clf()
-    monecen = m5pass & (gc_dist(0, 0, ran, decn) < 1.2)
-    tim = render(rg.ravel(), dg.ravel(), ran[monecen], decn[monecen])
+    tim = render(rg.ravel(), dg.ravel(), ran[monecen], decn[monecen],
+                 oneperim=oneperim)
     tim = tim.reshape(rg.shape)
     p.imshow(tim.T, cmap='binary', origin='lower',
-             extent=[-delt-dpts/2, delt+dpts/2, -delt-dpts/2, delt+dpts/2])
+             extent=[-delt-dpts/2+xcen, delt+dpts/2+xcen,
+                     -delt-dpts/2+ycen, delt+dpts/2+ycen])
     p.scatter(((ran[monecen]+180) % 360)-180, decn[monecen],
               c=desitiles['pass'][monecen])
-    p.xlim((-delt, delt))
-    p.ylim((-delt, delt))
+    p.xlim((-delt+xcen, delt+xcen))
+    p.ylim((-delt+ycen, delt+ycen))
     p.gca().set_aspect('equal')
     p.xlabel(r'$\alpha$ ($\degree$)')
     p.ylabel(r'$\delta$ ($\degree$)')
@@ -410,7 +425,7 @@ def qa(desitiles, nside=1024, npts=1000, compare=False):
                             numpy.linspace(-delt, delt, npts))
     dpts = 4./(npts - 1)
     p.clf()
-    tim = render(rg.ravel(), dg.ravel(), ran[m0], decn[m0])
+    tim = render(rg.ravel(), dg.ravel(), ran[m0], decn[m0], oneperim=oneperim)
     tim = tim.reshape(rg.shape)
     p.imshow(tim.T, cmap='binary', origin='lower',
              extent=[-delt-dpts/2, delt+dpts/2, -delt-dpts/2, delt+dpts/2],
@@ -443,7 +458,7 @@ def qa(desitiles, nside=1024, npts=1000, compare=False):
     p.clf()
     for name, im in ims.items():
         p.hist(im[pseudoindesi].reshape(-1), range=[-0.5, 15.5], bins=16,
-               histtype='step', label=name, normed=True)
+               histtype='step', label=name, density=True)
         print(r'# coverings  & fraction of area \\')
         for count in range(16):
             frac = (numpy.sum(im[pseudoindesi] == count) /
