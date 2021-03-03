@@ -8,6 +8,8 @@ desisurvey change log
 * Fix bug in transparency and ETC snr2 accumulation rate calculation
   (PR `#128`_)
 
+.. _`#128`: https://github.com/desihub/desisurvey/pull/128
+
 0.15.0 (2021-02-15)
 -------------------
 
