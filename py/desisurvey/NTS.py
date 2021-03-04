@@ -162,7 +162,8 @@ def azinrange(az, low, high):
 
 
 class NTS():
-    def __init__(self, obsplan=None, defaults={}, night=None):
+    def __init__(self, obsplan=None, defaults={}, night=None,
+                 nts_survey=None):
         """Initialize a new instance of the Next Tile Selector.
 
         Parameters
@@ -174,6 +175,9 @@ class NTS():
             selection.
 
         night : night for which to assign tiles, YYYMMDD, default tonight.
+
+        nts_survey : human readable means for selecting nightly obsplan.
+            ignored if obsplan is set.
 
         Returns
         -------
