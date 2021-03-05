@@ -406,12 +406,16 @@ class Scheduler(object):
 
         weather_factor = ETC.weather_factor(seeing, transp, skylevel)
         esttime = (
-            self.nominal_exposure_time_sec[self.tile_sel]/86400*weather_factor)
+            self.nominal_exposure_time_sec[self.tile_sel]/86400 *
+            self.tiles.dust_factor[self.tile_sel] / weather_factor)
+        airmassnom = self.tiles.airmass(
+            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
+        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
         esttime = np.clip(esttime, 0, self.maxtime.to(u.day).value)
 
         self.hourangle[:] = 0.
         self.hourangle[self.tile_sel] = (
-            self.LST + esttime/2/360 - self.tiles.tileRA[self.tile_sel])
+            self.LST + 360*esttime/2 - self.tiles.tileRA[self.tile_sel])
         # Calculate the airmass of each available tile.
         self.airmass[:] = self.max_airmass
         self.airmass[self.tile_sel] = self.tiles.airmass(
