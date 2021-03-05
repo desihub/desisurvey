@@ -213,9 +213,9 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
 def sky_exposure_factor(tref, airmass, moon_frac, moon_sep, moon_alt, sun_sep,
         sun_alt):
     """ Calculate exposure time scaling factor due to sky brightness. This is
-    the factor that exposure time needs to be scaled by in order to get the
-    same SNR as an exposure during nominal dark sky. It's calculated based on a
-    sky brightness model fit to observed sky brightness from DESI SV1, DESI
+    the factor that nominal exposure time needs to be scaled by in order to get 
+    the same SNR as an exposure during nominal dark sky. It's calculated based 
+    on a sky brightness model fit to observed sky brightness from DESI SV1, DESI
     CMX, and BOSS. 
 
     For details, see the following jupyter notebooks: 
@@ -225,7 +225,8 @@ def sky_exposure_factor(tref, airmass, moon_frac, moon_sep, moon_alt, sun_sep,
     Parameters
     ----------
     tnom : array 
-        Array of nominal exposure time 
+        Array of *nominal* exposure time in seconds. This is an input parameter
+        because different programs have different nominal exposure times. 
     airmass : array 
         Array of airmass used for observing this tile, must be >= 1.
     moon_frac : float 
@@ -264,16 +265,10 @@ def sky_exposure_factor(tref, airmass, moon_frac, moon_sep, moon_alt, sun_sep,
     assert len(moon_sep) == nexp
     assert len(sun_sep) == nexp
 
-    # calculate exposure factor 
-    config = desisurvey.config.Configuration()
-
     # sky brightness at 5000A for nominal dark sky 
     Isky5000_ref = 1.1282850428182252 # 1e-17 erg/s/cm^2/A/arcsec^2
     
-    # exposure time for nominal exposure 
-    tref = getattr(config.nominal_exposure_time, 'BRIGHT')().to(u.s).value
-    
-    # sky brightness at 5000A for observing conditions 
+    # sky brightness without twilight at 5000A for observing conditions 
     Isky5000_exp = Isky5000_notwilight_regression(
             airmass,
             np.repeat(moon_frac, nexp), 
@@ -313,7 +308,7 @@ def Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt):
     Surface brightness is based on a polynomial regression model fit to
     log(observed sky brightness). The observed sky brightnesses were compiled
     from 
-    * DESI SV1 bright exposures with TRANSP > 0.9 and SUN_ALT < -18 
+    * DESI SV1 bright exposures with TRANSP > 0.95 and SUN_ALT < -18 
     * DESI CMX exposures with transparency > 0.95
     * BOSS exposures with sun alt < -18 
     
