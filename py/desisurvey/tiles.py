@@ -59,11 +59,6 @@ class Tiles(object):
         else:
             tiles = desimodel.io.load_tiles(
                 onlydesi=False, extra=True, tilesfile=self.tiles_file)
-        # Check for any unknown program names.
-        tile_programs = np.unique(tiles['PROGRAM'])
-        unknown = set(tile_programs) - set(self.PROGRAMS)
-        if unknown and not commissioning:
-            raise RuntimeError('Cannot schedule unknown program(s): {}.'.format(unknown))
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
         self.passnum = tiles['PASS'].copy()
@@ -83,28 +78,23 @@ class Tiles(object):
         # Can remove this when tile_index no longer uses searchsorted.
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')
-        if commissioning:
-            Tiles.PROGRAMS = (Tiles.PROGRAMS +
-                              [x for x in np.unique(tiles['PROGRAM'])
-                               if x not in Tiles.PROGRAMS])
-            self.PROGRAMS = Tiles.PROGRAMS
-            Tiles.PROGRAM_INDEX = {pname: pidx
-                                   for pidx, pname in enumerate(Tiles.PROGRAMS)}
-            self.PROGRAM_INDEX = Tiles.PROGRAM_INDEX
+        self.programs = [x for x in np.unique(tiles['PROGRAM'])]
+        self.program_index = {pname: pidx
+                              for pidx, pname in enumerate(self.programs)}
 
         # Build program -> [passes] maps. A program with no tiles will map to an empty array.
         self.program_passes = {
-            p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in self.PROGRAMS}
+            p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in self.programs}
         # Build pass -> program maps.
         self.pass_program = {}
-        for p in self.PROGRAMS:
+        for p in self.progrms:
             self.pass_program.update({passnum: p for passnum in self.program_passes[p]})
         for p in np.unique(self.passnum):
             if len(np.unique(tiles['PROGRAM'][tiles['PASS'] == p])) != 1:
                 raise ValueError('At most one program per pass.')
         # Build tile masks for each program. A program will no tiles with have an empty mask.
         self.program_mask = {}
-        for p in self.PROGRAMS:
+        for p in self.programs:
             mask = np.zeros(self.ntiles, bool)
             for pnum in self.program_passes[p]:
                 mask |= (self.passnum == pnum)
@@ -126,16 +116,8 @@ class Tiles(object):
         self._overlapping = None
         self._fiberassign_delay = None
 
-    PROGRAMS = ['DARK', 'GRAY', 'BRIGHT']
-    """Enumeration of the valid programs in their canonical order."""
-
-    PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
-    """Canonical mapping from program name to a small integer.
-
-    Note that this mapping is independent of the programs actually present
-    in a tiles file.
-    """
-
+    CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
+    CONDITION_INDEX = {i: cond for i, cond in enumerate(CONDITIONS)}
     OBSCONDITIONS = {'DARK': 1, 'GRAY': 2, 'BRIGHT': 4}
     """Mapping of night conditions to OBSCONDITIONS bit mask.
 
@@ -344,7 +326,7 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
     else:
         tiles = Tiles(tiles_file)
         log.info('Initialized tiles from "{}".'.format(tiles_file))
-        for pname in Tiles.PROGRAMS:
+        for pname in tiles.programs:
             pinfo = []
             for passnum in tiles.program_passes[pname]:
                 pinfo.append('{}({})'.format(passnum, tiles.pass_ntiles[passnum]))

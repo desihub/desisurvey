@@ -451,7 +451,7 @@ class Ephemerides(object):
         if include_twilight:
             start = night_ephem['brightdusk']
             stop = night_ephem['brightdawn']
-            BRIGHT = desisurvey.tiles.Tiles.PROGRAM_INDEX['BRIGHT']
+            BRIGHT = desisurvey.tiles.Tiles.CONDITIONS_INDEX['BRIGHT']
             if programs[0] != BRIGHT:
                 # Twilight adds a BRIGHT program at the start of the night.
                 programs = np.insert(programs, 0, BRIGHT)
@@ -467,7 +467,7 @@ class Ephemerides(object):
         changes = np.concatenate(([start], changes, [stop]))
         if not program_as_int:
             # Replace program indices with names.
-            programs = [desisurvey.tiles.Tiles.PROGRAMS[pidx] for pidx in programs]
+            programs = [desisurvey.tiles.Tiles.CONDITIONS[pidx] for pidx in programs]
         return programs, changes
 
     def get_program_hours(self, start_date=None, stop_date=None,
@@ -591,7 +591,7 @@ class Ephemerides(object):
                 raise ValueError('Expected weather array of length {}.'.format(num_nights))
         # Initialize LST histograms for each program.
         lst_bins = np.linspace(origin, origin + 360, nbins + 1)
-        lst_hist = np.zeros((len(desisurvey.tiles.Tiles.PROGRAMS), nbins))
+        lst_hist = np.zeros((len(desisurvey.tiles.Tiles.CONDITIONS), nbins))
         dlst = 360. / nbins
         # Loop over nights.
         for n in range(num_nights):
@@ -675,9 +675,9 @@ class Ephemerides(object):
         tuple or array
             Tuple (dark, gray, bright) of boolean arrays that tabulates the
             program at each input MJD or an array of small integer indices
-            into :attr:`desisurvey.tiles.Tiles.PROGRAMS`, with the special value
-            -1 indicating DAYTIME. All output arrays have the same shape as
-            the input ``mjd`` array.
+            into :attr:`desisurvey.tiles.Tiles.CONDITIONS`, with the special
+            value -1 indicating DAYTIME. All output arrays have the same shape
+            as the input ``mjd`` array.
         """
         # Get the night of the earliest time.
         mjd = np.asarray(mjd)
@@ -720,9 +720,9 @@ class Ephemerides(object):
         else:
             # Default value -1=DAYTIME.
             program = np.full(mjd.shape, -1, np.int16)
-            program[dark] = desisurvey.tiles.Tiles.PROGRAM_INDEX['DARK']
-            program[gray] = desisurvey.tiles.Tiles.PROGRAM_INDEX['GRAY']
-            program[bright] = desisurvey.tiles.Tiles.PROGRAM_INDEX['BRIGHT']
+            program[dark] = desisurvey.tiles.Tiles.CONDITION_INDEX['DARK']
+            program[gray] = desisurvey.tiles.Tiles.CONDITION_INDEX['GRAY']
+            program[bright] = desisurvey.tiles.Tiles.CONDITION_INDEX['BRIGHT']
             return program
 
     def is_full_moon(self, night, num_nights=None):
