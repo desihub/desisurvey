@@ -80,7 +80,7 @@ class TestExpCalc(unittest.TestCase):
             # faster in lower seeing, higher transparency, lower sky
             self.assertGreater(ETC.weather_factor(1.0, 1.0, 1.0), ETC.weather_factor(1.1, 1.0, 1.0))
             self.assertGreater(ETC.weather_factor(1.0, 1.0, 1.0), ETC.weather_factor(1.0, 0.9, 1.0))
-            self.assertGreater(ETC.weather_factor(1.0, 1.0, 1.0, ETC.weather_factor(1.0, 1.0, 1.1))
+            self.assertGreater(ETC.weather_factor(1.0, 1.0, 1.0), ETC.weather_factor(1.0, 1.0, 1.1))
             # Lookup the nominal DARK exposure time in days.
             config = desisurvey.config.Configuration()
             tnom = getattr(config.nominal_exposure_time, 'DARK')().to(u.day).value
