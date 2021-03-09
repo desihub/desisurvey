@@ -5,10 +5,13 @@ desisurvey change log
 0.15.1 (unreleased)
 -------------------
 
+* Use sky levels in ETC.  Use EFFTIME rather than R_DEPTH, and harmonize
+  MW extinction correction with EFFTIME.  (PR `#129`_)
 * Fix bug in transparency and ETC snr2 accumulation rate calculation
   (PR `#128`_)
 
 .. _`#128`: https://github.com/desihub/desisurvey/pull/128
+.. _`#129`: https://github.com/desihub/desisurvey/pull/129
 
 0.15.0 (2021-02-15)
 -------------------

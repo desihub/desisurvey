@@ -133,6 +133,10 @@ class Scheduler(object):
         self.tile_available = np.zeros(self.tiles.ntiles, bool)
         self.tile_planned = np.zeros(self.tiles.ntiles, bool)
         self.tile_priority = np.zeros(self.tiles.ntiles, float)
+        self.nominal_exposure_time_sec = (
+            desisurvey.tiles.get_nominal_program_times(self.tiles.tileprogram))
+        self.maxtime = config.maxtime()
+
         # Lookup avoidance cone angles.
         self.avoid_bodies = {}
         for body in config.avoid_bodies.keys:
@@ -374,25 +378,7 @@ class Scheduler(object):
             if verbose:
                 self.log.warning('No available tiles in requested program.')
             return None, None, None, None, None, program, mjd_program_end
-        # Calculate the local apparent sidereal time in degrees.
-        self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
-        # Calculate the hour angle of each available tile in degrees.
-        #######################################################
-        ### should be offset to estimated exposure midpoint ###
-        #######################################################
-        self.hourangle[:] = 0.
-        self.hourangle[self.tile_sel] = self.LST - self.tiles.tileRA[self.tile_sel]
-        # Calculate the airmass of each available tile.
-        self.airmass[:] = self.max_airmass
-        self.airmass[self.tile_sel] = self.tiles.airmass(
-            self.hourangle[self.tile_sel], self.tile_sel)
-        self.tile_sel &= self.airmass < self.max_airmass
-        absha = np.abs(((self.hourangle + 180) % 360)-180)
-        self.tile_sel &= (absha < self.max_ha)
-        if not np.any(self.tile_sel):
-            if verbose:
-                self.log.warning('No tiles left to observe after HA/airmass cut.')
-            return None, None, None, None, None, program, mjd_program_end
+
         # Is the moon up?
         if mjd_now > self.night_ephem['moonrise'] and mjd_now < self.night_ephem['moonset']:
             moon_is_up = True
@@ -412,12 +398,42 @@ class Scheduler(object):
                 return None, None, None, None, None, program, mjd_program_end
         else:
             moon_is_up = False
+
+
+        # Calculate the local apparent sidereal time in degrees.
+        self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
+        # Calculate the hour angle of each available tile in degrees.
+
+        weather_factor = ETC.weather_factor(seeing, transp, skylevel)
+        esttime = (
+            self.nominal_exposure_time_sec[self.tile_sel]/86400 *
+            self.tiles.dust_factor[self.tile_sel] / weather_factor)
+        airmassnom = self.tiles.airmass(
+            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
+        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
+        esttime = np.clip(esttime, 0, self.maxtime.to(u.day).value)
+
+        self.hourangle[:] = 0.
+        self.hourangle[self.tile_sel] = (
+            self.LST + 360*esttime/2 - self.tiles.tileRA[self.tile_sel])
+        # Calculate the airmass of each available tile.
+        self.airmass[:] = self.max_airmass
+        self.airmass[self.tile_sel] = self.tiles.airmass(
+            self.hourangle[self.tile_sel], self.tile_sel)
+        self.tile_sel &= self.airmass < self.max_airmass
+        absha = np.abs(((self.hourangle + 180) % 360)-180)
+        self.tile_sel &= (absha < self.max_ha)
+        if not np.any(self.tile_sel):
+            if verbose:
+                self.log.warning('No tiles left to observe after HA/airmass cut.')
+            return None, None, None, None, None, program, mjd_program_end
+
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
         self.exposure_factor[self.tile_sel] = self.tiles.dust_factor[self.tile_sel]
         self.exposure_factor[self.tile_sel] *= desisurvey.etc.airmass_exposure_factor(self.airmass[self.tile_sel])
         # Apply global weather factors that are the same for all tiles.
-        self.exposure_factor[self.tile_sel] /= ETC.weather_factor(seeing, transp)
+        self.exposure_factor[self.tile_sel] /= weather_factor
         if not np.any(self.tile_sel):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for

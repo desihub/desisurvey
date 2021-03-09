@@ -156,15 +156,18 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                          'DESI_SPECTRA_DIR.')
 
     if sv:
-        if os.environ.get('DESI_COLLAB_PASSWORD', None) is not None:
-            pwstr = '--password ' + os.environ['DESI_COLLAB_PASSWORD'] + ' '
-        else:
-            print('Enter desi collaboration password to download status file.')
-            pwstr = '--ask-password '
         os.system('wget -q https://data.desi.lbl.gov/desi/survey/observations/'
-                  'SV1/sv1-exposures.fits ' + pwstr +
-                  '--user=desi -O ./sv1-exposures.fits')
-        offlinedepthfn = './sv1-exposures.fits'
+                  'SV1/sv1-exposures.fits -O ./sv1-exposures.new.fits')
+        filelen = os.stat('sv1-exposures.new.fits').st_size
+        if filelen > 0:
+            os.rename('sv1-exposures.new.fits', 'sv1-exposures.fits')
+            offlinedepthfn = './sv1-exposures.fits'
+        else:
+            log.warning('Updating sv1-exposures failed!')
+            if os.path.exists('./sv1-exposures.fits'):
+                offlinedepthfn = './sv1-exposures.fits'
+            else:
+                offlinedepthfn = None
     else:
         offlinedepthfn = None
 

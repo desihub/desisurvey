@@ -210,9 +210,9 @@ class NTS():
         config = desisurvey.config.Configuration(obsplan)
         _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
 
-        self.default_seeing = defaults.get('seeing', 1.0)
-        self.default_transparency = defaults.get('transparency', 0.9)
-        self.default_skylevel = defaults.get('skylevel', 1000.0)
+        self.default_seeing = defaults.get('seeing', 1.1)
+        self.default_transparency = defaults.get('transparency', 1.0)
+        self.default_skylevel = defaults.get('skylevel', 1.0)
         self.default_program = defaults.get('program', 'DARK')
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
@@ -386,8 +386,10 @@ class NTS():
             texp_tot *= moon_up_factor
             texp_remaining *= moon_up_factor
 
-        # avoid crossing program boundaries.
-        texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd])
+        # avoid crossing program boundaries, don't observe longer than an hour.
+        maxdwell = getattr(self.config, 'maxtime')().to(u.day).value
+        texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd,
+                              maxdwell])
         exptime = texp_remaining
         maxtime = self.ETC.MAX_EXPTIME
         maxtimecond = getattr(self.config, 'maximum_time_in_conditions',
@@ -429,7 +431,7 @@ class NTS():
         selection = {'esttime': exptime*days_to_seconds,
                      'exptime': splitexptime*days_to_seconds,
                      'count': count,
-                     'maxtime': 3600.0,
+                     'maxtime': maxdwell*days_to_seconds,
                      'fiberassign': int(tileid),
                      'foundtile': True,
                      'conditions': sched_program,

@@ -84,6 +84,9 @@ same_field_setup : 60 s
 # Maximum time allowed for a single exposure before we force a cosmic split.
 cosmic_ray_split: 20 min
 
+# Maximum time to spend on one tile in a night
+maxtime: 1 hr
+
 # Minimum number of consecutive exposures required for cosmic rejection.
 min_exposures: 2
 
@@ -99,6 +102,11 @@ nominal_conditions:
     airmass: 1.0
     transparency: 1.0
     EBV: 0.0
+
+moon_up_factor:
+    DARK: 1.0
+    GRAY: 1.1
+    BRIGHT: 1.33
 
 # Reobserve tiles that have not reached this fraction of their target SNR**2.
 # Keep this at one until we simulate errors in ETC integration.

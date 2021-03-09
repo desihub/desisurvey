@@ -58,7 +58,7 @@ def seeing_exposure_factor(seeing):
 def transparency_exposure_factor(transparency):
     """Scaling of exposure time with transparency relative to nominal.
 
-    The model is that exposure time scales with 1 / transparency.
+    The model is that exposure time scales with 1 / transparency**2.
 
     Parameters
     ----------
@@ -76,14 +76,15 @@ def transparency_exposure_factor(transparency):
         raise ValueError('Got invalid transparency value <= 0.')
     config = desisurvey.config.Configuration()
     nominal = config.nominal_conditions.transparency()
-    return nominal / transparency
+    return (nominal / transparency)**2
 
 
 def dust_exposure_factor(EBV):
     """Scaling of exposure time with median E(B-V) relative to nominal.
 
     The model uses the SDSS-g extinction coefficient (3.303) from Table 6
-    of Schlafly & Finkbeiner 2011.
+    of Schlafly & Finkbeiner 2011 by default, or config.ebv_coefficient if
+    specified.
 
     Parameters
     ----------
@@ -99,7 +100,12 @@ def dust_exposure_factor(EBV):
     EBV = np.asarray(EBV)
     config = desisurvey.config.Configuration()
     EBV0 = config.nominal_conditions.EBV()
-    Ag = 3.303 * (EBV - EBV0)
+    coeff = getattr(config, 'ebv_coefficient', None)
+    if coeff is not None:
+        coeff = coeff()
+    else:
+        coeff = 3.303
+    Ag = coeff * (EBV - EBV0)
     return np.power(10.0, (2.0 * Ag / 2.5))
 
 
@@ -315,25 +321,17 @@ class ExposureTimeCalculator(object):
             self.log.warning(
                 'Unrecognized program {}, '.format(' '.join(unknownprograms)) +
                 'using default exposure time of 1000 s')
-        moon_up_factor = getattr(config, 'moon_up_factor', None)
-        if moon_up_factor:
-            for cond in ['DARK', 'GRAY', 'BRIGHT']:
-                self.TEXP_TOTAL[cond] *= getattr(moon_up_factor, cond)()
-        else:
-            # Temporary hardcoded exposure factors for moon-up observing.
-            self.TEXP_TOTAL['GRAY'] *= 1.1
-            self.TEXP_TOTAL['BRIGHT'] *= 1.33
 
         # Initialize model of exposure time dependence on seeing.
         self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
-        self.seeing_coefs /= np.sqrt(self.weather_factor(1.1, 1.0))
-        assert np.allclose(self.weather_factor(1.1, 1.0), 1.)
+        self.seeing_coefs /= np.sqrt(self.weather_factor(1.1, 1.0, 1.0))
+        assert np.allclose(self.weather_factor(1.1, 1.0, 1.0), 1.)
         # Initialize optional history tracking.
         self.save_history = save_history
         if save_history:
             self.history = dict(mjd=[], signal=[], background=[], snr2frac=[])
 
-    def weather_factor(self, seeing, transp):
+    def weather_factor(self, seeing, transp, sky_level):
         """Return the relative SNR2 accumulation rate for specified conditions.
 
         This is the inverse of the instantaneous exposure factor due to seeing and transparency.
@@ -344,8 +342,14 @@ class ExposureTimeCalculator(object):
             Atmospheric seeing in arcseconds.
         transp : float
             Atmospheric transparency in the range (0,1).
+        sky_level : float
+            sky_level relative to nominal
         """
-        return (transp * (self.seeing_coefs[0] + seeing * (self.seeing_coefs[1] + seeing * self.seeing_coefs[2]))) ** 2
+        fac = transp**2
+        fac *= (self.seeing_coefs[0] + self.seeing_coefs[1]*seeing +
+                self.seeing_coefs[2]*seeing**2)**2
+        fac /= sky_level
+        return fac
 
     def estimate_exposure(self, program, snr2frac, exposure_factor, nexp_completed=0):
         """Estimate exposure time(s).
@@ -455,7 +459,7 @@ class ExposureTimeCalculator(object):
         # Estimate SNR2 to integrate in the next exposure.
         self.snr2frac_target = snr2frac + (texp_remaining / nexp) / self.texp_total
         # Initialize signal and background rate factors.
-        self.srate0 = np.sqrt(self.weather_factor(seeing, transp))
+        self.srate0 = np.sqrt(self.weather_factor(seeing, transp, 1.0))
         self.brate0 = sky
         self.signal = 0.
         self.background = 0.
@@ -493,7 +497,7 @@ class ExposureTimeCalculator(object):
         """
         dt = mjd_now - self.mjd_last
         self.mjd_last = mjd_now
-        srate = np.sqrt(self.weather_factor(seeing, transp))
+        srate = np.sqrt(self.weather_factor(seeing, transp, 1.0))
         brate = sky
         self.signal += dt * srate / self.srate0
         #self.background += dt * (srate + brate) / (self.srate0 + self.brate0)
