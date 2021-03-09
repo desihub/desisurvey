@@ -83,7 +83,8 @@ def dust_exposure_factor(EBV):
     """Scaling of exposure time with median E(B-V) relative to nominal.
 
     The model uses the SDSS-g extinction coefficient (3.303) from Table 6
-    of Schlafly & Finkbeiner 2011.
+    of Schlafly & Finkbeiner 2011 by default, or config.ebv_coefficient if
+    specified.
 
     Parameters
     ----------
@@ -99,7 +100,12 @@ def dust_exposure_factor(EBV):
     EBV = np.asarray(EBV)
     config = desisurvey.config.Configuration()
     EBV0 = config.nominal_conditions.EBV()
-    Ag = 3.303 * (EBV - EBV0)
+    coeff = getattr(config, 'ebv_coefficient', None)
+    if coeff is not None:
+        coeff = coeff()
+    else:
+        coeff = 3.303
+    Ag = coeff * (EBV - EBV0)
     return np.power(10.0, (2.0 * Ag / 2.5))
 
 

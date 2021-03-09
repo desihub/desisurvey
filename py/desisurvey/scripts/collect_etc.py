@@ -334,10 +334,18 @@ def update_donefrac_from_offline(exps, offlinefn):
     tileprograms[me] = [p.strip() for p in tileprogram[mt]]
     me, mo = desisurvey.utils.match(exps['EXPID'], offline['EXPID'])
     nomtimes = desisurvey.tiles.get_nominal_program_times(tileprograms[me])
-    try:
-        offline_eff_time = offline['R_DEPTH_EBVAIR']
-    except Exception:
-        offline_eff_time = offline['R_DEPTH']
+    config = desisurvey.config.Configuration()
+    efftimetypenode = getattr(config, 'efftime_type')
+    efftimetypedict = {k: getattr(efftimetypenode, k)()
+                       for k in efftimetypenode.keys}
+    offlineprograms = np.zeros(len(offline), dtype='U80')
+    offlineprograms[:] = 'DARK'
+    offlineprograms[mo] = tileprograms[me]
+    efftimetypes = np.array([
+        efftimetypedict.get(p, 'DARK') for p in offlineprograms])
+    offline_eff_time = np.where(efftimetypes == 'DARK',
+                                offline['EFFTIME_DARK'],
+                                offline['EFFTIME_BRIGHT'])
     if ((len(np.unique(exps['EXPID'])) != len(exps)) or
             (len(np.unique(offline['EXPID'])) != len(offline))):
         raise ValueError('weird duplicate EXPID in exps or offline')
