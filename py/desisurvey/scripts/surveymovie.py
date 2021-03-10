@@ -148,13 +148,14 @@ class Animator(object):
             raise RuntimeError('Expected passes 0-7.')
         self.prognames = ['GRAY', 'DARK', 'DARK', 'DARK', 'DARK',
                           'BRIGHT', 'BRIGHT', 'BRIGHT']
-        npass = np.max(self.passnum) + 1
+        if self.tiles.nogray:
+            self.prognames[0] = 'DARK'
         self.tiles_per_pass = self.tiles.pass_ntiles
-        self.psels = [
-            self.tiles.program_mask['DARK'],  # DARK
-            self.tiles.program_mask['GRAY'],  # GRAY
-            self.tiles.program_mask['BRIGHT'],  # BRIGHT
-        ]
+        if self.tiles.nogray:
+            self.program_names = ['DARK', 'BRIGHT']
+        else:
+            self.program_names = ['DARK', 'GRAY', 'BRIGHT']
+        self.psels = [self.tiles.program_mask[x] for x in self.program_names]
         self.start_date = self.config.first_day()
         self.survey_weeks = int(np.ceil((self.config.last_day() - self.start_date).days / 7))
 
@@ -237,7 +238,7 @@ class Animator(object):
                     ax.set_xlim(0, self.survey_weeks)
                     ax.set_ylim(0, 1)
                     ax.plot([0, self.survey_weeks], [0., 1.], 'w-')
-                    for pname in ('DARK', 'GRAY', 'BRIGHT'):
+                    for pname in self.program_names:
                         pc = pcolors[pname]
                         xprog = 0.5 + np.arange(self.survey_weeks)
                         # Initialize values to INF so they are not plotted
@@ -374,9 +375,9 @@ class Animator(object):
         # Lookup which tiles are available and planned for tonight.
         day_number = desisurvey.utils.day_number(date)
         avail = self.tiledata['AVAIL']
-        self.available = (avail >= 0) & (avail <= day_number)
+        self.available = (avail >= -1) & (avail <= day_number)
         planned = self.tiledata['PLANNED']
-        self.planned = (planned >= 0) & (planned <= day_number)
+        self.planned = (planned >= -1) & (planned <= day_number)
         self.last_date = date
 
     def draw_exposure(self, iexp, nightly):

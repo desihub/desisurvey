@@ -59,6 +59,15 @@ class Tiles(object):
         else:
             tiles = desimodel.io.load_tiles(
                 onlydesi=False, extra=True, tilesfile=self.tiles_file)
+        nogray = getattr(config, 'tiles_nogray', False)
+        if not isinstance(nogray, bool):
+            nogray = nogray()
+        self.nogray = nogray
+        if self.nogray:
+            m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
+            tiles['PROGRAM'][m] = 'DARK'
+            obscond = self.OBSCONDITIONS['DARK'] | self.OBSCONDITIONS['GRAY']
+            tiles['OBSCONDITIONS'][m] = obscond
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
         self.passnum = tiles['PASS'].copy()
@@ -87,7 +96,7 @@ class Tiles(object):
             p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in self.programs}
         # Build pass -> program maps.
         self.pass_program = {}
-        for p in self.progrms:
+        for p in self.programs:
             self.pass_program.update({passnum: p for passnum in self.program_passes[p]})
         for p in np.unique(self.passnum):
             if len(np.unique(tiles['PROGRAM'][tiles['PASS'] == p])) != 1:
@@ -99,10 +108,6 @@ class Tiles(object):
             for pnum in self.program_passes[p]:
                 mask |= (self.passnum == pnum)
             self.program_mask[p] = mask
-        self.allowed_in_conditions = {}
-        for p in self.OBSCONDITIONS:
-            mask = (self.tileobsconditions & self.OBSCONDITIONS[p]) != 0
-            self.allowed_in_conditions[p] = mask
         # Calculate and save dust exposure factors.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'])
         # Precompute coefficients to calculate tile observing airmass.
@@ -203,6 +208,9 @@ class Tiles(object):
         if return_mask:
             res = (res, mask)
         return res
+
+    def allowed_in_conditions(self, cond):
+        return (self.tileobsconditions & self.OBSCONDITIONS[cond]) != 0
 
     @property
     def tile_over(self):

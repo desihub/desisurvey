@@ -23,21 +23,20 @@ class TestScheduler(Tester):
         planner = desisurvey.plan.Planner(simulate=True)
         planner.first_night = desisurvey.utils.get_date('2020-01-01')
         planner.last_night = desisurvey.utils.get_date('2025-01-01')
-        scheduler = Scheduler()
+        scheduler = Scheduler(planner)
         num_nights = (self.stop - self.start).days
         for i in range(num_nights):
             night = self.start + datetime.timedelta(i)
             # Save and restore scheduler state.
             planner.save('snapshot.fits')
-            scheduler2 = Scheduler(restore='snapshot.fits')
-            self.assertTrue(np.all(scheduler.snr2frac == scheduler2.snr2frac))
+            planner2 = desisurvey.plan.Planner(restore='snapshot.fits')
+            scheduler2 = Scheduler(planner2)
+            self.assertTrue(np.all(scheduler.plan.snr2frac == scheduler2.plan.snr2frac))
             self.assertTrue(np.all(scheduler.completed == scheduler2.completed))
             self.assertTrue(np.all(scheduler.completed_by_pass == scheduler2.completed_by_pass))
-            avail, pri = planner.afternoon_plan(night, scheduler.completed)
+            avail, planned = planner.afternoon_plan(night, scheduler.completed)
             # Run both schedulers in parallel.
-            scheduler.update_tiles(avail, pri)
             scheduler.init_night(night)
-            scheduler2.update_tiles(avail, pri)
             scheduler2.init_night(night)
             # Loop over exposures during the night.
             dusk, dawn = scheduler.night_ephem['dusk'], scheduler.night_ephem['dawn']
@@ -49,11 +48,12 @@ class TestScheduler(Tester):
                 next2 = scheduler2.next_tile(mjd, ETC, seeing=1.1, transp=0.95, skylevel=1)
                 for field, field2 in zip(next, next2):
                     self.assertEqual(field, field2)
-                tileid = next[0]                
+                tileid = next[0]
                 if tileid is not None:
                     scheduler.update_snr(tileid, 1., 0)
                     scheduler2.update_snr(tileid, 1., 0)
-                planner.set_donefrac(scheduler.tiles.tileID, scheduler.snr2frac, 0*scheduler.snr2frac)
+                planner.set_donefrac(scheduler.tiles.tileID,
+                                     scheduler.plan.snr2frac, 0*scheduler.snr2frac)
 
 
 def test_suite():

@@ -121,13 +121,13 @@ class Optimizer(object):
             idx = tiles.index(subset)
             # Check that all tiles in the subset are observable in these
             # conditions.
-            if not np.all(tiles.allowed_in_conditions[condition][subset]):
+            if not np.all(tiles.allowed_in_conditions(condition)[subset]):
                 raise ValueError('Subset contains non-{} tiles.'.format(condition))
             tile_sel = np.zeros(tiles.ntiles, bool)
             tile_sel[idx] = True
         else:
             # Use all tiles in the program by default.
-            tile_sel = tiles.allowed_in_conditions[condition]
+            tile_sel = tiles.allowed_in_conditions(condition)
 
         # Get nominal exposure time for this program,
         # converted to LST equivalent in degrees.

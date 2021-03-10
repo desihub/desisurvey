@@ -234,8 +234,6 @@ class NTS():
             print(e)
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')
-        self.scheduler.update_tiles(self.planner.tile_available,
-                                    self.planner.tile_priority)
         self.scheduler.init_night(self.night, use_twilight=True)
         self.ETC = desisurvey.etc.ExposureTimeCalculator()
 

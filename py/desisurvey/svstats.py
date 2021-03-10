@@ -43,15 +43,3 @@ def donefrac_in_conditions(condnexp, configfn=None):
         out['DONEFRAC_'+cond] = out['NNIGHT_'+cond]/(
             out['NNIGHT_NEEDED_'+cond] + (out['NNIGHT_NEEDED_'+cond] == 0))
     return out
-
-    # we then output for each tile what conditions it's still allowed in,
-    # and whether it's done (allowed_in_conditions = 0).
-
-    # would be straightforward to incorporate completeness information
-    # into optimize.py with an additional ~donefrac data structure
-    # that modifies dlst_nom, multiplying it by (1-donefrac) for each tile
-
-    # that also needs to know the donefrac in each condition.
-    # but first step is just to get the donefracs at all.
-
-    # Build the list of nexp for each of these conditions.

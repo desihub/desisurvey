@@ -14,7 +14,7 @@ NHI:
     dec_min: 18
     dec_order: +0.2
     rules:
-        NHI(0): { START: 1.0 }
+        NHI(0): { START: 0.95 }
         NHI(1): { START: 1.0 }
         NHI(2): { START: 1.0 }
         NHI(3): { START: 1.0 }
@@ -30,7 +30,7 @@ NLO:
     dec_max: 18
     dec_order: -0.2
     rules:
-        NLO(0): { START: 1.0 }
+        NLO(0): { START: 0.95 }
         NLO(1): { START: 1.0 }
         NLO(2): { START: 1.0 }
         NLO(3): { START: 1.0 }
@@ -46,7 +46,7 @@ SHI:
     dec_min: 2
     dec_order: +0.2
     rules:
-        SHI(0): { START: 1.0 }
+        SHI(0): { START: 0.95 }
         SHI(1): { START: 1.0 }
         SHI(2): { START: 1.0 }
         SHI(3): { START: 1.0 }
@@ -62,7 +62,7 @@ SLO:
     dec_max: 2
     dec_order: -0.2
     rules:
-        SLO(0): { START: 1.0 }
+        SLO(0): { START: 0.95 }
         SLO(1): { START: 1.0 }
         SLO(2): { START: 1.0 }
         SLO(3): { START: 1.0 }

@@ -148,6 +148,12 @@ class Planner(object):
             if self.fiberassign_cadence not in ('daily', 'monthly'):
                 raise ValueError('Invalid fiberassign_cadence: "{}".'.format(
                     self.fiberassign_cadence))
+
+        nogray = getattr(config, 'tiles_nogray', False)
+        if not isinstance(nogray, bool):
+            nogray = nogray()
+        self.nogray = nogray
+
         self.tiles = desisurvey.tiles.get_tiles()
         self.ephem = desisurvey.ephem.get_ephem()
         if restore is not None:
@@ -170,30 +176,39 @@ class Planner(object):
                 self.tile_countdown = self.tiles.fiberassign_delay.copy()
                 self.tile_covered[ind] = t['COVERED'].data[mask].copy()
                 self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
+            self.snr2frac = np.zeros(self.tiles.ntiles, 'i4')
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = np.zeros(self.tiles.ntiles, 'f4')
-            self.designhacond = np.zeros(self.tiles.ntiles, '3f4')
+            self.designhacond = dict()
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
+            self.snr2frac = t['DONEFRAC'].data[mask].copy()
             self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
             self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
             self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
             self.lastexpid[ind] = t['LASTEXPID'].data[mask].copy()
             self.designha[ind] = t['DESIGNHA'].data[mask].copy()
-            self.designhacond[ind] = t['DESIGNHACOND'].data[mask].copy()
+            conditions = (['DARK', 'BRIGHT'] if self.nogray
+                          else ['DARK', 'GRAY', 'BRIGHT'])
+            for cond in conditions:
+                self.designhacond[cond] = t['DESIGNHA'+cond].data[mask].copy()
             self.log.debug('Restored plan with {} / {} tiles available from "{}".'.format(
                 np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
         else:
             # Initialize the plan for a a new survey.
+            self.snr2frac = np.zeros(self.tiles.ntiles, bool)
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.designha = load_design_hourangle()
-            self.designhacond = np.zeros(self.tiles.ntiles, '3f4')
-            self.designhacond[:, 0] = load_design_hourangle(condition='DARK')
-            self.designhacond[:, 1] = load_design_hourangle(condition='GRAY')
-            self.designhacond[:, 2] = load_design_hourangle(condition='BRIGHT')
+            self.designhacond = dict()
+            self.designhacond['DARK'] = load_design_hourangle(condition='DARK')
+            self.designhacond['BRIGHT'] = (
+                load_design_hourangle(condition='BRIGHT'))
+            if not self.nogray:
+                self.designhacond['GRAY'] = (
+                    load_design_hourangle(condition='GRAY'))
             if self.simulate:
                 self.first_night = self.last_night = None
                 # Initialize per-tile arrays.
@@ -275,7 +290,8 @@ class Planner(object):
         t['AVAILABLE'] = self.tile_available
         t['PRIORITY'] = self.tile_priority
         t['DESIGNHA'] = self.designha
-        t['DESIGNHACOND'] = self.designhacond
+        for cond in self.designhacond:
+            t['DESIGNHA'+cond.upper()] = self.designhacond[cond]
         if self.simulate:
             t['COVERED'] = self.tile_covered
             t['COUNTDOWN'] = self.tile_countdown
@@ -365,9 +381,17 @@ class Planner(object):
             case, tile availability and priority is based entirely on what
             files are currently present in the fiberassign directory and what
             the planner believes the current tile completions are.
+
+        Returns
+        -------
+        newavail (array), newplanned (array)
+            1D arrays of indices into tiles giving indices of newly planned
+            and available tiles
         """
         config = desisurvey.config.Configuration()
         completed = self.donefrac >= config.min_snr2_fraction()
+        oldavail = self.tile_available.copy()
+        oldplanned = self.tile_priority > 0
         self.log.debug('Starting afternoon planning for {} with {} / {} tiles completed.'
                        .format(night, np.count_nonzero(completed), self.tiles.ntiles))
         if self.simulate:
@@ -396,4 +420,16 @@ class Planner(object):
         # Update tile priorities.
         if self.rules is not None:
             self.tile_priority = self.rules.apply(self.donefrac)
-        return self.tile_available, self.tile_priority
+        mnewavail = self.tile_available != oldavail
+        mnewplanned = (self.tile_priority > 0) != oldplanned
+        if np.any(~self.tile_available & mnewavail):
+            raise RuntimeError('some previously available tiles are '
+                               'now unavailable')
+        if np.any(self.tile_priority < 0):
+            raise ValueError('All priorities must be >= 0.')
+        if np.any(oldplanned & (self.tile_priority <= 0)):
+            raise RuntimeError('Some previously planned tiles have zero '
+                               'priority.')
+        if ~np.any(self.tile_available & (self.tile_priority > 0)):
+            raise RuntimeError('No available tiles with >0 priority')
+        return np.flatnonzero(mnewavail), np.flatnonzero(mnewplanned)

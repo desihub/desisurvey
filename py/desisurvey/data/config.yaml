@@ -164,9 +164,12 @@ tile_radius: 1.63 deg
 #   an update to fiber_assignment_order, above.
 tiles_file: desi-tiles.fits
 
+# Merge dark and gray programs.
+tiles_nogray: True
+
 # Base path to pre-pended to all non-absolute paths used for reading and
 # writing files managed by this package. The pattern {...} will be expanded
 # using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'
 
-rules_file: rules.yaml
+rules_file: rules-depth.yaml

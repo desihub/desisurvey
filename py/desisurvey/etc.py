@@ -309,7 +309,7 @@ class ExposureTimeCalculator(object):
         self.TEXP_TOTAL = {}
         self.log = desiutil.log.get_logger()
         unknownprograms = []
-        for program in desisurvey.tiles.Tiles.PROGRAMS:
+        for program in desisurvey.tiles.get_tiles().programs:
             nomtime = getattr(config.nominal_exposure_time, program, None)
             if nomtime is None:
                 unknownprograms.append(program)
