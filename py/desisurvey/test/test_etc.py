@@ -86,7 +86,7 @@ class TestExpCalc(unittest.TestCase):
             tnom = getattr(config.nominal_exposure_time, 'DARK')().to(u.day).value
             # Check for sensible exposure estimates.
             tot1, rem1, n1 = ETC.estimate_exposure('DARK', 0., 1.0, 0)
-            tot2, rem2, n2 = ETC.estimate_exposure('GRAY', 0., 1.1, 0)
+            tot2, rem2, n2 = ETC.estimate_exposure('DARK', 0., 1.1, 0)
             self.assertEqual(tot1, tnom)
             self.assertEqual(tot1, rem1)
             self.assertEqual(tot2, rem2)

@@ -91,10 +91,10 @@ class Forecast(object):
         self.cummulative_days = np.cumsum(available, axis=1) / 24.
         # Calculate program parameters.
         ntiles, tsched, openfrac, dust, airmass, nominal = [], [], [], [], [], []
-        for program in tiles.PROGRAMS:
+        for program in tiles.programs:
             tile_sel = tiles.program_mask[program]
             ntiles.append(np.count_nonzero(tile_sel))
-            progindx = tiles.PROGRAM_INDEX[program]
+            progindx = tiles.program_index[program]
             scheduled_sum = scheduled[progindx].sum()
             tsched.append(scheduled_sum)
             openfrac.append(available[progindx].sum() / scheduled_sum)
@@ -117,14 +117,14 @@ class Forecast(object):
         """Print a summary table of the forecast parameters.
         """
         # Find the longest key and calculate the row length.
-        nprog = len(self.tiles.PROGRAMS)
+        nprog = len(self.tiles.programs)
         maxlen = np.max([len(key) for key in self.df])
         rowlen = maxlen + (1 + width) * nprog
         # Build a format string for each row.
         header = ' ' * maxlen + ' {{:>{}s}}'.format(width) * nprog
         row = '{{:>{}s}}'.format(maxlen) + ' {{:{}.{}g}}'.format(width, prec) * nprog
         # Print the header.
-        print(header.format(*self.tiles.PROGRAMS))
+        print(header.format(*self.tiles.programs))
         print(separator * rowlen)
         # Print each row.
         for key, values in self.df.items():
@@ -136,9 +136,9 @@ class Forecast(object):
                       split={'DARK': 100, 'GRAY': 100, 'BRIGHT':  75},
                       dead ={'DARK':  20, 'GRAY': 100, 'BRIGHT':  10}):
         df = self.df
-        df['Setup overhead / tile (s)'] = np.array([setup[p] for p in self.tiles.PROGRAMS])
-        df['Cosmic split overhead / tile (s)'] = np.array([split[p] for p in self.tiles.PROGRAMS])
-        df['Operations overhead / tile (s)'] = np.array([dead[p] for p in self.tiles.PROGRAMS])
+        df['Setup overhead / tile (s)'] = np.array([setup[p] for p in self.tiles.programs])
+        df['Cosmic split overhead / tile (s)'] = np.array([split[p] for p in self.tiles.programs])
+        df['Operations overhead / tile (s)'] = np.array([dead[p] for p in self.tiles.programs])
         df['Average available / tile (s)'] = (
             df['Scheduled time (hr)'] * df['Dome open fraction'] /
             # Avoid division by zero for a program with no tiles.
@@ -152,8 +152,8 @@ class Forecast(object):
                        moon    = {'DARK': 1.00, 'GRAY': 1.10, 'BRIGHT': 1.33},
                        weather = {'DARK': 1.22, 'GRAY': 1.20, 'BRIGHT': 1.16}):
         df = self.df
-        df['Moon factor'] = np.array([moon[p] for p in self.tiles.PROGRAMS])
-        df['Weather factor'] = np.array([weather[p] for p in self.tiles.PROGRAMS])
+        df['Moon factor'] = np.array([moon[p] for p in self.tiles.programs])
+        df['Weather factor'] = np.array([weather[p] for p in self.tiles.programs])
         df['Average required / tile (s)'] = (
             df['Nominal exposure (s)'] *
             df['Dust factor'] *
@@ -170,8 +170,8 @@ class Forecast(object):
             df['Average available / tile (s)'] /
             df['Average required / tile (s)'] - 1)
         self.pass_progress = np.zeros((self.tiles.npasses, self.num_nights))
-        for program in self.tiles.PROGRAMS:
-            progidx = self.tiles.PROGRAM_INDEX[program]
+        for program in self.tiles.programs:
+            progidx = self.tiles.program_index[program]
             dtexp = (
                 df['Average required / tile (s)'] +
                 df['Setup overhead / tile (s)'] +

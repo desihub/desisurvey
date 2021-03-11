@@ -36,8 +36,8 @@ class TestTiles(Tester):
         overlapping = tiles.overlapping
         self.assertEqual(id(overlapping), id(tiles.overlapping))
         # Sanity checks on overlap results.
-        # Assume that the second DARK pass depends on the first DARK pass.
-        DARK1, DARK2 = tiles.program_passes['DARK'][:2]
+        # Assume that the third DARK pass depends on the second DARK pass.
+        DARK1, DARK2 = tiles.program_passes['DARK'][1:3]
         IN1 = (tiles.passnum == DARK1)
         IN2 = (tiles.passnum == DARK2)
         self.assertEqual(len(tile_over[DARK1]), tiles.ntiles)

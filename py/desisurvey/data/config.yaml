@@ -172,4 +172,4 @@ tiles_nogray: True
 # using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'
 
-rules_file: rules-depth.yaml
+rules_file: rules.yaml

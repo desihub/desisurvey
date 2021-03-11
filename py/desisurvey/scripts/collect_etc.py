@@ -263,9 +263,9 @@ def get_conditions(mjd):
                                      night['changes'][night['changes'] != 0],
                                      [night['dawn'], night['brightdawn']]])
         nightprograms = np.concatenate([
-            [tiles.PROGRAM_INDEX['BRIGHT']],
+            [tiles.CONDITION_INDEX['BRIGHT']],
             night['programs'][night['programs'] != -1],
-            [tiles.PROGRAM_INDEX['BRIGHT']]])
+            [tiles.CONDITION_INDEX['BRIGHT']]])
         if len(nightprograms) != len(nighttimes)-1:
             raise ValueError('number of program changes does not match '
                              'number of programs!')
@@ -279,7 +279,7 @@ def get_conditions(mjd):
     # this program index is ~backwards from OBSCONDITIONS.
     newout = out.copy()
     for condition in tiles.OBSCONDITIONS:
-        m = out == tiles.PROGRAM_INDEX[condition]
+        m = out == tiles.CONDITION_INDEX[condition]
         newout[m] = tiles.OBSCONDITIONS[condition]
     return newout
 

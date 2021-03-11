@@ -122,7 +122,7 @@ class Tiles(object):
         self._fiberassign_delay = None
 
     CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
-    CONDITION_INDEX = {i: cond for i, cond in enumerate(CONDITIONS)}
+    CONDITION_INDEX = {cond: i for i, cond in enumerate(CONDITIONS)}
     OBSCONDITIONS = {'DARK': 1, 'GRAY': 2, 'BRIGHT': 4}
     """Mapping of night conditions to OBSCONDITIONS bit mask.
 

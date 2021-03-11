@@ -176,14 +176,12 @@ class Planner(object):
                 self.tile_countdown = self.tiles.fiberassign_delay.copy()
                 self.tile_covered[ind] = t['COVERED'].data[mask].copy()
                 self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
-            self.snr2frac = np.zeros(self.tiles.ntiles, 'i4')
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = np.zeros(self.tiles.ntiles, 'f4')
             self.designhacond = dict()
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
-            self.snr2frac = t['DONEFRAC'].data[mask].copy()
             self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
             self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
             self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
@@ -197,7 +195,6 @@ class Planner(object):
                 np.count_nonzero(self.tile_available), self.tiles.ntiles, fullname))
         else:
             # Initialize the plan for a a new survey.
-            self.snr2frac = np.zeros(self.tiles.ntiles, bool)
             self.tile_available = np.zeros(self.tiles.ntiles, bool)
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')

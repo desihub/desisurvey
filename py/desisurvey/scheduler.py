@@ -31,8 +31,7 @@ class Scheduler(object):
     from a file created using :meth:`save`.
 
     A newly created or restored scheduler must be configured with
-    calls to :meth:`update_tiles` (to tile availablity and priority)
-    and :meth:`init_night` (to precompute data for a night's observing)
+    :meth:`init_night` (to precompute data for a night's observing)
     before tiles can be selected.
 
     Use :meth:`next_tile` to select the next tile to observe during
@@ -68,10 +67,6 @@ class Scheduler(object):
         self.nogray = nogray
 
         self.min_snr2frac = config.min_snr2_fraction()
-        GRAY = desisurvey.config.Configuration().programs.GRAY
-        self.max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
-        self.max_frac = GRAY.max_moon_illumination()
-        self.threshold_alt = self.max_prod / self.max_frac
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         self.max_ha = config.max_hour_angle().to(u.deg).value
         # Load static tile info.
@@ -82,7 +77,7 @@ class Scheduler(object):
         # Initialize arrays derived from snr2frac.
         # Note that indexing of completed_by_pass uses tiles.pass_index, which is not necessarily
         # the same as range(tiles.npasses).
-        self.completed = (self.plan.snr2frac >= self.min_snr2frac)
+        self.completed = (self.plan.donefrac >= self.min_snr2frac)
         self.completed_by_pass = np.zeros(self.tiles.npasses, np.int32)
         for passnum in self.tiles.passes:
             idx = self.tiles.pass_index[passnum]
@@ -99,9 +94,6 @@ class Scheduler(object):
         # Load the ephemerides to use.
         self.ephem = desisurvey.ephem.get_ephem()
 
-        with np.errstate(divide='ignore'):
-            self.log_priority = np.log(self.plan.tile_priority)
-
         self.nominal_exposure_time_sec = (
             desisurvey.tiles.get_nominal_program_times(self.tiles.tileprogram))
         self.maxtime = config.maxtime()
@@ -114,8 +106,7 @@ class Scheduler(object):
     def init_night(self, night, use_twilight=False):
         """Initialize scheduling for the specified night.
 
-        Must be called before calls to :meth:`next_tile` and
-        :meth:`update_tile` during the night.
+        Must be called before calls to :meth:`next_tile`.
 
         The pool of available tiles during the night consists of those that:
 
@@ -141,7 +132,7 @@ class Scheduler(object):
         """
         self.log.debug('Initializing scheduler for {}'.format(night))
         if self.plan.tile_available is None or self.plan.tile_priority is None:
-            raise RuntimeError('Must call update_tiles() before init_night().')
+            raise RuntimeError('No tiles available!')
         self.night = night
         self.night_ephem = self.ephem.get_night(night)
         midnight = self.night_ephem['noon'] + 0.5
@@ -155,6 +146,9 @@ class Scheduler(object):
         self.LST0, LST1 = [
             self.night_ephem['brightdusk_LST'], self.night_ephem['brightdawn_LST']]
         self.dLST = (LST1 - self.LST0) / (MJD1 - self.MJD0)
+
+        with np.errstate(divide='ignore'):
+            self.log_priority = np.log(self.plan.tile_priority)
 
         # Initialize the pool of tiles that could be observed this night.
         self.in_night_pool[:] = (self.plan.tile_priority > 0) & self.plan.tile_available
@@ -228,8 +222,7 @@ class Scheduler(object):
 
         where :math:`\text{HA}` and :math:`\text{HA}_0` are the current and design
         hour angles, respectively, :math:`g` is the ``greediness`` parameter below,
-        and :math:`P` are the tile priorities used to implement survey strategy
-        and updated via :meth:`update_tiles`.
+        and :math:`P` are the tile priorities used to implement survey strategy.
 
         Parameters
         ----------
@@ -261,7 +254,7 @@ class Scheduler(object):
         Returns
         -------
         tuple
-            Tuple (TILEID,PASSNUM,SNR2FRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
+            Tuple (TILEID,PASSNUM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
             giving the ID and associated properties of the selected tile.
             When no tile is observable, only the last two tuple fields
             will be valid, and this method should be called again after
@@ -269,7 +262,7 @@ class Scheduler(object):
 
              - TILEID: ID of the tile to observe.
              - PASSNUM: pass number of the tile to observe.
-             - SNR2FRAC: fractional SNR2 already accumulated for the selected tile.
+             - DONEFRAC: fractional SNR2 already accumulated for the selected tile.
              - EXPFAC: initial exposure-time factor for the selected tile.
              - AIRMASS: initial airmass of the selected tile.
              - PROGRAM: scheduled program at ``mjd_now``, which might be
@@ -378,13 +371,13 @@ class Scheduler(object):
 
         # Return info about the selected tile and scheduled program.
         return (self.tiles.tileID[idx], self.tiles.passnum[idx],
-                self.plan.snr2frac[idx], self.exposure_factor[idx],
+                self.plan.donefrac[idx], self.exposure_factor[idx],
                 self.airmass[idx], program, mjd_program_end)
 
-    def update_snr(self, tileID, snr2frac, lastexpid):
+    def update_snr(self, tileID, donefrac, lastexpid):
         """Update SNR for one tile.
 
-        A tile whose update ``snr2frac`` exceeds the ``min_snr2frac``
+        A tile whose update ``donefrac`` exceeds the ``min_snr2frac``
         configuration parameter will be considered completed, and
         not scheduled for future observing.
 
@@ -392,12 +385,12 @@ class Scheduler(object):
         ----------
         tileID : int
             ID of the tile to update.
-        snr2frac : float
+        donefrac : float
             New value of the fractional SNR2 accumulated for this tile, including
             all previous exposures.
         """
-        self.plan.set_donefrac([tileID], [snr2frac], [lastexpid])
-        if snr2frac >= self.min_snr2frac:
+        self.plan.set_donefrac([tileID], [donefrac], [lastexpid])
+        if donefrac >= self.min_snr2frac:
             idx = self.tiles.index(tileID)
             if self.ignore_completed_priority <= 0:
                 self.in_night_pool[idx] = False

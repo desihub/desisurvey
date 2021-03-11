@@ -39,6 +39,11 @@ def donefrac_in_conditions(condnexp, configfn=None):
             nexp = condnexp['NNIGHT_'+cond][ic]
             program = tiles.tileprogram[it]
             out['NNIGHT_'+cond][it] = nexp
+    if tiles.nogray:
+        out['NNIGHT_NEEDED_DARK'] += out['NNIGHT_NEEDED_GRAY']
+        out['NNIGHT_NEEDED_GRAY'] = 0
+        out['NNIGHT_DARK'] += out['NNIGHT_GRAY']
+        out['NNIGHT_GRAY'] = 0
     for cond in CONDITIONS:
         out['DONEFRAC_'+cond] = out['NNIGHT_'+cond]/(
             out['NNIGHT_NEEDED_'+cond] + (out['NNIGHT_NEEDED_'+cond] == 0))

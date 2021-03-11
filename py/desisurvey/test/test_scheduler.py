@@ -29,12 +29,16 @@ class TestScheduler(Tester):
             night = self.start + datetime.timedelta(i)
             # Save and restore scheduler state.
             planner.save('snapshot.fits')
-            planner2 = desisurvey.plan.Planner(restore='snapshot.fits')
+            planner2 = desisurvey.plan.Planner(restore='snapshot.fits',
+                                               simulate=True)
             scheduler2 = Scheduler(planner2)
-            self.assertTrue(np.all(scheduler.plan.snr2frac == scheduler2.plan.snr2frac))
+            self.assertTrue(np.all(planner.donefrac == planner2.donefrac))
             self.assertTrue(np.all(scheduler.completed == scheduler2.completed))
             self.assertTrue(np.all(scheduler.completed_by_pass == scheduler2.completed_by_pass))
             avail, planned = planner.afternoon_plan(night, scheduler.completed)
+            avail2, planned2 = planner2.afternoon_plan(night, scheduler2.completed)
+            self.assertTrue(np.all(avail == avail2))
+            self.assertTrue(np.all(planned == planned2))
             # Run both schedulers in parallel.
             scheduler.init_night(night)
             scheduler2.init_night(night)
@@ -53,7 +57,11 @@ class TestScheduler(Tester):
                     scheduler.update_snr(tileid, 1., 0)
                     scheduler2.update_snr(tileid, 1., 0)
                 planner.set_donefrac(scheduler.tiles.tileID,
-                                     scheduler.plan.snr2frac, 0*scheduler.snr2frac)
+                                     scheduler.plan.donefrac,
+                                     np.arange(scheduler.tiles.ntiles))
+                planner2.set_donefrac(scheduler2.tiles.tileID,
+                                      scheduler2.plan.donefrac,
+                                      np.arange(scheduler2.tiles.ntiles))
 
 
 def test_suite():

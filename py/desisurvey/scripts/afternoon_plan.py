@@ -211,6 +211,13 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                  donefraccond['NNIGHT_NEEDED_'+cond][md])
             condmask = desisurvey.tiles.Tiles.OBSCONDITIONS[cond]
             newobsconditions[mt[m]] &= ~condmask
+        tob = desisurvey.tiles.get_tiles()
+        if tob.nogray:
+            graycond = desisurvey.tiles.Tiles.OBSCONDITIONS['GRAY']
+            darkcond = desisurvey.tiles.Tiles.OBSCONDITIONS['DARK']
+            newobsconditions &= ~graycond
+            newobsconditions |= graycond * ((darkcond & newobsconditions) != 0)
+
         ignore_completed_priority = getattr(config,
                                             'ignore_completed_priority', -1)
         if not isinstance(ignore_completed_priority, int):

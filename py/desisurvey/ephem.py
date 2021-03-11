@@ -451,7 +451,7 @@ class Ephemerides(object):
         if include_twilight:
             start = night_ephem['brightdusk']
             stop = night_ephem['brightdawn']
-            BRIGHT = desisurvey.tiles.Tiles.CONDITIONS_INDEX['BRIGHT']
+            BRIGHT = desisurvey.tiles.Tiles.CONDITION_INDEX['BRIGHT']
             if programs[0] != BRIGHT:
                 # Twilight adds a BRIGHT program at the start of the night.
                 programs = np.insert(programs, 0, BRIGHT)
