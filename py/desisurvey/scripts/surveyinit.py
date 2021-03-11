@@ -166,17 +166,14 @@ def calculate_initial_plan(args):
         include_twilight=args.include_twilight)
     lst_centers = 0.5*(lst_bins[:-1]+lst_bins[1:])
 
-    no_gray_tiles = getattr(config, 'tiles_nogray', False)
-    if not isinstance(no_gray_tiles, bool):
-        no_gray_tiles = no_gray_tiles()
-    if no_gray_tiles:
+    if tiles.nogray:
         grayordark = tiles.OBSCONDITIONS['DARK'] | tiles.OBSCONDITIONS['GRAY']
         mgrayordark = (tiles.tileobsconditions & grayordark) != 0
         m = (tiles.tileobsconditions[mgrayordark] & grayordark) != grayordark
         if np.any(m):
             log.warning((
                 '{} tiles observable in either dark or gray, but '
-                'not both.  no_gray_tiles is True, so gray and '
+                'not both.  tiles.nogray is True, so gray and '
                 'dark LST are being optimized together.  For LST planning '
                 'purposes, all gray/dark tiles are assigned to a common '
                 'bucket.').format(np.sum(m)))
@@ -184,11 +181,9 @@ def calculate_initial_plan(args):
         new_lst_hist[0, :] = lst_hist[0, :] + lst_hist[1, :]
         new_lst_hist[1, :] = lst_hist[2, :]
         lst_hist = new_lst_hist[0:2, :].copy()
-        m = (tiles.tileobsconditions & grayordark) != 0
-        tiles.tileobsconditions[m] = grayordark
 
     # Initialize the output results table.
-    if no_gray_tiles:
+    if tiles.nogray:
         conditions = ['DARK', 'BRIGHT']
     else:
         conditions = ['DARK', 'GRAY', 'BRIGHT']
@@ -206,7 +201,7 @@ def calculate_initial_plan(args):
         GRAY=args.gray_stretch,
         BRIGHT=args.bright_stretch)
 
-    if no_gray_tiles:
+    if tiles.nogray:
         stretches.pop('GRAY')
 
     tile_is_assignable = np.zeros(tiles.ntiles, dtype='bool')

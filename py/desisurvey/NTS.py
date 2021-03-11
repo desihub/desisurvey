@@ -224,8 +224,7 @@ class NTS():
             self.planner = desisurvey.plan.Planner(
                 self.rules,
                 restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
-            self.scheduler = desisurvey.scheduler.Scheduler(
-                restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
+            self.scheduler = desisurvey.scheduler.Scheduler(self.planner)
             self.queuedlist = QueuedList(
                 config.get_path('{}/queued-{}.dat'.format(fulldir, nts_dir)))
             self.requestlog = RequestLog(

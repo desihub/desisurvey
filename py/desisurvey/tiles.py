@@ -67,7 +67,8 @@ class Tiles(object):
             m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
             tiles['PROGRAM'][m] = 'DARK'
             obscond = self.OBSCONDITIONS['DARK'] | self.OBSCONDITIONS['GRAY']
-            tiles['OBSCONDITIONS'][m] = obscond
+            m = (tiles['OBSCONDITIONS'] & obscond) != 0
+            tiles['OBSCONDITIONS'][m] |= obscond
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
         self.passnum = tiles['PASS'].copy()
