@@ -76,6 +76,8 @@ class Tiles(object):
         self.tileDEC = tiles['DEC'].copy()
         self.tileobsconditions = tiles['OBSCONDITIONS'].copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
+        self.programs = self.PROGRAMS
+        self.program_index = self.PROGRAM_INDEX
         # Count tiles.
         self.ntiles = len(self.tileID)
         # Can remove this when tile_index no longer uses searchsorted.
