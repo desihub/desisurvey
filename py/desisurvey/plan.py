@@ -239,6 +239,23 @@ class Planner(object):
         if not np.any(self.tile_priority > 0):
             raise RuntimeError('All tile priorities are all <= 0.')
 
+    def add_pending_tile(self, tileid):
+        """Add a newly observed, now-pending tile to the pending tile list.
+
+        Updates tile availability so that this tile's neighbors will not
+        be observed until this tile is completed.
+
+        Parameters
+        ----------
+        tileid : int
+        """
+        idx = self.tiles.index(tileid)
+        overlapping = self.tiles.overlapping[idx]
+        # if this tile's LyA decisions have already been made,
+        # that's a problem!
+        assert not self.tile_completed[idx]
+        self.tile_available[overlapping] = 0
+
     def set_donefrac(self, tileid, donefrac, lastexpid):
         """Update planner with new tile donefrac and lastexpid.
 
@@ -264,6 +281,9 @@ class Planner(object):
             lastexpid = lastexpid[mask]
         self.donefrac[tileind] = donefrac
         self.lastexpid[tileind] = lastexpid
+        for tileid0, donefrac0 in zip(tileid[mask], donefrac):
+            if donefrac0 > 0:
+                self.add_pending_tile(tileid0)
 
     def save(self, name):
         """Save a snapshot of our current state that can be restored.
@@ -426,4 +446,6 @@ class Planner(object):
             self.tile_priority = self.rules.apply(self.donefrac)
         self.last_night = night
         pending = (self.tile_started >= 0) & (self.tile_completed < 0)
+        for tileid in self.tiles.tileID[pending]:
+            self.add_pending_tile(tileid)
         return pending, self.tile_priority
