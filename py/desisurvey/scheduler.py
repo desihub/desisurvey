@@ -40,16 +40,7 @@ class Scheduler(object):
 
     Parameters
     ----------
-    restore : str or None
-        Restore internal state from the snapshot saved to this filename,
-        or initialize a new scheduler when None. Use :meth:`save` to
-        save a snapshot to be restored later. Filename is relative to
-        the configured output path unless an absolute path is
-        provided.
-    design_hourangles : array or None
-        1D array of design hour angles to use in degrees, or use
-        :func:`desisurvey.plan.load_design_hourangle` when None,
-        when not restoring.
+    plan : desisurvey.plan.Plan instance to use for planning
     """
     def __init__(self, plan):
         self.log = desiutil.log.get_logger()
@@ -73,12 +64,6 @@ class Scheduler(object):
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
         self.plan = plan
-
-        # Check hourangles.
-        if design_hourangle is not None:
-            self.design_hourangle = design_hourangle
-        if self.design_hourangle.shape != (self.tiles.ntiles,):
-            raise ValueError('Array design_hourangle has wrong shape.')
 
         # Initialize arrays derived from snr2frac.
         self.completed = (self.plan.donefrac >= self.min_snr2frac)
@@ -107,22 +92,6 @@ class Scheduler(object):
         self.avoid_bodies = {}
         for body in config.avoid_bodies.keys:
             self.avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg).value
-
-    def add_pending_tile(self, tile_rownum):
-        """Add a newly observed, now-pending tile to the pending tile list.
-
-        Updates tile availability so that this tile's neighbors will not
-        be observed until this tile is completed.
-
-        Parameters
-        ----------
-        tile_rownum : int
-            the row number of the tile in the internal Tile object corresponding
-            to this tile.
-        """
-        overlapping = self.tiles.overlapping[tile_rownum]
-        self.plan.tile_available[overlapping] = 0
-        self.in_night_pool[overlapping] = 0
 
     def init_night(self, night, use_twilight=False):
         """Initialize scheduling for the specified night.
@@ -309,7 +278,7 @@ class Scheduler(object):
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
         # Select available tiles in this program.
-        self.tile_sel &= self.in_night_pool
+        self.tile_sel &= self.in_night_pool & (self.plan.tile_available > 0)
         if not np.any(self.tile_sel):
             if verbose:
                 self.log.warning('No available tiles in requested program.')
@@ -413,14 +382,12 @@ class Scheduler(object):
         """
         idx = self.tiles.index(tileID)
         self.plan.set_donefrac([tileID], [donefrac], [lastexpid])
-        if donefrac > 0:
-            self.add_pending_tile(idx)
         if donefrac >= self.min_snr2frac:
             if self.ignore_completed_priority <= 0:
                 self.in_night_pool[idx] = False
             self.completed[idx] = True
             progidx = self.tiles.program_index[self.tiles.tileprogram[idx]]
-            self.completed_by_program[passidx] += 1
+            self.completed_by_program[progidx] += 1
 
     def survey_completed(self):
         """Test if all tiles have been completed.

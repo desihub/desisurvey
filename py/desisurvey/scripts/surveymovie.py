@@ -143,7 +143,7 @@ class Animator(object):
         self.dec = self.tiles.tileDEC
         self.tileprogram = self.tiles.tileprogram
         self.tileid = self.tiles.tileID
-        self.program_names = self.tiles.programs
+        self.prognames = self.tiles.programs
         nprogram = len(self.prognames)
         self.tiles_per_program = {p: np.sum(self.tiles.program_mask[p])
                                   for p in self.prognames}
@@ -225,12 +225,12 @@ class Animator(object):
                 ax.set_xticks([])
                 ax.set_yticks([])
                 axes.append(ax)
-                # Top-right corner is reserved for integrated progress plots.
+                # Bottom-right corner is reserved for integrated progress plots.
                 if row == 1 and col == 1:
                     ax.set_xlim(0, self.survey_weeks)
                     ax.set_ylim(0, 1)
                     ax.plot([0, self.survey_weeks], [0., 1.], 'w-')
-                    for pname in self.program_names:
+                    for pname in self.prognames:
                         pc = pcolors[pname]
                         xprog = 0.5 + np.arange(self.survey_weeks)
                         # Initialize values to INF so they are not plotted
@@ -241,10 +241,13 @@ class Animator(object):
                             xprog, yprog, lw=2, ls='-',
                             color=pcolors[pname])[0])
                     continue
+                if progidx >= len(self.tiles.programs):
+                    # e.g., for no-gray mode, where we have only two programs.
+                    continue
                 ax.set_xlim(-55, 293)
                 ax.set_ylim(-20, 77)
                 # Draw label for this plot.
-                pname = self.tiles.PROGRAMS[progidx]
+                pname = self.tiles.programs[progidx]
                 pc = pcolors[pname]
                 self.labels.append(ax.annotate(
                     '{0} 100.0%'.format(pname),
@@ -433,7 +436,7 @@ class Animator(object):
             score = self.scores[iexp - self.iexp0]
             max_score = np.max(score)
         for progidx, scatter in enumerate(self.scatters):
-            sel = (self.tileprogram == self.tiles.PROGRAMS[progidx])
+            sel = (self.tileprogram == self.tiles.programs[progidx])
             done = self.status[sel] == 2
             avail = self.available[sel]
             inplan = self.planned[sel]

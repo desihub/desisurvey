@@ -156,6 +156,7 @@ class Planner(object):
 
         self.tiles = desisurvey.tiles.get_tiles()
         self.ephem = desisurvey.ephem.get_ephem()
+        self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
         if restore is not None:
             # Restore the plan for a survey in progress.
             fullname = config.get_path(restore)
@@ -204,11 +205,11 @@ class Planner(object):
                                 np.sum(self.tile_completed > 0),
                                 fullname))
             assert not np.any((self.tile_started < 0) &
-                              (self.tile_observed > 0))
+                              (self.tile_observed >= 0))
             assert not np.any((self.tile_started < 0) &
-                              (self.tile_completed > 0))
+                              (self.tile_completed >= 0))
             assert not np.any((self.tile_observed < 0) &
-                              (self.tile_completed > 0))
+                              (self.tile_completed >= 0))
         else:
             # Initialize the plan for a a new survey.
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
@@ -253,7 +254,7 @@ class Planner(object):
         overlapping = self.tiles.overlapping[idx]
         # if this tile's LyA decisions have already been made,
         # that's a problem!
-        assert not self.tile_completed[idx]
+        assert not self.tile_completed[idx] >= 0
         self.tile_available[overlapping] = 0
 
     def set_donefrac(self, tileid, donefrac, lastexpid):
@@ -281,7 +282,7 @@ class Planner(object):
             lastexpid = lastexpid[mask]
         self.donefrac[tileind] = donefrac
         self.lastexpid[tileind] = lastexpid
-        for tileid0, donefrac0 in zip(tileid[mask], donefrac):
+        for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
             if donefrac0 > 0:
                 self.add_pending_tile(tileid0)
 
@@ -331,7 +332,7 @@ class Planner(object):
                  np.sum(self.tile_started < 0),
                  np.sum((self.tile_started >= 0) &
                         (self.tile_completed < 0)),
-                 np.sum(self.tile_completed > 0),
+                 np.sum(self.tile_completed >= 0),
                  fullname))
 
     def fiberassign_simulate(self, night):
@@ -339,12 +340,13 @@ class Planner(object):
         """
         # Calculate the number of elapsed nights in the survey.
         day_number = (night - self.first_night).days
-        pending = (self.tile_observed > 0) & (self.tile_completed < 0)
+        pending = (self.tile_observed >= 0) & (self.tile_completed < 0)
         run_now = pending & (self.tile_countdown <= 0)
         self.tile_completed[run_now] = day_number
         delayed = pending & (self.tile_countdown > 0)
         self.tile_countdown[delayed] -= 1
-        self.log.info('Fiber assigned {} tiles with {} delayed on {}.'
+        self.tile_available = np.ones(len(self.tile_completed), dtype='bool')
+        self.log.info('Completed {} tiles with {} delayed on {}.'
                       .format(np.count_nonzero(run_now),
                               np.count_nonzero(delayed), night))
 
@@ -372,7 +374,7 @@ class Planner(object):
             match = rgx.match(fn)
             if match:
                 available_tileids.append(int(match.group(1)))
-        available = np.zeros(len(self.tiles.tileID), dtype='bool')
+        available = np.zeros(self.tiles.ntiles, dtype='bool')
         ind, mask = self.tiles.index(available_tileids, return_mask=True)
         available[ind[mask]] = True
         self.tile_available = available.copy()
@@ -399,9 +401,8 @@ class Planner(object):
 
         Returns
         -------
-        pending (array), tile_priority (array)
-            pending is a 1D bool array indicating pending tiles.
-            tile_priority gives the priorities of all tiles.
+        new_observed (array), new_completed (array)
+            boolean arrays indicating newly observed and newly completed tiles.
         """
         config = desisurvey.config.Configuration()
         if self.first_night is None:
@@ -414,6 +415,7 @@ class Planner(object):
         self.tile_observed[newlyobserved] = day_number - 1
         newlystarted = ((self.donefrac > 0) & (self.tile_started < 0))
         self.tile_started[newlystarted] = day_number - 1
+        oldcompleted = self.tile_completed.copy()
         self.log.debug(('Starting afternoon planning for {} with {} / {} '
                         'tiles completed.').format(
                             night,
@@ -434,7 +436,12 @@ class Planner(object):
             if run_fiberassign:
                 self.fiberassign_simulate(night)
             self.last_night = night
+            nowcomplete = ((self.tile_observed >= 0) &
+                           (self.tile_countdown <= 0) &
+                           (self.tile_completed < 0))
+            self.tile_completed[nowcomplete] = day_number
         else:
+            self.log.error('we need a mechanism to mark completed tiles.')
             fiber_assign_dir = get_fiber_assign_dir(fiber_assign_dir)
             if fiber_assign_dir is None:
                 raise ValueError(
@@ -448,4 +455,6 @@ class Planner(object):
         pending = (self.tile_started >= 0) & (self.tile_completed < 0)
         for tileid in self.tiles.tileID[pending]:
             self.add_pending_tile(tileid)
-        return pending, self.tile_priority
+        newlycompleted = self.tile_completed != oldcompleted
+        assert not np.any(newlycompleted & (self.tile_completed < 0))
+        return newlystarted, newlycompleted

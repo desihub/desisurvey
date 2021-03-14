@@ -184,7 +184,7 @@ class Forecast(object):
             # Compute progress assuming tiles are observed in pass order,
             # separated by exactly dtexp.
             ntiles_observed = 0
-            ntiles = np.sum(self.tiles.program_mask(program))
-            self.program_progress[programidx] = np.clip(
+            ntiles = np.sum(self.tiles.program_mask[program])
+            self.program_progress[progidx] = np.clip(
                 progress - ntiles_observed, 0, ntiles)
             ntiles_observed += ntiles

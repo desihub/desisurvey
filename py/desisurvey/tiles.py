@@ -76,8 +76,6 @@ class Tiles(object):
         self.tileDEC = tiles['DEC'].copy()
         self.tileobsconditions = tiles['OBSCONDITIONS'].copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
-        self.programs = self.PROGRAMS
-        self.program_index = self.PROGRAM_INDEX
         # Count tiles.
         self.ntiles = len(self.tileID)
         # Can remove this when tile_index no longer uses searchsorted.
@@ -89,12 +87,8 @@ class Tiles(object):
 
         # Build tile masks for each program. A program will no tiles with have an empty mask.
         self.program_mask = {}
-        for p in self.PROGRAMS:
+        for p in self.programs:
             self.program_mask[p] = self.tileprogram == p
-        self.allowed_in_conditions = {}
-        for p in self.OBSCONDITIONS:
-            mask = (self.tileobsconditions & self.OBSCONDITIONS[p]) != 0
-            self.allowed_in_conditions[p] = mask
         # Calculate and save dust exposure factors.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'])
         # Precompute coefficients to calculate tile observing airmass.
@@ -202,9 +196,12 @@ class Tiles(object):
     def overlapping(self):
         """Dictionary of tile overlap matrices.
 
-        overlapping[program][j, k] is True if the j-th tile of program is
-        overlapped by the k-th tile of tile_over[program]. There is no
-        dictionary entry when the mask tile_over[program] is empty.
+        overlapping[i] is the list of tile row numbers that overlap the
+        tile with row number i.
+
+        Overlapping tiles are only computed within a program; a tile cannot
+        overlap a tile of a different program.  If fiber_assignment_delay is
+        negative, tile do not overlap one another within a program.
         """
         if self._overlapping is None:
             self._calculate_overlaps()
@@ -237,7 +234,7 @@ class Tiles(object):
         tile_diameter = 2 * config.tile_radius()
 
         fiber_assignment_delay = config.fiber_assignment_delay
-        for program in Tiles.PROGRAMS:
+        for program in self.programs:
             delay = getattr(fiber_assignment_delay, program, None)
             if delay is not None:
                 delay = delay()
@@ -249,6 +246,7 @@ class Tiles(object):
             # self._overlapping: list of lists, giving tiles overlapping each
             # tile
             if delay < 0:
+                # this program doesn't have overlapping tile requirements
                 continue
             from astropy.coordinates import SkyCoord, search_around_sky
             c = SkyCoord(self.tileRA[m]*u.deg, self.tileDEC[m]*u.deg)

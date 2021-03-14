@@ -135,10 +135,13 @@ fiber_assignment_cadence: daily
 # goes from observation until adjacent overlapping tiles may be observed
 # -1 if overlapping tiles may immediately be observed
 # default to -1 for any passes not listed.
+# 0 if overlapping tiles should not be observed on same night, but may
+# be observed on following day, without waiting for a full fiberassign interval
+# 1 if you have to wait a full interval.
 fiber_assignment_delay:
-    GRAY: -1
-    DARK: 0
-    BRIGHT: -1
+    GRAY: 0
+    DARK: 7
+    BRIGHT: 0
 
 # Nominal tile radius for determining whether two tiles overlap.
 tile_radius: 1.63 deg
@@ -166,4 +169,4 @@ tiles_nogray: True
 # using environment variables.
 output_path: '{DESISURVEY_OUTPUT}'
 
-rules_file: rules.yaml
+rules_file: rules-depth.yaml

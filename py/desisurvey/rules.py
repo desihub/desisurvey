@@ -120,7 +120,7 @@ class Rules(object):
                 raise RuntimeError(
                     'Missing required programs for {0}.'.format(group_name))
             programs = [p.strip() for p in str(programs).split(',')]
-            for p in tiles.PROGRAMS:
+            for p in tiles.programs:
                 if p not in programs:
                     group_sel[tiles.tileprogram == p] = False
 
@@ -222,13 +222,17 @@ class Rules(object):
         array
             Array of per-tile observing priorities.
         """
+
+        nogray = desisurvey.tiles.get_tiles().nogray
+
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
             if not np.any(group_sel) and not self.commissioning:
-                self.log.error('No tiles covered by rule {}'.format(name))
+                if not nogray or '(GRAY)' not in name:
+                    self.log.error('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
             completed = donefrac > self.min_snr2_fraction
             ndone = np.count_nonzero(completed[group_sel])

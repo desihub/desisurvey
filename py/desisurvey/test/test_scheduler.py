@@ -34,7 +34,7 @@ class TestScheduler(Tester):
             scheduler2 = Scheduler(planner2)
             self.assertTrue(np.all(planner.donefrac == planner2.donefrac))
             self.assertTrue(np.all(scheduler.completed == scheduler2.completed))
-            self.assertTrue(np.all(scheduler.completed_by_pass == scheduler2.completed_by_pass))
+            self.assertTrue(np.all(scheduler.completed_by_program == scheduler2.completed_by_program))
             avail, planned = planner.afternoon_plan(night, scheduler.completed)
             avail2, planned2 = planner2.afternoon_plan(night, scheduler2.completed)
             self.assertTrue(np.all(avail == avail2))
@@ -46,7 +46,7 @@ class TestScheduler(Tester):
             dusk, dawn = scheduler.night_ephem['dusk'], scheduler.night_ephem['dawn']
             ETC = desisurvey.etc.ExposureTimeCalculator()
             for mjd in np.arange(dusk, dawn, 15. / (24. * 60.)):
-                # TILEID,PASSNUM,SNR2FRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND
+                # TILEID,PROGRAM,SNR2FRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND
                 next = scheduler.next_tile(mjd, ETC, seeing=1.1, transp=0.95, skylevel=1)
                 # Check that the restored scheduler gives the same results.
                 next2 = scheduler2.next_tile(mjd, ETC, seeing=1.1, transp=0.95, skylevel=1)
