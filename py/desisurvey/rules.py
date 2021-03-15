@@ -190,8 +190,9 @@ class Rules(object):
         if np.any(group_ids == 0):
             orphans = (group_ids == 0)
             programs = ','.join([str(s) for s in np.unique(tiles.tileprogram[orphans])])
-            raise RuntimeError(
-                '{0} tiles in passes {1} not assigned to any group.'
+            self.log.warning(
+                '{0} tiles in passes {1} not assigned to any group.  These '
+                'tiles will be given zero priority. '
                 .format(np.count_nonzero(orphans), programs))
 
         # Check that all rule triggers are valid subgroup names.

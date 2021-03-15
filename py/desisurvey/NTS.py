@@ -235,7 +235,7 @@ class NTS():
                              'has afternoon planning been performed?')
         self.scheduler.init_night(self.night, use_twilight=True)
         for queuedtile in self.queuedlist.queued:
-            self.scheduler.add_pending_tile(queuedtile)
+            self.scheduler.plan.add_pending_tile(queuedtile)
         self.ETC = desisurvey.etc.ExposureTimeCalculator()
 
     def next_tile(self, conditions=None, exposure=None, constraints=None,
@@ -355,7 +355,7 @@ class NTS():
             self.requestlog.logresponse(tile)
             return tile
 
-        self.scheduler.add_pending_tile(tileid)
+        self.scheduler.plan.add_pending_tile(tileid)
 
         if self.commissioning:
             self.log.info('Ignoring existing donefrac in SV1.')

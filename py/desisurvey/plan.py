@@ -156,7 +156,6 @@ class Planner(object):
 
         self.tiles = desisurvey.tiles.get_tiles()
         self.ephem = desisurvey.ephem.get_ephem()
-        self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
         if restore is not None:
             # Restore the plan for a survey in progress.
             fullname = config.get_path(restore)
@@ -177,9 +176,11 @@ class Planner(object):
                 self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
                 if t.meta['CADENCE'] != self.fiberassign_cadence:
                     raise ValueError('Fiberassign cadence mismatch.')
+            self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
             self.tile_started = np.zeros(self.tiles.ntiles, dtype='i4')
             self.tile_observed = np.zeros(self.tiles.ntiles, dtype='i4')
             self.tile_completed = np.zeros(self.tiles.ntiles, dtype='i4')
+            self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
             self.tile_started[ind] = t['STARTED'].data[mask].copy()
             self.tile_observed[ind] = t['OBSERVED'].data[mask].copy()
             self.tile_completed[ind] = t['COMPLETED'].data[mask].copy()
@@ -212,6 +213,7 @@ class Planner(object):
                               (self.tile_completed >= 0))
         else:
             # Initialize the plan for a a new survey.
+            self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.designha = load_design_hourangle()
@@ -315,6 +317,7 @@ class Planner(object):
         t['DEC'] = self.tiles.tileDEC
         t['DONEFRAC'] = self.donefrac
         t['LASTEXPID'] = self.lastexpid
+        t['AVAILABLE'] = self.tile_available
         t['STARTED'] = self.tile_started
         t['OBSERVED'] = self.tile_observed
         t['COMPLETED'] = self.tile_completed
@@ -410,7 +413,7 @@ class Planner(object):
             self.first_night = night
         day_number = (night - self.first_night).days
 
-        newlyobserved = ((self.donefrac > config.min_snr2_fraction()) &
+        newlyobserved = ((self.donefrac >= config.min_snr2_fraction()) &
                          (self.tile_observed < 0))
         self.tile_observed[newlyobserved] = day_number - 1
         newlystarted = ((self.donefrac > 0) & (self.tile_started < 0))

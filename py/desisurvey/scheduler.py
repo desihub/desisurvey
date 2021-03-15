@@ -385,6 +385,8 @@ class Scheduler(object):
         if donefrac >= self.min_snr2frac:
             if self.ignore_completed_priority <= 0:
                 self.in_night_pool[idx] = False
+            else:
+                self.plan.tile_priority[idx] = self.ignore_completed_priority
             self.completed[idx] = True
             progidx = self.tiles.program_index[self.tiles.tileprogram[idx]]
             self.completed_by_program[progidx] += 1
