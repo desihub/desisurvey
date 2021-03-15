@@ -31,12 +31,15 @@ class TestScheduler(Tester):
             planner.save('snapshot.fits')
             planner2 = desisurvey.plan.Planner(restore='snapshot.fits',
                                                simulate=True)
-            scheduler2 = Scheduler(planner2)
             self.assertTrue(np.all(planner.donefrac == planner2.donefrac))
-            self.assertTrue(np.all(scheduler.completed == scheduler2.completed))
-            self.assertTrue(np.all(scheduler.completed_by_program == scheduler2.completed_by_program))
-            avail, planned = planner.afternoon_plan(night, scheduler.completed)
-            avail2, planned2 = planner2.afternoon_plan(night, scheduler2.completed)
+            self.assertTrue(np.all(planner.tile_status == planner2.tile_status))
+            avail, planned = planner.afternoon_plan(night)
+            avail2, planned2 = planner2.afternoon_plan(night)
+            scheduler2 = Scheduler(planner2)
+            self.assertTrue(np.all(scheduler.plan.obsend() ==
+                                   scheduler2.plan.obsend()))
+            self.assertTrue(np.all(scheduler.plan.obsend_by_program() ==
+                                   scheduler2.plan.obsend_by_program()))
             self.assertTrue(np.all(avail == avail2))
             self.assertTrue(np.all(planned == planned2))
             # Run both schedulers in parallel.

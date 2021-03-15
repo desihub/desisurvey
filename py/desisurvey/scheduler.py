@@ -65,14 +65,6 @@ class Scheduler(object):
         ntiles = self.tiles.ntiles
         self.plan = plan
 
-        # Initialize arrays derived from snr2frac.
-        self.completed = (self.plan.donefrac >= self.min_snr2frac)
-        self.completed_by_program = np.zeros(len(self.tiles.programs), np.int32)
-        for program in self.tiles.programs:
-            progidx = self.tiles.program_index[program]
-            m = self.tiles.program_mask[program]
-            self.completed_by_program[progidx] = np.sum(self.completed[m])
-
         # Allocate memory for internal arrays.
         self.exposure_factor = np.zeros(ntiles)
         self.hourangle = np.zeros(ntiles)
@@ -143,7 +135,7 @@ class Scheduler(object):
         # Initialize the pool of tiles that could be observed this night.
         self.in_night_pool[:] = (self.plan.tile_priority > 0) & self.plan.tile_available
         if self.ignore_completed_priority <= 0:
-             self.in_night_pool &= ~self.completed
+             self.in_night_pool &= ~self.plan.obsend()
 
         # Check if any tiles cannot be observed because they are too close to a planet this night.
         poolRA = self.tiles.tileRA[self.in_night_pool]
@@ -387,11 +379,3 @@ class Scheduler(object):
                 self.in_night_pool[idx] = False
             else:
                 self.plan.tile_priority[idx] = self.ignore_completed_priority
-            self.completed[idx] = True
-            progidx = self.tiles.program_index[self.tiles.tileprogram[idx]]
-            self.completed_by_program[progidx] += 1
-
-    def survey_completed(self):
-        """Test if all tiles have been completed.
-        """
-        return np.sum(self.completed) == self.tiles.ntiles
