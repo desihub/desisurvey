@@ -54,14 +54,8 @@ class TestScheduler(Tester):
                     self.assertEqual(field, field2)
                 tileid = next[0]
                 if tileid is not None:
-                    scheduler.update_snr(tileid, 1., 0)
-                    scheduler2.update_snr(tileid, 1., 0)
-                planner.set_donefrac(scheduler.tiles.tileID,
-                                     scheduler.plan.donefrac,
-                                     np.arange(scheduler.tiles.ntiles))
-                planner2.set_donefrac(scheduler2.tiles.tileID,
-                                      scheduler2.plan.donefrac,
-                                      np.arange(scheduler2.tiles.ntiles))
+                    scheduler.update_snr(tileid, 1.)
+                    scheduler2.update_snr(tileid, 1.)
 
 
 def test_suite():

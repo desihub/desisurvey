@@ -189,10 +189,8 @@ class Planner(object):
             self.designha = np.zeros(self.tiles.ntiles, 'f4')
             self.designhacond = dict()
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
-            self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
             self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
-            self.lastexpid[ind] = t['LASTEXPID'].data[mask].copy()
             self.designha[ind] = t['DESIGNHA'].data[mask].copy()
             conditions = (['DARK', 'BRIGHT'] if self.nogray
                           else ['DARK', 'GRAY', 'BRIGHT'])
@@ -215,7 +213,6 @@ class Planner(object):
             # Initialize the plan for a a new survey.
             self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
-            self.lastexpid = np.zeros(self.tiles.ntiles, 'i4')
             self.designha = load_design_hourangle()
             self.designhacond = dict()
             self.designhacond['DARK'] = load_design_hourangle(condition='DARK')
@@ -259,8 +256,8 @@ class Planner(object):
         assert not self.tile_completed[idx] >= 0
         self.tile_available[overlapping] = 0
 
-    def set_donefrac(self, tileid, donefrac, lastexpid):
-        """Update planner with new tile donefrac and lastexpid.
+    def set_donefrac(self, tileid, donefrac):
+        """Update planner with new tile donefrac.
 
         Parameters
         ----------
@@ -269,21 +266,13 @@ class Planner(object):
 
         donefrac : array
             1D array of completion fractions for tiles, matching tileid
-
-        lastexpid : array
-            1D array of last expid, giving last exposure ID on each tile
-            must match tileid
         """
-        if len(donefrac) != len(lastexpid):
-            raise ValueError('donefrac length must equal lastexpid length.')
         tileind, mask = self.tiles.index(tileid, return_mask=True)
         if np.any(~mask):
             self.log.warning('Some tiles with unknown IDs; ignoring')
             tileind = tileind[mask]
             donefrac = donefrac[mask]
-            lastexpid = lastexpid[mask]
         self.donefrac[tileind] = donefrac
-        self.lastexpid[tileind] = lastexpid
         for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
             if donefrac0 > 0:
                 self.add_pending_tile(tileid0)
@@ -316,7 +305,6 @@ class Planner(object):
         t['RA'] = self.tiles.tileRA
         t['DEC'] = self.tiles.tileDEC
         t['DONEFRAC'] = self.donefrac
-        t['LASTEXPID'] = self.lastexpid
         t['AVAILABLE'] = self.tile_available
         t['STARTED'] = self.tile_started
         t['OBSERVED'] = self.tile_observed

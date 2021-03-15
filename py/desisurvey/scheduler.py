@@ -365,7 +365,7 @@ class Scheduler(object):
                 self.plan.donefrac[idx], self.exposure_factor[idx],
                 self.airmass[idx], program, mjd_program_end)
 
-    def update_snr(self, tileID, donefrac, lastexpid):
+    def update_snr(self, tileID, donefrac):
         """Update SNR for one tile.
 
         A tile whose update ``donefrac`` exceeds the ``min_snr2frac``
@@ -381,7 +381,7 @@ class Scheduler(object):
             all previous exposures.
         """
         idx = self.tiles.index(tileID)
-        self.plan.set_donefrac([tileID], [donefrac], [lastexpid])
+        self.plan.set_donefrac([tileID], [donefrac])
         if donefrac >= self.min_snr2frac:
             if self.ignore_completed_priority <= 0:
                 self.in_night_pool[idx] = False
