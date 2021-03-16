@@ -159,13 +159,11 @@ class Planner(object):
             if not os.path.exists(fullname):
                 raise RuntimeError('Cannot restore planner from non-existent '
                                    '"{}".'.format(fullname))
-            t = astropy.table.Table.read(fullname, hdu='STATUS')
+            t = astropy.table.Table.read(fullname)
             ind, mask = self.tiles.index(t['TILEID'], return_mask=True)
-            if np.any(~mask):
-                self.log.warning('Ignoring {} tiles not in tile file.'.format(
-                    sum(mask)))
-            ind = ind[mask]
-            # in operations, we don't really need CADENCE
+            if np.any(~mask) or len(t) != self.tiles.ntiles:
+                raise ValueError('mismatch between tiles and status file; '
+                                 'should not be possible!')
             if self.simulate:
                 self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
                 self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
@@ -173,19 +171,11 @@ class Planner(object):
                 self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
                 if t.meta['CADENCE'] != self.fiberassign_cadence:
                     raise ValueError('Fiberassign cadence mismatch.')
-            self.tile_status = np.zeros(self.tiles.ntiles, dtype='U20')
-            self.tile_status[:] = 'unobs'
-            self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
-            self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
-            self.tile_status[ind] = t['STATUS'].data[mask].copy()
-
-            self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
-            self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
-            self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
-            self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
-
-            self.designha = np.zeros(self.tiles.ntiles, 'f4')
-            self.designha[ind] = t['DESIGNHA'].data[mask].copy()
+            self.tile_status = t['STATUS'].data.copy()
+            self.tile_available = np.ones(self.tiles.ntiles, dtype='bool')
+            self.tile_priority = t['PRIORITY'].data.copy()
+            self.donefrac = t['DONEFRAC'].data.copy()
+            self.designha = t['DESIGNHA'].data.copy()
             self.log.debug(('Restored plan with {} unobserved, {} pending, '
                             'and {} completed tiles from {}.').format(
                                 np.sum(self.donefrac <= 0),
@@ -199,11 +189,11 @@ class Planner(object):
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = load_design_hourangle()
 
-            self.first_night = self.last_night = None
             # Initialize per-tile arrays.
-            self.tile_status = np.zeros(self.tiles.ntiles, dtype='U80')
+            self.tile_status = np.zeros(self.tiles.ntiles, dtype='U12')
             self.tile_status[:] = 'unobs'
             if self.simulate:
+                self.first_night = self.last_night = None
                 # Initailize the delay countdown for each tile.
                 self.tile_countdown = self.tiles.fiberassign_delay.copy()
             # Initialize priorities.
@@ -276,9 +266,10 @@ class Planner(object):
         """Save a snapshot of our current state that can be restored.
 
         The output file has a binary table (extname PLAN) with columns
-        TILEID, STARTED, OBSERVED, COMPLETED, COUNTDOWN, and PRIORITY and
-        header keywords CADENCE, FIRST, LAST. The saved file size is about
-        400Kb.
+        TILEID, CENTERID, PASS, RA, DEC, PROGRAM, IN_DESI, EBV_MED, DESIGNHA,
+        PRIORITY, STATUS, and DONEFRAC.
+        Simulations also include COUNTDOWN and header keywords CADENCE,
+        FIRST, LAST.
 
         Parameters
         ----------
@@ -290,23 +281,20 @@ class Planner(object):
         """
         config = desisurvey.config.Configuration()
         fullname = config.get_path(name)
-        meta = dict(EXTNAME='STATUS')
+        meta = dict(EXTNAME='TILES')
         if self.simulate:
             meta['CADENCE'] = self.fiberassign_cadence
             meta['FIRST'] = self.first_night.isoformat()
             meta['LAST'] = self.last_night.isoformat()
-        t = astropy.table.Table(meta=meta)
-        t['TILEID'] = self.tiles.tileID
-        t['RA'] = self.tiles.tileRA
-        t['DEC'] = self.tiles.tileDEC
-        t['DONEFRAC'] = self.donefrac
-        t['AVAILABLE'] = self.tile_available
-        t['STATUS'] = self.tile_status
-        t['PRIORITY'] = self.tile_priority
+        t = self.tiles.read_tiles_table()
+        t.meta = meta
         t['DESIGNHA'] = self.designha
+        t['PRIORITY'] = self.tile_priority
+        t['STATUS'] = self.tile_status
+        t['DONEFRAC'] = self.donefrac
         if self.simulate:
             t['COUNTDOWN'] = self.tile_countdown
-        t.write(fullname+'.tmp', overwrite=True, format='fits')
+        t.write(fullname+'.tmp', overwrite=True, format='ascii.ecsv')
         os.rename(fullname+'.tmp', fullname)
         self.log.debug(
             ('Saved plan with {} unobserved, {} pending, and {} '

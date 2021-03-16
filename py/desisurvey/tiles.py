@@ -49,30 +49,16 @@ class Tiles(object):
     """
     def __init__(self, tiles_file=None):
         config = desisurvey.config.Configuration()
+        self.nogray = config.tiles_nogray()
+
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
         self.tiles_file = desisurvey.utils.findfile(
             self.tiles_file, default_dirname='footprint',
             default_filename='desi-tiles.fits')
-        tiles = Table.read(self.tiles_file)
-        tiles = tiles[tiles['IN_DESI'] != 0]
 
-        self.nogray = config.tiles_nogray
-        if self.nogray:
-            m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
-            tiles['PROGRAM'][m] = 'DARK'
+        tiles = self.read_tiles_table()
 
-        tprograms = np.unique(tiles['PROGRAM'])
-        programinconfig = np.isin(tprograms,
-                                  [x for x in config.programs.keys])
-        log = desiutil.log.get_logger()
-        keep = np.ones(len(tiles), dtype='bool')
-        if np.any(~programinconfig):
-            for program in tprograms[~programinconfig]:
-                keep[tiles['PROGRAM'] == program] = 0
-            tiles = tiles[keep]
-            log.info('Removing the following programs from the tile '
-                     'file: ' + ' '.join(tprograms[~programinconfig]))
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].data.copy()
         self.tileprogram = tiles['PROGRAM'].data.copy()
@@ -261,6 +247,33 @@ class Tiles(object):
                     # ignore self matches
                     continue
                 self._overlapping[rownum[ind1]].append(rownum[ind2])
+
+    def read_tiles_table(self):
+        """Read and trim the tiles table.
+
+        Must be called after self.tiles_file and self.nogray
+        member variables have been set.
+        """
+        config = desisurvey.config.Configuration()
+        tiles = Table.read(self.tiles_file)
+        tiles = tiles[tiles['IN_DESI'] != 0]
+        if self.nogray:
+            m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
+            tiles['PROGRAM'][m] = 'DARK'
+        tprograms = np.unique(tiles['PROGRAM'])
+
+        programinconfig = np.isin(tprograms,
+                                  [x for x in config.programs.keys])
+        log = desiutil.log.get_logger()
+        keep = np.ones(len(tiles), dtype='bool')
+        if np.any(~programinconfig):
+            for program in tprograms[~programinconfig]:
+                keep[tiles['PROGRAM'] == program] = 0
+            tiles = tiles[keep]
+            log.info('Removing the following programs from the tile '
+                     'file: ' + ' '.join(tprograms[~programinconfig]))
+        return tiles
+
 
 
 _cached_tiles = {}
