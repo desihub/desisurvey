@@ -183,7 +183,7 @@ class NTS():
         -------
         NTS object. Tiles can be generated via next_tile(...)
         """
-        self.log = desiutil.log.get_logger()
+        self.log = logob
         # making a new NTS; clear out old configuration / tile information
         if night is None:
             self.night = desisurvey.utils.get_current_date()
@@ -216,9 +216,6 @@ class NTS():
         self.default_program = defaults.get('program', 'DARK')
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
-        self.commissioning = getattr(config, 'commissioning', False)
-        if not isinstance(self.commissioning, bool):
-            self.commissioning = self.commissioning()
         self.config = config
         try:
             self.planner = desisurvey.plan.Planner(
@@ -346,34 +343,35 @@ class NTS():
         self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
+        badtile = {'esttime': 0., 'exptime': 0.,
+                   'count': 0, 'maxtime': 0., 'fiberassign': 0,
+                   'foundtile': False,
+                   'conditions': '', 'program': '', 'exposure_factor': 0,
+                   'req_efftime': 0., 'sbprof': 'PSF'}
         if tileid is None:
-            tile = {'esttime': 0., 'exptime': 0.,
-                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
-                    'foundtile': False,
-                    'conditions': '', 'program': '', 'exposure_factor': 0,
-                    'req_efftime': 0., 'sbprof': 'PSF'}
-            self.requestlog.logresponse(tile)
-            return tile
+            self.requestlog.logresponse(badtile)
+            return badtile
 
         self.scheduler.plan.add_pending_tile(tileid)
 
-        if self.commissioning:
-            self.log.info('Ignoring existing donefrac in SV1.')
-            snr2frac_start = 0
-
         idx = self.scheduler.tiles.index(int(tileid))
         tile_program = self.scheduler.tiles.tileprogram[idx]
+        programconf = getattr(self.config.programs, tile_program, None)
+        if programconf is None:
+            self.log.error('Did not recognize program {}'.format(
+                tile_program))
+            return badtile
+
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
             tile_program, snr2frac_start, exposure_factor, nexp_completed=0)
-        efftime = getattr(self.config.nominal_exposure_time, tile_program,
-                          None)
+        efftime = getattr(programconf, 'efftime', None)
         if efftime is not None:
             efftime = efftime()
         else:
             efftime = 1000*u.s
         efftime = float(efftime.to(u.s).value)
 
-        sbprof = getattr(self.config, 'sbprof', None)
+        sbprof = getattr(programconf, 'sbprof', None)
         if sbprof is not None:
             sbprof = getattr(sbprof, tile_program, None)
             if sbprof is not None:
@@ -381,38 +379,26 @@ class NTS():
         if not isinstance(sbprof, str):
             sbprof = 'PSF'
 
-        if tile_program not in ['DARK', 'GRAY', 'BRIGHT']:
-            moon_up_factor = getattr(self.config, 'moon_up_factor')
-            moon_up_factor = getattr(moon_up_factor, sched_program)()
-            texp_tot *= moon_up_factor
-            texp_remaining *= moon_up_factor
+        texp_tot *= skylevel
+        texp_remaining *= skylevel
 
         # avoid crossing program boundaries, don't observe longer than an hour.
-        maxdwell = getattr(self.config, 'maxtime')().to(u.day).value
+        maxdwell = self.config.maxtime().to(u.day).value
         texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd,
                               maxdwell])
         exptime = texp_remaining
-        maxtime = self.ETC.MAX_EXPTIME
-        maxtimecond = getattr(self.config, 'maximum_time_in_conditions',
-                              None)
-        if maxtimecond is not None:
-            maxtimecond = getattr(maxtimecond, sched_program, None)
-            if maxtimecond is not None:
-                maxtimecond = maxtimecond().to(u.day).value
-        if maxtimecond is None:
-            maxtimecond = np.inf
-        maxtime = np.min([maxtime, maxtimecond])
+        splittime = self.config.cosmic_ray_split().to(u.day).value
 
         days_to_seconds = 60*60*24
         fivemin = 5/60/24  # 5 minutes... pretty arbitrary.
         if ((mjd <= self.scheduler.night_ephem['dusk']-fivemin) or
                 (mjd >= self.scheduler.night_ephem['dawn']+fivemin)):
-            maxtime = 300/days_to_seconds
+            splittime = 300/days_to_seconds
             # in twilight, exposures should never be longer than 300 s
             # according to DJS.
 
-        if exptime > maxtime:
-            count = int((exptime / maxtime).astype('i4') + 1)
+        if exptime > splittime:
+            count = int((exptime / splittime).astype('i4') + 1)
         else:
             if (self.night.day % 2) != 0:
                 count = 2  # do cosmic splits
@@ -423,7 +409,7 @@ class NTS():
         if (sched_program == 'DARK') & (tile_program == 'sv1bgsmws'):
             count = int(np.max([count, 2]))
         splitexptime = exptime / count
-        minexptime = getattr(self.config, 'minimum_exposure_time', None)
+        minexptime = getattr(programconf, 'minimum_exposure_time', None)
         if minexptime:
             minexptime = getattr(minexptime, sched_program)()
             minexptime = minexptime.to(u.s).value

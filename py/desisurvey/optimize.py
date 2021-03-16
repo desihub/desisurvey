@@ -132,7 +132,7 @@ class Optimizer(object):
         # Get nominal exposure time for this program,
         # converted to LST equivalent in degrees.
         texp_nom = u.Quantity([
-            getattr(config.nominal_exposure_time, program)()
+            getattr(config.programs, program).efftime()
             for program in tiles.tileprogram[tile_sel]])
         moon_up_factor = getattr(config, 'moon_up_factor', None)
         if moon_up_factor is not None:
@@ -140,15 +140,11 @@ class Optimizer(object):
             texp_nom *= moon_up_factor
         if completed is not None:
             completed = astropy.table.Table.read(completed)
-            nobtained = np.zeros(tiles.ntiles, dtype='f4')
-            nneeded = np.zeros(tiles.ntiles, dtype='f4')
+            donefrac = np.zeros(tiles.ntiles, dtype='f4')
             idx, mask = tiles.index(completed['TILEID'], return_mask=True)
             idx = idx[mask]
-            nobtained[idx] = (
-                completed['NNIGHT_'+condition][mask])
-            nneeded[idx] = (
-                completed['NNIGHT_NEEDED_'+condition][mask])
-            boost = np.clip(nneeded-nobtained, 0, np.inf)
+            donefrac[idx] = completed['donefrac'][mask]
+            boost = np.clip(1-donefrac, 0, 1)
             texp_nom *= boost[tile_sel]
 
         self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583

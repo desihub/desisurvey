@@ -167,16 +167,7 @@ def calculate_initial_plan(args):
     lst_centers = 0.5*(lst_bins[:-1]+lst_bins[1:])
 
     if tiles.nogray:
-        grayordark = tiles.OBSCONDITIONS['DARK'] | tiles.OBSCONDITIONS['GRAY']
-        mgrayordark = (tiles.tileobsconditions & grayordark) != 0
-        m = (tiles.tileobsconditions[mgrayordark] & grayordark) != grayordark
-        if np.any(m):
-            log.warning((
-                '{} tiles observable in either dark or gray, but '
-                'not both.  tiles.nogray is True, so gray and '
-                'dark LST are being optimized together.  For LST planning '
-                'purposes, all gray/dark tiles are assigned to a common '
-                'bucket.').format(np.sum(m)))
+        assert not np.any(tiles.tileobsconditions == 'GRAY')
         new_lst_hist = lst_hist.copy()
         new_lst_hist[0, :] = lst_hist[0, :] + lst_hist[1, :]
         new_lst_hist[1, :] = lst_hist[2, :]
@@ -269,7 +260,6 @@ def calculate_initial_plan(args):
         texp *= 24. * 3600. / 360. * 0.99726956583
         # Save results for this program.
         design['HA'][sel] = opt.ha
-        design['HA_'+condition][sel] = opt.ha
         design['TEXP'][sel] = texp
 
     hdus.append(fits.BinTableHDU(design, name='DESIGN'))

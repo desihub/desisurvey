@@ -28,6 +28,7 @@ import numpy as np
 
 import astropy.units as u
 from astropy.time import Time
+from astropy.table import Table
 
 import desimodel.io
 import desiutil.log
@@ -50,38 +51,48 @@ class Tiles(object):
         config = desisurvey.config.Configuration()
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
-        commissioning = getattr(config, 'commissioning', False)
-        if not isinstance(commissioning, bool):
-            commissioning = commissioning()
-        if not commissioning:
-            tiles = desimodel.io.load_tiles(
-                onlydesi=True, extra=False, tilesfile=self.tiles_file)
-        else:
-            tiles = desimodel.io.load_tiles(
-                onlydesi=False, extra=True, tilesfile=self.tiles_file)
-        nogray = getattr(config, 'tiles_nogray', False)
-        if not isinstance(nogray, bool):
-            nogray = nogray()
-        self.nogray = nogray
+        self.tiles_file = desisurvey.utils.findfile(
+            self.tiles_file, default_dirname='footprint',
+            default_filename='desi-tiles.fits')
+        tiles = Table.read(self.tiles_file)
+        tiles = tiles[tiles['IN_DESI'] != 0]
+
+        self.nogray = config.tiles_nogray
         if self.nogray:
             m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
             tiles['PROGRAM'][m] = 'DARK'
-            obscond = self.OBSCONDITIONS['DARK'] | self.OBSCONDITIONS['GRAY']
-            m = (tiles['OBSCONDITIONS'] & obscond) != 0
-            tiles['OBSCONDITIONS'][m] |= obscond
+
+        tprograms = np.unique(tiles['PROGRAM'])
+        programinconfig = np.isin(tprograms,
+                                  [x for x in config.programs.keys])
+        log = desiutil.log.get_logger()
+        keep = np.ones(len(tiles), dtype='bool')
+        if np.any(~programinconfig):
+            for program in tprograms[~programinconfig]:
+                keep[tiles['PROGRAM'] == program] = 0
+            tiles = tiles[keep]
+            log.info('Removing the following programs from the tile '
+                     'file: ' + ' '.join(tprograms[~programinconfig]))
         # Copy tile arrays.
-        self.tileID = tiles['TILEID'].copy()
-        self.tileprogram = tiles['PROGRAM'].copy()
-        self.tileRA = tiles['RA'].copy()
-        self.tileDEC = tiles['DEC'].copy()
-        self.tileobsconditions = tiles['OBSCONDITIONS'].copy()
+        self.tileID = tiles['TILEID'].data.copy()
+        self.tileprogram = tiles['PROGRAM'].data.copy()
+        self.tileRA = tiles['RA'].data.copy()
+        self.tileDEC = tiles['DEC'].data.copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
+
+        self.tileobsconditions = np.array([
+            getattr(config.programs, program).conditions()
+            for program in self.tileprogram])
+        if self.nogray:
+            mgray = self.tileobsconditions == 'GRAY'
+            self.tileobsconditions[mgray] = 'DARK'
+
         # Count tiles.
         self.ntiles = len(self.tileID)
         # Can remove this when tile_index no longer uses searchsorted.
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')
-        self.programs = [x for x in np.unique(tiles['PROGRAM'])]
+        self.programs = [x for x in np.unique(tiles['PROGRAM'].data)]
         self.program_index = {pname: pidx
                               for pidx, pname in enumerate(self.programs)}
 
@@ -90,7 +101,7 @@ class Tiles(object):
         for p in self.programs:
             self.program_mask[p] = self.tileprogram == p
         # Calculate and save dust exposure factors.
-        self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'])
+        self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'].data)
         # Precompute coefficients to calculate tile observing airmass.
         latitude = np.radians(config.location.latitude())
         tile_dec_rad = np.radians(self.tileDEC)
@@ -103,12 +114,6 @@ class Tiles(object):
 
     CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
     CONDITION_INDEX = {cond: i for i, cond in enumerate(CONDITIONS)}
-    OBSCONDITIONS = {'DARK': 1, 'GRAY': 2, 'BRIGHT': 4}
-    """Mapping of night conditions to OBSCONDITIONS bit mask.
-
-    Tiles that may be observed in DARK/GRAY/BRIGHT conditions should have
-    (obsconditions & OBSCONDITIONS[program]) != 0.
-    """
 
     def airmass(self, hour_angle, mask=None):
         """Calculate tile airmass given hour angle.
@@ -190,7 +195,7 @@ class Tiles(object):
         return res
 
     def allowed_in_conditions(self, cond):
-        return (self.tileobsconditions & self.OBSCONDITIONS[cond]) != 0
+        return (self.tileobsconditions == cond)
 
     @property
     def overlapping(self):
@@ -306,17 +311,20 @@ def get_nominal_program_times(tileprogram, config=None):
     """Return nominal times for given programs in seconds."""
     if config is None:
         config = desisurvey.config.Configuration()
-    cfgnomtimes = config.nominal_exposure_time
+    progconf = config.programs
     nomtimes = []
     unknownprograms = []
     nunknown = 0
     for program in tileprogram:
-        nomprogramtime = getattr(cfgnomtimes, program, 300)
-        if not isinstance(nomprogramtime, int):
-            nomprogramtime = nomprogramtime().to(u.s).value
-        else:
+        tprogconf = getattr(progconf, program, None)
+        if tprogconf is None:
+            nomprogramtime = 300
             unknownprograms.append(program)
             nunknown += 1
+        else:
+            nomprogramtime = getattr(tprogconf, 'efftime')()
+        if not isinstance(nomprogramtime, int):
+            nomprogramtime = nomprogramtime.to(u.s).value
         nomtimes.append(nomprogramtime)
     if nunknown > 0:
         log = desiutil.log.get_logger()

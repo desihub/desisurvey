@@ -17,7 +17,7 @@ import desisurvey.tiles
 import desisurvey.ephem
 
 
-def load_design_hourangle(name='surveyinit.fits', condition=None):
+def load_design_hourangle(name='surveyinit.fits'):
     """Load design hour-angle assignments from disk.
 
     Reads column 'HA' from binary table HDU 'DESIGN'. This is the format
@@ -45,11 +45,7 @@ def load_design_hourangle(name='surveyinit.fits', condition=None):
     design = astropy.io.fits.getdata(fullname, 'DESIGN')
     ind, mask = tiles.index(design['tileID'], return_mask=True)
     HA = np.zeros(tiles.ntiles, dtype='f4')
-    if condition is not None:
-        hacolname = 'HA_' + condition
-    else:
-        hacolname = 'HA'
-    HA[ind[mask]] = design[hacolname][mask]
+    HA[ind[mask]] = design['HA'][mask]
     if not np.all(mask) or len(design) != tiles.ntiles:
         log = desiutil.log.get_logger()
         log.warning('The tile file and HA optimizations do not match.')
@@ -189,12 +185,7 @@ class Planner(object):
             self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
 
             self.designha = np.zeros(self.tiles.ntiles, 'f4')
-            self.designhacond = dict()
             self.designha[ind] = t['DESIGNHA'].data[mask].copy()
-            conditions = (['DARK', 'BRIGHT'] if self.nogray
-                          else ['DARK', 'GRAY', 'BRIGHT'])
-            for cond in conditions:
-                self.designhacond[cond] = t['DESIGNHA'+cond].data[mask].copy()
             self.log.debug(('Restored plan with {} unobserved, {} pending, '
                             'and {} completed tiles from {}.').format(
                                 np.sum(self.donefrac <= 0),
@@ -207,13 +198,6 @@ class Planner(object):
             self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = load_design_hourangle()
-            self.designhacond = dict()
-            self.designhacond['DARK'] = load_design_hourangle(condition='DARK')
-            self.designhacond['BRIGHT'] = (
-                load_design_hourangle(condition='BRIGHT'))
-            if not self.nogray:
-                self.designhacond['GRAY'] = (
-                    load_design_hourangle(condition='GRAY'))
 
             self.first_night = self.last_night = None
             # Initialize per-tile arrays.
@@ -320,8 +304,6 @@ class Planner(object):
         t['STATUS'] = self.tile_status
         t['PRIORITY'] = self.tile_priority
         t['DESIGNHA'] = self.designha
-        for cond in self.designhacond:
-            t['DESIGNHA'+cond.upper()] = self.designhacond[cond]
         if self.simulate:
             t['COUNTDOWN'] = self.tile_countdown
         t.write(fullname+'.tmp', overwrite=True, format='fits')

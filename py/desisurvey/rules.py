@@ -53,23 +53,9 @@ class Rules(object):
     def __init__(self, file_name='rules.yaml'):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
-        commissioning = getattr(config, 'commissioning', False)
-        if not isinstance(commissioning, bool):
-            commissioning = commissioning()
-        self.commissioning = commissioning
         self.min_snr2_fraction = config.min_snr2_fraction()
-        finish_started_priority = getattr(config, 'finish_started_priority', 0)
-        import numbers
-        if not isinstance(finish_started_priority, numbers.Number):
-            finish_started_priority = finish_started_priority()
-        self.finish_started_priority = finish_started_priority
-        ignore_completed_priority = getattr(config,
-                                            'ignore_completed_priority', -1)
-        if not isinstance(ignore_completed_priority, numbers.Number):
-            ignore_completed_priority = ignore_completed_priority()
-        self.ignore_completed_priority = ignore_completed_priority
-
-        tile_radius = config.tile_radius().to(u.deg).value
+        self.finish_started_priority = config.finish_started_priority()
+        self.ignore_completed_priority = config.ignore_completed_priority()
 
         tiles = desisurvey.tiles.get_tiles()
         NGC = (tiles.tileRA > 75.0) & (tiles.tileRA < 300.0)
@@ -231,9 +217,9 @@ class Rules(object):
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
-            if not np.any(group_sel) and not self.commissioning:
+            if not np.any(group_sel):
                 if not nogray or '(GRAY)' not in name:
-                    self.log.error('No tiles covered by rule {}'.format(name))
+                    self.log.info('No tiles covered by rule {}'.format(name))
             ngroup = np.count_nonzero(group_sel)
             completed = donefrac > self.min_snr2_fraction
             ndone = np.count_nonzero(completed[group_sel])

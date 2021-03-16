@@ -341,11 +341,18 @@ def update_donefrac_from_offline(exps, offlinefn):
     offlineprograms = np.zeros(len(offline), dtype='U80')
     offlineprograms[:] = 'DARK'
     offlineprograms[mo] = tileprograms[me]
+    uofflineprograms = np.unique(offlineprograms)
+    unknown = []
+    for p in uofflineprograms:
+        if p not in efftimetypedict:
+            unknown.append(p)
+    log.warning('Unknown programs '+ ', '.join(unknown)+ ', using DARK '
+                'effective time.')
     efftimetypes = np.array([
         efftimetypedict.get(p, 'DARK') for p in offlineprograms])
     offline_eff_time = np.where(efftimetypes == 'DARK',
-                                offline['EFFTIME_DARK'],
-                                offline['EFFTIME_BRIGHT'])
+                                offline['ELG_EFFTIME_DARK'],
+                                offline['BGS_EFFTIME_BRIGHT'])
     if ((len(np.unique(exps['EXPID'])) != len(exps)) or
             (len(np.unique(offline['EXPID'])) != len(offline))):
         raise ValueError('weird duplicate EXPID in exps or offline')

@@ -335,11 +335,8 @@ class Scheduler(object):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for
         # observing tiles away from their design hour angle.
-        cond = program
-        if self.nogray:
-            cond = 'DARK' if cond == 'GRAY' else cond
         dHA = (self.hourangle[self.tile_sel] -
-               self.plan.designhacond[cond][self.tile_sel])
+               self.plan.designha[self.tile_sel])
         dHA[dHA >= 180.] -= 360
         dHA[dHA < -180] += 360
         assert np.all((dHA >= -180) & (dHA < 180))
