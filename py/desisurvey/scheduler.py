@@ -31,8 +31,7 @@ class Scheduler(object):
     from a file created using :meth:`save`.
 
     A newly created or restored scheduler must be configured with
-    calls to :meth:`update_tiles` (to tile availablity and priority)
-    and :meth:`init_night` (to precompute data for a night's observing)
+    :meth:`init_night` (to precompute data for a night's observing)
     before tiles can be selected.
 
     Use :meth:`next_tile` to select the next tile to observe during
@@ -41,18 +40,9 @@ class Scheduler(object):
 
     Parameters
     ----------
-    restore : str or None
-        Restore internal state from the snapshot saved to this filename,
-        or initialize a new scheduler when None. Use :meth:`save` to
-        save a snapshot to be restored later. Filename is relative to
-        the configured output path unless an absolute path is
-        provided.
-    design_hourangles : array or None
-        1D array of design hour angles to use in degrees, or use
-        :func:`desisurvey.plan.load_design_hourangle` when None,
-        when not restoring.
+    plan : desisurvey.plan.Plan instance to use for planning
     """
-    def __init__(self, restore=None, design_hourangle=None):
+    def __init__(self, plan):
         self.log = desiutil.log.get_logger()
         # Load our configuration.
         config = desisurvey.config.Configuration()
@@ -61,62 +51,19 @@ class Scheduler(object):
         if not isinstance(ignore_completed_priority, int):
             ignore_completed_priority = ignore_completed_priority()
         self.ignore_completed_priority = ignore_completed_priority
+
+        nogray = getattr(config, 'tiles_nogray', False)
+        if not isinstance(nogray, bool):
+            nogray = nogray()
+        self.nogray = nogray
+
         self.min_snr2frac = config.min_snr2_fraction()
-        GRAY = desisurvey.config.Configuration().programs.GRAY
-        self.max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
-        self.max_frac = GRAY.max_moon_illumination()
-        self.threshold_alt = self.max_prod / self.max_frac
         self.max_airmass = desisurvey.utils.cos_zenith_to_airmass(np.sin(config.min_altitude()))
         self.max_ha = config.max_hour_angle().to(u.deg).value
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
-        # Initialize snr2frac, which is our only internal state.
-        if restore is not None:
-            # Restore the snr2frac array for a survey in progress.
-            fullname = config.get_path(restore)
-            if not os.path.exists(fullname):
-                raise RuntimeError('Cannot restore scheduler from non-existent "{}".'.format(fullname))
-            t = astropy.table.Table.read(fullname, hdu='STATUS')
-            ind, mask = self.tiles.index(t['TILEID'], return_mask=True)
-            ind = ind[mask]
-            self.snr2frac = np.zeros(ntiles, 'f4')
-            self.lastexpid = np.zeros(ntiles, 'i4')
-            self.design_hourangle = np.zeros(ntiles, 'f4')
-            self.design_hourangle_cond = np.zeros(ntiles, '3f4')
-            self.snr2frac[ind] = t['DONEFRAC'][mask].copy()
-            self.lastexpid[ind] = t['LASTEXPID'][mask].copy()
-            self.design_hourangle[ind] = t['DESIGNHA'][mask].copy()
-            self.design_hourangle_cond[ind] = t['DESIGNHACOND'][mask].copy()
-            self.log.debug('Restored scheduler snapshot from "{}".'.format(fullname))
-        else:
-            # Initialize for a new survey.
-            self.snr2frac = np.zeros(ntiles, float)
-            self.lastexpid = np.zeros(ntiles, float)
-            self.design_hourangle = desisurvey.plan.load_design_hourangle()
-            if self.design_hourangle.shape[0] != self.tiles.ntiles:
-                raise ValueError('design_hourangle has the wrong shape!')
-            self.design_hourangle_cond = np.array([
-                desisurvey.plan.load_design_hourangle(condition=cond)
-                for cond in ['DARK', 'GRAY', 'BRIGHT']]).T
-            if self.design_hourangle.shape[0] != self.tiles.ntiles:
-                raise ValueError('design_hourangle has the wrong shape!')
-
-        # Initialize arrays derived from snr2frac.
-        # Note that indexing of completed_by_pass uses tiles.pass_index, which is not necessarily
-        # the same as range(tiles.npasses).
-        self.completed = (self.snr2frac >= self.min_snr2frac)
-        self.completed_by_pass = np.zeros(self.tiles.npasses, np.int32)
-        for passnum in self.tiles.passes:
-            idx = self.tiles.pass_index[passnum]
-            self.completed_by_pass[idx] = np.count_nonzero(self.completed[self.tiles.passnum == passnum])
-
-        # Check hourangles.
-        if design_hourangle is not None:
-            self.design_hourangle = design_hourangle
-        if self.design_hourangle.shape != (self.tiles.ntiles,):
-            raise ValueError('Array design_hourangle has wrong shape.')
-
+        self.plan = plan
 
         # Allocate memory for internal arrays.
         self.exposure_factor = np.zeros(ntiles)
@@ -128,11 +75,7 @@ class Scheduler(object):
         self.night = None
         # Load the ephemerides to use.
         self.ephem = desisurvey.ephem.get_ephem()
-        # Initialize tile availability and priority.
-        # No tiles will be scheduled until these are updated using update_tiles().
-        self.tile_available = np.zeros(self.tiles.ntiles, bool)
-        self.tile_planned = np.zeros(self.tiles.ntiles, bool)
-        self.tile_priority = np.zeros(self.tiles.ntiles, float)
+
         self.nominal_exposure_time_sec = (
             desisurvey.tiles.get_nominal_program_times(self.tiles.tileprogram))
         self.maxtime = config.maxtime()
@@ -142,62 +85,10 @@ class Scheduler(object):
         for body in config.avoid_bodies.keys:
             self.avoid_bodies[body] = getattr(config.avoid_bodies, body)().to(u.deg).value
 
-    def update_tiles(self, tile_available, tile_priority):
-        """Update tile availability and priority.
-
-        A valid update must have some tiles available with priority > 0.
-        Once a tile has been "planned", i.e., assigned priority > 0, it can
-        not be later un-planned, i.e., assigned zero priority.
-
-        Parameters
-        ----------
-        tile_available : array
-            1D array of booleans to indicate which tiles have had fibers assigned
-            and so are available to schedule.
-        tile_priority : array
-            1D array of per-tile priority values >= 0 used to implement survey strategy.
-
-        Returns
-        -------
-        tuple
-            Tuple (new_available, new_planned) of 1D arrays of tile indices that
-            identify any tiles are newly available or "planned" (assigned priority > 0).
-        """
-        new_available = tile_available & ~self.tile_available
-        new_unavailable = ~tile_available & self.tile_available
-        if np.any(new_unavailable):
-            raise RuntimeError('Some previously available tiles now unavailable.')
-        self.tile_available[new_available] = True
-
-        assert np.all(self.tile_priority >= 0)
-        if np.any(tile_priority < 0):
-            raise ValueError('All tile priorities must be >= 0.')
-        tile_planned = tile_priority > 0
-        new_planned = tile_planned & ~self.tile_planned
-        new_unplanned = ~tile_planned & self.tile_planned
-        if np.any(new_unplanned):
-            raise RuntimeError('Some previously planned tiles now have zero priority.')
-        self.tile_planned[new_planned] = True
-        # Tile priorities can change after they become > 0, so copy all planned priorities,
-        # not just the newly planned priorities.
-        self.tile_priority[self.tile_planned] = tile_priority[self.tile_planned]
-        # Precompute log(priority) since that is what we use for scheduling.
-        # Ignore harmless warnings about log(0) = -inf.
-        with np.errstate(divide='ignore'):
-            self.log_priority = np.log(self.tile_priority)
-
-        if not np.any(self.tile_available & self.tile_planned):
-            raise ValueError('No available tiles with priority > 0 to schedule.')
-        new_available, new_planned = np.where(new_available)[0], np.where(new_planned)[0]
-        self.log.debug('{} new available tiles, {} new planned tiles.'.format(
-            len(new_available), len(new_planned)))
-        return new_available, new_planned
-
     def init_night(self, night, use_twilight=False):
         """Initialize scheduling for the specified night.
 
-        Must be called before calls to :meth:`next_tile` and
-        :meth:`update_tile` during the night.
+        Must be called before calls to :meth:`next_tile`.
 
         The pool of available tiles during the night consists of those that:
 
@@ -206,7 +97,7 @@ class Scheduler(object):
          - Have not already reached their target SNR (aka "completed").
          - Are not too close to a planet during this night.
 
-        Tile availability and priority is assumed fixed during the night.
+        Tile priority is assumed fixed during the night.
         When the moon is up, tiles are also vetoed if they are too
         close to the moon. The angles that define "too close" to a
         planet or the moon are specified in config.avoid_bodies.
@@ -222,8 +113,8 @@ class Scheduler(object):
             Generate verbose logging output when True.
         """
         self.log.debug('Initializing scheduler for {}'.format(night))
-        if self.tile_available is None or self.tile_priority is None:
-            raise RuntimeError('Must call update_tiles() before init_night().')
+        if self.plan.tile_available is None or self.plan.tile_priority is None:
+            raise RuntimeError('No tiles available!')
         self.night = night
         self.night_ephem = self.ephem.get_night(night)
         midnight = self.night_ephem['noon'] + 0.5
@@ -237,13 +128,15 @@ class Scheduler(object):
         self.LST0, LST1 = [
             self.night_ephem['brightdusk_LST'], self.night_ephem['brightdawn_LST']]
         self.dLST = (LST1 - self.LST0) / (MJD1 - self.MJD0)
-        # Initialize tracking of the program through the night.
-        # Remember the last tile observed this night.
-        self.last_idx = None
+
+        with np.errstate(divide='ignore'):
+            self.log_priority = np.log(self.plan.tile_priority)
+
         # Initialize the pool of tiles that could be observed this night.
-        self.in_night_pool[:] = self.tile_planned & self.tile_available
+        self.in_night_pool[:] = (self.plan.tile_priority > 0) & self.plan.tile_available
         if self.ignore_completed_priority <= 0:
-             self.in_night_pool &= ~self.completed
+             self.in_night_pool &= ~self.plan.obsend()
+
         # Check if any tiles cannot be observed because they are too close to a planet this night.
         poolRA = self.tiles.tileRA[self.in_night_pool]
         poolDEC = self.tiles.tileDEC[self.in_night_pool]
@@ -284,7 +177,12 @@ class Scheduler(object):
         program = self.night_programs[idx]
         # How much time remaining in this program?
         mjd_program_end = self.night_changes[idx + 1]
-        nommidpt = mjd_now + (ETC.TEXP_TOTAL[program]/2)
+        # switch to next program if less than 5 min left in this program.
+        # to do better here we need to think about the nominal exposure length
+        # in each program.
+        # and we're going to redo this thinking shortly when we switch to
+        # speed based program selection.
+        nommidpt = mjd_now + 300/86400
         if (nommidpt > mjd_program_end) & (idx != len(self.night_programs)-1):
             idx += 1
             program = self.night_programs[idx]
@@ -307,8 +205,7 @@ class Scheduler(object):
 
         where :math:`\text{HA}` and :math:`\text{HA}_0` are the current and design
         hour angles, respectively, :math:`g` is the ``greediness`` parameter below,
-        and :math:`P` are the tile priorities used to implement survey strategy
-        and updated via :meth:`update_tiles`.
+        and :math:`P` are the tile priorities used to implement survey strategy.
 
         Parameters
         ----------
@@ -340,18 +237,18 @@ class Scheduler(object):
         Returns
         -------
         tuple
-            Tuple (TILEID,PASSNUM,SNR2FRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
+            Tuple (TILEID,PASSNUM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
             giving the ID and associated properties of the selected tile.
             When no tile is observable, only the last two tuple fields
             will be valid, and this method should be called again after
             some dead-time delay.  The tuple fields are:
 
              - TILEID: ID of the tile to observe.
-             - PASSNUM: pass number of the tile to observe.
-             - SNR2FRAC: fractional SNR2 already accumulated for the selected tile.
+             - PROGRAM: program of the tile to observe.
+             - DONEFRAC: fractional SNR2 already accumulated for the selected tile.
              - EXPFAC: initial exposure-time factor for the selected tile.
              - AIRMASS: initial airmass of the selected tile.
-             - PROGRAM: scheduled program at ``mjd_now``, which might be
+             - SCHEDPROGRAM: scheduled program at ``mjd_now``, which might be
                different from the program of the selected (TILEID, PASSNUM).
              - PROGEND: MJD timestamp when the scheduled program ends.
         """
@@ -364,7 +261,7 @@ class Scheduler(object):
             # Which program are we in?
             program, mjd_program_end = self.select_program(
                 mjd_now, ETC, verbose=verbose)
-            self.tile_sel &= self.tiles.allowed_in_conditions[program]
+            self.tile_sel &= self.tiles.allowed_in_conditions(program)
             if verbose:
                 self.log.info(
                     'Selecting a tile observable in {} conditions.'.format(
@@ -373,7 +270,7 @@ class Scheduler(object):
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
         # Select available tiles in this program.
-        self.tile_sel &= self.in_night_pool
+        self.tile_sel &= self.in_night_pool & (self.plan.tile_available > 0)
         if not np.any(self.tile_sel):
             if verbose:
                 self.log.warning('No available tiles in requested program.')
@@ -438,7 +335,11 @@ class Scheduler(object):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for
         # observing tiles away from their design hour angle.
-        dHA = self.hourangle[self.tile_sel] - self.design_hourangle_cond[self.tile_sel, self.tiles.PROGRAM_INDEX[program]]
+        cond = program
+        if self.nogray:
+            cond = 'DARK' if cond == 'GRAY' else cond
+        dHA = (self.hourangle[self.tile_sel] -
+               self.plan.designhacond[cond][self.tile_sel])
         dHA[dHA >= 180.] -= 360
         dHA[dHA < -180] += 360
         assert np.all((dHA >= -180) & (dHA < 180))
@@ -452,14 +353,14 @@ class Scheduler(object):
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
 
         # Return info about the selected tile and scheduled program.
-        return (self.tiles.tileID[idx], self.tiles.passnum[idx],
-                self.snr2frac[idx], self.exposure_factor[idx],
+        return (self.tiles.tileID[idx], self.tiles.tileprogram[idx],
+                self.plan.donefrac[idx], self.exposure_factor[idx],
                 self.airmass[idx], program, mjd_program_end)
 
-    def update_snr(self, tileID, snr2frac, lastexpid):
+    def update_snr(self, tileID, donefrac):
         """Update SNR for one tile.
 
-        A tile whose update ``snr2frac`` exceeds the ``min_snr2frac``
+        A tile whose update ``donefrac`` exceeds the ``min_snr2frac``
         configuration parameter will be considered completed, and
         not scheduled for future observing.
 
@@ -467,24 +368,14 @@ class Scheduler(object):
         ----------
         tileID : int
             ID of the tile to update.
-        snr2frac : float
+        donefrac : float
             New value of the fractional SNR2 accumulated for this tile, including
             all previous exposures.
         """
         idx = self.tiles.index(tileID)
-        self.snr2frac[idx] = snr2frac
-        self.lastexpid[idx] = lastexpid
-        if self.snr2frac[idx] >= self.min_snr2frac:
+        self.plan.set_donefrac([tileID], [donefrac])
+        if donefrac >= self.min_snr2frac:
             if self.ignore_completed_priority <= 0:
                 self.in_night_pool[idx] = False
-            self.completed[idx] = True
-            passidx = self.tiles.pass_index[self.tiles.passnum[idx]]
-            self.completed_by_pass[passidx] += 1
-
-        # Remember the last tile observed this night.
-        self.last_idx = idx
-
-    def survey_completed(self):
-        """Test if all tiles have been completed.
-        """
-        return self.completed_by_pass.sum() == self.tiles.ntiles
+            else:
+                self.plan.tile_priority[idx] = self.ignore_completed_priority

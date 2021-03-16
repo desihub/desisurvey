@@ -59,60 +59,36 @@ class Tiles(object):
         else:
             tiles = desimodel.io.load_tiles(
                 onlydesi=False, extra=True, tilesfile=self.tiles_file)
-        # Check for any unknown program names.
-        tile_programs = np.unique(tiles['PROGRAM'])
-        unknown = set(tile_programs) - set(self.PROGRAMS)
-        if unknown and not commissioning:
-            raise RuntimeError('Cannot schedule unknown program(s): {}.'.format(unknown))
+        nogray = getattr(config, 'tiles_nogray', False)
+        if not isinstance(nogray, bool):
+            nogray = nogray()
+        self.nogray = nogray
+        if self.nogray:
+            m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
+            tiles['PROGRAM'][m] = 'DARK'
+            obscond = self.OBSCONDITIONS['DARK'] | self.OBSCONDITIONS['GRAY']
+            m = (tiles['OBSCONDITIONS'] & obscond) != 0
+            tiles['OBSCONDITIONS'][m] |= obscond
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].copy()
-        self.passnum = tiles['PASS'].copy()
+        self.tileprogram = tiles['PROGRAM'].copy()
         self.tileRA = tiles['RA'].copy()
         self.tileDEC = tiles['DEC'].copy()
         self.tileobsconditions = tiles['OBSCONDITIONS'].copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
         # Count tiles.
         self.ntiles = len(self.tileID)
-        self.pass_ntiles = {p: np.count_nonzero(self.passnum == p)
-                            for p in np.unique(self.passnum)}
-        # Get list of passes.
-        self.passes = np.unique(self.passnum)
-        self.npasses = len(self.passes)
-        # Map each pass to a small integer index.
-        self.pass_index = {p: idx for idx, p in enumerate(self.passes)}
         # Can remove this when tile_index no longer uses searchsorted.
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')
-        if commissioning:
-            Tiles.PROGRAMS = (Tiles.PROGRAMS +
-                              [x for x in np.unique(tiles['PROGRAM'])
-                               if x not in Tiles.PROGRAMS])
-            self.PROGRAMS = Tiles.PROGRAMS
-            Tiles.PROGRAM_INDEX = {pname: pidx
-                                   for pidx, pname in enumerate(Tiles.PROGRAMS)}
-            self.PROGRAM_INDEX = Tiles.PROGRAM_INDEX
+        self.programs = [x for x in np.unique(tiles['PROGRAM'])]
+        self.program_index = {pname: pidx
+                              for pidx, pname in enumerate(self.programs)}
 
-        # Build program -> [passes] maps. A program with no tiles will map to an empty array.
-        self.program_passes = {
-            p: np.unique(self.passnum[tiles['PROGRAM'] == p]) for p in self.PROGRAMS}
-        # Build pass -> program maps.
-        self.pass_program = {}
-        for p in self.PROGRAMS:
-            self.pass_program.update({passnum: p for passnum in self.program_passes[p]})
-        for p in np.unique(self.passnum):
-            if len(np.unique(tiles['PROGRAM'][tiles['PASS'] == p])) != 1:
-                raise ValueError('At most one program per pass.')
         # Build tile masks for each program. A program will no tiles with have an empty mask.
         self.program_mask = {}
-        for p in self.PROGRAMS:
-            mask = np.zeros(self.ntiles, bool)
-            for pnum in self.program_passes[p]:
-                mask |= (self.passnum == pnum)
-            self.program_mask[p] = mask
-        self.allowed_in_conditions = {}
-        for p in self.OBSCONDITIONS:
-            mask = (self.tileobsconditions & self.OBSCONDITIONS[p]) != 0
-            self.allowed_in_conditions[p] = mask
+        for p in self.programs:
+            self.program_mask[p] = self.tileprogram == p
         # Calculate and save dust exposure factors.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'])
         # Precompute coefficients to calculate tile observing airmass.
@@ -122,20 +98,11 @@ class Tiles(object):
         self.tile_coef_B = np.cos(tile_dec_rad) * np.cos(latitude)
         # Placeholders for overlap attributes that are expensive to calculate
         # so we use lazy evaluation the first time they are accessed.
-        self._tile_over = None
         self._overlapping = None
         self._fiberassign_delay = None
 
-    PROGRAMS = ['DARK', 'GRAY', 'BRIGHT']
-    """Enumeration of the valid programs in their canonical order."""
-
-    PROGRAM_INDEX = {pname: pidx for pidx, pname in enumerate(PROGRAMS)}
-    """Canonical mapping from program name to a small integer.
-
-    Note that this mapping is independent of the programs actually present
-    in a tiles file.
-    """
-
+    CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
+    CONDITION_INDEX = {cond: i for i, cond in enumerate(CONDITIONS)}
     OBSCONDITIONS = {'DARK': 1, 'GRAY': 2, 'BRIGHT': 4}
     """Mapping of night conditions to OBSCONDITIONS bit mask.
 
@@ -222,27 +189,19 @@ class Tiles(object):
             res = (res, mask)
         return res
 
-    @property
-    def tile_over(self):
-        """Dictionary of tile masks.
-
-        tile_over[passnum] identifies all tiles from a fiber-assignment
-        dependent pass that cover at least one tile in passnum.
-
-        Uses the config parameter ``fiber_assignment_order`` to
-        determine fiber-assignment dependencies.
-        """
-        if self._tile_over is None:
-            self._calculate_overlaps()
-        return self._tile_over
+    def allowed_in_conditions(self, cond):
+        return (self.tileobsconditions & self.OBSCONDITIONS[cond]) != 0
 
     @property
     def overlapping(self):
         """Dictionary of tile overlap matrices.
 
-        overlapping[passnum][j, k] is True if the j-th tile of passnum is
-        overlapped by the k-th tile of tile_over[passnum]. There is no
-        dictionary entry when the mask tile_over[passnum] is empty.
+        overlapping[i] is the list of tile row numbers that overlap the
+        tile with row number i.
+
+        Overlapping tiles are only computed within a program; a tile cannot
+        overlap a tile of a different program.  If fiber_assignment_delay is
+        negative, tile do not overlap one another within a program.
         """
         if self._overlapping is None:
             self._calculate_overlaps()
@@ -261,55 +220,42 @@ class Tiles(object):
 
 
     def _calculate_overlaps(self):
-        """Initialize attributes _overlapping and _tile_over.
+        """Initialize attributes _overlapping.
 
-        Uses the config parameters ``fiber_assignment_order`` and
+        Uses the config parameters ``fiber_assignment_delay`` and
         ``tile_diameter`` to determine overlap dependencies.
 
-        This is relatively slow, so only used the first time our ``tile_over``
-        or ``overlapping`` properties are accessed.
+        This is relatively slow, so only used the first time ``overlapping``
+        properties are accessed.
         """
-        self._overlapping = {}
-        self._tile_over = {}
+        self._overlapping = [[] for _ in range(self.ntiles)]
         self._fiberassign_delay = np.full(self.ntiles, -1, int)
         config = desisurvey.config.Configuration()
-        tile_diameter = 2 * config.tile_radius().to(u.deg).value
+        tile_diameter = 2 * config.tile_radius()
 
-        # Validate and parse config.fiber_assignment_order into a dictionary.
-        fiberassign_order = config.fiber_assignment_order
-        Pn = re.compile('^P(\d+)$')
-        RHS = re.compile('^(P\d+(?:\+P\d+)*) delay (\d+)$')
-        fa_rules = {passnum: dict(coveredby=[], delay=0) for passnum in self.passes}
-        for key in fiberassign_order.keys:
-            matched = Pn.match(key)
-            if not matched:
-                raise ValueError('Invalid fiber_assignment_order Pn key: "{}".'.format(key))
-            under_pass = int(matched.group(1))
-            value = getattr(fiberassign_order, key)()
-            matched = RHS.match(value)
-            if not matched:
-                raise ValueError('Invalid fiber_assignment_order RHS value: "{}".'.format(value))
-            over_passes = [int(Pn.match(token).group(1)) for token in matched.group(1).split('+')]
-            delay = int(matched.group(2))
-            fa_rules[under_pass] = dict(coveredby=over_passes, delay=delay)
-
-        # Initialize the data structures behind the attributes defined above.
-        for under_pass in self.passes:
-            fa_rule = fa_rules[under_pass]
-            under_sel = self.passnum == under_pass
-            # Save the delay for tiles in this pass.
-            self._fiberassign_delay[under_sel] = fa_rule['delay']
-            # Build and save a mask of all tiles in passes that cover this pass.
-            over_sel = np.zeros_like(under_sel)
-            for over_pass in fa_rule['coveredby']:
-                over_sel |= (self.passnum == over_pass)
-            self.tile_over[under_pass] = over_sel
-            if np.any(over_sel):
-                # Calculate a boolean matrix of overlaps between tiles in under_pass
-                # and over_passes.
-                self.overlapping[under_pass] = desisurvey.utils.separation_matrix(
-                    self.tileRA[under_sel], self.tileDEC[under_sel],
-                    self.tileRA[over_sel], self.tileDEC[over_sel], tile_diameter)
+        fiber_assignment_delay = config.fiber_assignment_delay
+        for program in self.programs:
+            delay = getattr(fiber_assignment_delay, program, None)
+            if delay is not None:
+                delay = delay()
+            else:
+                delay = -1
+            m = self.program_mask[program]
+            rownum = np.flatnonzero(m)
+            self._fiberassign_delay[m] = delay
+            # self._overlapping: list of lists, giving tiles overlapping each
+            # tile
+            if delay < 0:
+                # this program doesn't have overlapping tile requirements
+                continue
+            from astropy.coordinates import SkyCoord, search_around_sky
+            c = SkyCoord(self.tileRA[m]*u.deg, self.tileDEC[m]*u.deg)
+            idx1, idx2, sep2d, dist3d = search_around_sky(c, c, tile_diameter)
+            for ind1, ind2 in zip(idx1, idx2):
+                if ind1 == ind2:
+                    # ignore self matches
+                    continue
+                self._overlapping[rownum[ind1]].append(rownum[ind2])
 
 
 _cached_tiles = {}
@@ -344,10 +290,9 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
     else:
         tiles = Tiles(tiles_file)
         log.info('Initialized tiles from "{}".'.format(tiles_file))
-        for pname in Tiles.PROGRAMS:
-            pinfo = []
-            for passnum in tiles.program_passes[pname]:
-                pinfo.append('{}({})'.format(passnum, tiles.pass_ntiles[passnum]))
+        for pname in tiles.programs:
+            log.info('{:6s}: {} tiles'.format(
+                pname, np.sum(tiles.program_mask[pname])))
 
     if write_cache:
         _cached_tiles[tiles_file] = tiles

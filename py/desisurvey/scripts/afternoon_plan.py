@@ -177,8 +177,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
         directory, 'etc-stats-{}.fits'.format(subdir)))
 
-    planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'],
-                         tiles['LASTEXPID_ETC'])
+    planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'])
 
     if sv:
         # overwrite donefracs
@@ -193,11 +192,9 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
             nobserved += donefraccond['NNIGHT_'+cond]
         _, md, mt = np.intersect1d(donefraccond['TILEID'],
                                    tiles['TILEID'], return_indices=True)
-        lastexp = np.zeros(len(donefraccond), dtype='i4')-1
-        lastexp[md] = tiles['LASTEXPID_ETC'][mt]
         nneeded = nneeded + (nneeded == 0)
         planner.set_donefrac(donefraccond['TILEID'],
-                             nobserved / nneeded, lastexp)
+                             nobserved / nneeded)
         hdulist = fits.open(newtilefn)
         hdu = hdulist['TILES']
         tilefiledat = hdu.data
@@ -211,6 +208,13 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                  donefraccond['NNIGHT_NEEDED_'+cond][md])
             condmask = desisurvey.tiles.Tiles.OBSCONDITIONS[cond]
             newobsconditions[mt[m]] &= ~condmask
+        tob = desisurvey.tiles.get_tiles()
+        if tob.nogray:
+            graycond = desisurvey.tiles.Tiles.OBSCONDITIONS['GRAY']
+            darkcond = desisurvey.tiles.Tiles.OBSCONDITIONS['DARK']
+            newobsconditions &= ~graycond
+            newobsconditions |= graycond * ((darkcond & newobsconditions) != 0)
+
         ignore_completed_priority = getattr(config,
                                             'ignore_completed_priority', -1)
         if not isinstance(ignore_completed_priority, int):

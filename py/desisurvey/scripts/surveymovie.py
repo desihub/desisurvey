@@ -141,27 +141,20 @@ class Animator(object):
         self.show_scores = show_scores
         self.ra = wrap(self.tiles.tileRA)
         self.dec = self.tiles.tileDEC
-        self.passnum = self.tiles.passnum
+        self.tileprogram = self.tiles.tileprogram
         self.tileid = self.tiles.tileID
-        # We require a standard set of passes.
-        if not np.array_equal(self.tiles.passes, np.arange(8)):
-            raise RuntimeError('Expected passes 0-7.')
-        self.prognames = ['GRAY', 'DARK', 'DARK', 'DARK', 'DARK',
-                          'BRIGHT', 'BRIGHT', 'BRIGHT']
-        npass = np.max(self.passnum) + 1
-        self.tiles_per_pass = self.tiles.pass_ntiles
-        self.psels = [
-            self.tiles.program_mask['DARK'],  # DARK
-            self.tiles.program_mask['GRAY'],  # GRAY
-            self.tiles.program_mask['BRIGHT'],  # BRIGHT
-        ]
+        self.prognames = self.tiles.programs
+        nprogram = len(self.prognames)
+        self.tiles_per_program = {p: np.sum(self.tiles.program_mask[p])
+                                  for p in self.prognames}
+        self.psels = [ self.tiles.program_mask[p] for p in self.prognames ]
         self.start_date = self.config.first_day()
         self.survey_weeks = int(np.ceil((self.config.last_day() - self.start_date).days / 7))
 
         # Add some computed columns to the exposures table.
         self.exposures['EXPID'] = np.arange(len(self.exposures))
         self.exposures['INDEX'] = self.tiles.index(self.exposures['TILEID'])
-        self.exposures['PASS'] = self.tiles.passnum[self.exposures['INDEX']]
+        self.exposures['PROGRAM'] = self.tiles.tileprogram[self.exposures['INDEX']]
         self.exposures['STATUS'] = np.ones(len(self.exposures), np.int32)
         self.exposures['STATUS'][self.exposures['SNR2FRAC'] == 0] = 0
         self.exposures['STATUS'][
@@ -203,7 +196,7 @@ class Animator(object):
         self.figure = plt.figure(
             frameon=False,figsize=(width / self.dpi, height / self.dpi),
             dpi=self.dpi)
-        grid = matplotlib.gridspec.GridSpec(3, 3)
+        grid = matplotlib.gridspec.GridSpec(2, 2)
         grid.update(left=0, right=1, bottom=0, top=0.97, hspace=0, wspace=0)
         axes = []
         self.labels = []
@@ -224,20 +217,20 @@ class Animator(object):
         self.unavailcolor = np.array([0.65, 0.65, 0.65, 1.])
         self.nowcolor = np.array([0., 0.7, 0., 1.])
         pcolors = desisurvey.plots.program_color
-        passnum = 0
-        for row in range(3):
-            for col in range(3):
-                # Create the axes for this pass.
+        progidx = 0
+        for row in range(2):
+            for col in range(2):
+                # Create the axes for this program.
                 ax = plt.subplot(grid[row, col], facecolor=bgcolor)
                 ax.set_xticks([])
                 ax.set_yticks([])
                 axes.append(ax)
-                # Top-right corner is reserved for integrated progress plots.
-                if row == 0 and col == 2:
+                # Bottom-right corner is reserved for integrated progress plots.
+                if row == 1 and col == 1:
                     ax.set_xlim(0, self.survey_weeks)
                     ax.set_ylim(0, 1)
                     ax.plot([0, self.survey_weeks], [0., 1.], 'w-')
-                    for pname in ('DARK', 'GRAY', 'BRIGHT'):
+                    for pname in self.prognames:
                         pc = pcolors[pname]
                         xprog = 0.5 + np.arange(self.survey_weeks)
                         # Initialize values to INF so they are not plotted
@@ -248,19 +241,22 @@ class Animator(object):
                             xprog, yprog, lw=2, ls='-',
                             color=pcolors[pname])[0])
                     continue
+                if progidx >= len(self.tiles.programs):
+                    # e.g., for no-gray mode, where we have only two programs.
+                    continue
                 ax.set_xlim(-55, 293)
                 ax.set_ylim(-20, 77)
                 # Draw label for this plot.
-                pname = self.prognames[passnum]
+                pname = self.tiles.programs[progidx]
                 pc = pcolors[pname]
                 self.labels.append(ax.annotate(
-                    '{0}-{1} 100.0%'.format(pname, passnum),
+                    '{0} 100.0%'.format(pname),
                     xy=(0.05, 0.95), xytext=(0.05, 0.95),
                     xycoords='axes fraction', fontsize=48, family='monospace',
                     color=pc, horizontalalignment='left',
                     verticalalignment='top'))
-                # Draw the tile outlines for this pass.
-                sel = (self.passnum == passnum)
+                # Draw the tile outlines for this program.
+                sel = (self.tileprogram == pname)
                 ntiles = np.count_nonzero(sel)
                 fc = np.empty((ntiles, 4))
                 fc[:] = self.defaultcolor
@@ -282,7 +278,7 @@ class Animator(object):
                     line1 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
                     line2 = ax.axvline(0., lw=2, ls=':', color=self.nowcolor)
                     self.lstlines.append((line1, line2))
-                passnum += 1
+                progidx += 1
 
         if self.show_scores:
             # Initialize scheduler score colormap.
@@ -373,9 +369,15 @@ class Animator(object):
                 iplot.set_ydata(yprog)
         # Lookup which tiles are available and planned for tonight.
         day_number = desisurvey.utils.day_number(date)
-        avail = self.tiledata['AVAIL']
+        # avail = self.tiledata['AVAIL']
+        # no longer makes sense in no-pass scheme.
+        # consider all tiles as available on day 0.
+        avail = self.tiledata['AVAIL']*0
         self.available = (avail >= 0) & (avail <= day_number)
-        planned = self.tiledata['PLANNED']
+        # planned = self.tiledata['PLANNED']
+        # no longer makes sense in no-pass scheme
+        # consider all tiles as planned on day 0.
+        planned = self.tiledata['PLANNED']*0
         self.planned = (planned >= 0) & (planned <= day_number)
         self.last_date = date
 
@@ -433,8 +435,8 @@ class Animator(object):
             # Update scores display for this exposure.
             score = self.scores[iexp - self.iexp0]
             max_score = np.max(score)
-        for passnum, scatter in enumerate(self.scatters):
-            sel = (self.passnum == passnum)
+        for progidx, scatter in enumerate(self.scatters):
+            sel = (self.tileprogram == self.tiles.programs[progidx])
             done = self.status[sel] == 2
             avail = self.available[sel]
             inplan = self.planned[sel]
@@ -449,7 +451,7 @@ class Animator(object):
             sizes[done] = 30.
             fc[done] = self.completecolor
             fc[~avail] = self.unavailcolor
-            if not nightly and (info['PASS'] == passnum):
+            if not nightly and (info['PROGRAM'] == self.prognames[progidx]):
                 # Highlight the tile being observed now.
                 jdx = np.where(self.tileid[sel] == info['TILEID'])[0][0]
                 fc[jdx] = self.nowcolor
@@ -457,14 +459,14 @@ class Animator(object):
             scatter.set_facecolors(fc)
             # Update percent complete label.
             pct = (100. * np.count_nonzero(self.status[sel] == 2) /
-                   self.tiles_per_pass[passnum])
-            self.labels[passnum].set_text('{0}-{1} {2:5.1f}%'.format(
-                self.prognames[passnum], passnum, pct))
+                   self.tiles_per_program[self.prognames[progidx]])
+            self.labels[progidx].set_text('{} {:5.1f}%'.format(
+                self.prognames[progidx], pct))
         if not nightly:
             # Update LST lines.
             x1, x2 = self.lst[iexp]
-            for passnum, (line1, line2) in enumerate(self.lstlines):
-                ls = '-' if info['PASS'] == passnum else '--'
+            for progidx, (line1, line2) in enumerate(self.lstlines):
+                ls = '-' if info['PROGRAM'] == self.prognames[progidx] else '--'
                 line1.set_linestyle(ls)
                 line2.set_linestyle(ls)
                 line1.set_xdata([x1, x1])

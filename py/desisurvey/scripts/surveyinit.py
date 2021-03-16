@@ -157,7 +157,6 @@ def calculate_initial_plan(args):
     # Calculate the distribution of available LST in each program
     # during the nominal survey [start, stop).
     ilo, ihi = (start - first).days, (stop - first).days
-    print('weather', args.include_weather)
     if args.include_weather:
         tweather = weather[ilo:ihi]
     else:
@@ -165,9 +164,29 @@ def calculate_initial_plan(args):
     lst_hist, lst_bins = ephem.get_available_lst(
         nbins=args.nbins, weather=tweather,
         include_twilight=args.include_twilight)
+    lst_centers = 0.5*(lst_bins[:-1]+lst_bins[1:])
+
+    if tiles.nogray:
+        grayordark = tiles.OBSCONDITIONS['DARK'] | tiles.OBSCONDITIONS['GRAY']
+        mgrayordark = (tiles.tileobsconditions & grayordark) != 0
+        m = (tiles.tileobsconditions[mgrayordark] & grayordark) != grayordark
+        if np.any(m):
+            log.warning((
+                '{} tiles observable in either dark or gray, but '
+                'not both.  tiles.nogray is True, so gray and '
+                'dark LST are being optimized together.  For LST planning '
+                'purposes, all gray/dark tiles are assigned to a common '
+                'bucket.').format(np.sum(m)))
+        new_lst_hist = lst_hist.copy()
+        new_lst_hist[0, :] = lst_hist[0, :] + lst_hist[1, :]
+        new_lst_hist[1, :] = lst_hist[2, :]
+        lst_hist = new_lst_hist[0:2, :].copy()
 
     # Initialize the output results table.
-    conditions = ['DARK', 'GRAY', 'BRIGHT']
+    if tiles.nogray:
+        conditions = ['DARK', 'BRIGHT']
+    else:
+        conditions = ['DARK', 'GRAY', 'BRIGHT']
     design = astropy.table.Table()
     design['INIT'] = np.zeros(tiles.ntiles)
     design['HA'] = np.zeros(tiles.ntiles)
@@ -182,21 +201,25 @@ def calculate_initial_plan(args):
         GRAY=args.gray_stretch,
         BRIGHT=args.bright_stretch)
 
+    if tiles.nogray:
+        stretches.pop('GRAY')
+
     tile_is_assignable = np.zeros(tiles.ntiles, dtype='bool')
     for condition in conditions:
-        tile_is_assignable |= tiles.allowed_in_conditions[condition]
+        tile_is_assignable |= tiles.allowed_in_conditions(condition)
     if ~np.all(tile_is_assignable):
         log.info('Warning: some tiles are not observable in '
                  'gray/dark/bright.  These will not be observable by the NTS '
                  'by default.')
 
     for index, condition in enumerate(conditions):
-        sel = tiles.allowed_in_conditions[condition]
+        sel = tiles.allowed_in_conditions(condition)
         if not np.any(sel):
             log.info('Skipping {} program with no tiles.'.format(condition))
             continue
         # Initialize an LST summary table.
         table = astropy.table.Table(meta={'ORIGIN': lst_bins[0]})
+        table['LST'] = lst_centers
         table['AVAIL'] = lst_hist[index]
         # Initailize an optimizer for this program.
         opt = desisurvey.optimize.Optimizer(

@@ -224,8 +224,7 @@ class NTS():
             self.planner = desisurvey.plan.Planner(
                 self.rules,
                 restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
-            self.scheduler = desisurvey.scheduler.Scheduler(
-                restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
+            self.scheduler = desisurvey.scheduler.Scheduler(self.planner)
             self.queuedlist = QueuedList(
                 config.get_path('{}/queued-{}.dat'.format(fulldir, nts_dir)))
             self.requestlog = RequestLog(
@@ -234,9 +233,9 @@ class NTS():
             print(e)
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')
-        self.scheduler.update_tiles(self.planner.tile_available,
-                                    self.planner.tile_priority)
         self.scheduler.init_night(self.night, use_twilight=True)
+        for queuedtile in self.queuedlist.queued:
+            self.scheduler.plan.add_pending_tile(queuedtile)
         self.ETC = desisurvey.etc.ExposureTimeCalculator()
 
     def next_tile(self, conditions=None, exposure=None, constraints=None,
@@ -355,6 +354,8 @@ class NTS():
                     'req_efftime': 0., 'sbprof': 'PSF'}
             self.requestlog.logresponse(tile)
             return tile
+
+        self.scheduler.plan.add_pending_tile(tileid)
 
         if self.commissioning:
             self.log.info('Ignoring existing donefrac in SV1.')

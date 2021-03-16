@@ -47,9 +47,10 @@ def run_plan(nts_dir=None, verbose=False):
     print(nts.scheduler.night)
     for name, tt in zip(night_labels[s], night_times[s]):
         print('%11s %s' % (name, mjd_to_azstr(tt)))
+    dgbstr = 'd/g/b' if not nts.scheduler.tiles.nogray else 'd/b'
 
-    print('local   lst   cond  tile    ra   dec    program fac  tot  split '
-          'd/g/b')
+    print('local   lst   cond  tile    ra   dec    program fac  tot  split ' +
+          dgbstr)
     while t0 < nts.scheduler.night_ephem['brightdawn']:
         expdict = dict(mjd=t0, previoustiles=previoustiles)
         res = nts.next_tile(exposure=expdict, speculative=True)
@@ -70,13 +71,18 @@ def run_plan(nts_dir=None, verbose=False):
                       nsofar['NNIGHT_BRIGHT']]
         else:
             nsofar = [0, 0, 0]
+        if not nts.scheduler.tiles.nogray:
+            dgbstr = '%3.1f/%3.1f/%3.1f' % nsofar
+        else:
+            nsofar = (nsofar[0], nsofar[2])
+            dgbstr = '%3.1f/%3.1f' % nsofar
         print(
             ('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f '
-             '%4d %6s %3.1f/%3.1f/%3.1f') % (
+             '%4d %6s %s') % (
             mjd_to_azstr(t0), lst, res['conditions'],
             res['fiberassign'], ra, dec, res['program'],
             res['exposure_factor'], res['esttime'].astype('i4'),
-            ('%dx%d' % (res['count'], res['exptime'])), *nsofar))
+                 ('%dx%d' % (res['count'], res['exptime'])), dgbstr))
         t0 += (res['exptime']+180)*res['count']/60/60/24
 
 

@@ -5,6 +5,9 @@ desisurvey change log
 0.15.1 (unreleased)
 -------------------
 
+* Optionally merge dark and gray layers.  Implement nopass strategy.
+  Move scheduler state to planner and start to change data model.
+  (PR `#130`)
 * Use sky levels in ETC.  Use EFFTIME rather than R_DEPTH, and harmonize
   MW extinction correction with EFFTIME.  (PR `#129`_)
 * Fix bug in transparency and ETC snr2 accumulation rate calculation
@@ -12,6 +15,7 @@ desisurvey change log
 
 .. _`#128`: https://github.com/desihub/desisurvey/pull/128
 .. _`#129`: https://github.com/desihub/desisurvey/pull/129
+.. _`#130`: https://github.com/desihub/desisurvey/pull/130
 
 0.15.0 (2021-02-15)
 -------------------
