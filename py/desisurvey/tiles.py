@@ -181,6 +181,8 @@ class Tiles(object):
         return res
 
     def allowed_in_conditions(self, cond):
+        if self.nogray and (cond == 'GRAY'):
+            cond = 'DARK'
         return (self.tileobsconditions == cond)
 
     @property
