@@ -23,6 +23,8 @@ def donefrac_in_conditions(condnexp, configfn=None):
     if ((len(np.unique(condnexp['TILEID'])) != len(condnexp)) or
             (len(np.unique(tiles.tileID)) != tiles.ntiles)):
         raise ValueError('Must be at least one tile per record!')
+    if np.any(condnexp['TILEID'] < 0):
+        raise ValueError('tileID must be >= 0 for real exposures!')
     _, mc, mt = np.intersect1d(condnexp['TILEID'], tiles.tileID,
                                return_indices=True)
     CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']

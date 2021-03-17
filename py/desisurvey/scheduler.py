@@ -189,8 +189,8 @@ class Scheduler(object):
             mjd_program_end = self.night_changes[idx + 1]
         return program, mjd_program_end
 
-    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
-                  program=None, verbose=False):
+    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15.,
+                  greediness=0., program=None, verbose=False):
         r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -237,12 +237,11 @@ class Scheduler(object):
         Returns
         -------
         tuple
-            Tuple (TILEID,PASSNUM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
+            Tuple (TILEID,PROGRAM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
             giving the ID and associated properties of the selected tile.
             When no tile is observable, only the last two tuple fields
             will be valid, and this method should be called again after
             some dead-time delay.  The tuple fields are:
-
              - TILEID: ID of the tile to observe.
              - PROGRAM: program of the tile to observe.
              - DONEFRAC: fractional SNR2 already accumulated for the selected tile.

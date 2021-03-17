@@ -17,21 +17,18 @@ import desisurvey.tiles
 import desisurvey.ephem
 
 
-def load_design_hourangle(name='surveyinit.fits'):
+def load_design_hourangle(name='tiles-planned.ecsv'):
     """Load design hour-angle assignments from disk.
 
-    Reads column 'HA' from binary table HDU 'DESIGN'. This is the format
-    saved by the ``surveyinit`` script, but any FITS file following the
-    same convention can be used.
+    If hour angles are present in the tile file, defaults to those.
+    Otherwise reads column 'DESIGNHA' from file saved by the
+    ``surveyinit`` script.  Contents must row-match the tile file.
 
     Parameters
     ----------
     name : str
-        Name of the FITS file to read. A relative path is assumed to
+        Name of the ecsv file to read. A relative path is assumed to
         refer to the output path specified in the configuration.
-    condition : str
-        DARK/GRAY/BRIGHT.  For SV tiles that may be observed in multple
-        conditions, load the appropriate design HA for this conditions.
 
     Returns
     -------
@@ -39,17 +36,19 @@ def load_design_hourangle(name='surveyinit.fits'):
         1D array of design hour angles in degrees, with indexing
         that matches :class:`desisurvey.tiles.Tiles`.
     """
-    config = desisurvey.config.Configuration()
-    fullname = config.get_path(name)
     tiles = desisurvey.tiles.get_tiles()
-    design = astropy.io.fits.getdata(fullname, 'DESIGN')
-    ind, mask = tiles.index(design['tileID'], return_mask=True)
-    HA = np.zeros(tiles.ntiles, dtype='f4')
-    HA[ind[mask]] = design['HA'][mask]
-    if not np.all(mask) or len(design) != tiles.ntiles:
-        log = desiutil.log.get_logger()
-        log.warning('The tile file and HA optimizations do not match.')
-    return HA
+    if tiles.designha is not None:
+        return tiles.designha
+    else:
+        config = desisurvey.config.Configuration()
+        fullname = config.get_path(name)
+        design = tiles.read_tiles_table(fullname)
+        if not (np.all(tiles.tileID == design['TILEID']) and
+                np.allclose(tiles.tileRA['RA'], design['RA']) and
+                np.allclose(tiles['DEC'], design['DEC']) and
+                np.all(tiles['PROGRAM'] == design['PROGRAM'])):
+            raise ValueError('Plan HA does match tile file.')
+        return design['HA']
 
 
 def get_fiber_assign_dir(fiber_assign_dir):
@@ -160,15 +159,18 @@ class Planner(object):
                 raise RuntimeError('Cannot restore planner from non-existent '
                                    '"{}".'.format(fullname))
             t = astropy.table.Table.read(fullname)
-            ind, mask = self.tiles.index(t['TILEID'], return_mask=True)
-            if np.any(~mask) or len(t) != self.tiles.ntiles:
+            if ((len(t) != self.tiles.ntiles) or
+                    np.any(self.tiles.tileID != t['TILEID']) or
+                    np.any(self.tiles.tileRA != t['RA']) or
+                    np.any(self.tiles.tileDEC != t['DEC']) or
+                    np.any(self.tiles.tileprogram != t['PROGRAM'])):
                 raise ValueError('mismatch between tiles and status file; '
                                  'should not be possible!')
             if self.simulate:
                 self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
                 self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
                 self.tile_countdown = np.zeros(self.tiles.ntiles, dtype='i4')
-                self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
+                self.tile_countdown = t['COUNTDOWN'].data.copy()
                 if t.meta['CADENCE'] != self.fiberassign_cadence:
                     raise ValueError('Fiberassign cadence mismatch.')
             self.tile_status = t['STATUS'].data.copy()
@@ -346,7 +348,7 @@ class Planner(object):
         ind, mask = self.tiles.index(available_tileids, return_mask=True)
         available[ind[mask]] = True
         self.tile_available = available.copy()
-        self.log.info('Fiber assignment files found for {} tiles.'.format(
+        self.log.info('Observations possible for {} tiles.'.format(
             np.count_nonzero(available)))
         if np.count_nonzero(available) == 0:
             self.log.error('No fiberassign files available for scheduling!')

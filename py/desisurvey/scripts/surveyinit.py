@@ -84,8 +84,11 @@ def parse(options=None):
         '--bright-stretch', type=float, default=1.5, metavar='S',
         help='stretch BRIGHT exposure times by this factor')
     parser.add_argument(
-        '--save', default='surveyinit.fits', metavar='NAME',
-        help='name of FITS output file where results are saved')
+        '--savelst', default='lst_optimized.fits', metavar='NAME',
+        help='name of FITS output where LST distributions are saved')
+    parser.add_argument(
+        '--savetiles', default='tiles-planned.ecsv', metavar='NAME',
+        help='name of ecsv output where updated tile file is saved')
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path to use instead of config.output_path')
@@ -183,8 +186,10 @@ def calculate_initial_plan(args):
     design['HA'] = np.zeros(tiles.ntiles)
     design['TEXP'] = np.zeros(tiles.ntiles)
     design['TILEID'] = tiles.tileID
-    for cond in conditions:
-        design['HA_'+cond] = np.full(tiles.ntiles, np.nan, dtype='f4')
+    design['RA'] = tiles.tileRA
+    design['DEC'] = tiles.tileDEC
+    design['PROGRAM'] = tiles.tileprogram
+    tiletab = tiles.read_tiles_table(return_index=True)
 
     # Optimize each program separately.
     stretches = dict(
@@ -263,9 +268,21 @@ def calculate_initial_plan(args):
         design['TEXP'][sel] = texp
 
     hdus.append(fits.BinTableHDU(design, name='DESIGN'))
-    fullname = config.get_path(args.save)
+    fullname = config.get_path(args.savelst)
     hdus.writeto(fullname, overwrite=True)
     log.info('Saved initial plan to "{}".'.format(fullname))
+
+    # add a DESIGNHA column or overwrite one to an existing tile file.
+    tiletab['DESIGNHA'] = np.zeros(len(tiletab), dtype='f4')
+    tiletab['DESIGNHA'].format = '%7.3f'
+    tiletab['DESIGNHA'].unit = tiletab['RA'].unit
+    tiletab['DESIGNHA'].description = 'Design hour angles'
+    _, mt, md = np.intersect1d(tiletab['TILEID'], design['TILEID'],
+                               return_indices=True)
+    tiletab['DESIGNHA'][mt] = design['HA'][md]
+    fullname = config.get_path(args.savetiles)
+    tiletab.write(fullname, overwrite=True, format='ascii.ecsv')
+
 
 
 def main(args):
@@ -291,8 +308,10 @@ def main(args):
     ephem = desisurvey.ephem.get_ephem(use_cache=not args.recalc)
 
     # Calculate design hour angles if necessary.
-    fullname = config.get_path(args.save)
-    if args.recalc or not os.path.exists(fullname):
+    fullnamelst = config.get_path(args.savelst)
+    fullnametiles = config.get_path(args.savetiles)
+    if (args.recalc or not
+            (os.path.exists(fullnamelst) and os.path.exists(fullnametiles))):
         calculate_initial_plan(args)
     else:
         log.info('Initial plan has already been created.')

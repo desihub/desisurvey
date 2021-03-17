@@ -65,6 +65,9 @@ class Tiles(object):
         self.tileRA = tiles['RA'].data.copy()
         self.tileDEC = tiles['DEC'].data.copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
+        self.designha = None
+        if 'DESIGNHA' in tiles.dtype.names:
+            self.designha = tiles['DESIGNHA']
 
         self.tileobsconditions = np.array([
             getattr(config.programs, program).conditions()
@@ -167,6 +170,8 @@ class Tiles(object):
         """
         scalar = np.isscalar(tileID)
         tileID = np.atleast_1d(tileID)
+        if np.any(tileID < 0):
+            raise ValueError('tileIDs must positive!')
         idx = np.searchsorted(self.tileID, tileID)
         idx = np.clip(idx, 0, len(self.tileID)-1)
         bad = self.tileID[idx] != tileID
@@ -262,8 +267,8 @@ class Tiles(object):
         if self.nogray:
             m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
             tiles['PROGRAM'][m] = 'DARK'
-        tprograms = np.unique(tiles['PROGRAM'])
 
+        tprograms = np.unique(tiles['PROGRAM'])
         programinconfig = np.isin(tprograms,
                                   [x for x in config.programs.keys])
         log = desiutil.log.get_logger()
@@ -271,11 +276,10 @@ class Tiles(object):
         if np.any(~programinconfig):
             for program in tprograms[~programinconfig]:
                 keep[tiles['PROGRAM'] == program] = 0
-            tiles = tiles[keep]
             log.info('Removing the following programs from the tile '
                      'file: ' + ' '.join(tprograms[~programinconfig]))
+            tiles = tiles[keep]
         return tiles
-
 
 
 _cached_tiles = {}

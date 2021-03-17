@@ -85,6 +85,9 @@ class QueuedList():
             self.queued = []
 
     def add(self, tileid):
+        if tileid < 0:
+            self.log.info('Not adding unknown TILEID to queued file.')
+            return
         self.queued.append(tileid)
         exists = os.path.exists(self.fn)
         try:
