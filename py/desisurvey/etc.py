@@ -216,14 +216,13 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     return _moonCoefficients.dot(X)
 
 
-def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_alt):
-    """ Calculate exposure time factor for bright time exposures.
-    
-    This factor is based on fits to sky brightness measurements from DESI SV1,
-    DESI CMX, and BOSS. 
-
-    TODO: 
-    - update twilight component, which is only fit using BOSS twilight  
+def sky_exposure_factor(tref, airmass, moon_frac, moon_sep, moon_alt, sun_sep,
+        sun_alt):
+    """ Calculate exposure time scaling factor due to sky brightness. This is
+    the factor that nominal exposure time needs to be scaled by in order to get 
+    the same SNR as an exposure during nominal dark sky. It's calculated based 
+    on a sky brightness model fit to observed sky brightness from DESI SV1, DESI
+    CMX, and BOSS. 
 
     For details, see the following jupyter notebooks: 
     - https://github.com/desi-bgs/bgs-cmxsv/blob/55850e44d65570da69de0788c652cff698416834/doc/nb/sv1_sky_model_fit.ipynb
@@ -231,6 +230,9 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
 
     Parameters
     ----------
+    tnom : array 
+        Array of *nominal* exposure time in seconds. This is an input parameter
+        because different programs have different nominal exposure times. 
     airmass : array 
         Array of airmass used for observing this tile, must be >= 1.
     moon_frac : float 
@@ -251,10 +253,6 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
         Dimensionless factors that exposure time should be increased to
         account for increased sky brightness during bright time.
     """
-    # exposure_factor = 1 when moon is below the horizon and sun is below -20.
-    if moon_alt < 0 and sun_alt < -18.:
-        return np.ones(len(airmass))  
-
     # check inputs 
     moon_sep    = moon_sep.flatten() 
     sun_sep     = sun_sep.flatten()
@@ -273,18 +271,11 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
     assert len(moon_sep) == nexp
     assert len(sun_sep) == nexp
 
-    # calculate exposure factor 
-    config = desisurvey.config.Configuration()
-
-    # sky brightness at 5000A for reference BGS exposure  
-    # for details see https://github.com/desi-bgs/bgs-cmxsv/blob/55850e44d65570da69de0788c652cff698416834/doc/nb/new_bgs_reference_sky.ipynb
-    Isky5000_ref = 3.6956611461286966 # 1e-17 erg/s/cm^2/A/arcsec^2
+    # sky brightness at 5000A for nominal dark sky 
+    Isky5000_ref = 1.1282850428182252 # 1e-17 erg/s/cm^2/A/arcsec^2
     
-    # exposure time for reference BGS exposure 
-    tref = getattr(config.nominal_exposure_time, 'BRIGHT')().to(u.s).value
-    
-    # sky brightness at 5000A for observing conditions 
-    Isky5000_exp = bright_Isky5000_notwilight_regression(
+    # sky brightness without twilight at 5000A for observing conditions 
+    Isky5000_exp = Isky5000_notwilight_regression(
             airmass,
             np.repeat(moon_frac, nexp), 
             moon_sep, 
@@ -292,7 +283,7 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
 
      # add twilight contribution 
     if sun_alt >= -18.:
-        Isky5000_exp += np.clip(bright_Isky5000_twilight_regression(
+        Isky5000_exp += np.clip(Isky5000_twilight_regression(
                 airmass, 
                 sun_sep, 
                 np.repeat(sun_alt, nexp)), 0, None) 
@@ -316,18 +307,19 @@ def bright_exposure_factor(airmass, moon_frac, moon_sep, moon_alt, sun_sep, sun_
     return texp/tref 
 
 
-def bright_Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt): 
+def Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt): 
     ''' Calculate sky surface brightness at 5000A during bright time without
     twilight. 
 
-    Surface brightness is based on a polynomial regression model that was fit
-    using observed sky surface brightnesses from 
-    * DESI SV1 bright exposures
-    * DESI CMX exposures with transparency > 0.9 
+    Surface brightness is based on a polynomial regression model fit to
+    log(observed sky brightness). The observed sky brightnesses were compiled
+    from 
+    * DESI SV1 bright exposures with TRANSP > 0.95 and SUN_ALT < -18 
+    * DESI CMX exposures with transparency > 0.95
     * BOSS exposures with sun alt < -18 
     
     For details, see jupyter notebook: 
-    https://github.com/desi-bgs/bgs-cmxsv/blob/4c5f124164b649c595cd2dca87d14ba9f3b2c64d/doc/nb/sv1_sky_model_fit.ipynb
+    https://github.com/desi-bgs/bgs-cmxsv/blob/521211dccff7cb3b71b07d84522802acade26071/doc/nb/sv1_sky_model_fit.ipynb
 
     Parameters
     ----------
@@ -346,28 +338,58 @@ def bright_Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt
     -------
     array
         Array of sky surface brightness at 5000A for bright time without
-        twilight 
+        twilight in units of erg/s/cm^2/A/arcsec^2
     '''
+    # polynomial of order
+    norder = 5 
     # polynomial regression cofficients for estimating exposure time factor during
     # non-twilight from airmass, moon_frac, moon_sep, moon_alt  
-    coeffs = np.array([
-        1.22875526e+00,  1.91591548e-01,  3.17313759e+00,  5.22047416e-02,
-       -3.87652985e-02, -5.33224507e-01,  4.63261325e+00,  1.13410640e-02,
-       -1.01921126e-02,  1.06314395e+00,  7.26049602e-02, -1.08328690e-01,
-       -8.95312945e-04, -5.59394346e-04,  7.99072084e-04])
-
+    coeffs = np.array([ 
+        1.19728287e-02,  2.68146174e-02,  2.78840941e-02,  4.41723544e-03,
+       -1.02111676e-01,  7.65110151e-03,  1.63878220e-02, -3.08958375e-02,
+        3.85657345e-01,  6.83474920e-03,  3.06045766e-01,  2.55798622e-01,
+        1.19306254e-03, -1.04242412e-02, -3.34780689e-03, -1.68835833e-02,
+        1.11378109e-02, -1.75611187e-01, -2.38751513e-01,  1.46593863e-02,
+       -4.36980545e-02, -1.78128533e-01,  5.85014404e-03,  1.37745149e-02,
+       -1.81392009e-03, -1.27115538e-02,  9.35953790e-02, -1.52422946e-01,
+       -1.74469624e-04, -6.01814594e-03, -2.13820870e-04, -7.40115962e-05,
+       -4.43960687e-05,  1.31544250e-04,  5.23119315e-05, -3.07378710e-02,
+        3.50689477e-02,  1.85015093e-01,  6.13788213e-02,  1.98622649e-02,
+       -7.03566704e-02, -2.70010457e-01, -4.13256930e-03, -4.65235557e-03,
+        2.08199644e-03,  4.06645589e-03,  2.08415057e-01,  4.87587825e-01,
+       -7.34996335e-03,  1.37774943e-03,  6.26446800e-03,  2.14264776e-05,
+       -1.34520777e-05, -1.28680576e-04, -2.98020923e-05,  1.41853618e-03,
+       -2.22111586e-01, -5.77624465e-01, -1.09989601e-02, -2.77969195e-04,
+        2.17332386e-03,  1.47785979e-04,  1.63001051e-04,  3.10888811e-05,
+       -5.98993375e-05, -8.54879999e-08,  3.29709501e-07,  2.92447174e-08,
+       -2.79763418e-07, -2.38343236e-08, -1.10769335e-01,  8.24805309e-02,
+       -2.67759016e-02, -1.09365333e-03,  9.87385635e-03,  3.12620536e-02,
+        9.15874867e-02, -2.52374361e-05, -4.92100655e-04, -4.21467759e-04,
+        5.28695530e-03,  1.93471362e-01, -5.37647583e-02, -4.34387094e-04,
+       -2.25656833e-03, -7.15039182e-04,  1.18896366e-05,  2.77215519e-05,
+        2.81214300e-05, -2.48811976e-06,  1.29700918e-02, -1.92447646e-02,
+       -2.44212957e-01, -5.99603226e-03, -2.76089664e-03,  9.14612070e-04,
+        6.91296852e-05,  1.02360578e-04,  1.16371717e-05, -2.52971480e-05,
+       -1.37227312e-07, -3.75516901e-07,  5.48164999e-08,  5.06994020e-07,
+        1.93984829e-07,  5.32931890e-02,  5.79701139e-01,  4.34770814e-01,
+       -6.79348983e-03, -1.31426633e-02, -6.14432600e-05,  1.39891173e-04,
+        3.29198340e-04,  1.11812563e-04, -1.17664897e-05, -1.29847018e-06,
+       -3.91089212e-06, -2.85449951e-06, -3.27679136e-07,  3.48519396e-07,
+        3.29795490e-09,  7.65512533e-09,  6.37102357e-09,  5.95568585e-10,
+       -2.63641980e-09, -1.30434882e-09])
+    
     theta = np.atleast_2d(np.array([airmass, moon_frac, moon_alt, moon_sep]).T)
 
-    combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, 3))
+    combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, norder+1))
 
     theta_transform = np.empty((theta.shape[0], len(coeffs)))
     for i, comb in enumerate(combs):
         theta_transform[:, i] = theta[:, comb].prod(1)
 
-    return np.dot(theta_transform, coeffs.T)
+    return np.exp(np.dot(theta_transform, coeffs.T)) 
 
 
-def bright_Isky5000_twilight_regression(airmass, sun_sep, sun_alt): 
+def Isky5000_twilight_regression(airmass, sun_sep, sun_alt): 
     ''' Calculate twilight contribution to sky surface brightness at 5000A
     during bright time. 
     
@@ -389,16 +411,18 @@ def bright_Isky5000_twilight_regression(airmass, sun_sep, sun_alt):
     sun_sep : array 
         Arry of separations angles between field center and sun in degrees
     sun_alt : float 
-        Altitude angle of the sunin degrees
+        Altitude angle of the sun in degrees
 
     Returns
     -------
     array
         Array of twilight contribution to sky surface brightness at 5000A for
-        bright time. 
+        bright time in units of erg/s/cm^2/A/arcsec^2
     '''
     norder = 1
-    skymodel_coeff = np.array([2.00474700e+00, 3.19827604e+00, 3.13212960e-01, 2.69673079e-03])
+    # coefficients fit in notebook
+    # https://github.com/desi-bgs/bgs-cmxsv/blob/521211dccff7cb3b71b07d84522802acade26071/doc/nb/sky_model_twilight_fit.ipynb
+    skymodel_coeff = np.array([3.50300842, 2.63453598, 0.40491282, 0.0096106 ])
 
     theta = np.atleast_2d(np.array([airmass, sun_alt, sun_sep]).T)
 
@@ -407,7 +431,7 @@ def bright_Isky5000_twilight_regression(airmass, sun_sep, sun_alt):
     for i, comb in enumerate(combs):
         theta_transform[:, i] = theta[:, comb].prod(1)
 
-    return np.dot(theta_transform, skymodel_coeff.T)
+    return np.clip(np.dot(theta_transform, skymodel_coeff.T), 0, None) 
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,

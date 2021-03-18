@@ -158,7 +158,10 @@ class Scheduler(object):
         self.in_night_pool[avoid_idx] = False
         # Initialize moon tracking during this night.
         self.moon_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
-        #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
+        self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
+        # Initialize sun tracking during this night.
+        self.sun_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=False) 
+        self.sun_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'sun', altaz=True) 
 
     def select_program(self, mjd_now, ETC, verbose=False):
         """Select program to observe now.
