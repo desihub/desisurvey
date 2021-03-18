@@ -224,7 +224,8 @@ class Planner(object):
         assert not self.tile_status[idx] == 'done'
         self.tile_available[overlapping] = 0
 
-    def set_donefrac(self, tileid, donefrac):
+    def set_donefrac(self, tileid, donefrac=None, status=None, 
+                     ignore_pending=False):
         """Update planner with new tile donefrac.
 
         Parameters
@@ -233,17 +234,36 @@ class Planner(object):
             1D array of integer tileIDs to update
 
         donefrac : array
-            1D array of completion fractions for tiles, matching tileid
+            1D array of completion fractions for tiles, matching tileid,
+            optional
+
+        status : array
+            1D array of tile status to update; optional
+
+        ignore_pending: bool
+            do not mark newly started files as pending
         """
+        tileid = np.atleast1d(tileid)
+        if donefrac is not None:
+            donefrac = np.atleast1d(donefrac)
+        if status is not None:
+            status = np.atleast1d(status)
         tileind, mask = self.tiles.index(tileid, return_mask=True)
         if np.any(~mask):
             self.log.warning('Some tiles with unknown IDs; ignoring')
             tileind = tileind[mask]
-            donefrac = donefrac[mask]
-        self.donefrac[tileind] = donefrac
-        for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
-            if donefrac0 > 0:
-                self.add_pending_tile(tileid0)
+            if donefrac is not None:
+                donefrac = donefrac[mask]
+            if status is not None:
+                status = status[mask]
+        if donefrac is not None:
+            self.donefrac[tileind] = donefrac
+        if status is not None:
+            self.status[tileind] = status
+        if not ignore_pending and (donefrac is not None):
+            for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
+                if donefrac0 > 0:
+                    self.add_pending_tile(tileid0)
 
     def obsend(self):
         return ((self.tile_status == 'obsend') |
@@ -291,9 +311,16 @@ class Planner(object):
         t = self.tiles.read_tiles_table()
         t.meta = meta
         t['DESIGNHA'] = self.designha
+        t['DESIGNHA'].format = '%7.2f'
+        t['DESIGNHA'].description = 'Design hour angle'
         t['PRIORITY'] = self.tile_priority
+        t['PRIORITY'].format = '%10.3e'
+        t['PRIORITY'].description = 'Tile observation priority'
         t['STATUS'] = self.tile_status
+        t['STATUS'].description = 'unobs, obsstart, obsend, done'
         t['DONEFRAC'] = self.donefrac
+        t['DONEFRAC'].format = '%7.4f'
+        t['DONEFRAC'].description = 'Tile completeness fraction'
         if self.simulate:
             t['COUNTDOWN'] = self.tile_countdown
         t.write(fullname+'.tmp', overwrite=True, format='ascii.ecsv')
@@ -347,6 +374,7 @@ class Planner(object):
         available = np.zeros(self.tiles.ntiles, dtype='bool')
         ind, mask = self.tiles.index(available_tileids, return_mask=True)
         available[ind[mask]] = True
+        # *** need to get mtl-done and match in here.
         self.tile_available = available.copy()
         self.log.info('Observations possible for {} tiles.'.format(
             np.count_nonzero(available)))
@@ -382,6 +410,7 @@ class Planner(object):
         oldstatus = self.tile_status.copy()
         newlystarted = ((self.donefrac > 0) & (self.tile_status == 'unobs'))
         self.tile_status[newlystarted] = 'obsstart'
+        # *** need to improve this with feedback from offline pipeline.
         newlyobserved = ((self.donefrac >= self.min_snr2_fraction) &
                          ((self.tile_status == 'obsstart') |
                           (self.tile_status == 'unobs')))

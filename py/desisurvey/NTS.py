@@ -195,8 +195,11 @@ class NTS():
         else:
             self.night = night
         if obsplan is None:
-            obsplan = os.path.join(desisurvey.utils.night_to_str(self.night),
-                                   'config.yaml')
+            if nts_survey is None:
+                nts_survey = 'sv1'
+            nts_dir = (desisurevy.utils.night_to_str(self.night) + '_' + 
+                       nts_survey)
+            obsplan = os.path.join(nts_dir, 'config.yaml')
         self.obsplan = obsplan
         nts_dir, _ = os.path.split(obsplan)
         if len(os.path.split(nts_dir)[0]) > 0:

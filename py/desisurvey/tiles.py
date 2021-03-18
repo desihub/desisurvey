@@ -326,6 +326,31 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
     return tiles
 
 
+def find_tile_file(filename):
+    path, fn = os.path.split(filename)
+    if path != '':
+        if not os.path.exists(filename):
+            raise FileNotFoundError(
+                'tile file not found at {}'.format(filename))
+        return filename
+    dmname = desimodel.io.findfile(os.path.join('footprint', filename))
+    dsdirname = os.environ.get('DESISURVEY_OUTPUT', None)
+    dsname = os.path.join(dsdirname, filename)
+    localname = filename
+    namedict = dict(DESISURVEY=(dsname, os.path.exists(dsname)),
+                    DESIMODEL=(dmname, os.path.exists(dmname)),
+                    LOCAL=(localname, os.path.exists(localname)))
+    for key in namedict:
+        if namedict[key][1]:
+            fn = namedict.pop(key)
+            others = [key for (key, (name, exists)) in namedict.items()
+                      if exists]
+            log.info('Using {} filename, ignoring other files of same name: '
+                     ' '.join(others))
+            return fn
+    raise FileNotFoundError('tile file not found at {}'.format(filename))
+
+
 def get_nominal_program_times(tileprogram, config=None):
     """Return nominal times for given programs in seconds."""
     if config is None:

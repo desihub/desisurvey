@@ -18,7 +18,8 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                    configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None,
                    simulate_donefrac=False,
-                   desisurvey_output=None, nts_dir=None, sv=False):
+                   desisurvey_output=None, nts_dir=None, sv=False,
+                   nts_survey='sv1'):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -75,7 +76,10 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                       'DESISURVEY_OUTPUT!')
             return
         desisurvey_output = os.environ['DESISURVEY_OUTPUT']
-    subdir = nts_dir if nts_dir is not None else nightstr
+    if nts_dir is None:
+        subdir = nightstr + '_' + nts_survey
+    else:
+        subdir = nts_dir
     directory = os.path.join(desisurvey_output, subdir)
     if not os.path.exists(directory):
         os.mkdir(directory)
@@ -155,6 +159,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         raise ValueError('Must pass spectra_dir to afternoon_plan or set '
                          'DESI_SPECTRA_DIR.')
 
+    # always do this independent of SV, and add mtl.
     if sv:
         os.system('wget -q https://data.desi.lbl.gov/desi/survey/observations/'
                   'SV1/sv1-exposures.fits -O ./sv1-exposures.new.fits')
@@ -173,11 +178,14 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
 
     tiles, exps = collect_etc.scan_directory(
         spectra_dir, start_from=restore_etc_stats,
-        offlinedepth=offlinedepthfn, simulate_donefrac=simulate_donefrac)
+        offlinedepth=offlinedepthfn, 
+        mtldone=mtldonefn,
+        simulate_donefrac=simulate_donefrac)
     collect_etc.write_tile_exp(tiles, exps, os.path.join(
         directory, 'etc-stats-{}.fits'.format(subdir)))
 
-    planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'])
+    planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'], 
+                         ignore_pending=True)
 
     if sv:
         # overwrite donefracs
@@ -194,7 +202,7 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                                    tiles['TILEID'], return_indices=True)
         nneeded = nneeded + (nneeded == 0)
         planner.set_donefrac(donefraccond['TILEID'],
-                             nobserved / nneeded)
+                             nobserved / nneeded, ignore_pending=True)
         hdulist = fits.open(newtilefn)
         hdu = hdulist['TILES']
         tilefiledat = hdu.data

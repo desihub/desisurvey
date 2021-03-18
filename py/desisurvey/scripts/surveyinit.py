@@ -189,7 +189,7 @@ def calculate_initial_plan(args):
     design['RA'] = tiles.tileRA
     design['DEC'] = tiles.tileDEC
     design['PROGRAM'] = tiles.tileprogram
-    tiletab = tiles.read_tiles_table(return_index=True)
+    tiletab = tiles.read_tiles_table()
 
     # Optimize each program separately.
     stretches = dict(
