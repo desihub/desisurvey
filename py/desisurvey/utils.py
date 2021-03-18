@@ -444,33 +444,3 @@ def match(a, b):
     matches = a[sa[ind[m]]] == b[m]
     m[m] &= matches
     return sa[ind[m]], np.flatnonzero(m)
-
-
-def findfile(fname, default_dirname=None, default_filename=None):
-    # stolen from desimodel.io.load_tiles
-    if default_filename is None and fname is None:
-        raise ValueError('one of fname and default must be non-None!')
-    if fname is None:
-        # Use the default
-        fname = findfile(os.path.join(default_dirname, default_filename))
-    else:
-        # If full path isn't included, check local vs default dir
-        tilepath, filename = os.path.split(fname)
-        if tilepath == '':
-            have_local = os.path.isfile(fname)
-            checkfile = findfile(os.path.join(default_dirname, fname))
-            have_dmdata = os.path.isfile(checkfile)
-            if have_dmdata:
-                if have_local:
-                    msg = ('$DESIMODEL/data/{1}/{0} is shadowed by a local' +
-                           ' file. Choosing $DESIMODEL file.' +
-                           ' Use fname="./{0}" if you want the local copy' +
-                           ' instead.').format(fname, default_dirname)
-                    warnings.warn(msg)
-                fname = checkfile
-
-            if not (have_local or have_dmdata):
-                msg = ('File "{0}" does not exist locally or in ' +
-                       '$DESIMODEL/data/{1}/!').format(fname, default_dirname)
-                raise FileNotFoundError(msg)
-    return fname
