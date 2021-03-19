@@ -149,6 +149,7 @@ def scan_directory(dirname, start_from=None,
         exps = exps[~m]
     exps = exps[np.argsort(exps['EXPID'])]
     if start_exps is not None:
+        # worry about truncation?
         exps = astropy.table.vstack(start_exps, exps)
     if offlinedepth is not None:
         exps = update_donefrac_from_offline(exps, offlinedepth)
