@@ -315,9 +315,11 @@ class Scheduler(object):
             self.LST + 360*esttime/2 - self.tiles.tileRA[self.tile_sel])
         # Calculate the airmass of each available tile.
         self.airmass[:] = self.max_airmass
-        self.airmass[self.tile_sel] = self.tiles.airmass(
+        airmassnow = self.tiles.airmass(
             self.hourangle[self.tile_sel], self.tile_sel)
-        self.tile_sel &= self.airmass < self.max_airmass
+        self.airmass[self.tile_sel] = airmassnow
+        self.tile_sel[self.tile_sel] &= (
+            (airmassnow < self.max_airmass) & (airmassnom < self.max_airmass))
         absha = np.abs(((self.hourangle + 180) % 360)-180)
         self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):
