@@ -123,7 +123,12 @@ class RequestLog():
         mjd = now.mjd
         res = dict(requesttime=mjd, conditions=conditions, exposure=exposure,
                    constraints=constraints, speculative=speculative)
-        s = json.dumps(res)
+        try:
+            s = json.dumps(res)
+        except Exception as e:
+            logob.error('Could not dump request json to log!')
+            logob.error(str(e))
+            s = 'Error, missing entry!'
         fp = open(self.fn, 'a')
         fp.write(s+'\n')
         fp.flush()
@@ -132,7 +137,12 @@ class RequestLog():
         now = time.Time.now()
         mjd = now.mjd
         res = dict(requesttime=mjd, tile=tile)
-        s = json.dumps(res)
+        try:
+            s = json.dumps(res)
+        except Exception as e:
+            logob.error('Could not dump response json to log!')
+            logob.error(str(e))
+            s = 'Error, missing entry!'
         fp = open(self.fn, 'a')
         fp.write(s+'\n')
         fp.flush()
@@ -391,8 +401,9 @@ class NTS():
         if not isinstance(sbprof, str):
             sbprof = 'PSF'
 
-        texp_tot *= skylevel
-        texp_remaining *= skylevel
+        boost_factor = getattr(self.config.boost_factor, sched_program)()
+        texp_tot *= boost_factor
+        texp_remaining *= boost_factor
 
         # avoid crossing program boundaries, don't observe longer than an hour.
         maxdwell = self.config.maxtime().to(u.day).value
