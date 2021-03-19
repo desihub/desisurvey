@@ -52,7 +52,7 @@ def run_plan(nts_dir=None, verbose=False, survey=None):
         cidx = np.interp(t0, changes, np.arange(len(changes)))
         cidx = int(np.clip(cidx, 0, len(programs)))
         cond = programs[cidx]
-        moon_up_factor = getattr(nts.config.moon_up_factor, cond)()
+        moon_up_factor = getattr(nts.config.conditions, cond).moon_up_factor()
         expdict = dict(mjd=t0, previoustiles=previoustiles)
         conddict = dict(skylevel=moon_up_factor)
         res = nts.next_tile(exposure=expdict, conditions=conddict,
