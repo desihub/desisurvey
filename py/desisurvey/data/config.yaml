@@ -189,6 +189,10 @@ tiles_file: desi-tiles.ecsv
 # Merge dark and gray programs.
 tiles_nogray: True
 
+# Trim tile file to only used programs and IN_DESI.
+# Useful for sim visualization and stats tools; not recommended for ops.
+tiles_trim: True
+
 # Base path to pre-pended to all non-absolute paths used for reading and
 # writing files managed by this package. The pattern {...} will be expanded
 # using environment variables.

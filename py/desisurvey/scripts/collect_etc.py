@@ -94,6 +94,17 @@ def scan_directory(dirname, start_from=None,
                 start_from))
             return
         start_exps = astropy.table.Table.read(fn)
+        # painful, fragile invocations to make sure that columns
+        # aren't truncated at fewer characters than we might want.
+        obstype = np.zeros(len(start_exps), dtype='U20')
+        obstype[:] = start_exps['OBSTYPE']
+        start_exps['OBSTYPE'] = obstype
+        quality = np.zeros(len(start_exps), dtype='U20')
+        quality[:] = start_exps['QUALITY']
+        start_exps['QUALITY'] = quality
+        comments = np.zeros(len(start_exps), dtype='U80')
+        comments[:] = start_exps['COMMENTS']
+        start_exps['COMMENTS'] = comments
         maxexpid = np.max(start_exps['EXPID'])
         for subdir in subdirs:
             if not os.path.isdir(os.path.join(dirname, subdir)):
@@ -132,7 +143,7 @@ def scan_directory(dirname, start_from=None,
         exps['NIGHT'][i] = hdr.get('NIGHT', -1)
         exps['TILEID'][i] = hdr.get('TILEID', -1)
         exps['EXPID'][i] = hdr.get('EXPID', -1)
-        exps['OBSTYPE'][i] = hdr.get('OBSTYPE', -1)
+        exps['OBSTYPE'][i] = hdr.get('OBSTYPE', -1).upper().strip()
         exps['EXPTIME'][i] = hdr.get('EXPTIME', -1)
         exps['EFFTIME'][i] = hdr.get('EFFTIME', -1)
         exps['SPECTIME'][i] = -1
@@ -149,8 +160,7 @@ def scan_directory(dirname, start_from=None,
         exps = exps[~m]
     exps = exps[np.argsort(exps['EXPID'])]
     if start_exps is not None:
-        # worry about truncation?
-        exps = astropy.table.vstack(start_exps, exps)
+        exps = astropy.table.vstack([start_exps, astropy.table.Table(exps)])
     if offlinedepth is not None:
         exps = update_donefrac_from_offline(exps, offlinedepth)
     ntiles = len(np.unique(exps['TILEID']))

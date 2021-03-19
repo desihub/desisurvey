@@ -176,15 +176,15 @@ class Planner(object):
                 self.tile_countdown = t['COUNTDOWN'].data.copy()
                 if t.meta['CADENCE'] != self.fiberassign_cadence:
                     raise ValueError('Fiberassign cadence mismatch.')
-            self.tile_status = np.zeros(self.tiles.ntiles, dtype='U12')
+            self.tile_status = np.zeros(self.tiles.ntiles, dtype='U20')
             self.tile_status[:] = 'unobs'
             self.tile_status[:] = t['STATUS']
-            self.tile_available = np.ones(self.tiles.ntiles, dtype='bool')
+            self.tile_available = self.tiles.in_desi.copy()
             self.tile_priority = t['PRIORITY'].data.copy()
             self.donefrac = t['DONEFRAC'].data.copy()
             self.designha = t['DESIGNHA'].data.copy()
             if 'AVAILABLE' in t.dtype.names:
-                self.tile_available[:] = t['AVAILABLE'].data.copy()
+                self.tile_available[:] &= t['AVAILABLE'].data.copy()
             self.log.debug(('Restored plan with {} unobserved, {} pending, '
                             'and {} completed tiles from {}.').format(
                                 np.sum(self.donefrac <= 0),
@@ -194,7 +194,7 @@ class Planner(object):
                                 fullname))
         else:
             # Initialize the plan for a a new survey.
-            self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
+            self.tile_available = self.tiles.in_desi.copy()
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = load_design_hourangle()
 
@@ -351,7 +351,7 @@ class Planner(object):
         self.tile_status[run_now] = 'done'
         delayed = pending & (self.tile_countdown > 0)
         self.tile_countdown[delayed] -= 1
-        self.tile_available = np.ones(len(self.tile_status), dtype='bool')
+        self.tile_available = self.tiles.in_desi.copy()
         self.log.info('Completed {} tiles with {} delayed on {}.'
                       .format(np.count_nonzero(run_now),
                               np.count_nonzero(delayed), night))
@@ -383,7 +383,7 @@ class Planner(object):
         available = np.zeros(self.tiles.ntiles, dtype='bool')
         ind, mask = self.tiles.index(available_tileids, return_mask=True)
         available[ind[mask]] = True
-        self.tile_available = available.copy()
+        self.tile_available = self.tiles.in_desi & available
         self.log.info('Observations possible for {} tiles.'.format(
             np.count_nonzero(available)))
         if np.count_nonzero(available) == 0:

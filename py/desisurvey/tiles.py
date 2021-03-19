@@ -67,12 +67,12 @@ class Tiles(object):
         if 'DESIGNHA' in tiles.dtype.names:
             self.designha = tiles['DESIGNHA']
 
-        self.tileobsconditions = np.array([
-            getattr(config.programs, program).conditions()
-            for program in self.tileprogram])
+        self.tileobsconditions = self.get_conditions()
         if self.nogray:
             mgray = self.tileobsconditions == 'GRAY'
             self.tileobsconditions[mgray] = 'DARK'
+
+        self.in_desi = tiles['IN_DESI'].data.copy()
 
         # Count tiles.
         self.ntiles = len(self.tileID)
@@ -183,6 +183,17 @@ class Tiles(object):
             res = (res, mask)
         return res
 
+    def get_conditions(self):
+        res = []
+        config = desisurvey.config.Configuration()
+        for program in self.tileprogram:
+            tprogram = getattr(config.programs, program, None)
+            if tprogram is None:
+                res.append('NONE')
+            else:
+                res.append(tprogram.conditions())
+        return np.array(res)
+
     def allowed_in_conditions(self, cond):
         if self.nogray and (cond == 'GRAY'):
             cond = 'DARK'
@@ -253,7 +264,7 @@ class Tiles(object):
                     continue
                 self._overlapping[rownum[ind1]].append(rownum[ind2])
 
-    def read_tiles_table(self, trim=True):
+    def read_tiles_table(self):
         """Read and trim the tiles table.
 
         Must be called after self.tiles_file and self.nogray
@@ -261,9 +272,13 @@ class Tiles(object):
         """
         config = desisurvey.config.Configuration()
         tiles = Table.read(self.tiles_file)
+        # control truncation
+        tileprogram = np.zeros(len(tiles), dtype='U20')
+        tileprogram[:] = tiles['PROGRAM']
         if self.nogray:
             m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
             tiles['PROGRAM'][m] = 'DARK'
+        trim = config.tiles_trim()
         if trim:
             tiles = tiles[tiles['IN_DESI'] != 0]
             tprograms = np.unique(tiles['PROGRAM'])
