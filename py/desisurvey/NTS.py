@@ -391,11 +391,9 @@ class NTS():
         if not isinstance(sbprof, str):
             sbprof = 'PSF'
 
-        if tile_program not in ['DARK', 'GRAY', 'BRIGHT']:
-            moon_up_factor = getattr(self.config, 'moon_up_factor')
-            moon_up_factor = getattr(moon_up_factor, sched_program)()
-            texp_tot *= moon_up_factor
-            texp_remaining *= moon_up_factor
+        boost_factor = getattr(self.config.boost_factor, sched_program)
+        texp_tot *= boost_factor
+        texp_remaining *= boost_factor
 
         # avoid crossing program boundaries, don't observe longer than an hour.
         maxdwell = getattr(self.config, 'maxtime')().to(u.day).value
