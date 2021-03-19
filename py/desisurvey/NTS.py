@@ -197,7 +197,7 @@ class NTS():
         if obsplan is None:
             if nts_survey is None:
                 nts_survey = 'sv1'
-            nts_dir = (desisurevy.utils.night_to_str(self.night) + '_' + 
+            nts_dir = (desisurvey.utils.night_to_str(self.night) + '-' +
                        nts_survey)
             obsplan = os.path.join(nts_dir, 'config.yaml')
         self.obsplan = obsplan
@@ -225,13 +225,12 @@ class NTS():
         self.config = config
         try:
             self.planner = desisurvey.plan.Planner(
-                self.rules,
-                restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
+                self.rules, restore=config.tiles_file())
             self.scheduler = desisurvey.scheduler.Scheduler(self.planner)
             self.queuedlist = QueuedList(
-                config.get_path('{}/queued-{}.dat'.format(fulldir, nts_dir)))
+                '{}/queued.dat'.format(fulldir))
             self.requestlog = RequestLog(
-                config.get_path('{}/requestlog-{}.dat'.format(fulldir, nts_dir)))
+                '{}/requestlog.dat'.format(fulldir))
         except Exception as e:
             print(e)
             raise ValueError('Error restoring scheduler & planner files; '
@@ -368,6 +367,13 @@ class NTS():
                 tile_program))
             return badtile
 
+        svmode = getattr(self.config, 'svmode', None)
+        svmode = svmode() if svmode is not None else False
+        if svmode or (snr2frac_start > self.config.min_snr2_fraction()):
+            # in svmode we always go for full visits
+            # if this tile is already finished, it's a backup tile; go for a
+            # full visit.
+            snr2frac_start = 0
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
             tile_program, snr2frac_start, exposure_factor, nexp_completed=0)
         efftime = getattr(programconf, 'efftime', None)
@@ -390,6 +396,8 @@ class NTS():
 
         # avoid crossing program boundaries, don't observe longer than an hour.
         maxdwell = self.config.maxtime().to(u.day).value
+        mintime = self.config.mintime().to(u.day).value
+        texp_remaining = max([texp_remaining, mintime])
         texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd,
                               maxdwell])
         exptime = texp_remaining

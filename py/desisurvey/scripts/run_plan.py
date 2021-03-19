@@ -18,7 +18,7 @@ def mjd_to_azstr(mjd):
     return tt.astimezone(tz).strftime('%H:%M')
 
 
-def run_plan(nts_dir=None, verbose=False):
+def run_plan(nts_dir=None, verbose=False, survey=None):
     kpno = EarthLocation.of_site('kpno')
     if nts_dir is None:
         obsplan = None
@@ -26,13 +26,9 @@ def run_plan(nts_dir=None, verbose=False):
     else:
         night = desisurvey.utils.get_date(nts_dir)
         obsplan = os.path.join(nts_dir, 'config.yaml')
-    nts = desisurvey.NTS.NTS(obsplan=obsplan, night=night)
+    nts = desisurvey.NTS.NTS(obsplan=obsplan, night=night, nts_survey=survey)
     t0 = nts.scheduler.night_ephem['brightdusk']
     nts_dir, _ = os.path.split(nts.obsplan)
-    etcfn = os.path.join(nts_dir, 'etc-stats-{}.fits'.format(nts_dir))
-    exps = fits.getdata(etcfn, 'EXPS')
-    nincond = collect_etc.number_in_conditions(exps)
-    donecond = desisurvey.svstats.donefrac_in_conditions(nincond)
     if not verbose:
         desiutil.log.get_logger().setLevel(desiutil.log.WARNING)
     previoustiles = []
@@ -47,10 +43,9 @@ def run_plan(nts_dir=None, verbose=False):
     print(nts.scheduler.night)
     for name, tt in zip(night_labels[s], night_times[s]):
         print('%11s %s' % (name, mjd_to_azstr(tt)))
-    dgbstr = 'd/g/b' if not nts.scheduler.tiles.nogray else 'd/b'
 
     print('local   lst   cond  tile    ra   dec    program fac  tot  split ' +
-          dgbstr)
+          '  N')
     while t0 < nts.scheduler.night_ephem['brightdawn']:
         expdict = dict(mjd=t0, previoustiles=previoustiles)
         res = nts.next_tile(exposure=expdict, speculative=True)
@@ -61,28 +56,18 @@ def run_plan(nts_dir=None, verbose=False):
         previoustiles.append(res['fiberassign'])
         lst = Time(t0, format='mjd', location=kpno).sidereal_time('apparent')
         lst = lst.to(u.deg).value
-        nsofar = (donecond[donecond['TILEID'] == res['fiberassign']])
         ind = np.flatnonzero(
             nts.scheduler.tiles.tileID == res['fiberassign'])[0]
         ra = nts.scheduler.tiles.tileRA[ind]
         dec = nts.scheduler.tiles.tileDEC[ind]
-        if len(nsofar) > 0:
-            nsofar = [nsofar['NNIGHT_DARK'], nsofar['NNIGHT_GRAY'],
-                      nsofar['NNIGHT_BRIGHT']]
-        else:
-            nsofar = [0, 0, 0]
-        if not nts.scheduler.tiles.nogray:
-            dgbstr = '%3.1f/%3.1f/%3.1f' % nsofar
-        else:
-            nsofar = (nsofar[0], nsofar[2])
-            dgbstr = '%3.1f/%3.1f' % nsofar
+        nnight = nts.scheduler.plan.donefrac[ind]*4
         print(
             ('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f '
-             '%4d %6s %s') % (
+             '%4d %6s %3.1f') % (
             mjd_to_azstr(t0), lst, res['conditions'],
             res['fiberassign'], ra, dec, res['program'],
             res['exposure_factor'], res['esttime'].astype('i4'),
-                 ('%dx%d' % (res['count'], res['exptime'])), dgbstr))
+                 ('%dx%d' % (res['count'], res['exptime'])), nnight))
         t0 += (res['exptime']+180)*res['count']/60/60/24
 
 
@@ -93,6 +78,8 @@ def parse(options=None):
         epilog='EXAMPLE: %(prog)s [YYYYMMDD/config.yaml]')
     parser.add_argument('nts_dir', nargs='?', default=None, type=str,
                         help='nts_dir to use; default YYYYMMDD')
+    parser.add_argument('--survey', default='sv1', type=str,
+                        help='survey to use; default sv1')
     parser.add_argument('--verbose', action='store_true', default=False,
                         help='verbose output')
     if options is None:
@@ -103,4 +90,4 @@ def parse(options=None):
 
 
 def main(args):
-    run_plan(nts_dir=args.nts_dir, verbose=args.verbose)
+    run_plan(nts_dir=args.nts_dir, survey=args.survey, verbose=args.verbose)

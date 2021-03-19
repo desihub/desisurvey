@@ -133,7 +133,8 @@ class Scheduler(object):
             self.log_priority = np.log(self.plan.tile_priority)
 
         # Initialize the pool of tiles that could be observed this night.
-        self.in_night_pool[:] = (self.plan.tile_priority > 0) & self.plan.tile_available
+        self.in_night_pool[:] = ((self.plan.tile_priority > 0) &
+                                 self.plan.tile_available)
         if self.ignore_completed_priority <= 0:
              self.in_night_pool &= ~self.plan.obsend()
 

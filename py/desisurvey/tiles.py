@@ -22,7 +22,7 @@ attributes for consistency and efficiency.
 """
 from __future__ import print_function, division
 
-import re
+import os
 
 import numpy as np
 
@@ -53,9 +53,7 @@ class Tiles(object):
 
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
-        self.tiles_file = desisurvey.utils.findfile(
-            self.tiles_file, default_dirname='footprint',
-            default_filename='desi-tiles.fits')
+        self.tiles_file = find_tile_file(self.tiles_file)
 
         tiles = self.read_tiles_table()
 
@@ -255,7 +253,7 @@ class Tiles(object):
                     continue
                 self._overlapping[rownum[ind1]].append(rownum[ind2])
 
-    def read_tiles_table(self):
+    def read_tiles_table(self, trim=True):
         """Read and trim the tiles table.
 
         Must be called after self.tiles_file and self.nogray
@@ -263,21 +261,21 @@ class Tiles(object):
         """
         config = desisurvey.config.Configuration()
         tiles = Table.read(self.tiles_file)
-        tiles = tiles[tiles['IN_DESI'] != 0]
         if self.nogray:
             m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
             tiles['PROGRAM'][m] = 'DARK'
-
-        tprograms = np.unique(tiles['PROGRAM'])
-        programinconfig = np.isin(tprograms,
-                                  [x for x in config.programs.keys])
-        log = desiutil.log.get_logger()
-        keep = np.ones(len(tiles), dtype='bool')
-        if np.any(~programinconfig):
-            for program in tprograms[~programinconfig]:
-                keep[tiles['PROGRAM'] == program] = 0
-            log.info('Removing the following programs from the tile '
-                     'file: ' + ' '.join(tprograms[~programinconfig]))
+        if trim:
+            tiles = tiles[tiles['IN_DESI'] != 0]
+            tprograms = np.unique(tiles['PROGRAM'])
+            programinconfig = np.isin(tprograms,
+                                      [x for x in config.programs.keys])
+            log = desiutil.log.get_logger()
+            keep = np.ones(len(tiles), dtype='bool')
+            if np.any(~programinconfig):
+                for program in tprograms[~programinconfig]:
+                    keep[tiles['PROGRAM'] == program] = 0
+                log.info('Removing the following programs from the tile '
+                         'file: ' + ' '.join(tprograms[~programinconfig]))
             tiles = tiles[keep]
         return tiles
 
@@ -327,6 +325,7 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
 
 
 def find_tile_file(filename):
+    log = desiutil.log.get_logger()
     path, fn = os.path.split(filename)
     if path != '':
         if not os.path.exists(filename):
@@ -342,21 +341,24 @@ def find_tile_file(filename):
                     LOCAL=(localname, os.path.exists(localname)))
     for key in namedict:
         if namedict[key][1]:
-            fn = namedict.pop(key)
+            fn = namedict.pop(key)[0]
             others = [key for (key, (name, exists)) in namedict.items()
                       if exists]
-            log.info('Using {} filename, ignoring other files of same name: '
+            log.info('Using {} filename, '.format(fn) +
+                     'ignoring other files of same name: ' +
                      ' '.join(others))
             return fn
     raise FileNotFoundError('tile file not found at {}'.format(filename))
 
 
-def get_nominal_program_times(tileprogram, config=None):
+def get_nominal_program_times(tileprogram, config=None,
+                              return_timetypes=False):
     """Return nominal times for given programs in seconds."""
     if config is None:
         config = desisurvey.config.Configuration()
     progconf = config.programs
     nomtimes = []
+    timetypes = []
     unknownprograms = []
     nunknown = 0
     for program in tileprogram:
@@ -365,14 +367,21 @@ def get_nominal_program_times(tileprogram, config=None):
             nomprogramtime = 300
             unknownprograms.append(program)
             nunknown += 1
+            timetype = 'ELG'
         else:
             nomprogramtime = getattr(tprogconf, 'efftime')()
+            timetype = getattr(tprogconf, 'efftime_type')()
         if not isinstance(nomprogramtime, int):
             nomprogramtime = nomprogramtime.to(u.s).value
         nomtimes.append(nomprogramtime)
+        timetypes.append(timetype)
     if nunknown > 0:
         log = desiutil.log.get_logger()
         log.info(('%d observations of unknown programs\n' % nunknown) +
                  'unknown programs: '+' '.join(np.unique(unknownprograms)))
     nomtimes = np.array(nomtimes)
-    return nomtimes
+    timetypes = np.array(timetypes)
+    ret = nomtimes
+    if return_timetypes:
+        ret = (ret, timetypes)
+    return ret

@@ -43,20 +43,16 @@ class Tester(unittest.TestCase):
         # Use a subset of the tiles for faster testing. These cuts mirror
         # those used to trim the list of tiles in a test branch of desimodel,
         # so should give identical results with local and travis tests.
-        tiles = astropy.table.Table(desimodel.io.load_tiles())
+        tiles = desisurvey.tiles.Tiles().read_tiles_table()
         subset = (35 < tiles['RA']) & (tiles['RA'] < 55) & \
                  (-10 < tiles['DEC']) & (tiles['DEC'] < 20)
-        tiles_file = os.path.join(cls.tmpdir, 'tiles-subset.fits')
+        tiles['DESIGNHA'] = 0
+        tiles['STATUS'] = 'unobs'
+        tiles['PRIORITY'] = 1
+        tiles_file = os.path.join(cls.tmpdir, 'tiles-subset.ecsv')
         tiles[subset].write(tiles_file)
         config.tiles_file.set_value(tiles_file)
-        surveyinit = astropy.table.Table()
-        surveyinit['tileID'] = tiles['TILEID']
-        surveyinit['HA'] = tiles['TILEID']*0.0
-        surveyinit['HA_DARK'] = tiles['TILEID']*0.0
-        surveyinit['HA_GRAY'] = tiles['TILEID']*0.0
-        surveyinit['HA_BRIGHT'] = tiles['TILEID']*0.0
-        surveyinit.meta['EXTNAME'] = 'DESIGN'
-        surveyinit[subset].write(os.path.join(cls.tmpdir, 'surveyinit.fits'))
+        tiles = desisurvey.tiles.get_tiles(use_cache=False)
 
     @classmethod
     def tearDownClass(cls):

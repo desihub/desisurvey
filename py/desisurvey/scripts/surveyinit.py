@@ -87,8 +87,9 @@ def parse(options=None):
         '--savelst', default='lst_optimized.fits', metavar='NAME',
         help='name of FITS output where LST distributions are saved')
     parser.add_argument(
-        '--savetiles', default='tiles-planned.ecsv', metavar='NAME',
-        help='name of ecsv output where updated tile file is saved')
+        '--savetiles', default=None, metavar='NAME',
+        help=('name of ecsv output where updated tile file is saved, '
+              'default: same as tiles file, but in DESISURVEY_OUTPUT.'))
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path to use instead of config.output_path')
@@ -280,7 +281,14 @@ def calculate_initial_plan(args):
     _, mt, md = np.intersect1d(tiletab['TILEID'], design['TILEID'],
                                return_indices=True)
     tiletab['DESIGNHA'][mt] = design['HA'][md]
-    fullname = config.get_path(args.savetiles)
+    # drop unnecessary columns
+    dropcolumns = ['AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC', 'OBSCONDITIONS',
+                   'IMAGEFRAC_G', 'IMAGEFRAC_R', 'IMAGEFRAC_Z',
+                   'IMAGEFRAC_GR', 'IMAGEFRAC_GRZ', 'IN_IMAGING']
+    for col in dropcolumns:
+        if col in tiletab.dtype.names:
+            tiletab.remove_column(col)
+    fullname = args.savetiles
     tiletab.write(fullname, overwrite=True, format='ascii.ecsv')
 
 
@@ -309,7 +317,13 @@ def main(args):
 
     # Calculate design hour angles if necessary.
     fullnamelst = config.get_path(args.savelst)
-    fullnametiles = config.get_path(args.savetiles)
+    if args.savetiles is not None:
+        fullnametiles = args.savetiles
+    else:
+        tiles = desisurvey.tiles.get_tiles()
+        fullnametiles = os.path.basename(tiles.tiles_file)
+    fullnametiles = config.get_path(fullnametiles)
+    args.savetiles = fullnametiles
     if (args.recalc or not
             (os.path.exists(fullnamelst) and os.path.exists(fullnametiles))):
         calculate_initial_plan(args)

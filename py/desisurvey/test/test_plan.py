@@ -38,8 +38,8 @@ class TestPlan(Tester):
                 donefrac[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = 1.
                 plan.set_donefrac(tiles.tileID[~malreadydone], donefrac[~malreadydone])
                 # Save and restore our state.
-                plan.save('snapshot.fits')
-                plan2 = Planner(restore='snapshot.fits', simulate=True)
+                plan.save('snapshot.ecsv')
+                plan2 = Planner(restore='snapshot.ecsv', simulate=True)
 
 
 def test_suite():

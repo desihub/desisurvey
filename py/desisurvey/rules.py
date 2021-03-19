@@ -67,6 +67,8 @@ class Rules(object):
         # Get the full path of the YAML file to read.
         if os.path.isabs(file_name):
             full_path = file_name
+        elif os.path.exists(config.get_path(file_name)):
+            full_path = config.get_path(file_name)
         else:
             # Locate the config file in our package data/ directory.
             full_path = astropy.utils.data._find_pkg_data_path(

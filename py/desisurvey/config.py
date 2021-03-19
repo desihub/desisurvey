@@ -80,7 +80,7 @@ class Node(object):
                             .format('.'.join(self._path), unit))
                 else:
                     self._value = value
-            except TypeError:
+            except (TypeError, ValueError):
                 self._value = value
 
     @property
