@@ -14,7 +14,9 @@ import numpy as np
 
 from itertools import chain, combinations_with_replacement
 
+import astropy.time
 import astropy.units as u
+from astropy.coordinates import SkyCoord
 
 import specsim.atmosphere
 
@@ -22,6 +24,7 @@ import desiutil.log
 
 import desisurvey.config
 import desisurvey.tiles
+import desisurvey.ephem
 
 
 def seeing_exposure_factor(seeing):
@@ -216,95 +219,85 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     return _moonCoefficients.dot(X)
 
 
-def sky_exposure_factor(tref, airmass, moon_frac, moon_sep, moon_alt, sun_sep,
-        sun_alt):
-    """ Calculate exposure time scaling factor due to sky brightness. This is
-    the factor that nominal exposure time needs to be scaled by in order to get 
-    the same SNR as an exposure during nominal dark sky. It's calculated based 
-    on a sky brightness model fit to observed sky brightness from DESI SV1, DESI
-    CMX, and BOSS. 
-
-    For details, see the following jupyter notebooks: 
-    - https://github.com/desi-bgs/bgs-cmxsv/blob/55850e44d65570da69de0788c652cff698416834/doc/nb/sv1_sky_model_fit.ipynb
-    - https://github.com/desi-bgs/bgs-cmxsv/blob/55850e44d65570da69de0788c652cff698416834/doc/nb/sky_model_twilight_fit.ipynb
+def sky_level(mjd, ra, dec): 
+    ''' Calculate the sky surface brightness given MJD, RA, and Dec 
 
     Parameters
     ----------
-    tnom : array 
-        Array of *nominal* exposure time in seconds. This is an input parameter
-        because different programs have different nominal exposure times. 
-    airmass : array 
-        Array of airmass used for observing this tile, must be >= 1.
-    moon_frac : float 
-        Illuminated fraction of the moon within range [0,1].
-    moon_sep : array
-        Array of separation angles between field center and moon in degrees within the
-        range [0,180].
-    moon_alt : float 
-        Altitude angle of the moon above the horizon in degrees within range [-90,90].
-    sun_sep : array 
-        Arry of separations angles between field center and sun in degrees
-    sun_alt : float 
-        Altitude angle of the sunin degrees
+    mjd : float
+
+    ra : float 
+        RA in deg
+
+    dec : float
+        Dec in degrees deg
 
     Returns
     -------
-    array
-        Dimensionless factors that exposure time should be increased to
-        account for increased sky brightness during bright time.
-    """
-    # check inputs 
-    moon_sep    = moon_sep.flatten() 
-    sun_sep     = sun_sep.flatten()
-    airmass     = airmass.flatten() 
-    if (moon_frac < 0) or (moon_frac > 1):
-        raise ValueError('Got invalid moon_frac outside [0,1].')
-    if (moon_alt < -90) or (moon_alt > 90):
-        raise ValueError('Got invalid moon_alt outside [-90,+90].')
-    if (moon_sep.min() < 0) or (moon_sep.max() > 180):
-        raise ValueError('Got invalid moon_sep outside [0,180].')
-    if airmass.min() < 1:
-        raise ValueError('Got invalid airmass < 1.')
+    float 
+        sky surface brightness in units of 1e-17 erg/s/cm^2/A/arcsec^2
+    '''
+    ephem = desisurvey.ephem.get_ephem()
+    night = desisurvey.utils.get_date(mjd) 
+    night_ephem = ephem.get_night(night)
 
-    # check size of inputs  
-    nexp = len(airmass) 
-    assert len(moon_sep) == nexp
-    assert len(sun_sep) == nexp
+    # get moon illumination 
+    moon_ill = night_ephem['moon_illum_frac']
 
-    # sky brightness at 5000A for nominal dark sky 
-    Isky5000_ref = 1.1282850428182252 # 1e-17 erg/s/cm^2/A/arcsec^2
-    
+    if ra is None or dec is None: 
+        # default values when there's no tile position yet 
+        frame = desisurvey.utils.get_observer(astropy.time.Time(mjd, format='mjd'))
+        # get RA and Dec at the zenith 
+        altaz = SkyCoord(alt=90.*u.deg, az=0*u.deg,
+                obstime=astropy.time.Time(mjd, format='mjd'), 
+                frame='altaz', 
+                location=frame.location)
+        ra, dec = altaz.icrs.ra.to(u.deg).value, altaz.icrs.dec.to(u.deg).value
+
+    # calculate airmass 
+    airmass = desisurvey.utils.get_airmass(
+            astropy.time.Time(mjd, format='mjd'), 
+            ra * u.deg, 
+            dec * u.deg)
+
+    # calculate moon altitude and separation 
+    moon_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=False)
+    moon_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=True)
+
+    moon_alt, _ = moon_ALTAZ(mjd)     # moon altitude
+    moon_dec, moon_ra = moon_DECRA(mjd)
+    moon_sep = desisurvey.utils.separation_matrix( # separation 
+            [moon_ra], [moon_dec], [ra], [dec])[0][0]
+
+    # sun moon altitude and separation 
+    sun_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=False)
+    sun_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=True)
+
+    sun_alt, _ = sun_ALTAZ(mjd) # altitude
+    sun_dec, sun_ra = sun_DECRA(mjd)
+    sun_sep = desisurvey.utils.separation_matrix([sun_ra], [sun_dec], [ra],
+            [dec])[0][0]
+
+    print(airmass, moon_ill,moon_sep, moon_alt, sun_sep, sun_alt)
+
+    assert moon_sep > 30. - moon_alt
+    assert moon_sep < 160. - 1.1 * moon_alt
+    assert moon_sep < moon_alt + 250. 
+    assert moon_sep > moon_alt - 50.
     # sky brightness without twilight at 5000A for observing conditions 
-    Isky5000_exp = Isky5000_notwilight_regression(
-            airmass,
-            np.repeat(moon_frac, nexp), 
-            moon_sep, 
-            np.repeat(moon_alt, nexp))
+    Isky5000_exp = Isky5000_notwilight_regression(airmass, moon_ill, moon_sep, moon_alt)
 
      # add twilight contribution 
     if sun_alt >= -18.:
-        Isky5000_exp += np.clip(Isky5000_twilight_regression(
-                airmass, 
-                sun_sep, 
-                np.repeat(sun_alt, nexp)), 0, None) 
+        Isky5000_exp += Isky5000_twilight_regression(airmass, sun_sep, sun_alt)
     
-    # calculate exposure factor 
-    fibflux5000_ref = Isky5000_ref * 1.862089 # 1e-17 erg/s/cm^2/A
-    fibflux5000_exp = Isky5000_exp * 1.862089 # 1e-17 erg/s/cm^2/A
-    
-    # 0.0629735016982807 = 1e-17 x (photons per bin) x throughput) at 5000A 
-    sky_photon_per_sec_ref = fibflux5000_ref * 0.0629735016982807
-    sky_photon_per_sec_exp = fibflux5000_exp * 0.0629735016982807
-    
-    # (read noise)^2 at 5000A 
-    RNsq5000 = 56.329457658891435 # photon^2 
-
-    # solve the following: 
-    # S x tref / sqrt(sky_ref * tref + RN^2) = S x texp / sqrt(sky_exp * texp + RN^2)
-    texp = 0.5 * (
-            (tref * np.sqrt(4 * sky_photon_per_sec_ref * RNsq5000 * tref + sky_photon_per_sec_exp**2 * tref**2 + 4 * RNsq5000**2))/(sky_photon_per_sec_ref * tref + RNsq5000) +
-            (sky_photon_per_sec_exp * tref**2)/(sky_photon_per_sec_ref * tref + RNsq5000))
-    return texp/tref 
+    ## sky fiber flux  
+    #fibflux5000_exp = Isky5000_exp * 1.862089 # 1e-17 erg/s/cm^2/A
+    #
+    ## 0.0629735016982807 = 1e-17 x (photons per bin) x throughput) at 5000A 
+    #sky_photon_per_sec_exp = fibflux5000_exp * 0.0629735016982807
+    #return sky_photon_per_sec_exp
+    return Isky5000_exp
 
 
 def Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt): 
