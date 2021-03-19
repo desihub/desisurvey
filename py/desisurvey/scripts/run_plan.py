@@ -37,6 +37,8 @@ def run_plan(nts_dir=None, verbose=False):
         desiutil.log.get_logger().setLevel(desiutil.log.WARNING)
     previoustiles = []
     ephem = nts.scheduler.night_ephem
+    changes = nts.scheduler.night_changes
+    programs = nts.scheduler.night_programs
     night_labels = np.array(['noon', '12 deg dusk', '18 deg dusk',
                              '18 deg dawn', '12 deg dawn',
                              'moonrise', 'moonset'])
@@ -52,8 +54,14 @@ def run_plan(nts_dir=None, verbose=False):
     print('local   lst   cond  tile    ra   dec    program fac  tot  split ' +
           dgbstr)
     while t0 < nts.scheduler.night_ephem['brightdawn']:
+        cidx = np.interp(t0, changes, np.arange(len(changes)))
+        cidx = int(np.clip(cidx, 0, len(programs)))
+        cond = programs[cidx]
+        moon_up_factor = getattr(nts.config.moon_up_factor, cond)()
         expdict = dict(mjd=t0, previoustiles=previoustiles)
-        res = nts.next_tile(exposure=expdict, speculative=True)
+        conddict = dict(skylevel=moon_up_factor)
+        res = nts.next_tile(exposure=expdict, conditions=conddict,
+                            speculative=True)
         if not res['foundtile']:
             print('no tiles!')
             t0 += 60/60/60/24

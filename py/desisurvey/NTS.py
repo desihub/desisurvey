@@ -391,7 +391,7 @@ class NTS():
         if not isinstance(sbprof, str):
             sbprof = 'PSF'
 
-        boost_factor = getattr(self.config.boost_factor, sched_program)
+        boost_factor = getattr(self.config.boost_factor, sched_program)()
         texp_tot *= boost_factor
         texp_remaining *= boost_factor
 
