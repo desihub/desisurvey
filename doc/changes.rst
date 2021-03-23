@@ -5,6 +5,9 @@ desisurvey change log
 0.15.1 (unreleased)
 -------------------
 
+* Reorganize state to match DailyOps desiderata.  Implement multiple
+  survey choices in NTS.  Reorganize config file.  Reduce verbosity.
+  Make HA observation choices more stringent at high airmass. (PR `#131`)
 * Optionally merge dark and gray layers.  Implement nopass strategy.
   Move scheduler state to planner and start to change data model.
   (PR `#130`)
@@ -16,6 +19,7 @@ desisurvey change log
 .. _`#128`: https://github.com/desihub/desisurvey/pull/128
 .. _`#129`: https://github.com/desihub/desisurvey/pull/129
 .. _`#130`: https://github.com/desihub/desisurvey/pull/130
+.. _`#131`: https://github.com/desihub/desisurvey/pull/131
 
 0.15.0 (2021-02-15)
 -------------------

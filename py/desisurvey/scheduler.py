@@ -146,7 +146,7 @@ class Scheduler(object):
         self.in_night_pool[:] = ((self.plan.tile_priority > 0) &
                                  self.plan.tile_available)
         if self.ignore_completed_priority <= 0:
-             self.in_night_pool &= ~self.plan.obsend()
+            self.in_night_pool &= ~self.plan.obsend()
 
         # Check if any tiles cannot be observed because they are too close to a planet this night.
         poolRA = self.tiles.tileRA[self.in_night_pool]

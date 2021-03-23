@@ -1,6 +1,7 @@
 import os
 import glob
 import re
+import json
 import numpy as np
 from astropy.io import fits
 import desiutil.log
@@ -130,7 +131,8 @@ def scan_directory(dirname, start_from=None,
     exps = np.zeros(len(files), dtype=[
         ('NIGHT', 'U8'), ('TILEID', 'i4'), ('EXPID', 'i4'),
         ('OBSTYPE', 'U20'), ('PROGRAM', 'U20'), ('EXPTIME', 'f4'),
-        ('EFFTIME', 'f4'), ('SPECTIME', 'f4'), ('GOALTIME', 'f4'),
+        ('EFFTIME_ETC', 'f4'), ('EFFTIME_SPEC', 'f4'), ('EFFTIME', 'f4'),
+        ('GOALTIME', 'f4'),
         ('QUALITY', 'U20'), ('COMMENTS', 'U80')])
     for i, fn in enumerate(files):
         if (i % 1000) == 0:
@@ -145,20 +147,30 @@ def scan_directory(dirname, start_from=None,
                 continue
         hasrequest = os.path.exists(
             fn.replace('desi-', 'request-').replace('.fits.fz', '.json'))
+        etcfn = fn.replace('desi-', 'etc-').replace('.fits.fz', '.json')
+        hasetc = os.path.exists(etcfn)
+        etctime = -1
+        if hasetc:
+            try:
+                etc = json.load(open(etcfn))
+                etctime = etc['accum']['efftime'][-1]
+            except Exception as e:
+                print('Exception reading file ', etcfn, e)
         exps['NIGHT'][i] = hdr.get('NIGHT', -1)
         exps['TILEID'][i] = hdr.get('TILEID', -1)
         exps['EXPID'][i] = hdr.get('EXPID', -1)
         exps['OBSTYPE'][i] = str(hdr.get('OBSTYPE', '')).upper().strip()
         exps['PROGRAM'][i] = str(hdr.get('PROGRAM', '')).strip()
         exps['EXPTIME'][i] = hdr.get('EXPTIME', -1)
-        exps['EFFTIME'][i] = hdr.get('EFFTIME', -1)
-        exps['SPECTIME'][i] = -1
+        exps['EFFTIME_ETC'][i] = etctime
+        exps['EFFTIME_SPEC'][i] = -1
         exps['GOALTIME'][i] = hdr.get('GOALTIME', -1)
         exps['QUALITY'][i] = 'good' if hasrequest else 'bad'
         exps['COMMENTS'][i] = ''
+    exps['EFFTIME'] = -1
     exptime_clipped = np.where(exps['EXPTIME'] < 59.0, 0, exps['EXPTIME'])
-    exps['EFFTIME'] = np.where(exps['EFFTIME'] < 0, exptime_clipped,
-                               exps['EFFTIME'])
+    exps['EFFTIME'] = np.where(exps['EFFTIME_ETC'] >= 0, exps['EFFTIME_ETC'],
+                               exptime_clipped)
     obstypes = np.array([f.upper().strip() for f in exps['OBSTYPE']],
                         dtype=exps['OBSTYPE'].dtype)
     m = (exps['TILEID'] == -1) | (obstypes != 'SCIENCE')
@@ -171,22 +183,21 @@ def scan_directory(dirname, start_from=None,
         exps = astropy.table.vstack([start_exps, astropy.table.Table(exps)])
     if offlinedepth is not None:
         exps = update_donefrac_from_offline(exps, offlinedepth)
-    exps['EFFTIME'] = np.where(exps['SPECTIME'] < 0,
-                               exps['EFFTIME'], exps['SPECTIME'])
+    # replace EFFTIME with EFFTIME_SPEC where available
+    exps['EFFTIME'] = np.where(exps['EFFTIME_SPEC'] < 0,
+                               exps['EFFTIME'], exps['EFFTIME_SPEC'])
     ntiles = len(np.unique(exps['TILEID']))
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('PROGRAM', 'U20'), ('EFFTIME', 'f4'),
         ('DONEFRAC', 'f4'),
         ('NOBS', 'i4'), ('MTL_DONE', 'bool')])
-    expefftime = np.where(exps['SPECTIME'] < 0,
-                          exps['SPECTIME'], exps['EFFTIME'])
     s = np.argsort(exps['TILEID'])
     nomtimefa = np.zeros(len(tiles), dtype='f4')
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
         tiles['TILEID'][i] = exps['TILEID'][ind[0]]
         tiles['EFFTIME'][i] = np.sum(np.clip(
-            expefftime[ind], 0, np.inf))
+            exps['EFFTIME'][ind], 0, np.inf))
         # potentially only want to consider "good" exposures here?
         tiles['NOBS'][i] = len(ind)
         nomtimefa[i] = np.median(exps['GOALTIME'][ind])
@@ -225,10 +236,12 @@ def write_exp(exps, fn):
     tab['OBSTYPE'].description = 'Exposure OBSTYPE'
     tab['EXPTIME'].description = 'Exposure time'
     tab['EXPTIME'].format = '%9.3f'
-    tab['EFFTIME'].description = 'Effective time from airmass and dust.'
+    tab['EFFTIME_ETC'].description = 'ETC effective exposure time'
+    tab['EFFTIME_ETC'].format = '%9.3f'
+    tab['EFFTIME_SPEC'].description = 'Effective time from offline pipeline.'
+    tab['EFFTIME_SPEC'].format = '%7.3f'
+    tab['EFFTIME'].description = 'Adopted effective time.'
     tab['EFFTIME'].format = '%7.3f'
-    tab['SPECTIME'].description = 'Effective time from offline pipeline.'
-    tab['SPECTIME'].format = '%7.3f'
     tab['QUALITY'].description = 'Exposure quality'
     tab['COMMENTS'].description = 'Additional comments'
     tab['GOALTIME'].description = 'Goal effective exposure time'
@@ -322,8 +335,7 @@ def number_per_night(exps, nightly_donefrac_requirement=0.5):
     ind, mask = tiles.index(exps['TILEID'], return_mask=True)
     programs[mask] = tiles.tileprogram[ind[mask]]
     nomtimes = desisurvey.tiles.get_nominal_program_times(programs)
-    efftimes = np.where(exps['SPECTIME'] >= 0,
-                        exps['SPECTIME'], exps['EFFTIME'])
+    efftimes = np.clip(exps['EFFTIME'], 0, np.inf)
     donefrac = efftimes / nomtimes
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
@@ -374,7 +386,7 @@ def update_donefrac_from_offline(exps, offlinefn):
     # now we need the goal exposure times
     # these are just the nominal times
     exps = exps.copy()
-    exps['SPECTIME'][me] = offline_eff_time[mo]
+    exps['EFFTIME_SPEC'][me] = offline_eff_time[mo]
     return exps
 
 
@@ -387,7 +399,7 @@ def update_mtldone(tiles, mtldonefn):
     usedmtl[mm] = 1
     nunused = np.sum(usedmtl == 0)
     if nunused > 0:
-        log.warning('MTLs completed for {} unknown tiles?'.format(nunused))
+        log.debug('MTLs completed for {} unknown tiles?'.format(nunused))
     return tiles
 
 
