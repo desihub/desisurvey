@@ -240,14 +240,14 @@ class Ephemerides(object):
             row['noon'] = day.mjd
             # Calculate bright twilight.
             mayall.horizon = (
-                config.programs.BRIGHT.max_sun_altitude().to(u.rad).value)
+                config.conditions.BRIGHT.max_sun_altitude().to(u.rad).value)
             row['brightdusk'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
             row['brightdawn'] = mayall.next_rising(
                 ephem.Sun(), use_center=True) + mjd0
             # Calculate dark / gray twilight.
             mayall.horizon = (
-                config.programs.DARK.max_sun_altitude().to(u.rad).value)
+                config.conditions.DARK.max_sun_altitude().to(u.rad).value)
             row['dusk'] = mayall.next_setting(
                 ephem.Sun(), use_center=True) + mjd0
             row['dawn'] = mayall.next_rising(
@@ -704,7 +704,7 @@ class Ephemerides(object):
             bright_night = dark_night
 
         # Identify program during each MJD.
-        GRAY = desisurvey.config.Configuration().programs.GRAY
+        GRAY = desisurvey.config.Configuration().conditions.GRAY
         max_prod = GRAY.max_moon_illumination_altitude_product().to(u.deg).value
         max_frac = GRAY.max_moon_illumination()
         gray = dark_night & (moon_alt >= 0) & (

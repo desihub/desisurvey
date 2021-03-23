@@ -22,12 +22,13 @@ attributes for consistency and efficiency.
 """
 from __future__ import print_function, division
 
-import re
+import os
 
 import numpy as np
 
 import astropy.units as u
 from astropy.time import Time
+from astropy.table import Table
 
 import desimodel.io
 import desiutil.log
@@ -48,40 +49,37 @@ class Tiles(object):
     """
     def __init__(self, tiles_file=None):
         config = desisurvey.config.Configuration()
+        self.nogray = config.tiles_nogray()
+
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
-        commissioning = getattr(config, 'commissioning', False)
-        if not isinstance(commissioning, bool):
-            commissioning = commissioning()
-        if not commissioning:
-            tiles = desimodel.io.load_tiles(
-                onlydesi=True, extra=False, tilesfile=self.tiles_file)
-        else:
-            tiles = desimodel.io.load_tiles(
-                onlydesi=False, extra=True, tilesfile=self.tiles_file)
-        nogray = getattr(config, 'tiles_nogray', False)
-        if not isinstance(nogray, bool):
-            nogray = nogray()
-        self.nogray = nogray
-        if self.nogray:
-            m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
-            tiles['PROGRAM'][m] = 'DARK'
-            obscond = self.OBSCONDITIONS['DARK'] | self.OBSCONDITIONS['GRAY']
-            m = (tiles['OBSCONDITIONS'] & obscond) != 0
-            tiles['OBSCONDITIONS'][m] |= obscond
+        self.tiles_file = find_tile_file(self.tiles_file)
+
+        tiles = self.read_tiles_table()
+
         # Copy tile arrays.
-        self.tileID = tiles['TILEID'].copy()
-        self.tileprogram = tiles['PROGRAM'].copy()
-        self.tileRA = tiles['RA'].copy()
-        self.tileDEC = tiles['DEC'].copy()
-        self.tileobsconditions = tiles['OBSCONDITIONS'].copy()
+        self.tileID = tiles['TILEID'].data.copy()
+        self.tileprogram = tiles['PROGRAM'].data.copy()
+        self.tileRA = tiles['RA'].data.copy()
+        self.tileDEC = tiles['DEC'].data.copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
+        self.designha = None
+        if 'DESIGNHA' in tiles.dtype.names:
+            self.designha = tiles['DESIGNHA'].data.copy()
+
+        self.tileobsconditions = self.get_conditions()
+        if self.nogray:
+            mgray = self.tileobsconditions == 'GRAY'
+            self.tileobsconditions[mgray] = 'DARK'
+
+        self.in_desi = tiles['IN_DESI'].data.copy() != 0
+
         # Count tiles.
         self.ntiles = len(self.tileID)
         # Can remove this when tile_index no longer uses searchsorted.
         if not np.all(np.diff(self.tileID) > 0):
             raise RuntimeError('Tile IDs are not increasing.')
-        self.programs = [x for x in np.unique(tiles['PROGRAM'])]
+        self.programs = [x for x in np.unique(tiles['PROGRAM'].data)]
         self.program_index = {pname: pidx
                               for pidx, pname in enumerate(self.programs)}
 
@@ -90,7 +88,7 @@ class Tiles(object):
         for p in self.programs:
             self.program_mask[p] = self.tileprogram == p
         # Calculate and save dust exposure factors.
-        self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'])
+        self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'].data)
         # Precompute coefficients to calculate tile observing airmass.
         latitude = np.radians(config.location.latitude())
         tile_dec_rad = np.radians(self.tileDEC)
@@ -103,12 +101,6 @@ class Tiles(object):
 
     CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
     CONDITION_INDEX = {cond: i for i, cond in enumerate(CONDITIONS)}
-    OBSCONDITIONS = {'DARK': 1, 'GRAY': 2, 'BRIGHT': 4}
-    """Mapping of night conditions to OBSCONDITIONS bit mask.
-
-    Tiles that may be observed in DARK/GRAY/BRIGHT conditions should have
-    (obsconditions & OBSCONDITIONS[program]) != 0.
-    """
 
     def airmass(self, hour_angle, mask=None):
         """Calculate tile airmass given hour angle.
@@ -157,6 +149,23 @@ class Tiles(object):
         ha = lst - self.tileRA[mask]
         return self.airmass(ha, mask=mask)
 
+    def airmass_second_derivative(self, HA, mask=None):
+        """Calculate second derivative of airmass with HA.
+
+        Useful for determining how close to design airmass we have to get
+        for different tiles.  When this is large, we really need to observe
+        things right at their design angles.  When it's small, we have more
+        flexibility.
+        """
+        x = self.airmass(HA, mask=mask)
+        if mask is not None:
+            b = self.tile_coef_B[mask]
+        else:
+            b = self.tile_coef_B
+        d2rad = b*x**2 * (2*b*x*np.sin(np.radians(HA))**2 +
+                          np.cos(np.radians(HA)))
+        return d2rad * (np.pi/180)**2
+
     def index(self, tileID, return_mask=False):
         """Map tile ID to array index.
 
@@ -176,6 +185,8 @@ class Tiles(object):
         """
         scalar = np.isscalar(tileID)
         tileID = np.atleast_1d(tileID)
+        if np.any(tileID < 0):
+            raise ValueError('tileIDs must positive!')
         idx = np.searchsorted(self.tileID, tileID)
         idx = np.clip(idx, 0, len(self.tileID)-1)
         bad = self.tileID[idx] != tileID
@@ -189,8 +200,21 @@ class Tiles(object):
             res = (res, mask)
         return res
 
+    def get_conditions(self):
+        res = []
+        config = desisurvey.config.Configuration()
+        for program in self.tileprogram:
+            tprogram = getattr(config.programs, program, None)
+            if tprogram is None:
+                res.append('NONE')
+            else:
+                res.append(tprogram.conditions())
+        return np.array(res)
+
     def allowed_in_conditions(self, cond):
-        return (self.tileobsconditions & self.OBSCONDITIONS[cond]) != 0
+        if self.nogray and (cond == 'GRAY'):
+            cond = 'DARK'
+        return (self.tileobsconditions == cond)
 
     @property
     def overlapping(self):
@@ -257,6 +281,36 @@ class Tiles(object):
                     continue
                 self._overlapping[rownum[ind1]].append(rownum[ind2])
 
+    def read_tiles_table(self):
+        """Read and trim the tiles table.
+
+        Must be called after self.tiles_file and self.nogray
+        member variables have been set.
+        """
+        config = desisurvey.config.Configuration()
+        tiles = Table.read(self.tiles_file)
+        # control truncation
+        tileprogram = np.zeros(len(tiles), dtype='U20')
+        tileprogram[:] = tiles['PROGRAM']
+        if self.nogray:
+            m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
+            tiles['PROGRAM'][m] = 'DARK'
+        trim = config.tiles_trim()
+        if trim:
+            tiles = tiles[tiles['IN_DESI'] != 0]
+            tprograms = np.unique(tiles['PROGRAM'])
+            programinconfig = np.isin(tprograms,
+                                      [x for x in config.programs.keys])
+            log = desiutil.log.get_logger()
+            keep = np.ones(len(tiles), dtype='bool')
+            if np.any(~programinconfig):
+                for program in tprograms[~programinconfig]:
+                    keep[tiles['PROGRAM'] == program] = 0
+                log.info('Removing the following programs from the tile '
+                         'file: ' + ' '.join(tprograms[~programinconfig]))
+            tiles = tiles[keep]
+        return tiles
+
 
 _cached_tiles = {}
 
@@ -291,7 +345,7 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
         tiles = Tiles(tiles_file)
         log.info('Initialized tiles from "{}".'.format(tiles_file))
         for pname in tiles.programs:
-            log.info('{:6s}: {} tiles'.format(
+            log.debug('{:6s}: {} tiles'.format(
                 pname, np.sum(tiles.program_mask[pname])))
 
     if write_cache:
@@ -302,25 +356,64 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
     return tiles
 
 
-def get_nominal_program_times(tileprogram, config=None):
+def find_tile_file(filename):
+    log = desiutil.log.get_logger()
+    if os.path.isabs(filename):
+        if not os.path.exists(filename):
+            raise FileNotFoundError(
+                'tile file not found at {}'.format(filename))
+        return filename
+    dmname = desimodel.io.findfile(os.path.join('footprint', filename))
+    dsdirname = os.environ.get('DESISURVEY_OUTPUT', None)
+    dsname = os.path.join(dsdirname, filename)
+    localname = filename
+    namedict = dict(DESISURVEY=(dsname, os.path.exists(dsname)),
+                    DESIMODEL=(dmname, os.path.exists(dmname)),
+                    LOCAL=(localname, os.path.exists(localname)))
+    for key in namedict:
+        if namedict[key][1]:
+            fn = namedict.pop(key)[0]
+            others = [key for (key, (name, exists)) in namedict.items()
+                      if exists]
+            if len(others) > 0:
+                log.info('Using {} filename, '.format(fn) +
+                         'ignoring other files of same name: ' +
+                         ' '.join(others))
+            return fn
+    raise FileNotFoundError('tile file not found at {}'.format(filename))
+
+
+def get_nominal_program_times(tileprogram, config=None,
+                              return_timetypes=False):
     """Return nominal times for given programs in seconds."""
     if config is None:
         config = desisurvey.config.Configuration()
-    cfgnomtimes = config.nominal_exposure_time
+    progconf = config.programs
     nomtimes = []
+    timetypes = []
     unknownprograms = []
     nunknown = 0
     for program in tileprogram:
-        nomprogramtime = getattr(cfgnomtimes, program, 300)
-        if not isinstance(nomprogramtime, int):
-            nomprogramtime = nomprogramtime().to(u.s).value
-        else:
+        tprogconf = getattr(progconf, program, None)
+        if tprogconf is None:
+            nomprogramtime = 300
             unknownprograms.append(program)
             nunknown += 1
+            timetype = 'ELG'
+        else:
+            nomprogramtime = getattr(tprogconf, 'efftime')()
+            timetype = getattr(tprogconf, 'efftime_type')()
+        if not isinstance(nomprogramtime, int):
+            nomprogramtime = nomprogramtime.to(u.s).value
         nomtimes.append(nomprogramtime)
+        timetypes.append(timetype)
     if nunknown > 0:
         log = desiutil.log.get_logger()
-        log.info(('%d observations of unknown programs\n' % nunknown) +
-                 'unknown programs: '+' '.join(np.unique(unknownprograms)))
+        log.debug(('%d observations of unknown programs:' % nunknown) +
+                  ' '.join(np.unique(unknownprograms)))
     nomtimes = np.array(nomtimes)
-    return nomtimes
+    timetypes = np.array(timetypes)
+    ret = nomtimes
+    if return_timetypes:
+        ret = (ret, timetypes)
+    return ret

@@ -1,14 +1,14 @@
 import os
 import glob
 import re
+import json
 import numpy as np
 from astropy.io import fits
 import desiutil.log
 import desisurvey.etc
 import desisurvey.tiles
 import desisurvey.ephem
-from astropy import units as u
-
+import astropy.table
 
 log = desiutil.log.get_logger()
 
@@ -54,8 +54,8 @@ def cull_old_files(files, start_from):
     return [f for (f, e) in zip(files, expid) if e > maxexpid]
 
 
-def scan_directory(dirname, simulate_donefrac=False, start_from=None,
-                   offlinedepth=None):
+def scan_directory(dirname, start_from=None,
+                   offlinedepth=None, mtldone=None):
     """Scan directory for spectra with ETC statistics to collect.
 
     Parameters
@@ -65,22 +65,20 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
         for ETC statistics.
         This needs to be updated to ~DESI files only, with more care given
         to where these keywords are actually found.
-    simulate_donefrac : bool
-        instead of tabulating DONEFRAC, tabulate EXPTIME / fac instead.
-        this is useful when DONEFRAC is not being computed.
     start_from : str
         etc_stats file to start from.  Nights already in the etc_stats file
         will not be collected.  If a YYYMMDD string, look for etc_stats file
         in DESISURVEY_OUTPUT/YYYYMMDD/etc_stats-{YYYYMMDD}.fits
-        "fresh" or None indicates starting fresh.
-        "most_recent" indicates searching DESISURVEY_OUTPUT for the most recent
-        file to restore.
+        None indicates starting fresh.
     offlinedepth : str
         offline depth file to use.  Fills out donefracs according to
         R_DEPTH in the file, plus config.nominal_exposure_time
+    mtldone : str
+        mtl done file to use.  Fills out done status according to presence
+        in mtl done file.
     """
     log.info('Scanning {} for desi exposures...'.format(dirname))
-    if start_from is None or (start_from == "fresh"):
+    if start_from is None:
         files = glob.glob(os.path.join(dirname, '**/desi*.fits.fz'),
                           recursive=True)
         start_exps = None
@@ -88,30 +86,29 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
         files = []
         subdirs = os.listdir(dirname)
         subdirs = np.sort(subdirs)[::-1]
-        if start_from == 'most_recent':
-            etcfns = glob.glob(os.path.join(os.environ['DESISURVEY_OUTPUT'],
-                                            '**/etc-stats-*.fits'))
-            yyyymmdd = []
-            for fn in etcfns:
-                rgx = re.compile('etc-stats-([0-9]{8}).fits')
-                match = rgx.match(os.path.basename(fn))
-                if match is not None:
-                    yyyymmdd.append(int(match.groups(1)[0]))
-                else:
-                    yyyymmdd.append(-1)
-            maxind = np.argmax(yyyymmdd)
-            fn = etcfns[maxind]
-            log.info('Restoring etc-stats from {}'.format(fn))
-        elif os.path.exists(start_from):
+        if os.path.exists(start_from):
             fn = start_from
         else:
-            fn = os.path.join(os.environ['DESISURVEY_OUTPUT'], start_from,
-                              'etc_stats-{}.fits'.format(start_from))
+            fn = os.path.join(os.environ['DESISURVEY_OUTPUT'], start_from)
         if not os.path.exists(fn):
             log.error('Could not find file {} to start from!'.format(
                 start_from))
             return
-        start_tiles, start_exps = read_tile_exp(fn)
+        start_exps = astropy.table.Table.read(fn)
+        # painful, fragile invocations to make sure that columns
+        # aren't truncated at fewer characters than we might want.
+        obstype = np.zeros(len(start_exps), dtype='U20')
+        obstype[:] = start_exps['OBSTYPE']
+        start_exps['OBSTYPE'] = obstype
+        program = np.zeros(len(start_exps), dtype='U20')
+        program[:] = start_exps['PROGRAM']
+        start_exps['PROGRAM'] = program
+        quality = np.zeros(len(start_exps), dtype='U20')
+        quality[:] = start_exps['QUALITY']
+        start_exps['QUALITY'] = quality
+        comments = np.zeros(len(start_exps), dtype='U80')
+        comments[:] = start_exps['COMMENTS']
+        start_exps['COMMENTS'] = comments
         maxexpid = np.max(start_exps['EXPID'])
         for subdir in subdirs:
             if not os.path.isdir(os.path.join(dirname, subdir)):
@@ -132,9 +129,11 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
     log.info(('Found {} new raw spectra, extracting header ' +
               'information...').format(len(files)))
     exps = np.zeros(len(files), dtype=[
-        ('EXPID', 'i4'), ('FILENAME', 'U200'),
-        ('TILEID', 'i4'), ('DONEFRAC_EXP_ETC', 'f4'),
-        ('EXPTIME', 'f4'), ('MJD_OBS', 'f8'), ('FLAVOR', 'U80')])
+        ('NIGHT', 'U8'), ('TILEID', 'i4'), ('EXPID', 'i4'),
+        ('OBSTYPE', 'U20'), ('PROGRAM', 'U20'), ('EXPTIME', 'f4'),
+        ('EFFTIME_ETC', 'f4'), ('EFFTIME_SPEC', 'f4'), ('EFFTIME', 'f4'),
+        ('GOALTIME', 'f4'),
+        ('QUALITY', 'U20'), ('COMMENTS', 'U80')])
     for i, fn in enumerate(files):
         if (i % 1000) == 0:
             log.info('Extracting headers from file {} of {}...'.format(
@@ -146,58 +145,80 @@ def scan_directory(dirname, simulate_donefrac=False, start_from=None,
                 break
             except Exception:
                 continue
-        exps['EXPID'][i] = hdr.get('EXPID', -1)
-        exps['FILENAME'][i] = hdr.get('filename', fn)
+        hasrequest = os.path.exists(
+            fn.replace('desi-', 'request-').replace('.fits.fz', '.json'))
+        etcfn = fn.replace('desi-', 'etc-').replace('.fits.fz', '.json')
+        hasetc = os.path.exists(etcfn)
+        etctime = -1
+        if hasetc:
+            try:
+                etc = json.load(open(etcfn))
+                etctime = etc['accum']['efftime'][-1]
+            except Exception as e:
+                print('Exception reading file ', etcfn, e)
+        exps['NIGHT'][i] = hdr.get('NIGHT', -1)
         exps['TILEID'][i] = hdr.get('TILEID', -1)
-        exps['DONEFRAC_EXP_ETC'][i] = hdr.get('DONEFRAC', -1)
+        exps['EXPID'][i] = hdr.get('EXPID', -1)
+        exps['OBSTYPE'][i] = str(hdr.get('OBSTYPE', '')).upper().strip()
+        exps['PROGRAM'][i] = str(hdr.get('PROGRAM', '')).strip()
         exps['EXPTIME'][i] = hdr.get('EXPTIME', -1)
-        exps['MJD_OBS'][i] = hdr.get('MJD-OBS', -1)
-        exps['FLAVOR'][i] = hdr.get('FLAVOR', 'none')
-    flavors = np.array([f.upper().strip() for f in exps['FLAVOR']],
-                       dtype=exps['FLAVOR'].dtype)
-    m = (exps['TILEID'] == -1) | (flavors != 'SCIENCE')
+        exps['EFFTIME_ETC'][i] = etctime
+        exps['EFFTIME_SPEC'][i] = -1
+        exps['GOALTIME'][i] = hdr.get('GOALTIME', -1)
+        exps['QUALITY'][i] = 'good' if hasrequest else 'bad'
+        exps['COMMENTS'][i] = ''
+    exps['EFFTIME'] = -1
+    exptime_clipped = np.where(exps['EXPTIME'] < 59.0, 0, exps['EXPTIME'])
+    exps['EFFTIME'] = np.where(exps['EFFTIME_ETC'] >= 0, exps['EFFTIME_ETC'],
+                               exptime_clipped)
+    obstypes = np.array([f.upper().strip() for f in exps['OBSTYPE']],
+                        dtype=exps['OBSTYPE'].dtype)
+    m = (exps['TILEID'] == -1) | (obstypes != 'SCIENCE')
     if np.any(m):
-        log.info('Ignoring {} files due to weird FLAVOR or TILEID'.format(
+        log.info('Ignoring {} files due to weird OBSTYPE or TILEID'.format(
             np.sum(m)))
         exps = exps[~m]
-    if simulate_donefrac:
-        tiles = desisurvey.tiles.get_tiles()
-        program = np.full(len(exps), 'UNKNOWN', dtype='U80')
-        ind, mask = tiles.index(exps['TILEID'], return_mask=True)
-        program[mask] = [p.strip() for p in tiles.tileprogram[ind[mask]]]
-        nomtime = desisurvey.tiles.get_nominal_program_times(program)
-        airmass = np.ones(len(exps), dtype='f4')
-        airmass[mask] = tiles.airmass_at_mjd(exps['MJD_OBS'][mask],
-                                             mask=ind[mask])
-        expfac = np.ones(len(exps), dtype='f4')
-        expfac *= desisurvey.etc.airmass_exposure_factor(airmass)
-        expfac[mask] *= tiles.dust_factor[ind[mask]]
-        exps['DONEFRAC_EXP_ETC'] = exps['EXPTIME']/expfac/nomtime
     exps = exps[np.argsort(exps['EXPID'])]
     if start_exps is not None:
-        exps = np.concatenate([start_exps, exps])
+        exps = astropy.table.vstack([start_exps, astropy.table.Table(exps)])
     if offlinedepth is not None:
         exps = update_donefrac_from_offline(exps, offlinedepth)
+    # replace EFFTIME with EFFTIME_SPEC where available
+    exps['EFFTIME'] = np.where(exps['EFFTIME_SPEC'] < 0,
+                               exps['EFFTIME'], exps['EFFTIME_SPEC'])
     ntiles = len(np.unique(exps['TILEID']))
     tiles = np.zeros(ntiles, dtype=[
-        ('TILEID', 'i4'), ('DONEFRAC_ETC', 'f4'), ('EXPTIME', 'f4'),
-        ('LASTEXPID_ETC', 'i4'), ('NOBS_ETC', 'i4'), ('LASTMJD_ETC', 'f8')])
+        ('TILEID', 'i4'), ('PROGRAM', 'U20'), ('EFFTIME', 'f4'),
+        ('DONEFRAC', 'f4'),
+        ('NOBS', 'i4'), ('MTL_DONE', 'bool')])
     s = np.argsort(exps['TILEID'])
+    nomtimefa = np.zeros(len(tiles), dtype='f4')
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
         tiles['TILEID'][i] = exps['TILEID'][ind[0]]
-        tiles['DONEFRAC_ETC'][i] = np.sum(np.clip(
-            exps['DONEFRAC_EXP_ETC'][ind], 0, np.inf))
-        tiles['EXPTIME'][i] = np.sum(np.clip(
-            exps['EXPTIME'][ind], 0, np.inf))
-        tiles['LASTEXPID_ETC'][i] = np.max(exps['EXPID'][ind])
+        tiles['EFFTIME'][i] = np.sum(np.clip(
+            exps['EFFTIME'][ind], 0, np.inf))
         # potentially only want to consider "good" exposures here?
-        tiles['NOBS_ETC'][i] = len(ind)
-        tiles['LASTMJD_ETC'][i] = np.max(exps['MJD_OBS'][ind])
+        tiles['NOBS'][i] = len(ind)
+        nomtimefa[i] = np.median(exps['GOALTIME'][ind])
+        if np.any(np.abs(exps['GOALTIME'][ind] - nomtimefa[i]) > 1):
+            log.warning('Inconsistent GOALTIME on tile ', tiles['TILEID'][i])
+    if mtldone is not None:
+        tiles = update_mtldone(tiles, mtldone)
+    tob = desisurvey.tiles.get_tiles()
+    idx, mask = tob.index(tiles['TILEID'], return_mask=True)
+    tiles['PROGRAM'] = 'UNKNOWN'
+    tiles['PROGRAM'][mask] = [tob.tileprogram[i] for i in idx[mask]]
+    nomtimetf = desisurvey.tiles.get_nominal_program_times(
+        tiles['PROGRAM'])
+    nomtime = np.where(nomtimefa > 0, nomtimefa, nomtimetf)
+    tiles['DONEFRAC'] = tiles['EFFTIME'] / nomtime
+    s = np.argsort(exps['EXPID'])
+    exps = exps[s]
     return tiles, exps
 
 
-def write_tile_exp(tiles, exps, fn):
+def write_exp(exps, fn):
     """Write tile & exposure ETC statistics from numpy objects.
 
     Parameters
@@ -208,8 +229,25 @@ def write_tile_exp(tiles, exps, fn):
     exps : array
         exposure ETC statistics
     """
-    fits.writeto(fn, tiles, header=fits.Header(dict(EXTNAME='TILES')))
-    fits.append(fn, exps, header=fits.Header(dict(EXTNAME='EXPS')))
+    tab = astropy.table.Table(exps)
+    tab['NIGHT'].description = 'YYYYMMDD'
+    tab['TILEID'].description = 'Tile ID'
+    tab['EXPID'].description = 'Exposure ID'
+    tab['OBSTYPE'].description = 'Exposure OBSTYPE'
+    tab['EXPTIME'].description = 'Exposure time'
+    tab['EXPTIME'].format = '%9.3f'
+    tab['EFFTIME_ETC'].description = 'ETC effective exposure time'
+    tab['EFFTIME_ETC'].format = '%9.3f'
+    tab['EFFTIME_SPEC'].description = 'Effective time from offline pipeline.'
+    tab['EFFTIME_SPEC'].format = '%7.3f'
+    tab['EFFTIME'].description = 'Adopted effective time.'
+    tab['EFFTIME'].format = '%7.3f'
+    tab['QUALITY'].description = 'Exposure quality'
+    tab['COMMENTS'].description = 'Additional comments'
+    tab['GOALTIME'].description = 'Goal effective exposure time'
+    tab['GOALTIME'].format = '%6.1f'
+    tab['PROGRAM'].description = 'PROGRAM of exposure'
+    tab.write(fn, overwrite=True)
 
 
 def convert_fits(fits):
@@ -284,68 +322,63 @@ def get_conditions(mjd):
     return newout
 
 
-def number_in_conditions(exps, nightly_donefrac_requirement=0.5):
+def number_per_night(exps, nightly_donefrac_requirement=0.5):
     tiles = desisurvey.tiles.get_tiles()
     m = exps['EXPTIME'] > 30
     exps = exps[m]
-    conditions = get_conditions(exps['MJD_OBS']+exps['EXPTIME']/2/60/60/24)
     s = np.argsort(exps['TILEID'])
     out = np.zeros(len(np.unique(exps['TILEID'])),
-                   dtype=[('TILEID', 'i4'), ('NEXP_BRIGHT', 'i4'),
-                          ('NEXP_GRAY', 'i4'), ('NEXP_DARK', 'i4'),
-                          ('NNIGHT_BRIGHT', 'f4'), ('NNIGHT_GRAY', 'f4'),
-                          ('NNIGHT_DARK', 'f4')])
-    conddict = {ind: cond for cond, ind in tiles.OBSCONDITIONS.items()}
+                   dtype=[('TILEID', 'i4'), ('NEXP', 'i4'),
+                          ('NNIGHT', 'f4')])
+    programs = np.zeros(len(exps), dtype='U20')
+    programs[:] = 'UNKNOWN'
+    ind, mask = tiles.index(exps['TILEID'], return_mask=True)
+    programs[mask] = tiles.tileprogram[ind[mask]]
+    nomtimes = desisurvey.tiles.get_nominal_program_times(programs)
+    efftimes = np.clip(exps['EFFTIME'], 0, np.inf)
+    donefrac = efftimes / nomtimes
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
         out['TILEID'][i] = exps['TILEID'][ind[0]]
-        for cond in ['DARK', 'BRIGHT', 'GRAY']:
-            m = conditions[ind] == tiles.OBSCONDITIONS[cond]
-            out['NEXP_'+cond][i] = np.sum(m)
-        # at Kitt Peak, a night never crosses an MJD boundary.
-        # So we count nights by counting the number of unique
-        # mjd integers.
-        nights = exps['MJD_OBS'][ind].astype('i4')
+        out['NEXP'][i] = np.sum(m)
+        nights = exps['NIGHT'][ind]
         for night in np.unique(nights):
             m = nights == night
             totaldonefrac = np.sum(
-                np.clip(exps['DONEFRAC_EXP_ETC'][ind[m]], 0, np.inf))
-            cond = conditions[ind[m]]
-            cond = cond[cond >= 0]
-            if len(cond) == 0:
-                # all images taken ~during the day, don't know what to do.
-                continue
-            cond = conddict[cond[0]]
+                np.clip(donefrac[ind[m]], 0, np.inf))
             if totaldonefrac > nightly_donefrac_requirement:
-                out['NNIGHT_'+cond][i] += 1
+                out['NNIGHT'][i] += 1
             else:
-                out['NNIGHT_'+cond][i] += 0.1
+                out['NNIGHT'][i] += 0.1
                 # still gets credit for having been started
     return out
 
 
 def update_donefrac_from_offline(exps, offlinefn):
     offline = fits.getdata(offlinefn)
-    tiles = desisurvey.tiles.Tiles()
+    tiles = desisurvey.tiles.get_tiles()
     tileprogram = tiles.tileprogram
     tileprograms = np.zeros(len(exps), dtype='U80')
     mt, me = desisurvey.utils.match(tiles.tileID, exps['TILEID'])
     tileprograms[:] = 'UNKNOWN'
     tileprograms[me] = [p.strip() for p in tileprogram[mt]]
     me, mo = desisurvey.utils.match(exps['EXPID'], offline['EXPID'])
-    nomtimes = desisurvey.tiles.get_nominal_program_times(tileprograms[me])
+    nomtimes, timetypes = desisurvey.tiles.get_nominal_program_times(
+        tileprograms[me], return_timetypes=True)
+    uofflineprograms = np.unique(tileprograms[me])
+    unknown = []
     config = desisurvey.config.Configuration()
-    efftimetypenode = getattr(config, 'efftime_type')
-    efftimetypedict = {k: getattr(efftimetypenode, k)()
-                       for k in efftimetypenode.keys}
-    offlineprograms = np.zeros(len(offline), dtype='U80')
-    offlineprograms[:] = 'DARK'
-    offlineprograms[mo] = tileprograms[me]
-    efftimetypes = np.array([
-        efftimetypedict.get(p, 'DARK') for p in offlineprograms])
-    offline_eff_time = np.where(efftimetypes == 'DARK',
-                                offline['EFFTIME_DARK'],
-                                offline['EFFTIME_BRIGHT'])
+    for p in uofflineprograms:
+        if p not in config.programs.keys:
+            unknown.append(p)
+    log.warning('Unknown programs '+', '.join(unknown)+', using DARK '
+                'effective time.')
+    offlinetimetypes = np.zeros(len(offline), dtype='U80')
+    offlinetimetypes[:] = 'DARK'
+    offlinetimetypes[mo] = timetypes
+    offline_eff_time = np.where(offlinetimetypes == 'DARK',
+                                offline['ELG_EFFTIME_DARK'],
+                                offline['BGS_EFFTIME_BRIGHT'])
     if ((len(np.unique(exps['EXPID'])) != len(exps)) or
             (len(np.unique(offline['EXPID'])) != len(offline))):
         raise ValueError('weird duplicate EXPID in exps or offline')
@@ -353,11 +386,24 @@ def update_donefrac_from_offline(exps, offlinefn):
     # now we need the goal exposure times
     # these are just the nominal times
     exps = exps.copy()
-    exps['DONEFRAC_EXP_ETC'][me] = offline_eff_time[mo]/nomtimes
+    exps['EFFTIME_SPEC'][me] = offline_eff_time[mo]
     return exps
 
 
-def read_tile_exp(fn):
+def update_mtldone(tiles, mtldonefn):
+    mtldone = astropy.table.Table.read(mtldonefn)
+    mt, mm = desisurvey.utils.match(tiles['TILEID'], mtldone['TILEID'])
+    tiles = tiles.copy()
+    tiles['MTL_DONE'][mt] = mtldone[mm]
+    usedmtl = np.zeros(len(mtldone), dtype='i4')
+    usedmtl[mm] = 1
+    nunused = np.sum(usedmtl == 0)
+    if nunused > 0:
+        log.debug('MTLs completed for {} unknown tiles?'.format(nunused))
+    return tiles
+
+
+def read_exp(fn):
     """Read tile & exposure ETC statistics file from filename.
 
     This function works around some fits string issues in old versions
@@ -372,9 +418,7 @@ def read_tile_exp(fn):
     tiles, exps
     numpy arrays for the tile and exposure ETC files
     """
-    tiles = fits.getdata(fn, 'TILES')
-    exps = fits.getdata(fn, 'EXPS')
-    return convert_fits(tiles), convert_fits(exps)
+    return astropy.table.Table.read(fn)
 
 
 def parse(options=None):
@@ -388,10 +432,10 @@ def parse(options=None):
                         help='file to write out')
     parser.add_argument('--start_from', type=str, default=None,
                         help='etc_stats file to start from')
-    parser.add_argument('--simulate_donefrac', action='store_true',
-                        help='use exptime/fac instead of DONEFRAC')
     parser.add_argument('--offlinedepth', type=str,
                         help='offline depth file to use')
+    parser.add_argument('--mtldone', type=str,
+                        help='mtl done file to use')
     parser.add_argument('--config', type=str, default=None,
                         help='configuration file to use')
     if options is None:
@@ -406,10 +450,10 @@ def main(args):
     import desisurvey.config
     _ = desisurvey.config.Configuration(args.config)
     res = scan_directory(args.directory, start_from=args.start_from,
-                         simulate_donefrac=args.simulate_donefrac,
-                         offlinedepth=args.offlinedepth)
+                         offlinedepth=args.offlinedepth,
+                         mtldone=args.mtldone)
     if res is not None:
         tiles, exps = res
-        write_tile_exp(tiles, exps, args.outfile)
+        write_exp(exps, args.outfile)
     else:
         raise ValueError('Could not collect ETC files.')

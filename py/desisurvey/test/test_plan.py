@@ -32,14 +32,16 @@ class TestPlan(Tester):
                     self.assertTrue(np.array_equal(planned, planned2))
                     self.assertTrue(np.array_equal(plan.tile_countdown, plan2.tile_countdown))
                     self.assertTrue(np.array_equal(plan.donefrac, plan2.donefrac))
-                    self.assertTrue(np.array_equal(plan.designha, plan2.designha))
+                    # round off in ecsv file is okay.
+                    self.assertTrue(
+                        np.max(np.abs(plan.designha-plan2.designha)) < 0.01)
                 # Mark a random set of tiles completed after this night.
                 malreadydone = donefrac == 1
                 donefrac[gen.choice(tiles.ntiles, tiles.ntiles // num_nights)] = 1.
                 plan.set_donefrac(tiles.tileID[~malreadydone], donefrac[~malreadydone])
                 # Save and restore our state.
-                plan.save('snapshot.fits')
-                plan2 = Planner(restore='snapshot.fits', simulate=True)
+                plan.save('snapshot.ecsv')
+                plan2 = Planner(restore='snapshot.ecsv', simulate=True)
 
 
 def test_suite():

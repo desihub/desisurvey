@@ -14,10 +14,9 @@ import numpy as np
 from astropy.io import fits
 
 
-def afternoon_plan(night=None, restore_etc_stats='most_recent',
+def afternoon_plan(night=None, exposures=None,
                    configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None,
-                   simulate_donefrac=False,
                    desisurvey_output=None, nts_dir=None, sv=False):
     """Perform daily afternoon planning.
 
@@ -30,12 +29,9 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
     night : str
         Night to plan (YYYMMDD).  Default tonight.
 
-    restore_etc_stats : str
-        Previous planned night (YYYMMDD) or etc_stats filename.
-        Special strings 'start_fresh' and 'most_recent' trigger starting fresh
-        and searching for the most recent file.
-        Used for restoring the previous completion status of all tiles.
-        Defaults to 'most_recent'.
+    exposures : str
+        File name of exposures file to restore.  Default of None looks in
+        $SURVEYOPS/ops/exposures.csv.
 
     configfn : str
         File name of desisurvey config to use for plan.
@@ -45,9 +41,6 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
 
     spectra_dir : str
         Directory where spectra are found.
-
-    simulate_donefrac : bool
-        Simulate donefrac rather than getting it from the ETC.
 
     desisurvey_output : str
         Afternoon planning config is stored to desisurvey_output/{night}/.
@@ -75,23 +68,26 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
                       'DESISURVEY_OUTPUT!')
             return
         desisurvey_output = os.environ['DESISURVEY_OUTPUT']
-    subdir = nts_dir if nts_dir is not None else nightstr
+
+    if os.path.exists(configfn):
+        dirname, fname = os.path.split(configfn)
+        if dirname == '':
+            configfn = './'+configfn
+    else:
+        configfn = os.path.join(desisurvey_output, configfn)
+
+    config = desisurvey.config.Configuration(configfn)
+    nts_survey = config.survey()
+
+    if nts_dir is None:
+        subdir = nightstr + '-' + nts_survey
+    else:
+        subdir = nts_dir
     directory = os.path.join(desisurvey_output, subdir)
     if not os.path.exists(directory):
         os.mkdir(directory)
         os.chmod(directory, 0o777)
 
-    if configfn is None:
-        configfn = desisurvey.config.Configuration._get_full_path(
-            'config.yaml')
-    if not os.path.exists(configfn):
-        configfn = desisurvey.config.Configuration._get_full_path(configfn)
-
-    # figuring out the current date requires having already loaded a
-    # configuration file; we need to get rid of that.
-    desisurvey.config.Configuration.reset()
-    config = desisurvey.config.Configuration(configfn)
-    log.info('Loading configuration from {}...'.format(configfn))
     tilefn = find_tile_file(config.tiles_file())
     rulesfn = find_rules_file(config.rules_file())
     if not os.path.exists(tilefn):
@@ -121,16 +117,19 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         for i in range(len(lines)):
             if re.match('^output_path:.*', lines[i]):
                 lines[i] = (
-                    'output_path: {}'.format(desisurvey_output) +
+                    "output_path: '{DESISURVEY_OUTPUT}'"
                     '  # edited by afternoon planning\n')
                 editedoutputpath = True
             elif re.match('^tiles_file:.*', lines[i]):
-                lines[i] = ('tiles_file: {}'.format(newtilefn) +
-                            '  # edited by afternoon planning\n')
+                lines[i] = (
+                    "tiles_file: {}/{}  # edited by afternoon planning")
+                lines[i] = lines[i].format(subdir, os.path.basename(newtilefn))
                 editedtiles = True
             elif re.match('^rules_file:.*', lines[i]):
-                lines[i] = ('rules_file: {}'.format(newrulesfn) +
-                            '  # edited by afternoon planning\n')
+                lines[i] = (
+                    "rules_file: {}/{}  # edited by afternoon planning")
+                lines[i] = lines[i].format(subdir,
+                                           os.path.basename(newrulesfn))
                 editedrules = True
     if not (editedtiles and editedrules and editedoutputpath):
         log.error('Could not find either tiles, rules, or output_path '
@@ -155,84 +154,67 @@ def afternoon_plan(night=None, restore_etc_stats='most_recent',
         raise ValueError('Must pass spectra_dir to afternoon_plan or set '
                          'DESI_SPECTRA_DIR.')
 
-    if sv:
-        os.system('wget -q https://data.desi.lbl.gov/desi/survey/observations/'
-                  'SV1/sv1-exposures.fits -O ./sv1-exposures.new.fits')
-        filelen = os.stat('sv1-exposures.new.fits').st_size
-        if filelen > 0:
-            os.rename('sv1-exposures.new.fits', 'sv1-exposures.fits')
-            offlinedepthfn = './sv1-exposures.fits'
-        else:
-            log.warning('Updating sv1-exposures failed!')
-            if os.path.exists('./sv1-exposures.fits'):
-                offlinedepthfn = './sv1-exposures.fits'
-            else:
-                offlinedepthfn = None
+    fn = 'tsnr-exposures.fits'
+    os.system('wget -q https://data.desi.lbl.gov/desi/spectro/redux/daily/'
+              '{0} -O {0}.tmp'.format(fn))
+    filelen = os.stat('{}.tmp'.format(fn)).st_size
+    if filelen > 0:
+        os.rename('{}.tmp'.format(fn), fn)
+        offlinedepthfn = fn
     else:
-        offlinedepthfn = None
+        log.warning('Updating {} failed!'.format(fn))
+        if os.path.exists(fn):
+            offlinedepthfn = fn
+        else:
+            offlinedepthfn = None
 
+    os.system('wget -q https://data.desi.lbl.gov/desi/survey/ops/surveyops/'
+              'mtl-done-tiles.ecsv -O ./mtl-done-tiles.new.ecsv')
+    try:
+        filelen = os.stat('mtl-done-tiles.new.fits').st_size
+    except Exception:
+        filelen = 0
+    if filelen > 0:
+        os.rename('mtl-done-tiles.new.fits', 'mtl-done-tiles.fits')
+        mtldonefn = './mtl-done-tiles.fits'
+    else:
+        log.warning('Updating mtl-done-tiles failed!')
+        if os.path.exists('./mtl-done-tiles.fits'):
+            mtldonefn = './mtl-done-tiles.fits'
+        else:
+            mtldonefn = None
+
+    if exposures is None:
+        # expdir = os.path.join(os.environ['SURVEYOPS'], 'ops')
+        expdir = os.environ['DESISURVEY_OUTPUT']
+        exposures = os.path.join(expdir, 'exposures.ecsv')
     tiles, exps = collect_etc.scan_directory(
-        spectra_dir, start_from=restore_etc_stats,
-        offlinedepth=offlinedepthfn, simulate_donefrac=simulate_donefrac)
-    collect_etc.write_tile_exp(tiles, exps, os.path.join(
-        directory, 'etc-stats-{}.fits'.format(subdir)))
+        spectra_dir, start_from=exposures,
+        offlinedepth=offlinedepthfn, mtldone=mtldonefn)
+    collect_etc.write_exp(exps, os.path.join(directory, 'exposures.ecsv'))
 
-    planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC_ETC'])
+    planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC'],
+                         ignore_pending=True)
 
-    if sv:
+    svmode = getattr(config, 'svmode', None)
+    svmode = svmode() if svmode is not None else False
+    if svmode:
         # overwrite donefracs
         from desisurvey import svstats
-        numcond = collect_etc.number_in_conditions(exps)
-        donefraccond = svstats.donefrac_in_conditions(numcond)
-        nneeded = np.zeros(len(donefraccond), dtype='f4')
-        nobserved = np.zeros(len(donefraccond), dtype='f4')
-        allcond = ['DARK', 'GRAY', 'BRIGHT']
-        for cond in allcond:
-            nneeded += donefraccond['NNIGHT_NEEDED_'+cond]
-            nobserved += donefraccond['NNIGHT_'+cond]
-        _, md, mt = np.intersect1d(donefraccond['TILEID'],
+        numnight = collect_etc.number_per_night(exps)
+        donefracnight = svstats.donefrac_nnight(numnight)
+        _, md, mt = np.intersect1d(donefracnight['TILEID'],
                                    tiles['TILEID'], return_indices=True)
+        nneeded = donefracnight['NNIGHT_NEEDED']
         nneeded = nneeded + (nneeded == 0)
-        planner.set_donefrac(donefraccond['TILEID'],
-                             nobserved / nneeded)
-        hdulist = fits.open(newtilefn)
-        hdu = hdulist['TILES']
-        tilefiledat = hdu.data
-        _, md, mt = np.intersect1d(donefraccond['TILEID'],
-                                   tilefiledat['TILEID'], return_indices=True)
-        newobsconditions = tilefiledat['OBSCONDITIONS'].copy()
-        for cond in allcond:
-            # make tile unobservable in given conditions if it's finished
-            # in those conditions.
-            m = (donefraccond['NNIGHT_'+cond][md] >=
-                 donefraccond['NNIGHT_NEEDED_'+cond][md])
-            condmask = desisurvey.tiles.Tiles.OBSCONDITIONS[cond]
-            newobsconditions[mt[m]] &= ~condmask
-        tob = desisurvey.tiles.get_tiles()
-        if tob.nogray:
-            graycond = desisurvey.tiles.Tiles.OBSCONDITIONS['GRAY']
-            darkcond = desisurvey.tiles.Tiles.OBSCONDITIONS['DARK']
-            newobsconditions &= ~graycond
-            newobsconditions |= graycond * ((darkcond & newobsconditions) != 0)
-
-        ignore_completed_priority = getattr(config,
-                                            'ignore_completed_priority', -1)
-        if not isinstance(ignore_completed_priority, int):
-            ignore_completed_priority = ignore_completed_priority()
-        # tiles that are completely done should have their OBSCONDITIONS
-        # restored so that they can be observed in any conditions at
-        # very low priority.
-        if ignore_completed_priority > 0:
-            m = (newobsconditions == 0) & (tilefiledat['OBSCONDITIONS'] != 0)
-            newobsconditions[m] = tilefiledat['OBSCONDITIONS'][m]
-        tilefiledat['OBSCONDITIONS'] = newobsconditions
-        hdulist.writeto(newtilefn, overwrite=True)
+        planner.set_donefrac(donefracnight['TILEID'],
+                             donefracnight['NNIGHT'] / nneeded,
+                             ignore_pending=True)
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
-    planner.save('{}/desi-status-{}.fits'.format(subdir, subdir))
-    for fn in [newtilefn, newrulesfn, newconfigfn,
-               os.path.join(directory, 'desi-status-{}.fits'.format(subdir)),
-               os.path.join(directory, 'etc-stats-{}.fits'.format(subdir))]:
+    planner.save(os.path.join(subdir, os.path.basename(newtilefn)))
+    for fn in [newrulesfn, newconfigfn,
+               os.path.join(directory, 'exposures.ecsv')]:
         subprocess.run(['chmod', 'a-w', fn])
 
 
@@ -269,11 +251,9 @@ def parse(options=None):
     parser.add_argument('--night', type=str,
                         help='night to plan, default: tonight',
                         default=None)
-    parser.add_argument('--restore-etc-stats', type=str,
-                        help=('etc_stats file to restore. Default: '
-                              '"most_recent", search for most recent.  '
-                              '"fresh" to start fresh.'),
-                        default='most_recent')
+    parser.add_argument('--exposures', type=str, default=None,
+                        help=('exposures file to use. If not set, use '
+                              '$SURVEYOPS/ops/exposures.ecsv'))
     parser.add_argument('--config', type=str, default=None,
                         help='config file to use for night')
     parser.add_argument('--nts-dir', type=str, default=None,
@@ -282,9 +262,6 @@ def parse(options=None):
     parser.add_argument('--sv',
                         action='store_true',
                         help='turn on special SV planning mode.')
-    parser.add_argument('--simulate_donefrac',
-                        action='store_true',
-                        help='simulate donefrac rather than deriving from ETC')
     if options is None:
         args = parser.parse_args()
     else:
@@ -299,6 +276,15 @@ def main(args):
         log.error('Environment variable DESISURVEY_OUTPUT must be set.')
         raise ValueError('Environment variable DESISURVEY_OUTPUT must be set.')
 
-    afternoon_plan(night=args.night, restore_etc_stats=args.restore_etc_stats,
-                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
-                   simulate_donefrac=args.simulate_donefrac)
+    configfn = args.config
+    if configfn is None:
+        config = desisurvey.config.Configuration()
+    elif os.path.exists(configfn):
+        config = desisurvey.config.Configuration(configfn)
+    else:
+        configfn = os.path.join(os.environ['DESISURVEY_OUTPUT'], configfn)
+        config = desisurvey.config.Configuration(configfn)
+    log.info('Loading configuration from {}...'.format(config.file_name))
+
+    afternoon_plan(night=args.night, exposures=args.exposures,
+                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv)

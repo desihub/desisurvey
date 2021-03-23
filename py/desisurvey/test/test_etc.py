@@ -22,7 +22,7 @@ class TestExpCalc(unittest.TestCase):
         moon_frac = 0.05
         moon_sep = 70
         moon_alt = 10
-        for program in ['DARK', 'GRAY', 'BRIGHT']:
+        for program in ['DARK', 'BRIGHT']:
             t = exposure_time(program, seeing, transparency, airmass, EBV,
                               moon_frac, moon_sep, moon_alt)
             self.assertGreater(t, 0.0 * u.s)
@@ -83,7 +83,7 @@ class TestExpCalc(unittest.TestCase):
             self.assertGreater(ETC.weather_factor(1.0, 1.0, 1.0), ETC.weather_factor(1.0, 1.0, 1.1))
             # Lookup the nominal DARK exposure time in days.
             config = desisurvey.config.Configuration()
-            tnom = getattr(config.nominal_exposure_time, 'DARK')().to(u.day).value
+            tnom = config.programs.DARK.efftime().to(u.day).value
             # Check for sensible exposure estimates.
             tot1, rem1, n1 = ETC.estimate_exposure('DARK', 0., 1.0, 0)
             tot2, rem2, n2 = ETC.estimate_exposure('DARK', 0., 1.1, 0)

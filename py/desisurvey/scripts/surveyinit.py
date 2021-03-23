@@ -51,6 +51,12 @@ def parse(options=None):
         '--recalc', action='store_true',
         help='recalculate even when previous calculations are available')
     parser.add_argument(
+        '--recalc-ephem', action='store_true',
+        help='recalculate ephemerides tabulation')
+    parser.add_argument(
+        '--recalc-lst', action='store_true',
+        help='recalculate LST optimization')
+    parser.add_argument(
         '--nbins', type=int, default=192, metavar='N',
         help='number of LST bins to use')
     parser.add_argument(
@@ -84,8 +90,12 @@ def parse(options=None):
         '--bright-stretch', type=float, default=1.5, metavar='S',
         help='stretch BRIGHT exposure times by this factor')
     parser.add_argument(
-        '--save', default='surveyinit.fits', metavar='NAME',
-        help='name of FITS output file where results are saved')
+        '--savelst', default='lst_optimized.fits', metavar='NAME',
+        help='name of FITS output where LST distributions are saved')
+    parser.add_argument(
+        '--savetiles', default=None, metavar='NAME',
+        help=('name of ecsv output where updated tile file is saved, '
+              'default: same as tiles file, but in DESISURVEY_OUTPUT.'))
     parser.add_argument(
         '--output-path', default=None, metavar='PATH',
         help='output path to use instead of config.output_path')
@@ -167,16 +177,7 @@ def calculate_initial_plan(args):
     lst_centers = 0.5*(lst_bins[:-1]+lst_bins[1:])
 
     if tiles.nogray:
-        grayordark = tiles.OBSCONDITIONS['DARK'] | tiles.OBSCONDITIONS['GRAY']
-        mgrayordark = (tiles.tileobsconditions & grayordark) != 0
-        m = (tiles.tileobsconditions[mgrayordark] & grayordark) != grayordark
-        if np.any(m):
-            log.warning((
-                '{} tiles observable in either dark or gray, but '
-                'not both.  tiles.nogray is True, so gray and '
-                'dark LST are being optimized together.  For LST planning '
-                'purposes, all gray/dark tiles are assigned to a common '
-                'bucket.').format(np.sum(m)))
+        assert not np.any(tiles.tileobsconditions == 'GRAY')
         new_lst_hist = lst_hist.copy()
         new_lst_hist[0, :] = lst_hist[0, :] + lst_hist[1, :]
         new_lst_hist[1, :] = lst_hist[2, :]
@@ -192,8 +193,10 @@ def calculate_initial_plan(args):
     design['HA'] = np.zeros(tiles.ntiles)
     design['TEXP'] = np.zeros(tiles.ntiles)
     design['TILEID'] = tiles.tileID
-    for cond in conditions:
-        design['HA_'+cond] = np.full(tiles.ntiles, np.nan, dtype='f4')
+    design['RA'] = tiles.tileRA
+    design['DEC'] = tiles.tileDEC
+    design['PROGRAM'] = tiles.tileprogram
+    tiletab = tiles.read_tiles_table()
 
     # Optimize each program separately.
     stretches = dict(
@@ -213,7 +216,7 @@ def calculate_initial_plan(args):
                  'by default.')
 
     for index, condition in enumerate(conditions):
-        sel = tiles.allowed_in_conditions(condition)
+        sel = tiles.allowed_in_conditions(condition) & tiles.in_desi
         if not np.any(sel):
             log.info('Skipping {} program with no tiles.'.format(condition))
             continue
@@ -224,7 +227,8 @@ def calculate_initial_plan(args):
         # Initailize an optimizer for this program.
         opt = desisurvey.optimize.Optimizer(
             condition, lst_bins, lst_hist[index], init=args.init, center=None,
-            stretch=stretches[condition], completed=args.completed)
+            stretch=stretches[condition], completed=args.completed,
+            subset=tiles.tileID[sel])
         table['INIT'] = opt.plan_hist.copy()
         design['INIT'][sel] = opt.ha_initial
         # Initialize annealing cycles.
@@ -269,13 +273,31 @@ def calculate_initial_plan(args):
         texp *= 24. * 3600. / 360. * 0.99726956583
         # Save results for this program.
         design['HA'][sel] = opt.ha
-        design['HA_'+condition][sel] = opt.ha
         design['TEXP'][sel] = texp
 
     hdus.append(fits.BinTableHDU(design, name='DESIGN'))
-    fullname = config.get_path(args.save)
+    fullname = config.get_path(args.savelst)
     hdus.writeto(fullname, overwrite=True)
     log.info('Saved initial plan to "{}".'.format(fullname))
+
+    # add a DESIGNHA column or overwrite one to an existing tile file.
+    tiletab['DESIGNHA'] = np.zeros(len(tiletab), dtype='f4')
+    tiletab['DESIGNHA'].format = '%7.3f'
+    tiletab['DESIGNHA'].unit = tiletab['RA'].unit
+    tiletab['DESIGNHA'].description = 'Design hour angles'
+    _, mt, md = np.intersect1d(tiletab['TILEID'], design['TILEID'],
+                               return_indices=True)
+    tiletab['DESIGNHA'][mt] = design['HA'][md]
+    # drop unnecessary columns
+    dropcolumns = ['AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC', 'OBSCONDITIONS',
+                   'IMAGEFRAC_G', 'IMAGEFRAC_R', 'IMAGEFRAC_Z',
+                   'IMAGEFRAC_GR', 'IMAGEFRAC_GRZ', 'IN_IMAGING']
+    for col in dropcolumns:
+        if col in tiletab.dtype.names:
+            tiletab.remove_column(col)
+    fullname = args.savetiles
+    tiletab.write(fullname, overwrite=True, format='ascii.ecsv')
+
 
 
 def main(args):
@@ -298,11 +320,20 @@ def main(args):
         config.tiles_file.set_value(args.tiles_file)
 
     # Tabulate emphemerides if necessary.
-    ephem = desisurvey.ephem.get_ephem(use_cache=not args.recalc)
+    ephem = desisurvey.ephem.get_ephem(
+        use_cache=not (args.recalc or args.recalc_ephem))
 
     # Calculate design hour angles if necessary.
-    fullname = config.get_path(args.save)
-    if args.recalc or not os.path.exists(fullname):
+    fullnamelst = config.get_path(args.savelst)
+    if args.savetiles is not None:
+        fullnametiles = args.savetiles
+    else:
+        tiles = desisurvey.tiles.get_tiles()
+        fullnametiles = os.path.basename(tiles.tiles_file)
+    fullnametiles = config.get_path(fullnametiles)
+    args.savetiles = fullnametiles
+    if ((args.recalc or args.recalc_lst) or not
+            (os.path.exists(fullnamelst) and os.path.exists(fullnametiles))):
         calculate_initial_plan(args)
     else:
         log.info('Initial plan has already been created.')

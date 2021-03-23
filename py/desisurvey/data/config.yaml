@@ -45,25 +45,53 @@ monsoon:
 # during each full moon.
 full_moon_nights: 7
 
-#-------------------------------------------------------------------
-# Definition of the DARK / GRAY / BRIGHT nominal programs based on
-# sun and moon ephemerides.
-#-------------------------------------------------------------------
-
 programs:
+    DARK:
+        min_exposures: 1
+        efftime: 1000 s
+        conditions: DARK
+        sbprof: ELG
+        minimum_exposure_time: 300 s
+        efftime_type: DARK
+    GRAY:
+        min_exposures: 1
+        efftime: 1000 s
+        conditions: GRAY
+        sbprof: ELG
+        minimum_exposure_time: 300 s
+        efftime_type: DARK
+    BRIGHT:
+        min_exposures: 1
+        efftime: 300 s
+        conditions: BRIGHT
+        sbprof: BGS
+        minimum_exposure_time: 180 s
+        efftime_type: BRIGHT
+
+# still used in simulations.
+min_exposures: 2
+
+# note: conditions controls only the sky brightness in the survey sims,
+# and the labeling of conditions in the ephemerides file.
+# the DARK/GRAY/BRIGHT naming is only ~coincidental to the corresponding
+# program names at this point.
+conditions:
     DARK:
         # Twilight requirement.
         max_sun_altitude: -15 deg
         # Moon must be below the horizon.
+        moon_up_factor: 1.0
     GRAY:
         # Twilight requirement is the same as DARK.
         # Moon must be above the horizon and pass both of these cuts:
         max_moon_illumination: 0.6
         max_moon_illumination_altitude_product: 30 deg
+        moon_up_factor: 1.1
     BRIGHT:
         # Twilight requirement.
         max_sun_altitude: -13 deg
         # Any time after twilight that is neither DARK nor GRAY is BRIGHT.
+        moon_up_factor: 1.3
 
 #-------------------------------------------------------------------
 # Parameters to plan next-tile selection during each night.
@@ -72,7 +100,7 @@ programs:
 # Never observe below this limit.
 min_altitude: 30 deg
 
-# Never observer at larger HA than 5 hr.
+# Never observe at larger HA than 5 hr.
 max_hour_angle: 75 deg
 
 # Time required to setup for a new field, including slew, fiber positioning, etc.
@@ -84,18 +112,17 @@ same_field_setup : 60 s
 # Maximum time allowed for a single exposure before we force a cosmic split.
 cosmic_ray_split: 20 min
 
-# Maximum time to spend on one tile in a night
-maxtime: 1 hr
+# Maximum time to sit on one tile
+maxtime: 60 min
 
-# Minimum number of consecutive exposures required for cosmic rejection.
-min_exposures: 2
+# Boost priority of already started tiles
+finish_started_priority: 0.0
 
-# The target SNR**2 for each program is specified as the total exposure time
-# required at nominal observing conditions.
-nominal_exposure_time:
-    DARK: 1000 s
-    GRAY: 1000 s
-    BRIGHT: 300 s
+# Reduce priority of completed tiles
+# ignore_completed_priority: 0.000000001
+ignore_completed_priority: -1
+# in sims, don't repeat finished tiles.
+
 nominal_conditions:
     # Moon below the horizon
     seeing: 1.1 arcsec
@@ -103,14 +130,12 @@ nominal_conditions:
     transparency: 1.0
     EBV: 0.0
 
-moon_up_factor:
-    DARK: 1.0
-    GRAY: 1.1
-    BRIGHT: 1.33
-
 # Reobserve tiles that have not reached this fraction of their target SNR**2.
 # Keep this at one until we simulate errors in ETC integration.
 min_snr2_fraction: 1.0
+
+# Merge dark and gray programs.
+tiles_nogray: True
 
 # List of bodies to avoid when scheduling tiles.
 avoid_bodies:
@@ -154,15 +179,19 @@ tile_radius: 1.63 deg
 # Without path this will look in $DESIMODEL/data/footprint/; otherwise with
 # a path (relative or absolute) it will read that file.
 # Non-standard tiles files are supported with the following caveats:
-# - The program names (DARK,GRAY,BRIGHT) are predefined but not all
+# - The program names (DARK,GRAY,BRIGHT,BACKUP) are predefined but not all
 #   programs need to be included in the tiles file.
 # - Pass numbers are arbitrary integers and do not need to be consecutive
 #   or dense. However use of non-standard values will generally require
 #   an update to fiber_assignment_order, above.
-tiles_file: desi-tiles.fits
+tiles_file: desi-tiles.ecsv
 
 # Merge dark and gray programs.
 tiles_nogray: True
+
+# Trim tile file to only used programs and IN_DESI.
+# Useful for sim visualization and stats tools; not recommended for ops.
+tiles_trim: True
 
 # Base path to pre-pended to all non-absolute paths used for reading and
 # writing files managed by this package. The pattern {...} will be expanded

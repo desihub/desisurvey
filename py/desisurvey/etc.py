@@ -254,7 +254,7 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
     """
     # Lookup the nominal exposure time for this program.
     config = desisurvey.config.Configuration()
-    nominal_time = getattr(config.nominal_exposure_time, program)()
+    nominal_time = getattr(config.programs, program).efftime()
 
     # Calculate actual / nominal factors.
     f_seeing = seeing_exposure_factor(seeing)
@@ -310,12 +310,12 @@ class ExposureTimeCalculator(object):
         self.log = desiutil.log.get_logger()
         unknownprograms = []
         for program in desisurvey.tiles.get_tiles().programs:
-            nomtime = getattr(config.nominal_exposure_time, program, None)
-            if nomtime is None:
+            progconf = getattr(config.programs, program, None)
+            if progconf is None:
                 unknownprograms.append(program)
                 nomtime = 1000/24/60/60
             else:
-                nomtime = nomtime().to(u.day).value
+                nomtime = progconf.efftime().to(u.day).value
             self.TEXP_TOTAL[program] = nomtime
         if len(unknownprograms) > 0:
             self.log.warning(

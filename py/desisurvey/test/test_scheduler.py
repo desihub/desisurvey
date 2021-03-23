@@ -28,8 +28,8 @@ class TestScheduler(Tester):
         for i in range(num_nights):
             night = self.start + datetime.timedelta(i)
             # Save and restore scheduler state.
-            planner.save('snapshot.fits')
-            planner2 = desisurvey.plan.Planner(restore='snapshot.fits',
+            planner.save('snapshot.ecsv')
+            planner2 = desisurvey.plan.Planner(restore='snapshot.ecsv',
                                                simulate=True)
             self.assertTrue(np.all(planner.donefrac == planner2.donefrac))
             self.assertTrue(np.all(planner.tile_status == planner2.tile_status))

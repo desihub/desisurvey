@@ -100,7 +100,8 @@ class Forecast(object):
             openfrac.append(available[progindx].sum() / scheduled_sum)
             dust.append(tiles.dust_factor[tile_sel].mean())
             airmass.append(airmass_factor[tile_sel].mean())
-            nominal.append(getattr(config.nominal_exposure_time, program)().to(u.s).value)
+            nominal.append(
+                (getattr(config.programs, program).efftime)().to(u.s).value)
         # Build a table of all forecasting parameters.
         df = collections.OrderedDict()
         self.df = df

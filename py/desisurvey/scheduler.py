@@ -63,6 +63,10 @@ class Scheduler(object):
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
+
+        d2x = self.tiles.airmass_second_derivative(0)
+        self.scale_dha_penalty_sigma = np.clip(np.sqrt(1/d2x)/60, 0.5, 1)
+
         self.plan = plan
 
         # Allocate memory for internal arrays.
@@ -79,6 +83,12 @@ class Scheduler(object):
         self.nominal_exposure_time_sec = (
             desisurvey.tiles.get_nominal_program_times(self.tiles.tileprogram))
         self.maxtime = config.maxtime()
+
+        esttime = (self.nominal_exposure_time_sec/86400 *
+                   self.tiles.dust_factor)
+        airmassnom = self.tiles.airmass(self.plan.designha)
+        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
+        self.esttime = esttime
 
         # Lookup avoidance cone angles.
         self.avoid_bodies = {}
@@ -133,9 +143,10 @@ class Scheduler(object):
             self.log_priority = np.log(self.plan.tile_priority)
 
         # Initialize the pool of tiles that could be observed this night.
-        self.in_night_pool[:] = (self.plan.tile_priority > 0) & self.plan.tile_available
+        self.in_night_pool[:] = ((self.plan.tile_priority > 0) &
+                                 self.plan.tile_available)
         if self.ignore_completed_priority <= 0:
-             self.in_night_pool &= ~self.plan.obsend()
+            self.in_night_pool &= ~self.plan.obsend()
 
         # Check if any tiles cannot be observed because they are too close to a planet this night.
         poolRA = self.tiles.tileRA[self.in_night_pool]
@@ -189,8 +200,8 @@ class Scheduler(object):
             mjd_program_end = self.night_changes[idx + 1]
         return program, mjd_program_end
 
-    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
-                  program=None, verbose=False):
+    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15.,
+                  greediness=0., program=None, verbose=False):
         r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -237,12 +248,11 @@ class Scheduler(object):
         Returns
         -------
         tuple
-            Tuple (TILEID,PASSNUM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
+            Tuple (TILEID,PROGRAM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
             giving the ID and associated properties of the selected tile.
             When no tile is observable, only the last two tuple fields
             will be valid, and this method should be called again after
             some dead-time delay.  The tuple fields are:
-
              - TILEID: ID of the tile to observe.
              - PROGRAM: program of the tile to observe.
              - DONEFRAC: fractional SNR2 already accumulated for the selected tile.
@@ -269,6 +279,7 @@ class Scheduler(object):
         else:
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
+
         # Select available tiles in this program.
         self.tile_sel &= self.in_night_pool & (self.plan.tile_available > 0)
         if not np.any(self.tile_sel):
@@ -296,28 +307,26 @@ class Scheduler(object):
         else:
             moon_is_up = False
 
-
         # Calculate the local apparent sidereal time in degrees.
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
         # Calculate the hour angle of each available tile in degrees.
 
         weather_factor = ETC.weather_factor(seeing, transp, skylevel)
-        esttime = (
-            self.nominal_exposure_time_sec[self.tile_sel]/86400 *
-            self.tiles.dust_factor[self.tile_sel] / weather_factor)
-        airmassnom = self.tiles.airmass(
-            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
-        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
+        esttime = self.esttime[self.tile_sel] / weather_factor
         esttime = np.clip(esttime, 0, self.maxtime.to(u.day).value)
+        airmassnow = self.tiles.airmass(
+            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
 
         self.hourangle[:] = 0.
         self.hourangle[self.tile_sel] = (
             self.LST + 360*esttime/2 - self.tiles.tileRA[self.tile_sel])
         # Calculate the airmass of each available tile.
         self.airmass[:] = self.max_airmass
-        self.airmass[self.tile_sel] = self.tiles.airmass(
+        airmassnom = self.tiles.airmass(
             self.hourangle[self.tile_sel], self.tile_sel)
-        self.tile_sel &= self.airmass < self.max_airmass
+        self.airmass[self.tile_sel] = airmassnom
+        self.tile_sel[self.tile_sel] &= (
+            (airmassnow < self.max_airmass) & (airmassnom < self.max_airmass))
         absha = np.abs(((self.hourangle + 180) % 360)-180)
         self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):
@@ -335,15 +344,16 @@ class Scheduler(object):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for
         # observing tiles away from their design hour angle.
-        cond = program
-        if self.nogray:
-            cond = 'DARK' if cond == 'GRAY' else cond
         dHA = (self.hourangle[self.tile_sel] -
-               self.plan.designhacond[cond][self.tile_sel])
+               self.plan.designha[self.tile_sel])
         dHA[dHA >= 180.] -= 360
         dHA[dHA < -180] += 360
         assert np.all((dHA >= -180) & (dHA < 180))
         # Calculate a score that combines dHA and instantaneous efficiency.
+        # penalize high airmass tiles more for being away from their design
+        # hour angles; it's important to get these very close to their design
+        # angles.
+        HA_sigma = HA_sigma * self.scale_dha_penalty_sigma[self.tile_sel]
         log_score = (
             -0.5 * (dHA / HA_sigma) ** 2 * (1 - greediness) +
             -np.log(self.exposure_factor[self.tile_sel]) * greediness)
