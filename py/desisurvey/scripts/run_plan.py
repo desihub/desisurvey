@@ -60,7 +60,7 @@ def run_plan(nts_dir=None, verbose=False, survey=None):
         if not res['foundtile']:
             t0 += 10*60/60/60/24
             continue
-        previoustiles.append(res['fiberassign'])
+        previoustiles.append(int(res['fiberassign']))
         lst = Time(t0, format='mjd', location=kpno).sidereal_time('apparent')
         lst = lst.to(u.deg).value
         ind = np.flatnonzero(
@@ -71,9 +71,9 @@ def run_plan(nts_dir=None, verbose=False, survey=None):
         print(
             ('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f '
              '%4d %6s %3.1f') % (
-            mjd_to_azstr(t0), lst, res['conditions'],
-            res['fiberassign'], ra, dec, res['program'],
-            res['exposure_factor'], res['esttime'].astype('i4'),
+                 mjd_to_azstr(t0), lst, res['conditions'],
+                 res['fiberassign'], ra, dec, res['program'],
+                 res['exposure_factor'], int(res['esttime']),
                  ('%dx%d' % (res['count'], res['exptime'])), nnight))
         t0 += (res['exptime']+180)*res['count']/60/60/24
 

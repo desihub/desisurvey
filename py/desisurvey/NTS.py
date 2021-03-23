@@ -440,17 +440,17 @@ class NTS():
             minexptime = minexptime.to(u.s).value
             splitexptime = max([splitexptime, minexptime/days_to_seconds])
 
-        selection = {'esttime': exptime*days_to_seconds,
-                     'exptime': splitexptime*days_to_seconds,
-                     'count': count,
-                     'maxtime': maxdwell*days_to_seconds,
+        selection = {'esttime': float(exptime*days_to_seconds),
+                     'exptime': float(splitexptime*days_to_seconds),
+                     'count': int(count),
+                     'maxtime': float(maxdwell*days_to_seconds),
                      'fiberassign': int(tileid),
                      'foundtile': True,
-                     'conditions': sched_program,
-                     'program': tile_program,
-                     'exposure_factor': exposure_factor,
-                     'req_efftime': efftime,
-                     'sbprof': sbprof}
+                     'conditions': str(sched_program),
+                     'program': str(tile_program),
+                     'exposure_factor': float(exposure_factor),
+                     'req_efftime': float(efftime),
+                     'sbprof': str(sbprof)}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)
