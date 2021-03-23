@@ -99,6 +99,9 @@ def scan_directory(dirname, start_from=None,
         obstype = np.zeros(len(start_exps), dtype='U20')
         obstype[:] = start_exps['OBSTYPE']
         start_exps['OBSTYPE'] = obstype
+        program = np.zeros(len(start_exps), dtype='U20')
+        program[:] = start_exps['PROGRAM']
+        start_exps['PROGRAM'] = program
         quality = np.zeros(len(start_exps), dtype='U20')
         quality[:] = start_exps['QUALITY']
         start_exps['QUALITY'] = quality
@@ -126,9 +129,9 @@ def scan_directory(dirname, start_from=None,
               'information...').format(len(files)))
     exps = np.zeros(len(files), dtype=[
         ('NIGHT', 'U8'), ('TILEID', 'i4'), ('EXPID', 'i4'),
-        ('OBSTYPE', 'U20'), ('EXPTIME', 'f4'),
-        ('EFFTIME', 'f4'), ('SPECTIME', 'f4'), ('QUALITY', 'U20'),
-        ('COMMENTS', 'U80')])
+        ('OBSTYPE', 'U20'), ('PROGRAM', 'U20'), ('EXPTIME', 'f4'),
+        ('EFFTIME', 'f4'), ('SPECTIME', 'f4'), ('GOALTIME', 'f4'),
+        ('QUALITY', 'U20'), ('COMMENTS', 'U80')])
     for i, fn in enumerate(files):
         if (i % 1000) == 0:
             log.info('Extracting headers from file {} of {}...'.format(
@@ -140,16 +143,21 @@ def scan_directory(dirname, start_from=None,
                 break
             except Exception:
                 continue
+        hasrequest = os.path.exists(
+            fn.replace('desi-', 'request-').replace('.fits.fz', '.json'))
         exps['NIGHT'][i] = hdr.get('NIGHT', -1)
         exps['TILEID'][i] = hdr.get('TILEID', -1)
         exps['EXPID'][i] = hdr.get('EXPID', -1)
-        exps['OBSTYPE'][i] = hdr.get('OBSTYPE', -1).upper().strip()
+        exps['OBSTYPE'][i] = str(hdr.get('OBSTYPE', '')).upper().strip()
+        exps['PROGRAM'][i] = str(hdr.get('PROGRAM', '')).strip()
         exps['EXPTIME'][i] = hdr.get('EXPTIME', -1)
         exps['EFFTIME'][i] = hdr.get('EFFTIME', -1)
         exps['SPECTIME'][i] = -1
-        exps['QUALITY'][i] = 'fantastic'
+        exps['GOALTIME'][i] = hdr.get('GOALTIME', -1)
+        exps['QUALITY'][i] = 'good' if hasrequest else 'bad'
         exps['COMMENTS'][i] = ''
-    exps['EFFTIME'] = np.where(exps['EFFTIME'] < 0, exps['EXPTIME'],
+    exptime_clipped = np.where(exps['EXPTIME'] < 59.0, 0, exps['EXPTIME'])
+    exps['EFFTIME'] = np.where(exps['EFFTIME'] < 0, exptime_clipped,
                                exps['EFFTIME'])
     obstypes = np.array([f.upper().strip() for f in exps['OBSTYPE']],
                         dtype=exps['OBSTYPE'].dtype)
@@ -163,14 +171,17 @@ def scan_directory(dirname, start_from=None,
         exps = astropy.table.vstack([start_exps, astropy.table.Table(exps)])
     if offlinedepth is not None:
         exps = update_donefrac_from_offline(exps, offlinedepth)
+    exps['EFFTIME'] = np.where(exps['SPECTIME'] < 0,
+                               exps['EFFTIME'], exps['SPECTIME'])
     ntiles = len(np.unique(exps['TILEID']))
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('PROGRAM', 'U20'), ('EFFTIME', 'f4'),
         ('DONEFRAC', 'f4'),
         ('NOBS', 'i4'), ('MTL_DONE', 'bool')])
-    expefftime = np.where(exps['SPECTIME'] > 0,
+    expefftime = np.where(exps['SPECTIME'] < 0,
                           exps['SPECTIME'], exps['EFFTIME'])
     s = np.argsort(exps['TILEID'])
+    nomtimefa = np.zeros(len(tiles), dtype='f4')
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
         ind = s[f:l]
         tiles['TILEID'][i] = exps['TILEID'][ind[0]]
@@ -178,14 +189,18 @@ def scan_directory(dirname, start_from=None,
             expefftime[ind], 0, np.inf))
         # potentially only want to consider "good" exposures here?
         tiles['NOBS'][i] = len(ind)
+        nomtimefa[i] = np.median(exps['GOALTIME'][ind])
+        if np.any(np.abs(exps['GOALTIME'][ind] - nomtimefa[i]) > 1):
+            log.warning('Inconsistent GOALTIME on tile ', tiles['TILEID'][i])
     if mtldone is not None:
         tiles = update_mtldone(tiles, mtldone)
     tob = desisurvey.tiles.get_tiles()
     idx, mask = tob.index(tiles['TILEID'], return_mask=True)
     tiles['PROGRAM'] = 'UNKNOWN'
     tiles['PROGRAM'][mask] = [tob.tileprogram[i] for i in idx[mask]]
-    nomtime = desisurvey.tiles.get_nominal_program_times(
+    nomtimetf = desisurvey.tiles.get_nominal_program_times(
         tiles['PROGRAM'])
+    nomtime = np.where(nomtimefa > 0, nomtimefa, nomtimetf)
     tiles['DONEFRAC'] = tiles['EFFTIME'] / nomtime
     s = np.argsort(exps['EXPID'])
     exps = exps[s]
@@ -208,14 +223,17 @@ def write_exp(exps, fn):
     tab['TILEID'].description = 'Tile ID'
     tab['EXPID'].description = 'Exposure ID'
     tab['OBSTYPE'].description = 'Exposure OBSTYPE'
-    tab['EXPTIME'].desciption = 'Exposure time'
+    tab['EXPTIME'].description = 'Exposure time'
     tab['EXPTIME'].format = '%9.3f'
     tab['EFFTIME'].description = 'Effective time from airmass and dust.'
     tab['EFFTIME'].format = '%7.3f'
     tab['SPECTIME'].description = 'Effective time from offline pipeline.'
     tab['SPECTIME'].format = '%7.3f'
-    tab['QUALITY'].decription = 'Exposure quality'
+    tab['QUALITY'].description = 'Exposure quality'
     tab['COMMENTS'].description = 'Additional comments'
+    tab['GOALTIME'].description = 'Goal effective exposure time'
+    tab['GOALTIME'].format = '%6.1f'
+    tab['PROGRAM'].description = 'PROGRAM of exposure'
     tab.write(fn, overwrite=True)
 
 

@@ -46,9 +46,9 @@ class Tester(unittest.TestCase):
         tiles = desisurvey.tiles.Tiles().read_tiles_table()
         subset = (35 < tiles['RA']) & (tiles['RA'] < 55) & \
                  (-10 < tiles['DEC']) & (tiles['DEC'] < 20)
-        tiles['DESIGNHA'] = 0
+        tiles['DESIGNHA'] = 0.0
         tiles['STATUS'] = 'unobs'
-        tiles['PRIORITY'] = 1
+        tiles['PRIORITY'] = 1.0
         tiles_file = os.path.join(cls.tmpdir, 'tiles-subset.ecsv')
         tiles[subset].write(tiles_file)
         config.tiles_file.set_value(tiles_file)

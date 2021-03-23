@@ -51,6 +51,12 @@ def parse(options=None):
         '--recalc', action='store_true',
         help='recalculate even when previous calculations are available')
     parser.add_argument(
+        '--recalc-ephem', action='store_true',
+        help='recalculate ephemerides tabulation')
+    parser.add_argument(
+        '--recalc-lst', action='store_true',
+        help='recalculate LST optimization')
+    parser.add_argument(
         '--nbins', type=int, default=192, metavar='N',
         help='number of LST bins to use')
     parser.add_argument(
@@ -210,7 +216,7 @@ def calculate_initial_plan(args):
                  'by default.')
 
     for index, condition in enumerate(conditions):
-        sel = tiles.allowed_in_conditions(condition)
+        sel = tiles.allowed_in_conditions(condition) & tiles.in_desi
         if not np.any(sel):
             log.info('Skipping {} program with no tiles.'.format(condition))
             continue
@@ -221,7 +227,8 @@ def calculate_initial_plan(args):
         # Initailize an optimizer for this program.
         opt = desisurvey.optimize.Optimizer(
             condition, lst_bins, lst_hist[index], init=args.init, center=None,
-            stretch=stretches[condition], completed=args.completed)
+            stretch=stretches[condition], completed=args.completed,
+            subset=tiles.tileID[sel])
         table['INIT'] = opt.plan_hist.copy()
         design['INIT'][sel] = opt.ha_initial
         # Initialize annealing cycles.
@@ -313,7 +320,8 @@ def main(args):
         config.tiles_file.set_value(args.tiles_file)
 
     # Tabulate emphemerides if necessary.
-    ephem = desisurvey.ephem.get_ephem(use_cache=not args.recalc)
+    ephem = desisurvey.ephem.get_ephem(
+        use_cache=not (args.recalc or args.recalc_ephem))
 
     # Calculate design hour angles if necessary.
     fullnamelst = config.get_path(args.savelst)
@@ -324,7 +332,7 @@ def main(args):
         fullnametiles = os.path.basename(tiles.tiles_file)
     fullnametiles = config.get_path(fullnametiles)
     args.savetiles = fullnametiles
-    if (args.recalc or not
+    if ((args.recalc or args.recalc_lst) or not
             (os.path.exists(fullnamelst) and os.path.exists(fullnametiles))):
         calculate_initial_plan(args)
     else:

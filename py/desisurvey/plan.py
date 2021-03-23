@@ -49,7 +49,7 @@ def load_design_hourangle():
                 np.allclose(tiles['DEC'], design['DEC']) and
                 np.all(tiles['PROGRAM'] == design['PROGRAM'])):
             raise ValueError('Plan HA does match tile file.')
-        return design['HA']
+        return design['HA'].data.copy()
 
 
 def get_fiber_assign_dir(fiber_assign_dir):
@@ -257,7 +257,7 @@ class Planner(object):
             status = np.atleast_1d(status)
         tileind, mask = self.tiles.index(tileid, return_mask=True)
         if np.any(~mask):
-            self.log.warning('Some tiles with unknown IDs; ignoring')
+            self.log.debug('Some tiles with unknown IDs; ignoring')
             tileind = tileind[mask]
             if donefrac is not None:
                 donefrac = donefrac[mask]
@@ -389,7 +389,7 @@ class Planner(object):
         if np.count_nonzero(available) == 0:
             self.log.error('No fiberassign files available for scheduling!')
         if np.any(~mask):
-            self.log.warning(
+            self.log.debug(
                 'Ignoring {} tiles that were assigned, '.format(sum(~mask)) +
                 'but not found in the tile file.')
 

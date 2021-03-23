@@ -58,8 +58,7 @@ def run_plan(nts_dir=None, verbose=False, survey=None):
         res = nts.next_tile(exposure=expdict, conditions=conddict,
                             speculative=True)
         if not res['foundtile']:
-            print('no tiles!')
-            t0 += 60/60/60/24
+            t0 += 10*60/60/60/24
             continue
         previoustiles.append(res['fiberassign'])
         lst = Time(t0, format='mjd', location=kpno).sidereal_time('apparent')

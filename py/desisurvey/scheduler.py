@@ -63,6 +63,10 @@ class Scheduler(object):
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
+
+        d2x = self.tiles.airmass_second_derivative(0)
+        self.scale_dha_penalty_sigma = np.clip(np.sqrt(1/d2x)/60, 0.5, 1)
+
         self.plan = plan
 
         # Allocate memory for internal arrays.
@@ -79,6 +83,12 @@ class Scheduler(object):
         self.nominal_exposure_time_sec = (
             desisurvey.tiles.get_nominal_program_times(self.tiles.tileprogram))
         self.maxtime = config.maxtime()
+
+        esttime = (self.nominal_exposure_time_sec/86400 *
+                   self.tiles.dust_factor)
+        airmassnom = self.tiles.airmass(self.plan.designha)
+        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
+        self.esttime = esttime
 
         # Lookup avoidance cone angles.
         self.avoid_bodies = {}
@@ -269,6 +279,7 @@ class Scheduler(object):
         else:
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
+
         # Select available tiles in this program.
         self.tile_sel &= self.in_night_pool & (self.plan.tile_available > 0)
         if not np.any(self.tile_sel):
@@ -296,28 +307,24 @@ class Scheduler(object):
         else:
             moon_is_up = False
 
-
         # Calculate the local apparent sidereal time in degrees.
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
         # Calculate the hour angle of each available tile in degrees.
 
         weather_factor = ETC.weather_factor(seeing, transp, skylevel)
-        esttime = (
-            self.nominal_exposure_time_sec[self.tile_sel]/86400 *
-            self.tiles.dust_factor[self.tile_sel] / weather_factor)
-        airmassnom = self.tiles.airmass(
-            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
-        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
+        esttime = self.esttime[self.tile_sel] / weather_factor
         esttime = np.clip(esttime, 0, self.maxtime.to(u.day).value)
+        airmassnow = self.tiles.airmass(
+            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
 
         self.hourangle[:] = 0.
         self.hourangle[self.tile_sel] = (
             self.LST + 360*esttime/2 - self.tiles.tileRA[self.tile_sel])
         # Calculate the airmass of each available tile.
         self.airmass[:] = self.max_airmass
-        airmassnow = self.tiles.airmass(
+        airmassnom = self.tiles.airmass(
             self.hourangle[self.tile_sel], self.tile_sel)
-        self.airmass[self.tile_sel] = airmassnow
+        self.airmass[self.tile_sel] = airmassnom
         self.tile_sel[self.tile_sel] &= (
             (airmassnow < self.max_airmass) & (airmassnom < self.max_airmass))
         absha = np.abs(((self.hourangle + 180) % 360)-180)
@@ -343,6 +350,10 @@ class Scheduler(object):
         dHA[dHA < -180] += 360
         assert np.all((dHA >= -180) & (dHA < 180))
         # Calculate a score that combines dHA and instantaneous efficiency.
+        # penalize high airmass tiles more for being away from their design
+        # hour angles; it's important to get these very close to their design
+        # angles.
+        HA_sigma = HA_sigma * self.scale_dha_penalty_sigma[self.tile_sel]
         log_score = (
             -0.5 * (dHA / HA_sigma) ** 2 * (1 - greediness) +
             -np.log(self.exposure_factor[self.tile_sel]) * greediness)

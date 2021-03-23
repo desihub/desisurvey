@@ -426,14 +426,13 @@ class NTS():
         if exptime > splittime:
             count = int((exptime / splittime).astype('i4') + 1)
         else:
-            if (self.night.day % 2) != 0:
-                count = 2  # do cosmic splits
-            else:
-                count = 1
-        # always get at least 2 300s exposures of sv1bgsmws exposures
-        # when they are scheduled in dark time
-        if (sched_program == 'DARK') & (tile_program == 'sv1bgsmws'):
-            count = int(np.max([count, 2]))
+            count = 1
+        mincount = getattr(programconf, 'min_exposures', None)
+        if mincount is not None:
+            mincount = mincount()
+        else:
+            mincount = 1
+        count = np.max([mincount, count])
         splitexptime = exptime / count
         minexptime = getattr(programconf, 'minimum_exposure_time', None)
         if minexptime:

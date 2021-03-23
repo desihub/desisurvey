@@ -121,7 +121,7 @@ class Optimizer(object):
             idx = tiles.index(subset)
             # Check that all tiles in the subset are observable in these
             # conditions.
-            if not np.all(tiles.allowed_in_conditions(condition)[subset]):
+            if not np.all(tiles.allowed_in_conditions(condition)[idx]):
                 raise ValueError('Subset contains non-{} tiles.'.format(condition))
             tile_sel = np.zeros(tiles.ntiles, bool)
             tile_sel[idx] = True
@@ -134,17 +134,21 @@ class Optimizer(object):
         texp_nom = u.Quantity([
             getattr(config.programs, program).efftime()
             for program in tiles.tileprogram[tile_sel]])
-        moon_up_factor = getattr(config, 'moon_up_factor', None)
-        if moon_up_factor is not None:
-            moon_up_factor = getattr(moon_up_factor, condition)()
-            texp_nom *= moon_up_factor
+        moon_up_factor = getattr(config.conditions, condition).moon_up_factor()
+        texp_nom *= moon_up_factor
         if completed is not None:
-            completed = astropy.table.Table.read(completed)
-            donefrac = np.zeros(tiles.ntiles, dtype='f4')
+            # completed = astropy.table.Table.read(completed)
+            # donefrac = np.zeros(tiles.ntiles, dtype='f4')
+            from astropy.io import fits
+            completed = fits.getdata(completed)
             idx, mask = tiles.index(completed['TILEID'], return_mask=True)
             idx = idx[mask]
-            donefrac[idx] = completed['donefrac'][mask]
-            boost = np.clip(1-donefrac, 0, 1)
+            boost = np.ones(tiles.ntiles, dtype='f4')
+            boost[idx] = (completed['NNIGHT_NEEDED'][mask] -
+                          completed['NNIGHT'][mask])
+            boost = np.clip(boost, 0, np.inf)
+            # donefrac[idx] = completed['donefrac'][mask]
+            # boost = np.clip(1-donefrac, 0, 1)
             texp_nom *= boost[tile_sel]
 
         self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583

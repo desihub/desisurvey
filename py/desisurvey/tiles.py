@@ -65,14 +65,14 @@ class Tiles(object):
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
         self.designha = None
         if 'DESIGNHA' in tiles.dtype.names:
-            self.designha = tiles['DESIGNHA']
+            self.designha = tiles['DESIGNHA'].data.copy()
 
         self.tileobsconditions = self.get_conditions()
         if self.nogray:
             mgray = self.tileobsconditions == 'GRAY'
             self.tileobsconditions[mgray] = 'DARK'
 
-        self.in_desi = tiles['IN_DESI'].data.copy()
+        self.in_desi = tiles['IN_DESI'].data.copy() != 0
 
         # Count tiles.
         self.ntiles = len(self.tileID)
@@ -148,6 +148,23 @@ class Tiles(object):
 
         ha = lst - self.tileRA[mask]
         return self.airmass(ha, mask=mask)
+
+    def airmass_second_derivative(self, HA, mask=None):
+        """Calculate second derivative of airmass with HA.
+
+        Useful for determining how close to design airmass we have to get
+        for different tiles.  When this is large, we really need to observe
+        things right at their design angles.  When it's small, we have more
+        flexibility.
+        """
+        x = self.airmass(HA, mask=mask)
+        if mask is not None:
+            b = self.tile_coef_B[mask]
+        else:
+            b = self.tile_coef_B
+        d2rad = b*x**2 * (2*b*x*np.sin(np.radians(HA))**2 +
+                          np.cos(np.radians(HA)))
+        return d2rad * (np.pi/180)**2
 
     def index(self, tileID, return_mask=False):
         """Map tile ID to array index.
@@ -328,7 +345,7 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
         tiles = Tiles(tiles_file)
         log.info('Initialized tiles from "{}".'.format(tiles_file))
         for pname in tiles.programs:
-            log.info('{:6s}: {} tiles'.format(
+            log.debug('{:6s}: {} tiles'.format(
                 pname, np.sum(tiles.program_mask[pname])))
 
     if write_cache:
@@ -359,9 +376,10 @@ def find_tile_file(filename):
             fn = namedict.pop(key)[0]
             others = [key for (key, (name, exists)) in namedict.items()
                       if exists]
-            log.info('Using {} filename, '.format(fn) +
-                     'ignoring other files of same name: ' +
-                     ' '.join(others))
+            if len(others) > 0:
+                log.info('Using {} filename, '.format(fn) +
+                         'ignoring other files of same name: ' +
+                         ' '.join(others))
             return fn
     raise FileNotFoundError('tile file not found at {}'.format(filename))
 
@@ -392,8 +410,8 @@ def get_nominal_program_times(tileprogram, config=None,
         timetypes.append(timetype)
     if nunknown > 0:
         log = desiutil.log.get_logger()
-        log.info(('%d observations of unknown programs\n' % nunknown) +
-                 'unknown programs: '+' '.join(np.unique(unknownprograms)))
+        log.debug(('%d observations of unknown programs:' % nunknown) +
+                  ' '.join(np.unique(unknownprograms)))
     nomtimes = np.array(nomtimes)
     timetypes = np.array(timetypes)
     ret = nomtimes

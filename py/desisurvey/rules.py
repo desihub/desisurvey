@@ -216,17 +216,23 @@ class Rules(object):
 
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
+        notilescoveredrules = []
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
             if not np.any(group_sel):
-                if not nogray or '(GRAY)' not in name:
-                    self.log.info('No tiles covered by rule {}'.format(name))
+                notilescoveredrules.append(name)
             ngroup = np.count_nonzero(group_sel)
             completed = donefrac > self.min_snr2_fraction
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]
             triggered[name] = (ndone + max_orphans >= ngroup)
+        notilescoveredrules = [x for x in notilescoveredrules
+                               if not nogray or '(GRAY)' not in name]
+        if len(notilescoveredrules) > 0:
+            self.log.debug('No tiles covered by rules {}'.format(
+                ' '.join(notilescoveredrules)))
+
         # Second pass through groups to apply rules.
         priorities = np.zeros_like(self.dec_priority)
         for gid, name in zip(np.unique(self.group_ids), self.group_names):
