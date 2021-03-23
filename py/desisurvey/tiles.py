@@ -358,8 +358,7 @@ def get_tiles(tiles_file=None, use_cache=True, write_cache=True):
 
 def find_tile_file(filename):
     log = desiutil.log.get_logger()
-    path, fn = os.path.split(filename)
-    if path != '':
+    if os.path.isabs(filename):
         if not os.path.exists(filename):
             raise FileNotFoundError(
                 'tile file not found at {}'.format(filename))

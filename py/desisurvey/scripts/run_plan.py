@@ -30,7 +30,8 @@ def run_plan(nts_dir=None, verbose=False, survey=None):
     t0 = nts.scheduler.night_ephem['brightdusk']
     nts_dir, _ = os.path.split(nts.obsplan)
     if not verbose:
-        desiutil.log.get_logger().setLevel(desiutil.log.WARNING)
+        desiutil.log.get_logger().setLevel('WARNING')
+        nts.log.setLevel('WARNING')
     previoustiles = []
     ephem = nts.scheduler.night_ephem
     changes = nts.scheduler.night_changes
