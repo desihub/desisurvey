@@ -89,6 +89,14 @@ class Scheduler(object):
         airmassnom = self.tiles.airmass(self.plan.designha)
         esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
         self.esttime = esttime
+        sbprof = []
+        for prog in self.tiles.tileprogram:
+            progconf = getattr(config.programs, prog, None)
+            if progconf is None:
+                sbprof.append('ELG')
+            else:
+                sbprof.append(progconf.sbprof())
+        self.sbprof = np.array(sbprof)
 
         # Lookup avoidance cone angles.
         self.avoid_bodies = {}
@@ -311,7 +319,11 @@ class Scheduler(object):
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
         # Calculate the hour angle of each available tile in degrees.
 
-        weather_factor = ETC.weather_factor(seeing, transp, skylevel)
+        sbprof = self.sbprof[self.tile_sel][0]
+        if not np.all(self.sbprof[self.tile_sel] == sbprof):
+            self.log.warning('Multiple SBPROF in same selection.')
+        weather_factor = ETC.weather_factor(seeing, transp, skylevel,
+                                            sbprof=sbprof)
         esttime = self.esttime[self.tile_sel] / weather_factor
         esttime = np.clip(esttime, 0, self.maxtime.to(u.day).value)
         airmassnow = self.tiles.airmass(

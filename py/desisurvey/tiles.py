@@ -365,7 +365,10 @@ def find_tile_file(filename):
         return filename
     dmname = desimodel.io.findfile(os.path.join('footprint', filename))
     dsdirname = os.environ.get('DESISURVEY_OUTPUT', None)
-    dsname = os.path.join(dsdirname, filename)
+    if dsdirname is not None:
+        dsname = os.path.join(dsdirname, filename)
+    else:
+        dsname = ''
     localname = filename
     namedict = dict(DESISURVEY=(dsname, os.path.exists(dsname)),
                     DESIMODEL=(dmname, os.path.exists(dmname)),

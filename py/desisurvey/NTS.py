@@ -187,7 +187,7 @@ class NTS():
             'transparency', 'sky_level', and 'program', for next tile
             selection.
 
-        night : night for which to assign tiles, YYYMMDD, default tonight.
+        night : night for which to assign tiles, YYYYMMDD, default tonight.
 
         nts_survey : human readable means for selecting nightly obsplan.
             ignored if obsplan is set.
@@ -203,10 +203,11 @@ class NTS():
             self.log.info('No night selected, '
                           'using current date: {}.'.format(self.night))
         else:
-            self.night = night
+            self.night = desisurvey.utils.get_date(night)
         if obsplan is None:
             if nts_survey is None:
                 nts_survey = 'sv1'
+            nts_survey = nts_survey.lower()
             nts_dir = (desisurvey.utils.night_to_str(self.night) + '-' +
                        nts_survey)
             obsplan = os.path.join(nts_dir, 'config.yaml')
@@ -358,6 +359,11 @@ class NTS():
         self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
+        if mjd_program_end < mjd:
+            self.log.warning(
+                'Program ends before exposure starts; is it daytime?')
+            mjd_program_end = mjd + 1
+
         badtile = {'esttime': 0., 'exptime': 0.,
                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
                    'foundtile': False,

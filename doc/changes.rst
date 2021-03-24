@@ -5,6 +5,8 @@ desisurvey change log
 0.15.1 (unreleased)
 -------------------
 
+* Add sbprof argument to etc.seeing_exposure_factor, accounting for
+  different sensitivities of BRIGHT and DARK programs to seeing.
 * Reorganize state to match DailyOps desiderata.  Implement multiple
   survey choices in NTS.  Reorganize config file.  Reduce verbosity.
   Make HA observation choices more stringent at high airmass. (PR `#131`)

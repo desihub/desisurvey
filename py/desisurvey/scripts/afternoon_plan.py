@@ -80,7 +80,7 @@ def afternoon_plan(night=None, exposures=None,
     nts_survey = config.survey()
 
     if nts_dir is None:
-        subdir = nightstr + '-' + nts_survey
+        subdir = nightstr + '-' + nts_survey.lower()
     else:
         subdir = nts_dir
     directory = os.path.join(desisurvey_output, subdir)
