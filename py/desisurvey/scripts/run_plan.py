@@ -50,8 +50,8 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None):
     print('local   lst   cond  tile    ra   dec    program fac  tot  split ' +
           '  N')
     while t0 < nts.scheduler.night_ephem['brightdawn']:
-        cidx = np.interp(t0, changes, np.arange(len(changes)))
-        cidx = int(np.clip(cidx, 0, len(programs)))
+        cidx = np.interp(t0+300/86400, changes, np.arange(len(changes)))
+        cidx = int(np.clip(cidx, 0, len(programs)-1))
         cond = programs[cidx]
         moon_up_factor = getattr(nts.config.conditions, cond).moon_up_factor()
         expdict = dict(mjd=t0, previoustiles=previoustiles)
@@ -76,7 +76,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None):
                  res['fiberassign'], ra, dec, res['program'],
                  res['exposure_factor'], int(res['esttime']),
                  ('%dx%d' % (res['count'], res['exptime'])), nnight))
-        t0 += (res['exptime']+180)*res['count']/60/60/24
+        t0 += (res['exptime']+0*180)*res['count']/60/60/24
 
 
 def parse(options=None):
