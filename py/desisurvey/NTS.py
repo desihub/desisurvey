@@ -416,15 +416,19 @@ class NTS():
         maxdwell = self.config.maxtime().to(u.day).value
         mintime = self.config.mintime().to(u.day).value
         texp_remaining = max([texp_remaining, mintime])
-        texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd,
-                              maxdwell])
+        texp_remaining = min([texp_remaining, maxdwell])
+        onemin = 1/60/24
+        # end dark/gray programs at 15 deg dawn, sharp.
+        if ((sched_program != 'BRIGHT') and
+                (mjd_program_end > self.scheduler.night_ephem['dusk'])):
+            texp_remaining = min([texp_remaining, mjd_program_end-mjd])
+
         exptime = texp_remaining
         splittime = self.config.cosmic_ray_split().to(u.day).value
 
         days_to_seconds = 60*60*24
-        fivemin = 5/60/24  # 5 minutes... pretty arbitrary.
-        if ((mjd <= self.scheduler.night_ephem['dusk']-fivemin) or
-                (mjd >= self.scheduler.night_ephem['dawn']+fivemin)):
+        if ((mjd <= self.scheduler.night_ephem['dusk']-5*onemin) or
+                (mjd >= self.scheduler.night_ephem['dawn']-5*onemin)):
             splittime = 300/days_to_seconds
             # in twilight, exposures should never be longer than 300 s
             # according to DJS.
