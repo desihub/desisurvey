@@ -134,9 +134,6 @@ nominal_conditions:
 # Keep this at one until we simulate errors in ETC integration.
 min_snr2_fraction: 1.0
 
-# Merge dark and gray programs.
-tiles_nogray: True
-
 # List of bodies to avoid when scheduling tiles.
 avoid_bodies:
     moon: 50 deg
