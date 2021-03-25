@@ -195,6 +195,8 @@ def afternoon_plan(night=None, exposures=None,
 
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC'],
                          ignore_pending=True)
+    # additional line here to set status=done for tiles with
+    # tiles['MTL_DONE'] = True
 
     svmode = getattr(config, 'svmode', None)
     svmode = svmode() if svmode is not None else False

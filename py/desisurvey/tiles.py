@@ -1,7 +1,7 @@
 """Manage static information associated with tiles, programs and passes.
 
-Each tile has an assigned program name and pass number. The program names
-(DARK, GRAY, BRIGHT) are predefined in terms of conditions on the
+Each tile has an assigned program name. The program names
+(DARK, BRIGHT) are predefined in terms of conditions on the
 ephemerides, but not all programs need to be present in a tiles file.
 Pass numbers are arbitrary integers and do not need to be consecutive or dense.
 

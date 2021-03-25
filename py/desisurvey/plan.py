@@ -134,9 +134,14 @@ class Planner(object):
         match the current tiles_file values.
     simulate : bool
         If True, simulate fiber assignment process.
+    log : log object or None
+        logging object to use; None for desiutil default.
     """
-    def __init__(self, rules=None, restore=None, simulate=False):
-        self.log = desiutil.log.get_logger()
+    def __init__(self, rules=None, restore=None, simulate=False, log=None):
+        if log is None:
+            self.log = desiutil.log.get_logger()
+        else:
+            self.log = log
         self.rules = rules
         config = desisurvey.config.Configuration()
         self.min_snr2_fraction = config.min_snr2_fraction()
@@ -224,7 +229,12 @@ class Planner(object):
         ----------
         tileid : int
         """
-        idx = self.tiles.index(tileid)
+        idx, mask = self.tiles.index(tileid, return_mask=True)
+        if not mask:
+            self.log.error(
+                ('Invalid tileid {} passed to '
+                 'add_pending_tile; ignoring.').format(tileid))
+            return
         overlapping = self.tiles.overlapping[idx]
         # if this tile's LyA decisions have already been made,
         # that's a problem!

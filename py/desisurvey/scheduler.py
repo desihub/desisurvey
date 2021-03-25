@@ -41,9 +41,13 @@ class Scheduler(object):
     Parameters
     ----------
     plan : desisurvey.plan.Plan instance to use for planning
+    log : log object to use
     """
-    def __init__(self, plan):
-        self.log = desiutil.log.get_logger()
+    def __init__(self, plan, log=None):
+        if log is None:
+            self.log = desiutil.log.get_logger()
+        else:
+            self.log = log
         # Load our configuration.
         config = desisurvey.config.Configuration()
         ignore_completed_priority = getattr(config,

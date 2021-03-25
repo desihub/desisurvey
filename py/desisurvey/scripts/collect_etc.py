@@ -394,7 +394,8 @@ def update_mtldone(tiles, mtldonefn):
     mtldone = astropy.table.Table.read(mtldonefn)
     mt, mm = desisurvey.utils.match(tiles['TILEID'], mtldone['TILEID'])
     tiles = tiles.copy()
-    tiles['MTL_DONE'][mt] = mtldone[mm]
+    tiles['MTL_DONE'] = False
+    tiles['MTL_DONE'][mt] = True
     usedmtl = np.zeros(len(mtldone), dtype='i4')
     usedmtl[mm] = 1
     nunused = np.sum(usedmtl == 0)

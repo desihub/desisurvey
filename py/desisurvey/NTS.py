@@ -236,8 +236,10 @@ class NTS():
         self.config = config
         try:
             self.planner = desisurvey.plan.Planner(
-                self.rules, restore=config.tiles_file())
-            self.scheduler = desisurvey.scheduler.Scheduler(self.planner)
+                self.rules, restore=config.tiles_file(),
+                log=self.log)
+            self.scheduler = desisurvey.scheduler.Scheduler(
+                self.planner, log=self.log)
             self.queuedlist = QueuedList(
                 '{}/queued.dat'.format(fulldir))
             self.requestlog = RequestLog(
@@ -401,9 +403,7 @@ class NTS():
 
         sbprof = getattr(programconf, 'sbprof', None)
         if sbprof is not None:
-            sbprof = getattr(sbprof, tile_program, None)
-            if sbprof is not None:
-                sbprof = sbprof()
+            sbprof = sbprof()
         if not isinstance(sbprof, str):
             sbprof = 'PSF'
 
