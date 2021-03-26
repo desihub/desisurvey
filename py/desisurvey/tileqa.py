@@ -522,6 +522,9 @@ def add_info_fields(tiles, gaiadensitymapfile,
     if isinstance(tiles, Table):
         ra = tiles['RA'].data
         dec = tiles['DEC'].data
+    else:
+        ra = tiles['RA']
+        dec = tiles['DEC']
     coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg,
                      frame='icrs')
     coordgal = coord.galactic

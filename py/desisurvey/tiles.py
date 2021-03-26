@@ -63,6 +63,7 @@ class Tiles(object):
         self.tileRA = tiles['RA'].data.copy()
         self.tileDEC = tiles['DEC'].data.copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
+        self.tilepass = tiles['PASS'].data.copy()
         self.designha = None
         if 'DESIGNHA' in tiles.dtype.names:
             self.designha = tiles['DESIGNHA'].data.copy()

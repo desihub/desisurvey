@@ -468,6 +468,25 @@ class Planner(object):
                    (self.tile_status == 'obsend'))
         for tileid in self.tiles.tileID[pending]:
             self.add_pending_tile(tileid)
+        self.prefer_low_passnum()
         newlycompleted = ((self.tile_status == 'done') &
                           (oldstatus != 'done'))
         return newlystarted, newlycompleted
+
+    def prefer_low_passnum(self):
+        """Mark only tiles available that are in the lowest pass
+        of any overlapping tiles."""
+
+        mobservable = (self.tile_available & self.tile_available &
+                       ~self.obsend())
+        mfree = np.ones(self.tiles.ntiles, dtype='bool')
+        passes = np.unique(self.tiles.tilepass[mobservable])
+        s = np.argsort(passes)
+        for pass0 in passes[s]:
+            mpass = self.tiles.tilepass == pass0
+            m = mpass & mobservable
+            for idx in np.flatnonzero(m):
+                if ~mfree[idx]:
+                    continue
+                mfree[self.tiles.overlapping[idx]] = 0
+        self.tile_available[~mfree] = 0
