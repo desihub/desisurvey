@@ -273,8 +273,7 @@ def get_conditions(mjd):
 
     Returns
     -------
-    conditions: conditions mask, 1 for DARK, 2 for GRAY, 4 for BRIGHT
-    -1 for problematic MJD (too early, NaN, or during the day)
+    conditions: array of strings DARK, GRAY, BRIGHT, UNKNOWN
     """
     tiles = desisurvey.tiles.get_tiles()
     ephem = desisurvey.ephem.get_ephem()
@@ -315,10 +314,10 @@ def get_conditions(mjd):
     out[:] = -1
     out[~mday & okmjd] = conditions
     # this program index is ~backwards from OBSCONDITIONS.
-    newout = out.copy()
-    for condition in tiles.OBSCONDITIONS:
+    newout = np.full(len(out), 'UNKNOWN', dtype='U8')
+    for condition in tiles.CONDITIONS:
         m = out == tiles.CONDITION_INDEX[condition]
-        newout[m] = tiles.OBSCONDITIONS[condition]
+        newout[m] = condition
     return newout
 
 
