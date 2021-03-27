@@ -276,7 +276,7 @@ class Planner(object):
         if donefrac is not None:
             self.donefrac[tileind] = donefrac
         if status is not None:
-            self.status[tileind] = status
+            self.tile_status[tileind] = status
         if not ignore_pending and (donefrac is not None):
             for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
                 if donefrac0 > 0:
@@ -453,13 +453,15 @@ class Planner(object):
                 self.fiberassign_simulate(night)
             self.last_night = night
         else:
-            self.log.error('we need a mechanism to mark completed tiles.')
             fiber_assign_dir = get_fiber_assign_dir(fiber_assign_dir)
             if fiber_assign_dir is None:
                 raise ValueError(
                     'fiber_assign_dir must be set either in '
                     'config.yaml or in FIBER_ASSIGN_DIR; failing!')
+            oldavail = self.tile_available.copy()
             self.fiberassign(fiber_assign_dir)
+            filesavailable = self.tile_available.copy()
+            self.tile_available = oldavail.copy()
         # Update tile priorities.
         if self.rules is not None:
             self.tile_priority = self.rules.apply(self.donefrac)
@@ -469,6 +471,13 @@ class Planner(object):
         for tileid in self.tiles.tileID[pending]:
             self.add_pending_tile(tileid)
         self.prefer_low_passnum()
+        if not self.simulate:
+            m = self.tile_available & ~filesavailable
+            if np.any(m):
+                self.log.info(
+                    'Newly available tiles that have not yet been '
+                    'designed:  ' +
+                    ' '.join([str(x) for x in self.tiles.tileID[m]]))
         newlycompleted = ((self.tile_status == 'done') &
                           (oldstatus != 'done'))
         return newlystarted, newlycompleted
@@ -477,8 +486,7 @@ class Planner(object):
         """Mark only tiles available that are in the lowest pass
         of any overlapping tiles."""
 
-        mobservable = (self.tile_available & self.tile_available &
-                       ~self.obsend())
+        mobservable = self.tile_available & ~self.obsend()
         mfree = np.ones(self.tiles.ntiles, dtype='bool')
         passes = np.unique(self.tiles.tilepass[mobservable])
         s = np.argsort(passes)

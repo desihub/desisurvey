@@ -381,9 +381,6 @@ def update_donefrac_from_offline(exps, offlinefn):
     if ((len(np.unique(exps['EXPID'])) != len(exps)) or
             (len(np.unique(offline['EXPID'])) != len(offline))):
         raise ValueError('weird duplicate EXPID in exps or offline')
-    # offline has R_DEPTH in units of time
-    # now we need the goal exposure times
-    # these are just the nominal times
     exps = exps.copy()
     exps['EFFTIME_SPEC'][me] = offline_eff_time[mo]
     return exps

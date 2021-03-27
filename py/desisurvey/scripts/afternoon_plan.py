@@ -171,16 +171,16 @@ def afternoon_plan(night=None, exposures=None,
     os.system('wget -q https://data.desi.lbl.gov/desi/survey/ops/surveyops/'
               'mtl-done-tiles.ecsv -O ./mtl-done-tiles.new.ecsv')
     try:
-        filelen = os.stat('mtl-done-tiles.new.fits').st_size
+        filelen = os.stat('mtl-done-tiles.new.ecsv').st_size
     except Exception:
         filelen = 0
     if filelen > 0:
-        os.rename('mtl-done-tiles.new.fits', 'mtl-done-tiles.fits')
-        mtldonefn = './mtl-done-tiles.fits'
+        os.rename('mtl-done-tiles.new.ecsv', 'mtl-done-tiles.ecsv')
+        mtldonefn = './mtl-done-tiles.ecsv'
     else:
         log.warning('Updating mtl-done-tiles failed!')
-        if os.path.exists('./mtl-done-tiles.fits'):
-            mtldonefn = './mtl-done-tiles.fits'
+        if os.path.exists('./mtl-done-tiles.ecsv'):
+            mtldonefn = './mtl-done-tiles.ecsv'
         else:
             mtldonefn = None
 
@@ -195,8 +195,8 @@ def afternoon_plan(night=None, exposures=None,
 
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC'],
                          ignore_pending=True)
-    # additional line here to set status=done for tiles with
-    # tiles['MTL_DONE'] = True
+    m = tiles['MTL_DONE'] != 0
+    planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m))
 
     svmode = getattr(config, 'svmode', None)
     svmode = svmode() if svmode is not None else False
