@@ -168,8 +168,10 @@ def afternoon_plan(night=None, exposures=None,
         else:
             offlinedepthfn = None
 
-    os.system('wget -q https://data.desi.lbl.gov/desi/survey/ops/surveyops/'
-              'mtl-done-tiles.ecsv -O ./mtl-done-tiles.new.ecsv')
+    os.system(
+        'wget -q '
+        'https://data.desi.lbl.gov/desi/survey/ops/surveyops/trunk/mtl/'
+        'mtl-done-tiles.ecsv -O ./mtl-done-tiles.new.ecsv')
     try:
         filelen = os.stat('mtl-done-tiles.new.ecsv').st_size
     except Exception:

@@ -142,6 +142,7 @@ class Tiles(object):
         array
             Array of airmasses corresponding to each input hour angle.
         """
+        mjd = np.atleast_1d(mjd)
         if len(mjd) == 0:
             return np.zeros(0, dtype='f8')
         tt = Time(mjd, format='mjd', location=desisurvey.utils.get_location())

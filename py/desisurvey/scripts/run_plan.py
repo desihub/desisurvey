@@ -47,7 +47,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None):
     for name, tt in zip(night_labels[s], night_times[s]):
         print('%11s %s' % (name, mjd_to_azstr(tt)))
 
-    print('local   lst   cond  tile    ra   dec    program fac  tot  split ' +
+    print('local   lst   cond  tile    ra   dec    program   x fac  tot  split ' +
           '  N')
     while t0 < nts.scheduler.night_ephem['brightdawn']:
         cidx = np.interp(t0+300/86400, changes, np.arange(len(changes)))
@@ -68,13 +68,14 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None):
             nts.scheduler.tiles.tileID == res['fiberassign'])[0]
         ra = nts.scheduler.tiles.tileRA[ind]
         dec = nts.scheduler.tiles.tileDEC[ind]
+        am = nts.scheduler.tiles.airmass_at_mjd(t0, mask=ind)
         nnight = nts.scheduler.plan.donefrac[ind]*4
         print(
-            ('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f '
+            ('%s %5.1f %6s %d %5.1f %5.1f %10s %3.1f %3.1f '
              '%4d %6s %3.1f') % (
                  mjd_to_azstr(t0), lst, res['conditions'],
                  res['fiberassign'], ra, dec, res['program'],
-                 res['exposure_factor'], int(res['esttime']),
+                 am, res['exposure_factor'], int(res['esttime']),
                  ('%dx%d' % (res['count'], res['exptime'])), nnight))
         t0 += (res['exptime']+0*180)*res['count']/60/60/24
 
