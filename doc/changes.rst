@@ -2,8 +2,15 @@
 desisurvey change log
 =====================
 
-0.15.1 (unreleased)
+0.16.1 (unreleased)
 -------------------
+
+No changes yet.
+
+0.16.0 (2021-03-31)
+-------------------
+
+Multiple updates for survey operations
 
 * Add sbprof argument to etc.seeing_exposure_factor, accounting for
   different sensitivities of BRIGHT and DARK programs to seeing.
