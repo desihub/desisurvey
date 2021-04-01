@@ -48,19 +48,28 @@ def seeing_exposure_factor(seeing, sbprof='ELG'):
     """
     if sbprof == 'FLT':
         return 1.0 + seeing*0
-    seeing = np.asarray(seeing)
     if np.any(seeing <= 0):
         raise ValueError('Got invalid seeing value <= 0.')
-    coeffs = dict(PSF=[0.09886370, -0.55877988, -0.97075602, -0.44728180],
-                  ELG=[0.02306297, -0.42495946, -0.82527905, -0.77608006],
-                  BGS=[0.03412768, -0.36108102, -0.71753377, -1.56430281],
-                  FLT=None)
+    polydict = getattr(seeing_exposure_factor, 'polydict', None)
+    if polydict is None:
+        polydict = dict(
+            PSF=np.poly1d([0.09886370, -0.55877988, -0.97075602, -0.44728180]),
+            ELG=np.poly1d([0.02306297, -0.42495946, -0.82527905, -0.77608006]),
+            BGS=np.poly1d([0.03412768, -0.36108102, -0.71753377, -1.56430281]),
+            FLT=None)
+        config = desisurvey.config.Configuration()
+        nomseeing = config.nominal_conditions.seeing().to(u.arcsec).value
+        for name in list(polydict.keys()):
+            if polydict[name] is None:
+                continue
+            ffracnom = np.exp(polydict[name](np.log(nomseeing)))
+            polydict[name+'norm'] = ffracnom
+        seeing_exposure_factor.polydict = polydict
+    poly = polydict[sbprof]
     seeing = np.clip(seeing, 0.5, 3.5)
-    ffrac = np.exp(np.polyval(coeffs[sbprof], np.log(seeing)))
-    config = desisurvey.config.Configuration()
-    nomseeing = config.nominal_conditions.seeing().to(u.arcsec).value
-    ffracnom = np.exp(np.polyval(coeffs[sbprof], np.log(nomseeing)))
-    return (ffracnom/ffrac)**2
+    norm = polydict[sbprof+'norm']
+    ffrac = np.exp(poly(np.log(seeing)))/norm
+    return ffrac**(-2)
 
 
 def transparency_exposure_factor(transparency):

@@ -145,6 +145,7 @@ class Planner(object):
         self.rules = rules
         config = desisurvey.config.Configuration()
         self.min_snr2_fraction = config.min_snr2_fraction()
+        self.tiles_lowpass = config.tiles_lowpass()
         self.simulate = simulate
         if self.simulate:
             self.fiberassign_cadence = config.fiber_assignment_cadence()
@@ -384,7 +385,7 @@ class Planner(object):
         import glob
         import re
         files = glob.glob(os.path.join(dirname, '**/*.fits*'), recursive=True)
-        rgx = re.compile('.*fiberassign-(\d+)\.fits(\.gz)?')
+        rgx = re.compile(r'.*fiberassign-(\d+)\.fits(\.gz)?')
         available_tileids = []
         for fn in files:
             match = rgx.match(fn)
@@ -470,7 +471,8 @@ class Planner(object):
                    (self.tile_status == 'obsend'))
         for tileid in self.tiles.tileID[pending]:
             self.add_pending_tile(tileid)
-        self.prefer_low_passnum()
+        if self.tiles_lowpass:
+            self.prefer_low_passnum()
         if not self.simulate:
             m = self.tile_available & ~filesavailable
             if np.any(m):
@@ -478,6 +480,7 @@ class Planner(object):
                     'Newly available tiles that have not yet been '
                     'designed:  ' +
                     ' '.join([str(x) for x in self.tiles.tileID[m]]))
+            self.tile_available[~filesavailable] = 0
         newlycompleted = ((self.tile_status == 'done') &
                           (oldstatus != 'done'))
         return newlystarted, newlycompleted
@@ -486,7 +489,8 @@ class Planner(object):
         """Mark only tiles available that are in the lowest pass
         of any overlapping tiles."""
 
-        mobservable = self.tile_available & ~self.obsend()
+        obsend = self.obsend()
+        mobservable = self.tile_available & ~obsend
         mfree = np.ones(self.tiles.ntiles, dtype='bool')
         passes = np.unique(self.tiles.tilepass[mobservable])
         s = np.argsort(passes)
@@ -496,5 +500,11 @@ class Planner(object):
             for idx in np.flatnonzero(m):
                 if ~mfree[idx]:
                     continue
-                mfree[self.tiles.overlapping[idx]] = 0
+                over = np.array(self.tiles.overlapping[idx], dtype='i4')
+                mfree[over] = 0
+                if np.any((self.tiles.tilepass[over] < pass0) & ~obsend[over]):
+                    # unobserved, overlapping tiles with lower pass numbers.
+                    mfree[idx] = 0
         self.tile_available[~mfree] = 0
+        m = ((self.tile_available > 0) &
+             self.tiles.allowed_in_conditions('DARK'))

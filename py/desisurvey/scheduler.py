@@ -56,6 +56,10 @@ class Scheduler(object):
             ignore_completed_priority = ignore_completed_priority()
         self.ignore_completed_priority = ignore_completed_priority
 
+        self.select_program_by_speed = config.select_program_by_speed()
+        self.dark_expfac_cut = config.programs.DARK.expfac_cut()
+        self.bright_expfac_cut = config.programs.BRIGHT.expfac_cut()
+
         nogray = getattr(config, 'tiles_nogray', False)
         if not isinstance(nogray, bool):
             nogray = nogray()
@@ -183,7 +187,23 @@ class Scheduler(object):
         self.moon_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
         #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
-    def select_program(self, mjd_now, ETC, verbose=False):
+    def conditions_to_program(self, seeing, transparency, skylevel,
+                              airmass=1):
+        if (seeing is None) or (transparency is None) or (skylevel is None):
+            return 'BRIGHT'
+        expfac_dark = desisurvey.etc.seeing_exposure_factor(
+            seeing, sbprof='ELG')*skylevel/transparency**2
+        if expfac_dark < self.dark_expfac_cut:
+            return 'DARK'
+        expfac_bright = desisurvey.etc.seeing_exposure_factor(
+            seeing, sbprof='BGS')*skylevel/transparency**2
+        if expfac_bright < self.bright_expfac_cut:
+            return 'BRIGHT'
+        return 'BACKUP'
+
+    def select_program(self, mjd_now, ETC, verbose=False,
+                       seeing=None, transparency=None, skylevel=None,
+                       airmass=None):
         """Select program to observe now.
         """
         if mjd_now < self.night_changes[0]:
@@ -192,6 +212,19 @@ class Scheduler(object):
         if mjd_now > self.night_changes[-1]:
             if verbose:
                 self.log.warning('Tile requested after end of night.')
+        if mjd_now < self.night_ephem['dusk']:
+            return 'BRIGHT', self.night_changes[-1]
+        if mjd_now + 300/86400 > self.night_ephem['dawn']:
+            return 'BRIGHT', self.night_changes[-1]
+        if self.select_program_by_speed:
+            program = self.conditions_to_program(
+                seeing, transparency, skylevel, airmass=airmass)
+            mjd_program_end = self.night_ephem['dawn']
+            # if we got here, conditions are good; it's okay to stay here
+            # until dawn.  Moonrise would be another case, but the moon starts
+            # low and the next tile will move on if conditions are bad enough.
+            return program, mjd_program_end
+        # select program based on ephemerides, not conditions.
         idx = 0
         while ((idx + 1 < len(self.night_changes)) and
                (mjd_now >= self.night_changes[idx + 1])):
@@ -282,7 +315,8 @@ class Scheduler(object):
         if program is None:
             # Which program are we in?
             program, mjd_program_end = self.select_program(
-                mjd_now, ETC, verbose=verbose)
+                mjd_now, ETC, verbose=verbose, seeing=seeing,
+                skylevel=skylevel, transparency=transp)
             self.tile_sel &= self.tiles.allowed_in_conditions(program)
             if verbose:
                 self.log.info(

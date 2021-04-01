@@ -108,6 +108,8 @@ def scan_directory(dirname, start_from=None,
         start_exps['QUALITY'] = quality
         comments = np.zeros(len(start_exps), dtype='U80')
         comments[:] = start_exps['COMMENTS']
+        m = start_exps['COMMENTS'].mask
+        comments[m] = ''
         start_exps['COMMENTS'] = comments
         maxexpid = np.max(start_exps['EXPID'])
         for subdir in subdirs:

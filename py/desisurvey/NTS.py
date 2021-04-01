@@ -77,9 +77,12 @@ class QueuedList():
             try:
                 self.queued = ascii.read(self.fn, comment='#',
                                          names=['tileid'], format='no_header')
-            except OSError:
+            except Exception as e:
                 self.log.error('Could not read in queued file; '
                                'record of past exposures lost!')
+                self.log.error('Got exception trying to load queued file!')
+                self.log.error(e)
+
             self.queued = list(self.queued['tileid'])
         else:
             self.queued = []
@@ -114,7 +117,7 @@ class RequestLog():
     def __init__(self, fn):
         self.fn = fn
         exists = os.path.exists(fn)
-        fp = open(self.fn, 'a')
+        _ = open(fn, 'a')
         if not exists:
             os.chmod(self.fn, 0o666)
 
@@ -417,6 +420,13 @@ class NTS():
         mintime = self.config.mintime().to(u.day).value
         texp_remaining = max([texp_remaining, mintime])
         texp_remaining = min([texp_remaining, maxdwell])
+
+        lstnow = (self.scheduler.LST0 +
+                  self.scheduler.dLST*(mjd - self.scheduler.MJD0))
+        hanow = lstnow - self.scheduler.tiles.tileRA[idx]
+        maxdha = self.scheduler.tiles.max_abs_ha[idx] - hanow
+        maxdwell = min([maxdwell, maxdha/360])
+
         onemin = 1/60/24
         # end dark/gray programs at 15 deg dawn, sharp.
         if ((sched_program != 'BRIGHT') and
