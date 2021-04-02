@@ -4,6 +4,7 @@ desisurvey change log
 
 0.16.1 (unreleased)
 -------------------
+
 * Allow program selection according to conditions, rather than
   ephemerides.  Make NTS more robust.  Set max dwell times based on
   not hitting airmass or observing dark tiles in twilight.  Allow
