@@ -4,8 +4,13 @@ desisurvey change log
 
 0.16.1 (unreleased)
 -------------------
+* Allow program selection according to conditions, rather than
+  ephemerides.  Make NTS more robust.  Set max dwell times based on
+  not hitting airmass or observing dark tiles in twilight.  Allow
+  requiring low pass tiles before overlapping high pass tiles, and preferring
+  high pass tiles otherwise.  (PR `#132`)
 
-No changes yet.
+.. _`#132`: https://github.com/desihub/desisurvey/pull/132
 
 0.16.0 (2021-03-31)
 -------------------

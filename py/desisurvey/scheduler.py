@@ -212,11 +212,11 @@ class Scheduler(object):
         if mjd_now > self.night_changes[-1]:
             if verbose:
                 self.log.warning('Tile requested after end of night.')
-        if mjd_now < self.night_ephem['dusk']:
-            return 'BRIGHT', self.night_changes[-1]
-        if mjd_now + 300/86400 > self.night_ephem['dawn']:
-            return 'BRIGHT', self.night_changes[-1]
         if self.select_program_by_speed:
+            if mjd_now < self.night_ephem['dusk']:
+                return 'BRIGHT', self.night_changes[-1]
+            if mjd_now + 300/86400 > self.night_ephem['dawn']:
+                return 'BRIGHT', self.night_changes[-1]
             program = self.conditions_to_program(
                 seeing, transparency, skylevel, airmass=airmass)
             mjd_program_end = self.night_ephem['dawn']
