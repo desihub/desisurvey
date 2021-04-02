@@ -506,5 +506,3 @@ class Planner(object):
                     # unobserved, overlapping tiles with lower pass numbers.
                     mfree[idx] = 0
         self.tile_available[~mfree] = 0
-        m = ((self.tile_available > 0) &
-             self.tiles.allowed_in_conditions('DARK'))
