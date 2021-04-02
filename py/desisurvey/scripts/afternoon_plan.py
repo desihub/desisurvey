@@ -11,13 +11,13 @@ import subprocess
 from desisurvey.scripts import collect_etc
 import desimodel.io
 import numpy as np
-from astropy.io import fits
 
 
 def afternoon_plan(night=None, exposures=None,
                    configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None,
-                   desisurvey_output=None, nts_dir=None, sv=False):
+                   desisurvey_output=None, nts_dir=None, sv=False,
+                   surveyops=None):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -54,6 +54,10 @@ def afternoon_plan(night=None, exposures=None,
     sv : bool
         if True, trigger special tweaking of OBSCONDITIONS in tile file,
         donefrac in status file.
+
+    surveyops : str
+        surveyops SVN directory.  Default of None triggers looking at the
+        SURVEYOPS environment variable.
     """
     log = desiutil.log.get_logger()
     if night is None:
@@ -87,6 +91,16 @@ def afternoon_plan(night=None, exposures=None,
     if not os.path.exists(directory):
         os.mkdir(directory)
         os.chmod(directory, 0o777)
+
+    surveyopsdir = (surveyops if surveyops is not None
+                    else os.environ.get('SURVEYOPS', None))
+    if surveyopsdir is not None:
+        ret = subprocess.run(['svn', 'up', surveyopsdir])
+        if ret.returncode != 0:
+            log.info('Failed to update surveyops.')
+    else:
+        log.info('SURVEYOPS directory not found; not performing '
+                 'surveyops updates.')
 
     tilefn = find_tile_file(config.tiles_file())
     rulesfn = find_rules_file(config.rules_file())
@@ -188,7 +202,10 @@ def afternoon_plan(night=None, exposures=None,
 
     if exposures is None:
         # expdir = os.path.join(os.environ['SURVEYOPS'], 'ops')
-        expdir = os.environ['DESISURVEY_OUTPUT']
+        if surveyopsdir is not None:
+            expdir = os.path.join(surveyopsdir, 'ops')
+        else:
+            expdir = os.environ['DESISURVEY_OUTPUT']
         exposures = os.path.join(expdir, 'exposures.ecsv')
     tiles, exps = collect_etc.scan_directory(
         spectra_dir, start_from=exposures,
@@ -217,9 +234,14 @@ def afternoon_plan(night=None, exposures=None,
 
     planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
     planner.save(os.path.join(subdir, os.path.basename(newtilefn)))
-    for fn in [newrulesfn, newconfigfn,
-               os.path.join(directory, 'exposures.ecsv')]:
+    for fn in [newrulesfn, newconfigfn]:
         subprocess.run(['chmod', 'a-w', fn])
+    if surveyopsdir is not None:
+        subprocess.run(['cp', os.path.join(directory, 'exposures.ecsv'),
+                        os.path.join(surveyopsdir, 'ops')])
+        subprocess.run(['cp', newtilefn, os.path.join(surveyopsdir, 'ops')])
+        print('should run: svn ci '+surveyopsdir+
+              ' -m Update exposures and tiles for '+nightstr)
 
 
 def find_rules_file(file_name):
@@ -263,6 +285,9 @@ def parse(options=None):
     parser.add_argument('--nts-dir', type=str, default=None,
                         help=('subdirectory of DESISURVEY_OUTPUT in which to '
                               'store plan.'))
+    parser.add_argument('--surveyops', type=str, default=None,
+                        help=('SURVEYOPS SVN directory, default SURVEYOPS '
+                              'environment variable.'))
     parser.add_argument('--sv',
                         action='store_true',
                         help='turn on special SV planning mode.')
@@ -291,4 +316,5 @@ def main(args):
     log.info('Loading configuration from {}...'.format(config.file_name))
 
     afternoon_plan(night=args.night, exposures=args.exposures,
-                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv)
+                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
+                   surveyops=args.surveyops)

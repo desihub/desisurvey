@@ -59,7 +59,6 @@ class Tiles(object):
 
         # Copy tile arrays.
         self.tileID = tiles['TILEID'].data.copy()
-        self.tileprogram = tiles['PROGRAM'].data.copy()
         self.tileRA = tiles['RA'].data.copy()
         self.tileDEC = tiles['DEC'].data.copy()
         self.tileprogram = np.array([p.strip() for p in tiles['PROGRAM']])
@@ -99,6 +98,17 @@ class Tiles(object):
         # so we use lazy evaluation the first time they are accessed.
         self._overlapping = None
         self._fiberassign_delay = None
+
+        # Calculate the maximum |HA| in degrees allowed for each tile to stay
+        # above the survey minimum altitude
+        cosZ_min = np.cos(90 * u.deg - config.min_altitude())
+        cosHA_min = (
+            (cosZ_min - np.sin(self.tileDEC * u.deg) * np.sin(latitude)) /
+            (np.cos(self.tileDEC * u.deg) * np.cos(latitude))).value
+        cosHA_min = np.clip(cosHA_min, -1, 1)
+        self.max_abs_ha = np.degrees(np.arccos(cosHA_min))
+        m = ~np.isfinite(self.max_abs_ha) | (self.max_abs_ha < 3.75)
+        self.max_abs_ha[m] = 7.5  # always give at least a half hour window.
 
     CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
     CONDITION_INDEX = {cond: i for i, cond in enumerate(CONDITIONS)}
@@ -294,9 +304,15 @@ class Tiles(object):
         # control truncation
         tileprogram = np.zeros(len(tiles), dtype='U20')
         tileprogram[:] = tiles['PROGRAM']
+        # convert dark/gray/bright to canonical DARK/GRAY/BRIGHT
+        progupper = np.array([t.upper() for t in tileprogram])
+        for p in ['DARK', 'GRAY', 'UPPER']:
+            m = progupper == p
+            tileprogram[m] = p
         if self.nogray:
-            m = (tiles['PROGRAM'] == 'GRAY') | (tiles['PROGRAM'] == 'DARK')
-            tiles['PROGRAM'][m] = 'DARK'
+            m = (tileprogram == 'GRAY') | (tileprogram == 'DARK')
+            tileprogram[m] = 'DARK'
+        tiles['PROGRAM'] = tileprogram
         trim = config.tiles_trim()
         if trim:
             tiles = tiles[tiles['IN_DESI'] != 0]
@@ -311,6 +327,10 @@ class Tiles(object):
                 log.info('Removing the following programs from the tile '
                          'file: ' + ' '.join(tprograms[~programinconfig]))
             tiles = tiles[keep]
+        if not np.all(np.diff(tiles['TILEID']) > 0):
+            tiles['TILEID'] = np.arange(len(tiles))
+            log = desiutil.log.get_logger()
+            log.warning('Tile file TILEID are not ascending; rewriting.')
         return tiles
 
 

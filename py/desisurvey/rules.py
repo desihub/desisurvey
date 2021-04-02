@@ -56,6 +56,7 @@ class Rules(object):
         self.min_snr2_fraction = config.min_snr2_fraction()
         self.finish_started_priority = config.finish_started_priority()
         self.ignore_completed_priority = config.ignore_completed_priority()
+        self.boost_priority_by_passnum = config.boost_priority_by_passnum()
 
         tiles = desisurvey.tiles.get_tiles()
         NGC = (tiles.tileRA > 75.0) & (tiles.tileRA < 300.0)
@@ -212,7 +213,8 @@ class Rules(object):
             Array of per-tile observing priorities.
         """
 
-        nogray = desisurvey.tiles.get_tiles().nogray
+        tiles = desisurvey.tiles.get_tiles()
+        nogray = tiles.nogray
 
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
@@ -242,6 +244,7 @@ class Rules(object):
                     priority = max(priority, value)
             sel = self.group_ids == gid
             priorities[sel] = priority * self.dec_priority[sel]
+        priorities *= (1 + self.boost_priority_by_passnum)**tiles.tilepass
         priorities *= (1 + self.finish_started_priority*(donefrac > 0))
         if self.ignore_completed_priority > 0:
             priorities *= np.where(donefrac >= 1,

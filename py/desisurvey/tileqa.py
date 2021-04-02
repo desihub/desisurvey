@@ -996,3 +996,33 @@ def make_tiles_from_fiberassign(dirname, gaiadensitymapfile,
          ((numpy.abs(bt) > 20) & (lt > 90) & (lt < 270))))
 
     return tiles
+
+
+def decorate_djs_tilefile(fn, gaiafn, tychofn, coveragefn,
+                          rewritecenterid=False):
+    from astropy import table
+    from astropy.table import Table
+    from astropy.coordinates import SkyCoord
+    from astropy import units as u
+    tf = Table.read(fn)
+    tf['EBV_MED'] = numpy.zeros(len(tf), dtype='f4')
+    tf['STAR_DENSITY'] = numpy.zeros(len(tf), dtype='f4')
+    if rewritecenterid:
+        tf['CENTERID'] = numpy.arange(len(tf), dtype='i4')+1
+    add = add_info_fields(tf, gaiafn, tychofn, coveragefn)
+    addtab = Table(add)
+    addtab.remove_column('CENTERID')
+    tfadd = table.hstack([tf, addtab])
+    centerind = tfadd['CENTERID'] - 1
+    dc = tfadd['DEC'][centerind]
+    rc = tfadd['RA'][centerind]
+    cc = SkyCoord(ra=rc*u.deg, dec=dc*u.deg)
+    lc = cc.galactic.l.to(u.deg).value
+    bc = cc.galactic.b.to(u.deg).value
+    tfadd['IN_IMAGING'] = tfadd['IMAGEFRAC_GRZ'][centerind] > 0.9
+    tfadd['IN_DESI'] = (
+        (tfadd['IN_IMAGING'] != 0) & (dc >= -18) & (dc <= 77.7) &
+        ((bc > 0) | (dc < 32.2)) &
+        (((numpy.abs(bc) > 22) & ((lc < 90) | (lc > 270))) |
+         ((numpy.abs(bc) > 20) & (lc > 90) & (lc < 270))))
+    return tfadd

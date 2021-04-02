@@ -53,6 +53,7 @@ programs:
         sbprof: ELG
         minimum_exposure_time: 300 s
         efftime_type: DARK
+        expfac_cut: 2.5
     GRAY:
         min_exposures: 1
         efftime: 1000 s
@@ -60,6 +61,7 @@ programs:
         sbprof: ELG
         minimum_exposure_time: 300 s
         efftime_type: DARK
+        expfac_cut: 2.5
     BRIGHT:
         min_exposures: 1
         efftime: 300 s
@@ -67,6 +69,7 @@ programs:
         sbprof: BGS
         minimum_exposure_time: 180 s
         efftime_type: BRIGHT
+        expfac_cut: 999999
 
 # still used in simulations.
 min_exposures: 2
@@ -118,10 +121,18 @@ maxtime: 60 min
 # Boost priority of already started tiles
 finish_started_priority: 0.0
 
+# Boost priority of later passes (depth first)
+# Only makes sense in combination with tiles_lowpass
+# boost_priority_by_passnum: 0.2
+boost_priority_by_passnum: 0
+
 # Reduce priority of completed tiles
 # ignore_completed_priority: 0.000000001
 ignore_completed_priority: -1
 # in sims, don't repeat finished tiles.
+
+# do program selection by survey speed rather than ephemerides
+select_program_by_speed: False
 
 nominal_conditions:
     # Moon below the horizon
@@ -189,6 +200,9 @@ tiles_nogray: True
 # Trim tile file to only used programs and IN_DESI.
 # Useful for sim visualization and stats tools; not recommended for ops.
 tiles_trim: True
+
+# Require underlying passes to be observed before overlying ones.
+tiles_lowpass: False
 
 # Base path to pre-pended to all non-absolute paths used for reading and
 # writing files managed by this package. The pattern {...} will be expanded

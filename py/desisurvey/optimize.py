@@ -160,16 +160,7 @@ class Optimizer(object):
         self.idx = np.where(tile_sel)[0]
         self.ntiles = len(self.ra)
 
-        # Calculate the maximum |HA| in degrees allowed for each tile to stay
-        # above the survey minimum altitude (plus a 5 deg padding).
-        cosZ_min = np.cos(90 * u.deg - (config.min_altitude() + 5 * u.deg))
-        latitude = config.location.latitude()
-        cosHA_min = (
-            (cosZ_min - np.sin(self.dec * u.deg) * np.sin(latitude)) /
-            (np.cos(self.dec * u.deg) * np.cos(latitude))).value
-        self.max_abs_ha = np.degrees(np.arccos(cosHA_min))
-        m = ~np.isfinite(self.max_abs_ha) | (self.max_abs_ha < 3.75)
-        self.max_abs_ha[m] = 7.5  # always give at least a half hour window.
+        self.max_abs_ha = tiles.max_abs_ha[tile_sel]
 
         # Lookup static dust exposure factors for each tile.
         self.dust_factor = tiles.dust_factor[tile_sel]
