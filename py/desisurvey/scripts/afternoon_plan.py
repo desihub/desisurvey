@@ -182,23 +182,26 @@ def afternoon_plan(night=None, exposures=None,
         else:
             offlinedepthfn = None
 
-    os.system(
-        'wget -q '
-        'https://data.desi.lbl.gov/desi/survey/ops/surveyops/trunk/mtl/'
-        'mtl-done-tiles.ecsv -O ./mtl-done-tiles.new.ecsv')
-    try:
-        filelen = os.stat('mtl-done-tiles.new.ecsv').st_size
-    except Exception:
-        filelen = 0
-    if filelen > 0:
-        os.rename('mtl-done-tiles.new.ecsv', 'mtl-done-tiles.ecsv')
-        mtldonefn = './mtl-done-tiles.ecsv'
-    else:
-        log.warning('Updating mtl-done-tiles failed!')
-        if os.path.exists('./mtl-done-tiles.ecsv'):
+    if surveyopsdir is None:
+        os.system(
+            'wget -q '
+            'https://data.desi.lbl.gov/desi/survey/ops/surveyops/trunk/mtl/'
+            'mtl-done-tiles.ecsv -O ./mtl-done-tiles.new.ecsv')
+        try:
+            filelen = os.stat('mtl-done-tiles.new.ecsv').st_size
+        except Exception:
+            filelen = 0
+        if filelen > 0:
+            os.rename('mtl-done-tiles.new.ecsv', 'mtl-done-tiles.ecsv')
             mtldonefn = './mtl-done-tiles.ecsv'
         else:
-            mtldonefn = None
+            log.warning('Updating mtl-done-tiles failed!')
+            if os.path.exists('./mtl-done-tiles.ecsv'):
+                mtldonefn = './mtl-done-tiles.ecsv'
+            else:
+                mtldonefn = None
+    else:
+        mtldonefn = os.path.join(surveyopsdir, 'mtl', 'mtl-done-tiles.ecsv')
 
     if exposures is None:
         # expdir = os.path.join(os.environ['SURVEYOPS'], 'ops')

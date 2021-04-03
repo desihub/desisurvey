@@ -305,8 +305,8 @@ class Tiles(object):
         tileprogram = np.zeros(len(tiles), dtype='U20')
         tileprogram[:] = tiles['PROGRAM']
         # convert dark/gray/bright to canonical DARK/GRAY/BRIGHT
-        progupper = np.array([t.upper() for t in tileprogram])
-        for p in ['DARK', 'GRAY', 'UPPER']:
+        progupper = np.array([t.upper().strip() for t in tileprogram])
+        for p in ['DARK', 'BRIGHT', 'GRAY', 'BACKUP']:
             m = progupper == p
             tileprogram[m] = p
         if self.nogray:

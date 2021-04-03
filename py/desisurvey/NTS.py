@@ -426,6 +426,7 @@ class NTS():
         hanow = lstnow - self.scheduler.tiles.tileRA[idx]
         maxdha = self.scheduler.tiles.max_abs_ha[idx] - hanow
         maxdwell = min([maxdwell, maxdha/360])
+        texp_remaining = min([texp_remaining, maxdwell])
 
         onemin = 1/60/24
         # end dark/gray programs at 15 deg dawn, sharp.
