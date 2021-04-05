@@ -395,6 +395,7 @@ class NTS():
             # if this tile is already finished, it's a backup tile; go for a
             # full visit.
             snr2frac_start = 0
+        snr2frac_start = np.clip(snr2frac_start, 0, 1)
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
             tile_program, snr2frac_start, exposure_factor, nexp_completed=0)
         efftime = getattr(programconf, 'efftime', None)
@@ -402,7 +403,7 @@ class NTS():
             efftime = efftime()
         else:
             efftime = 1000*u.s
-        efftime = float(efftime.to(u.s).value)
+        efftime = float(efftime.to(u.s).value)*(1-snr2frac_start)
 
         sbprof = getattr(programconf, 'sbprof', None)
         if sbprof is not None:

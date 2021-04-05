@@ -16,7 +16,8 @@ def mjd_to_azstr(mjd):
     return tt.astimezone(tz).strftime('%H:%M')
 
 
-def run_plan(night=None, nts_dir=None, verbose=False, survey=None):
+def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
+             seeing=1.1):
     kpno = EarthLocation.of_site('kpno')
     if nts_dir is None:
         obsplan = None
@@ -55,7 +56,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None):
         cond = programs[cidx]
         moon_up_factor = getattr(nts.config.conditions, cond).moon_up_factor()
         expdict = dict(mjd=t0, previoustiles=previoustiles)
-        conddict = dict(skylevel=moon_up_factor)
+        conddict = dict(skylevel=moon_up_factor, seeing=seeing)
         res = nts.next_tile(exposure=expdict, conditions=conddict,
                             speculative=True)
         if not res['foundtile']:
@@ -93,6 +94,8 @@ def parse(options=None):
                         help='verbose output')
     parser.add_argument('--nts-dir', default=None,
                         help='planning directory to use')
+    parser.add_argument('--seeing', default=1.1, help='set seeing for night.',
+                        type=float)
     if options is None:
         args = parser.parse_args()
     else:
@@ -102,4 +105,4 @@ def parse(options=None):
 
 def main(args):
     run_plan(night=args.night, nts_dir=args.nts_dir,
-             survey=args.survey, verbose=args.verbose)
+             survey=args.survey, verbose=args.verbose, seeing=args.seeing)
