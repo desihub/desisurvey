@@ -27,9 +27,8 @@ import desisurvey.tiles
 import desisurvey.ephem
 
 
-def seeing_exposure_factor(seeing):
+def seeing_exposure_factor(seeing, sbprof='ELG'):
     """Scaling of exposure time with seeing, relative to nominal seeing.
-
     The model is based on DESI simulations with convolutions of realistic
     atmospheric and instrument PSFs, for a nominal sample of DESI ELG
     targets (including redshift evolution of ELG angular size).
@@ -43,21 +42,39 @@ def seeing_exposure_factor(seeing):
     seeing : float or array
         FWHM seeing value(s) in arcseconds.
 
+    sbprof: str
+        source profile to use, one of PSF, ELG, BGS
+
     Returns
     -------
     float
         Multiplicative factor(s) that exposure time should be adjusted based
         on the actual vs nominal seeing.
     """
-    seeing = np.asarray(seeing)
+    if sbprof == 'FLT':
+        return 1.0 + seeing*0
     if np.any(seeing <= 0):
         raise ValueError('Got invalid seeing value <= 0.')
-    a, b, c = 12.95475751, -7.10892892, 1.21068726
-    f_seeing =  (a + b * seeing + c * seeing ** 2) ** -2
-    config = desisurvey.config.Configuration()
-    nominal = config.nominal_conditions.seeing().to(u.arcsec).value
-    f_nominal = (a + b * nominal + c * nominal ** 2) ** -2
-    return f_seeing / f_nominal
+    polydict = getattr(seeing_exposure_factor, 'polydict', None)
+    if polydict is None:
+        polydict = dict(
+            PSF=np.poly1d([0.09886370, -0.55877988, -0.97075602, -0.44728180]),
+            ELG=np.poly1d([0.02306297, -0.42495946, -0.82527905, -0.77608006]),
+            BGS=np.poly1d([0.03412768, -0.36108102, -0.71753377, -1.56430281]),
+            FLT=None)
+        config = desisurvey.config.Configuration()
+        nomseeing = config.nominal_conditions.seeing().to(u.arcsec).value
+        for name in list(polydict.keys()):
+            if polydict[name] is None:
+                continue
+            ffracnom = np.exp(polydict[name](np.log(nomseeing)))
+            polydict[name+'norm'] = ffracnom
+        seeing_exposure_factor.polydict = polydict
+    poly = polydict[sbprof]
+    seeing = np.clip(seeing, 0.5, 3.5)
+    norm = polydict[sbprof+'norm']
+    ffrac = np.exp(poly(np.log(seeing)))/norm
+    return ffrac**(-2)
 
 
 def transparency_exposure_factor(transparency):
@@ -467,10 +484,11 @@ def exposure_time(program, seeing, transparency, airmass, EBV,
     """
     # Lookup the nominal exposure time for this program.
     config = desisurvey.config.Configuration()
-    nominal_time = getattr(config.nominal_exposure_time, program)()
+    nominal_time = getattr(config.programs, program).efftime()
+    sbprof = getattr(config.programs, program).sbprof()
 
     # Calculate actual / nominal factors.
-    f_seeing = seeing_exposure_factor(seeing)
+    f_seeing = seeing_exposure_factor(seeing, sbprof=sbprof)
     f_transparency = transparency_exposure_factor(transparency)
     f_dust = dust_exposure_factor(EBV)
     f_airmass = airmass_exposure_factor(airmass)
@@ -523,28 +541,24 @@ class ExposureTimeCalculator(object):
         self.log = desiutil.log.get_logger()
         unknownprograms = []
         for program in desisurvey.tiles.get_tiles().programs:
-            nomtime = getattr(config.nominal_exposure_time, program, None)
-            if nomtime is None:
+            progconf = getattr(config.programs, program, None)
+            if progconf is None:
                 unknownprograms.append(program)
                 nomtime = 1000/24/60/60
             else:
-                nomtime = nomtime().to(u.day).value
+                nomtime = progconf.efftime().to(u.day).value
             self.TEXP_TOTAL[program] = nomtime
         if len(unknownprograms) > 0:
             self.log.warning(
                 'Unrecognized program {}, '.format(' '.join(unknownprograms)) +
                 'using default exposure time of 1000 s')
 
-        # Initialize model of exposure time dependence on seeing.
-        self.seeing_coefs = np.array([12.95475751, -7.10892892, 1.21068726])
-        self.seeing_coefs /= np.sqrt(self.weather_factor(1.1, 1.0, 1.0))
-        assert np.allclose(self.weather_factor(1.1, 1.0, 1.0), 1.)
         # Initialize optional history tracking.
         self.save_history = save_history
         if save_history:
             self.history = dict(mjd=[], signal=[], background=[], snr2frac=[])
 
-    def weather_factor(self, seeing, transp, sky_level):
+    def weather_factor(self, seeing, transp, sky_level, sbprof='ELG'):
         """Return the relative SNR2 accumulation rate for specified conditions.
 
         This is the inverse of the instantaneous exposure factor due to seeing and transparency.
@@ -559,8 +573,7 @@ class ExposureTimeCalculator(object):
             sky_level relative to nominal
         """
         fac = transp**2
-        fac *= (self.seeing_coefs[0] + self.seeing_coefs[1]*seeing +
-                self.seeing_coefs[2]*seeing**2)**2
+        fac /= seeing_exposure_factor(seeing, sbprof=sbprof)
         fac /= sky_level
         return fac
 

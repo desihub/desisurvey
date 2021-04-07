@@ -121,7 +121,7 @@ class Optimizer(object):
             idx = tiles.index(subset)
             # Check that all tiles in the subset are observable in these
             # conditions.
-            if not np.all(tiles.allowed_in_conditions(condition)[subset]):
+            if not np.all(tiles.allowed_in_conditions(condition)[idx]):
                 raise ValueError('Subset contains non-{} tiles.'.format(condition))
             tile_sel = np.zeros(tiles.ntiles, bool)
             tile_sel[idx] = True
@@ -132,23 +132,23 @@ class Optimizer(object):
         # Get nominal exposure time for this program,
         # converted to LST equivalent in degrees.
         texp_nom = u.Quantity([
-            getattr(config.nominal_exposure_time, program)()
+            getattr(config.programs, program).efftime()
             for program in tiles.tileprogram[tile_sel]])
-        moon_up_factor = getattr(config, 'moon_up_factor', None)
-        if moon_up_factor is not None:
-            moon_up_factor = getattr(moon_up_factor, condition)()
-            texp_nom *= moon_up_factor
+        moon_up_factor = getattr(config.conditions, condition).moon_up_factor()
+        texp_nom *= moon_up_factor
         if completed is not None:
-            completed = astropy.table.Table.read(completed)
-            nobtained = np.zeros(tiles.ntiles, dtype='f4')
-            nneeded = np.zeros(tiles.ntiles, dtype='f4')
+            # completed = astropy.table.Table.read(completed)
+            # donefrac = np.zeros(tiles.ntiles, dtype='f4')
+            from astropy.io import fits
+            completed = fits.getdata(completed)
             idx, mask = tiles.index(completed['TILEID'], return_mask=True)
             idx = idx[mask]
-            nobtained[idx] = (
-                completed['NNIGHT_'+condition][mask])
-            nneeded[idx] = (
-                completed['NNIGHT_NEEDED_'+condition][mask])
-            boost = np.clip(nneeded-nobtained, 0, np.inf)
+            boost = np.ones(tiles.ntiles, dtype='f4')
+            boost[idx] = (completed['NNIGHT_NEEDED'][mask] -
+                          completed['NNIGHT'][mask])
+            boost = np.clip(boost, 0, np.inf)
+            # donefrac[idx] = completed['donefrac'][mask]
+            # boost = np.clip(1-donefrac, 0, 1)
             texp_nom *= boost[tile_sel]
 
         self.dlst_nom = 360 * texp_nom.to(u.day).value / 0.99726956583
@@ -160,16 +160,7 @@ class Optimizer(object):
         self.idx = np.where(tile_sel)[0]
         self.ntiles = len(self.ra)
 
-        # Calculate the maximum |HA| in degrees allowed for each tile to stay
-        # above the survey minimum altitude (plus a 5 deg padding).
-        cosZ_min = np.cos(90 * u.deg - (config.min_altitude() + 5 * u.deg))
-        latitude = config.location.latitude()
-        cosHA_min = (
-            (cosZ_min - np.sin(self.dec * u.deg) * np.sin(latitude)) /
-            (np.cos(self.dec * u.deg) * np.cos(latitude))).value
-        self.max_abs_ha = np.degrees(np.arccos(cosHA_min))
-        m = ~np.isfinite(self.max_abs_ha) | (self.max_abs_ha < 3.75)
-        self.max_abs_ha[m] = 7.5  # always give at least a half hour window.
+        self.max_abs_ha = tiles.max_abs_ha[tile_sel]
 
         # Lookup static dust exposure factors for each tile.
         self.dust_factor = tiles.dust_factor[tile_sel]

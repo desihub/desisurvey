@@ -175,7 +175,7 @@ class Animator(object):
         # Count nights with at least one exposure.
         day0 = desisurvey.utils.local_noon_on_date(date_start).mjd
         day_number = np.floor(self.exposures['MJD'] - day0)
-        self.num_nights = len(np.unique(day_number))
+        self.num_nights = len(np.unique(day_number))+1
 
         # Calculate each exposure's LST window.
         exp_midpt = astropy.time.Time(
@@ -417,7 +417,7 @@ class Animator(object):
         if date != self.last_date:
             # Initialize for this night.
             self.init_date(date, night)
-        elif nightly:
+        elif nightly and iexp != len(self.exposures)-1:
             return False
         # Update the top-right label.
         label = '{} {} #{:06d}'.format(self.label, date, info['EXPID'])

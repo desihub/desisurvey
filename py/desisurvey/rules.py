@@ -53,23 +53,10 @@ class Rules(object):
     def __init__(self, file_name='rules.yaml'):
         self.log = desiutil.log.get_logger()
         config = desisurvey.config.Configuration()
-        commissioning = getattr(config, 'commissioning', False)
-        if not isinstance(commissioning, bool):
-            commissioning = commissioning()
-        self.commissioning = commissioning
         self.min_snr2_fraction = config.min_snr2_fraction()
-        finish_started_priority = getattr(config, 'finish_started_priority', 0)
-        import numbers
-        if not isinstance(finish_started_priority, numbers.Number):
-            finish_started_priority = finish_started_priority()
-        self.finish_started_priority = finish_started_priority
-        ignore_completed_priority = getattr(config,
-                                            'ignore_completed_priority', -1)
-        if not isinstance(ignore_completed_priority, numbers.Number):
-            ignore_completed_priority = ignore_completed_priority()
-        self.ignore_completed_priority = ignore_completed_priority
-
-        tile_radius = config.tile_radius().to(u.deg).value
+        self.finish_started_priority = config.finish_started_priority()
+        self.ignore_completed_priority = config.ignore_completed_priority()
+        self.boost_priority_by_passnum = config.boost_priority_by_passnum()
 
         tiles = desisurvey.tiles.get_tiles()
         NGC = (tiles.tileRA > 75.0) & (tiles.tileRA < 300.0)
@@ -81,6 +68,8 @@ class Rules(object):
         # Get the full path of the YAML file to read.
         if os.path.isabs(file_name):
             full_path = file_name
+        elif os.path.exists(config.get_path(file_name)):
+            full_path = config.get_path(file_name)
         else:
             # Locate the config file in our package data/ directory.
             full_path = astropy.utils.data._find_pkg_data_path(
@@ -224,21 +213,28 @@ class Rules(object):
             Array of per-tile observing priorities.
         """
 
-        nogray = desisurvey.tiles.get_tiles().nogray
+        tiles = desisurvey.tiles.get_tiles()
+        nogray = tiles.nogray
 
         # First pass through groups to check trigger conditions.
         triggered = {'START': True}
+        notilescoveredrules = []
         for i, name in enumerate(self.group_names):
             gid = i+1
             group_sel = self.group_ids == gid
-            if not np.any(group_sel) and not self.commissioning:
-                if not nogray or '(GRAY)' not in name:
-                    self.log.error('No tiles covered by rule {}'.format(name))
+            if not np.any(group_sel):
+                notilescoveredrules.append(name)
             ngroup = np.count_nonzero(group_sel)
             completed = donefrac > self.min_snr2_fraction
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]
             triggered[name] = (ndone + max_orphans >= ngroup)
+        notilescoveredrules = [x for x in notilescoveredrules
+                               if not nogray or '(GRAY)' not in name]
+        if len(notilescoveredrules) > 0:
+            self.log.debug('No tiles covered by rules {}'.format(
+                ' '.join(notilescoveredrules)))
+
         # Second pass through groups to apply rules.
         priorities = np.zeros_like(self.dec_priority)
         for gid, name in zip(np.unique(self.group_ids), self.group_names):
@@ -248,6 +244,7 @@ class Rules(object):
                     priority = max(priority, value)
             sel = self.group_ids == gid
             priorities[sel] = priority * self.dec_priority[sel]
+        priorities *= (1 + self.boost_priority_by_passnum)**tiles.tilepass
         priorities *= (1 + self.finish_started_priority*(donefrac > 0))
         if self.ignore_completed_priority > 0:
             priorities *= np.where(donefrac >= 1,

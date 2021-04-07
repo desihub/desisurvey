@@ -17,21 +17,18 @@ import desisurvey.tiles
 import desisurvey.ephem
 
 
-def load_design_hourangle(name='surveyinit.fits', condition=None):
+def load_design_hourangle():
     """Load design hour-angle assignments from disk.
 
-    Reads column 'HA' from binary table HDU 'DESIGN'. This is the format
-    saved by the ``surveyinit`` script, but any FITS file following the
-    same convention can be used.
+    If hour angles are present in the tile file, defaults to those.
+    Otherwise reads column 'DESIGNHA' from file saved by the
+    ``surveyinit`` script.  Contents must row-match the tile file.
 
     Parameters
     ----------
     name : str
-        Name of the FITS file to read. A relative path is assumed to
+        Name of the ecsv file to read. A relative path is assumed to
         refer to the output path specified in the configuration.
-    condition : str
-        DARK/GRAY/BRIGHT.  For SV tiles that may be observed in multple
-        conditions, load the appropriate design HA for this conditions.
 
     Returns
     -------
@@ -39,21 +36,20 @@ def load_design_hourangle(name='surveyinit.fits', condition=None):
         1D array of design hour angles in degrees, with indexing
         that matches :class:`desisurvey.tiles.Tiles`.
     """
-    config = desisurvey.config.Configuration()
-    fullname = config.get_path(name)
     tiles = desisurvey.tiles.get_tiles()
-    design = astropy.io.fits.getdata(fullname, 'DESIGN')
-    ind, mask = tiles.index(design['tileID'], return_mask=True)
-    HA = np.zeros(tiles.ntiles, dtype='f4')
-    if condition is not None:
-        hacolname = 'HA_' + condition
+    if tiles.designha is not None:
+        return tiles.designha
     else:
-        hacolname = 'HA'
-    HA[ind[mask]] = design[hacolname][mask]
-    if not np.all(mask) or len(design) != tiles.ntiles:
-        log = desiutil.log.get_logger()
-        log.warning('The tile file and HA optimizations do not match.')
-    return HA
+        from astropy.table import Table
+        tf = os.path.join(os.environ['DESISURVEY_OUTPUT'],
+                          os.path.basename(tiles.tiles_file))
+        design = Table.read(tf)
+        if not (np.all(tiles.tileID == design['TILEID']) and
+                np.allclose(tiles.tileRA['RA'], design['RA']) and
+                np.allclose(tiles['DEC'], design['DEC']) and
+                np.all(tiles['PROGRAM'] == design['PROGRAM'])):
+            raise ValueError('Plan HA does match tile file.')
+        return design['HA'].data.copy()
 
 
 def get_fiber_assign_dir(fiber_assign_dir):
@@ -136,12 +132,20 @@ class Planner(object):
         the configured output path unless an absolute path is
         provided. Raise a RuntimeError if the saved tile IDs do not
         match the current tiles_file values.
+    simulate : bool
+        If True, simulate fiber assignment process.
+    log : log object or None
+        logging object to use; None for desiutil default.
     """
-    def __init__(self, rules=None, restore=None, simulate=False):
-        self.log = desiutil.log.get_logger()
+    def __init__(self, rules=None, restore=None, simulate=False, log=None):
+        if log is None:
+            self.log = desiutil.log.get_logger()
+        else:
+            self.log = log
         self.rules = rules
         config = desisurvey.config.Configuration()
         self.min_snr2_fraction = config.min_snr2_fraction()
+        self.tiles_lowpass = config.tiles_lowpass()
         self.simulate = simulate
         if self.simulate:
             self.fiberassign_cadence = config.fiber_assignment_cadence()
@@ -163,38 +167,30 @@ class Planner(object):
             if not os.path.exists(fullname):
                 raise RuntimeError('Cannot restore planner from non-existent '
                                    '"{}".'.format(fullname))
-            t = astropy.table.Table.read(fullname, hdu='STATUS')
-            ind, mask = self.tiles.index(t['TILEID'], return_mask=True)
-            if np.any(~mask):
-                self.log.warning('Ignoring {} tiles not in tile file.'.format(
-                    sum(mask)))
-            ind = ind[mask]
-            # in operations, we don't really need CADENCE
+            t = astropy.table.Table.read(fullname)
+            if ((len(t) != self.tiles.ntiles) or
+                    np.any(self.tiles.tileID != t['TILEID']) or
+                    np.any(self.tiles.tileRA != t['RA']) or
+                    np.any(self.tiles.tileDEC != t['DEC']) or
+                    np.any(self.tiles.tileprogram != t['PROGRAM'])):
+                raise ValueError('mismatch between tiles and status file; '
+                                 'should not be possible!')
             if self.simulate:
                 self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
                 self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
                 self.tile_countdown = np.zeros(self.tiles.ntiles, dtype='i4')
-                self.tile_countdown[ind] = t['COUNTDOWN'].data[mask].copy()
+                self.tile_countdown = t['COUNTDOWN'].data.copy()
                 if t.meta['CADENCE'] != self.fiberassign_cadence:
                     raise ValueError('Fiberassign cadence mismatch.')
             self.tile_status = np.zeros(self.tiles.ntiles, dtype='U20')
             self.tile_status[:] = 'unobs'
-            self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
-            self.tile_available[ind] = t['AVAILABLE'].data[mask].copy()
-            self.tile_status[ind] = t['STATUS'].data[mask].copy()
-
-            self.tile_priority = np.zeros(self.tiles.ntiles, 'f4')
-            self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
-            self.tile_priority[ind] = t['PRIORITY'].data[mask].copy()
-            self.donefrac[ind] = t['DONEFRAC'].data[mask].copy()
-
-            self.designha = np.zeros(self.tiles.ntiles, 'f4')
-            self.designhacond = dict()
-            self.designha[ind] = t['DESIGNHA'].data[mask].copy()
-            conditions = (['DARK', 'BRIGHT'] if self.nogray
-                          else ['DARK', 'GRAY', 'BRIGHT'])
-            for cond in conditions:
-                self.designhacond[cond] = t['DESIGNHA'+cond].data[mask].copy()
+            self.tile_status[:] = t['STATUS']
+            self.tile_available = self.tiles.in_desi.copy()
+            self.tile_priority = t['PRIORITY'].data.copy()
+            self.donefrac = t['DONEFRAC'].data.copy()
+            self.designha = t['DESIGNHA'].data.copy()
+            if 'AVAILABLE' in t.dtype.names:
+                self.tile_available[:] &= t['AVAILABLE'].data.copy()
             self.log.debug(('Restored plan with {} unobserved, {} pending, '
                             'and {} completed tiles from {}.').format(
                                 np.sum(self.donefrac <= 0),
@@ -204,22 +200,15 @@ class Planner(object):
                                 fullname))
         else:
             # Initialize the plan for a a new survey.
-            self.tile_available = np.zeros(self.tiles.ntiles, dtype='bool')
+            self.tile_available = self.tiles.in_desi.copy()
             self.donefrac = np.zeros(self.tiles.ntiles, 'f4')
             self.designha = load_design_hourangle()
-            self.designhacond = dict()
-            self.designhacond['DARK'] = load_design_hourangle(condition='DARK')
-            self.designhacond['BRIGHT'] = (
-                load_design_hourangle(condition='BRIGHT'))
-            if not self.nogray:
-                self.designhacond['GRAY'] = (
-                    load_design_hourangle(condition='GRAY'))
 
-            self.first_night = self.last_night = None
             # Initialize per-tile arrays.
-            self.tile_status = np.zeros(self.tiles.ntiles, dtype='U80')
+            self.tile_status = np.zeros(self.tiles.ntiles, dtype='U12')
             self.tile_status[:] = 'unobs'
             if self.simulate:
+                self.first_night = self.last_night = None
                 # Initailize the delay countdown for each tile.
                 self.tile_countdown = self.tiles.fiberassign_delay.copy()
             # Initialize priorities.
@@ -241,14 +230,20 @@ class Planner(object):
         ----------
         tileid : int
         """
-        idx = self.tiles.index(tileid)
+        idx, mask = self.tiles.index(tileid, return_mask=True)
+        if not mask:
+            self.log.error(
+                ('Invalid tileid {} passed to '
+                 'add_pending_tile; ignoring.').format(tileid))
+            return
         overlapping = self.tiles.overlapping[idx]
         # if this tile's LyA decisions have already been made,
         # that's a problem!
         assert not self.tile_status[idx] == 'done'
         self.tile_available[overlapping] = 0
 
-    def set_donefrac(self, tileid, donefrac):
+    def set_donefrac(self, tileid, donefrac=None, status=None,
+                     ignore_pending=False):
         """Update planner with new tile donefrac.
 
         Parameters
@@ -257,17 +252,36 @@ class Planner(object):
             1D array of integer tileIDs to update
 
         donefrac : array
-            1D array of completion fractions for tiles, matching tileid
+            1D array of completion fractions for tiles, matching tileid,
+            optional
+
+        status : array
+            1D array of tile status to update; optional
+
+        ignore_pending: bool
+            do not mark newly started files as pending
         """
+        tileid = np.atleast_1d(tileid)
+        if donefrac is not None:
+            donefrac = np.atleast_1d(donefrac)
+        if status is not None:
+            status = np.atleast_1d(status)
         tileind, mask = self.tiles.index(tileid, return_mask=True)
         if np.any(~mask):
-            self.log.warning('Some tiles with unknown IDs; ignoring')
+            self.log.debug('Some tiles with unknown IDs; ignoring')
             tileind = tileind[mask]
-            donefrac = donefrac[mask]
-        self.donefrac[tileind] = donefrac
-        for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
-            if donefrac0 > 0:
-                self.add_pending_tile(tileid0)
+            if donefrac is not None:
+                donefrac = donefrac[mask]
+            if status is not None:
+                status = status[mask]
+        if donefrac is not None:
+            self.donefrac[tileind] = donefrac
+        if status is not None:
+            self.tile_status[tileind] = status
+        if not ignore_pending and (donefrac is not None):
+            for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
+                if donefrac0 > 0:
+                    self.add_pending_tile(tileid0)
 
     def obsend(self):
         return ((self.tile_status == 'obsend') |
@@ -292,9 +306,10 @@ class Planner(object):
         """Save a snapshot of our current state that can be restored.
 
         The output file has a binary table (extname PLAN) with columns
-        TILEID, STARTED, OBSERVED, COMPLETED, COUNTDOWN, and PRIORITY and
-        header keywords CADENCE, FIRST, LAST. The saved file size is about
-        400Kb.
+        TILEID, CENTERID, PASS, RA, DEC, PROGRAM, IN_DESI, EBV_MED, DESIGNHA,
+        PRIORITY, STATUS, and DONEFRAC.
+        Simulations also include COUNTDOWN and header keywords CADENCE,
+        FIRST, LAST.
 
         Parameters
         ----------
@@ -306,25 +321,29 @@ class Planner(object):
         """
         config = desisurvey.config.Configuration()
         fullname = config.get_path(name)
-        meta = dict(EXTNAME='STATUS')
+        meta = dict(EXTNAME='TILES')
         if self.simulate:
             meta['CADENCE'] = self.fiberassign_cadence
             meta['FIRST'] = self.first_night.isoformat()
             meta['LAST'] = self.last_night.isoformat()
-        t = astropy.table.Table(meta=meta)
-        t['TILEID'] = self.tiles.tileID
-        t['RA'] = self.tiles.tileRA
-        t['DEC'] = self.tiles.tileDEC
-        t['DONEFRAC'] = self.donefrac
-        t['AVAILABLE'] = self.tile_available
-        t['STATUS'] = self.tile_status
-        t['PRIORITY'] = self.tile_priority
+        t = self.tiles.read_tiles_table()
+        t.meta = meta
         t['DESIGNHA'] = self.designha
-        for cond in self.designhacond:
-            t['DESIGNHA'+cond.upper()] = self.designhacond[cond]
+        t['DESIGNHA'].format = '%7.2f'
+        t['DESIGNHA'].description = 'Design hour angle'
+        t['PRIORITY'] = self.tile_priority
+        t['PRIORITY'].format = '%10.3e'
+        t['PRIORITY'].description = 'Tile observation priority'
+        t['STATUS'] = self.tile_status
+        t['STATUS'].description = 'unobs, obsstart, obsend, done'
+        t['DONEFRAC'] = self.donefrac
+        t['DONEFRAC'].format = '%7.4f'
+        t['DONEFRAC'].description = 'Tile completeness fraction'
+        t['AVAILABLE'] = self.tile_available
+        t['AVAILABLE'].description = 'Fiberassign file is available'
         if self.simulate:
             t['COUNTDOWN'] = self.tile_countdown
-        t.write(fullname+'.tmp', overwrite=True, format='fits')
+        t.write(fullname+'.tmp', overwrite=True, format='ascii.ecsv')
         os.rename(fullname+'.tmp', fullname)
         self.log.debug(
             ('Saved plan with {} unobserved, {} pending, and {} '
@@ -343,7 +362,7 @@ class Planner(object):
         self.tile_status[run_now] = 'done'
         delayed = pending & (self.tile_countdown > 0)
         self.tile_countdown[delayed] -= 1
-        self.tile_available = np.ones(len(self.tile_status), dtype='bool')
+        self.tile_available = self.tiles.in_desi.copy()
         self.log.info('Completed {} tiles with {} delayed on {}.'
                       .format(np.count_nonzero(run_now),
                               np.count_nonzero(delayed), night))
@@ -366,7 +385,7 @@ class Planner(object):
         import glob
         import re
         files = glob.glob(os.path.join(dirname, '**/*.fits*'), recursive=True)
-        rgx = re.compile('.*fiberassign-(\d+)\.fits(\.gz)?')
+        rgx = re.compile(r'.*fiberassign-(\d+)\.fits(\.gz)?')
         available_tileids = []
         for fn in files:
             match = rgx.match(fn)
@@ -375,13 +394,13 @@ class Planner(object):
         available = np.zeros(self.tiles.ntiles, dtype='bool')
         ind, mask = self.tiles.index(available_tileids, return_mask=True)
         available[ind[mask]] = True
-        self.tile_available = available.copy()
-        self.log.info('Fiber assignment files found for {} tiles.'.format(
+        self.tile_available = self.tiles.in_desi & available
+        self.log.info('Observations possible for {} tiles.'.format(
             np.count_nonzero(available)))
         if np.count_nonzero(available) == 0:
             self.log.error('No fiberassign files available for scheduling!')
         if np.any(~mask):
-            self.log.warning(
+            self.log.debug(
                 'Ignoring {} tiles that were assigned, '.format(sum(~mask)) +
                 'but not found in the tile file.')
 
@@ -402,11 +421,6 @@ class Planner(object):
         new_observed (array), new_completed (array)
             boolean arrays indicating newly observed and newly completed tiles.
         """
-        if self.first_night is None:
-            # Remember the first night of the survey.
-            self.first_night = night
-        day_number = (night - self.first_night).days
-
         oldstatus = self.tile_status.copy()
         newlystarted = ((self.donefrac > 0) & (self.tile_status == 'unobs'))
         self.tile_status[newlystarted] = 'obsstart'
@@ -420,6 +434,11 @@ class Planner(object):
                             np.sum(self.tile_status == 'done'),
                             self.tiles.ntiles))
         if self.simulate:
+            if self.first_night is None:
+                # Remember the first night of the survey.
+                self.first_night = night
+            day_number = (night - self.first_night).days
+
             # Update fiber assignments this afternoon?
             if self.fiberassign_cadence == 'monthly':
                 # Run fiber assignment on the afternoon before the full moon.
@@ -435,13 +454,15 @@ class Planner(object):
                 self.fiberassign_simulate(night)
             self.last_night = night
         else:
-            self.log.error('we need a mechanism to mark completed tiles.')
             fiber_assign_dir = get_fiber_assign_dir(fiber_assign_dir)
             if fiber_assign_dir is None:
                 raise ValueError(
                     'fiber_assign_dir must be set either in '
                     'config.yaml or in FIBER_ASSIGN_DIR; failing!')
+            oldavail = self.tile_available.copy()
             self.fiberassign(fiber_assign_dir)
+            filesavailable = self.tile_available.copy()
+            self.tile_available = oldavail.copy()
         # Update tile priorities.
         if self.rules is not None:
             self.tile_priority = self.rules.apply(self.donefrac)
@@ -450,6 +471,38 @@ class Planner(object):
                    (self.tile_status == 'obsend'))
         for tileid in self.tiles.tileID[pending]:
             self.add_pending_tile(tileid)
+        if self.tiles_lowpass:
+            self.prefer_low_passnum()
+        if not self.simulate:
+            m = self.tile_available & ~filesavailable
+            if np.any(m):
+                self.log.info(
+                    'Newly available tiles that have not yet been '
+                    'designed:  ' +
+                    ' '.join([str(x) for x in self.tiles.tileID[m]]))
+            self.tile_available[~filesavailable] = 0
         newlycompleted = ((self.tile_status == 'done') &
                           (oldstatus != 'done'))
         return newlystarted, newlycompleted
+
+    def prefer_low_passnum(self):
+        """Mark only tiles available that are in the lowest pass
+        of any overlapping tiles."""
+
+        obsend = self.obsend()
+        mobservable = self.tile_available & ~obsend
+        mfree = np.ones(self.tiles.ntiles, dtype='bool')
+        passes = np.unique(self.tiles.tilepass[mobservable])
+        s = np.argsort(passes)
+        for pass0 in passes[s]:
+            mpass = self.tiles.tilepass == pass0
+            m = mpass & mobservable
+            for idx in np.flatnonzero(m):
+                if ~mfree[idx]:
+                    continue
+                over = np.array(self.tiles.overlapping[idx], dtype='i4')
+                mfree[over] = 0
+                if np.any((self.tiles.tilepass[over] < pass0) & ~obsend[over]):
+                    # unobserved, overlapping tiles with lower pass numbers.
+                    mfree[idx] = 0
+        self.tile_available[~mfree] = 0

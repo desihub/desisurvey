@@ -77,14 +77,20 @@ class QueuedList():
             try:
                 self.queued = ascii.read(self.fn, comment='#',
                                          names=['tileid'], format='no_header')
-            except OSError:
+            except Exception as e:
                 self.log.error('Could not read in queued file; '
                                'record of past exposures lost!')
+                self.log.error('Got exception trying to load queued file!')
+                self.log.error(e)
+
             self.queued = list(self.queued['tileid'])
         else:
             self.queued = []
 
     def add(self, tileid):
+        if tileid < 0:
+            self.log.info('Not adding unknown TILEID to queued file.')
+            return
         self.queued.append(tileid)
         exists = os.path.exists(self.fn)
         try:
@@ -111,7 +117,7 @@ class RequestLog():
     def __init__(self, fn):
         self.fn = fn
         exists = os.path.exists(fn)
-        fp = open(self.fn, 'a')
+        _ = open(fn, 'a')
         if not exists:
             os.chmod(self.fn, 0o666)
 
@@ -184,7 +190,7 @@ class NTS():
             'transparency', 'sky_level', and 'program', for next tile
             selection.
 
-        night : night for which to assign tiles, YYYMMDD, default tonight.
+        night : night for which to assign tiles, YYYYMMDD, default tonight.
 
         nts_survey : human readable means for selecting nightly obsplan.
             ignored if obsplan is set.
@@ -193,17 +199,21 @@ class NTS():
         -------
         NTS object. Tiles can be generated via next_tile(...)
         """
-        self.log = desiutil.log.get_logger()
+        self.log = logob
         # making a new NTS; clear out old configuration / tile information
         if night is None:
             self.night = desisurvey.utils.get_current_date()
             self.log.info('No night selected, '
                           'using current date: {}.'.format(self.night))
         else:
-            self.night = night
+            self.night = desisurvey.utils.get_date(night)
         if obsplan is None:
-            obsplan = os.path.join(desisurvey.utils.night_to_str(self.night),
-                                   'config.yaml')
+            if nts_survey is None:
+                nts_survey = 'sv1'
+            nts_survey = nts_survey.lower()
+            nts_dir = (desisurvey.utils.night_to_str(self.night) + '-' +
+                       nts_survey)
+            obsplan = os.path.join(nts_dir, 'config.yaml')
         self.obsplan = obsplan
         nts_dir, _ = os.path.split(obsplan)
         if len(os.path.split(nts_dir)[0]) > 0:
@@ -226,19 +236,17 @@ class NTS():
         self.default_program = defaults.get('program', 'DARK')
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
-        self.commissioning = getattr(config, 'commissioning', False)
-        if not isinstance(self.commissioning, bool):
-            self.commissioning = self.commissioning()
         self.config = config
         try:
             self.planner = desisurvey.plan.Planner(
-                self.rules,
-                restore='{}/desi-status-{}.fits'.format(fulldir, nts_dir))
-            self.scheduler = desisurvey.scheduler.Scheduler(self.planner)
+                self.rules, restore=config.tiles_file(),
+                log=self.log)
+            self.scheduler = desisurvey.scheduler.Scheduler(
+                self.planner, log=self.log)
             self.queuedlist = QueuedList(
-                config.get_path('{}/queued-{}.dat'.format(fulldir, nts_dir)))
+                '{}/queued.dat'.format(fulldir))
             self.requestlog = RequestLog(
-                config.get_path('{}/requestlog-{}.dat'.format(fulldir, nts_dir)))
+                '{}/requestlog.dat'.format(fulldir))
         except Exception as e:
             print(e)
             raise ValueError('Error restoring scheduler & planner files; '
@@ -356,100 +364,115 @@ class NTS():
         self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
+        if mjd_program_end < mjd:
+            self.log.warning(
+                'Program ends before exposure starts; is it daytime?')
+            mjd_program_end = mjd + 1
+
+        badtile = {'esttime': 0., 'exptime': 0.,
+                   'count': 0, 'maxtime': 0., 'fiberassign': 0,
+                   'foundtile': False,
+                   'conditions': '', 'program': '', 'exposure_factor': 0,
+                   'req_efftime': 0., 'sbprof': 'PSF'}
         if tileid is None:
-            tile = {'esttime': 0., 'exptime': 0.,
-                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
-                    'foundtile': False,
-                    'conditions': '', 'program': '', 'exposure_factor': 0,
-                    'req_efftime': 0., 'sbprof': 'PSF'}
-            self.requestlog.logresponse(tile)
-            return tile
+            self.requestlog.logresponse(badtile)
+            return badtile
 
         self.scheduler.plan.add_pending_tile(tileid)
 
-        if self.commissioning:
-            self.log.info('Ignoring existing donefrac in SV1.')
-            snr2frac_start = 0
-
         idx = self.scheduler.tiles.index(int(tileid))
         tile_program = self.scheduler.tiles.tileprogram[idx]
+        programconf = getattr(self.config.programs, tile_program, None)
+        if programconf is None:
+            self.log.error('Did not recognize program {}'.format(
+                tile_program))
+            return badtile
+
+        svmode = getattr(self.config, 'svmode', None)
+        svmode = svmode() if svmode is not None else False
+        if svmode or (snr2frac_start > self.config.min_snr2_fraction()):
+            # in svmode we always go for full visits
+            # if this tile is already finished, it's a backup tile; go for a
+            # full visit.
+            snr2frac_start = 0
+        snr2frac_start = np.clip(snr2frac_start, 0, 1)
         texp_tot, texp_remaining, nexp_remaining = self.ETC.estimate_exposure(
             tile_program, snr2frac_start, exposure_factor, nexp_completed=0)
-        efftime = getattr(self.config.nominal_exposure_time, tile_program,
-                          None)
+        efftime = getattr(programconf, 'efftime', None)
         if efftime is not None:
             efftime = efftime()
         else:
             efftime = 1000*u.s
-        efftime = float(efftime.to(u.s).value)
+        efftime = float(efftime.to(u.s).value)*(1-snr2frac_start)
 
-        sbprof = getattr(self.config, 'sbprof', None)
+        sbprof = getattr(programconf, 'sbprof', None)
         if sbprof is not None:
-            sbprof = getattr(sbprof, tile_program, None)
-            if sbprof is not None:
-                sbprof = sbprof()
+            sbprof = sbprof()
         if not isinstance(sbprof, str):
             sbprof = 'PSF'
 
-        if tile_program not in ['DARK', 'GRAY', 'BRIGHT']:
-            moon_up_factor = getattr(self.config, 'moon_up_factor')
-            moon_up_factor = getattr(moon_up_factor, sched_program)()
-            texp_tot *= moon_up_factor
-            texp_remaining *= moon_up_factor
+        boost_factor = (
+            getattr(self.config.conditions, sched_program).boost_factor())
+        texp_tot *= boost_factor
+        texp_remaining *= boost_factor
 
         # avoid crossing program boundaries, don't observe longer than an hour.
-        maxdwell = getattr(self.config, 'maxtime')().to(u.day).value
-        texp_remaining = min([texp_remaining, mjd_program_end+15/24/60-mjd,
-                              maxdwell])
+        maxdwell = self.config.maxtime().to(u.day).value
+        mintime = self.config.mintime().to(u.day).value
+        texp_remaining = max([texp_remaining, mintime])
+        texp_remaining = min([texp_remaining, maxdwell])
+
+        lstnow = (self.scheduler.LST0 +
+                  self.scheduler.dLST*(mjd - self.scheduler.MJD0))
+        hanow = lstnow - self.scheduler.tiles.tileRA[idx]
+        maxdha = self.scheduler.tiles.max_abs_ha[idx] - hanow
+        maxdwell = min([maxdwell, maxdha/360])
+        texp_remaining = min([texp_remaining, maxdwell])
+
+        onemin = 1/60/24
+        # end dark/gray programs at 15 deg dawn, sharp.
+        if ((sched_program != 'BRIGHT') and
+                (mjd_program_end > self.scheduler.night_ephem['dusk'])):
+            texp_remaining = min([texp_remaining, mjd_program_end-mjd])
+
         exptime = texp_remaining
-        maxtime = self.ETC.MAX_EXPTIME
-        maxtimecond = getattr(self.config, 'maximum_time_in_conditions',
-                              None)
-        if maxtimecond is not None:
-            maxtimecond = getattr(maxtimecond, sched_program, None)
-            if maxtimecond is not None:
-                maxtimecond = maxtimecond().to(u.day).value
-        if maxtimecond is None:
-            maxtimecond = np.inf
-        maxtime = np.min([maxtime, maxtimecond])
+        splittime = self.config.cosmic_ray_split().to(u.day).value
 
         days_to_seconds = 60*60*24
-        fivemin = 5/60/24  # 5 minutes... pretty arbitrary.
-        if ((mjd <= self.scheduler.night_ephem['dusk']-fivemin) or
-                (mjd >= self.scheduler.night_ephem['dawn']+fivemin)):
-            maxtime = 300/days_to_seconds
+        if ((mjd <= self.scheduler.night_ephem['dusk']-5*onemin) or
+                (mjd >= self.scheduler.night_ephem['dawn']-5*onemin)):
+            splittime = 300/days_to_seconds
             # in twilight, exposures should never be longer than 300 s
             # according to DJS.
 
-        if exptime > maxtime:
-            count = int((exptime / maxtime).astype('i4') + 1)
+        if exptime > splittime:
+            count = int((exptime / splittime).astype('i4') + 1)
         else:
-            if (self.night.day % 2) != 0:
-                count = 2  # do cosmic splits
-            else:
-                count = 1
-        # always get at least 2 300s exposures of sv1bgsmws exposures
-        # when they are scheduled in dark time
-        if (sched_program == 'DARK') & (tile_program == 'sv1bgsmws'):
-            count = int(np.max([count, 2]))
+            count = 1
+        mincount = getattr(programconf, 'min_exposures', None)
+        if mincount is not None:
+            mincount = mincount()
+        else:
+            mincount = 1
+        count = np.max([mincount, count])
         splitexptime = exptime / count
-        minexptime = getattr(self.config, 'minimum_exposure_time', None)
+        minexptime = getattr(programconf, 'minimum_exposure_time', None)
         if minexptime:
             minexptime = getattr(minexptime, sched_program)()
             minexptime = minexptime.to(u.s).value
             splitexptime = max([splitexptime, minexptime/days_to_seconds])
 
-        selection = {'esttime': exptime*days_to_seconds,
-                     'exptime': splitexptime*days_to_seconds,
-                     'count': count,
-                     'maxtime': maxdwell*days_to_seconds,
+        selection = {'esttime': float(exptime*days_to_seconds),
+                     'exptime': float(splitexptime*days_to_seconds),
+                     'count': int(count),
+                     'maxtime': float(maxdwell*days_to_seconds),
                      'fiberassign': int(tileid),
                      'foundtile': True,
-                     'conditions': sched_program,
-                     'program': tile_program,
-                     'exposure_factor': exposure_factor,
-                     'req_efftime': efftime,
-                     'sbprof': sbprof}
+                     'conditions': str(sched_program),
+                     'program': str(tile_program),
+                     'exposure_factor': float(exposure_factor),
+                     'req_efftime': float(efftime),
+                     'sbprof': str(sbprof)}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)

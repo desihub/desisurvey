@@ -41,9 +41,13 @@ class Scheduler(object):
     Parameters
     ----------
     plan : desisurvey.plan.Plan instance to use for planning
+    log : log object to use
     """
-    def __init__(self, plan):
-        self.log = desiutil.log.get_logger()
+    def __init__(self, plan, log=None):
+        if log is None:
+            self.log = desiutil.log.get_logger()
+        else:
+            self.log = log
         # Load our configuration.
         config = desisurvey.config.Configuration()
         ignore_completed_priority = getattr(config,
@@ -51,6 +55,10 @@ class Scheduler(object):
         if not isinstance(ignore_completed_priority, int):
             ignore_completed_priority = ignore_completed_priority()
         self.ignore_completed_priority = ignore_completed_priority
+
+        self.select_program_by_speed = config.select_program_by_speed()
+        self.dark_expfac_cut = config.programs.DARK.expfac_cut()
+        self.bright_expfac_cut = config.programs.BRIGHT.expfac_cut()
 
         nogray = getattr(config, 'tiles_nogray', False)
         if not isinstance(nogray, bool):
@@ -63,6 +71,10 @@ class Scheduler(object):
         # Load static tile info.
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
+
+        d2x = self.tiles.airmass_second_derivative(0)
+        self.scale_dha_penalty_sigma = np.clip(np.sqrt(1/d2x)/60, 0.5, 1)
+
         self.plan = plan
 
         # Allocate memory for internal arrays.
@@ -79,6 +91,20 @@ class Scheduler(object):
         self.nominal_exposure_time_sec = (
             desisurvey.tiles.get_nominal_program_times(self.tiles.tileprogram))
         self.maxtime = config.maxtime()
+
+        esttime = (self.nominal_exposure_time_sec/86400 *
+                   self.tiles.dust_factor)
+        airmassnom = self.tiles.airmass(self.plan.designha)
+        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
+        self.esttime = esttime
+        sbprof = []
+        for prog in self.tiles.tileprogram:
+            progconf = getattr(config.programs, prog, None)
+            if progconf is None:
+                sbprof.append('ELG')
+            else:
+                sbprof.append(progconf.sbprof())
+        self.sbprof = np.array(sbprof)
 
         # Lookup avoidance cone angles.
         self.avoid_bodies = {}
@@ -133,9 +159,10 @@ class Scheduler(object):
             self.log_priority = np.log(self.plan.tile_priority)
 
         # Initialize the pool of tiles that could be observed this night.
-        self.in_night_pool[:] = (self.plan.tile_priority > 0) & self.plan.tile_available
+        self.in_night_pool[:] = ((self.plan.tile_priority > 0) &
+                                 self.plan.tile_available)
         if self.ignore_completed_priority <= 0:
-             self.in_night_pool &= ~self.plan.obsend()
+            self.in_night_pool &= ~self.plan.obsend()
 
         # Check if any tiles cannot be observed because they are too close to a planet this night.
         poolRA = self.tiles.tileRA[self.in_night_pool]
@@ -160,7 +187,23 @@ class Scheduler(object):
         self.moon_DECRA = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=False)
         #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
-    def select_program(self, mjd_now, ETC, verbose=False):
+    def conditions_to_program(self, seeing, transparency, skylevel,
+                              airmass=1):
+        if (seeing is None) or (transparency is None) or (skylevel is None):
+            return 'BRIGHT'
+        expfac_dark = desisurvey.etc.seeing_exposure_factor(
+            seeing, sbprof='ELG')*skylevel/transparency**2
+        if expfac_dark < self.dark_expfac_cut:
+            return 'DARK'
+        expfac_bright = desisurvey.etc.seeing_exposure_factor(
+            seeing, sbprof='BGS')*skylevel/transparency**2
+        if expfac_bright < self.bright_expfac_cut:
+            return 'BRIGHT'
+        return 'BACKUP'
+
+    def select_program(self, mjd_now, ETC, verbose=False,
+                       seeing=None, transparency=None, skylevel=None,
+                       airmass=None):
         """Select program to observe now.
         """
         if mjd_now < self.night_changes[0]:
@@ -169,6 +212,19 @@ class Scheduler(object):
         if mjd_now > self.night_changes[-1]:
             if verbose:
                 self.log.warning('Tile requested after end of night.')
+        if self.select_program_by_speed:
+            if mjd_now < self.night_ephem['dusk']:
+                return 'BRIGHT', self.night_changes[-1]
+            if mjd_now + 300/86400 > self.night_ephem['dawn']:
+                return 'BRIGHT', self.night_changes[-1]
+            program = self.conditions_to_program(
+                seeing, transparency, skylevel, airmass=airmass)
+            mjd_program_end = self.night_ephem['dawn']
+            # if we got here, conditions are good; it's okay to stay here
+            # until dawn.  Moonrise would be another case, but the moon starts
+            # low and the next tile will move on if conditions are bad enough.
+            return program, mjd_program_end
+        # select program based on ephemerides, not conditions.
         idx = 0
         while ((idx + 1 < len(self.night_changes)) and
                (mjd_now >= self.night_changes[idx + 1])):
@@ -189,8 +245,8 @@ class Scheduler(object):
             mjd_program_end = self.night_changes[idx + 1]
         return program, mjd_program_end
 
-    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15., greediness=0.,
-                  program=None, verbose=False):
+    def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15.,
+                  greediness=0., program=None, verbose=False):
         r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -237,12 +293,11 @@ class Scheduler(object):
         Returns
         -------
         tuple
-            Tuple (TILEID,PASSNUM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
+            Tuple (TILEID,PROGRAM,DONEFRAC,EXPFAC,AIRMASS,PROGRAM,PROGEND)
             giving the ID and associated properties of the selected tile.
             When no tile is observable, only the last two tuple fields
             will be valid, and this method should be called again after
             some dead-time delay.  The tuple fields are:
-
              - TILEID: ID of the tile to observe.
              - PROGRAM: program of the tile to observe.
              - DONEFRAC: fractional SNR2 already accumulated for the selected tile.
@@ -260,7 +315,8 @@ class Scheduler(object):
         if program is None:
             # Which program are we in?
             program, mjd_program_end = self.select_program(
-                mjd_now, ETC, verbose=verbose)
+                mjd_now, ETC, verbose=verbose, seeing=seeing,
+                skylevel=skylevel, transparency=transp)
             self.tile_sel &= self.tiles.allowed_in_conditions(program)
             if verbose:
                 self.log.info(
@@ -269,6 +325,7 @@ class Scheduler(object):
         else:
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
+
         # Select available tiles in this program.
         self.tile_sel &= self.in_night_pool & (self.plan.tile_available > 0)
         if not np.any(self.tile_sel):
@@ -296,28 +353,30 @@ class Scheduler(object):
         else:
             moon_is_up = False
 
-
         # Calculate the local apparent sidereal time in degrees.
         self.LST = self.LST0 + self.dLST * (mjd_now - self.MJD0)
         # Calculate the hour angle of each available tile in degrees.
 
-        weather_factor = ETC.weather_factor(seeing, transp, skylevel)
-        esttime = (
-            self.nominal_exposure_time_sec[self.tile_sel]/86400 *
-            self.tiles.dust_factor[self.tile_sel] / weather_factor)
-        airmassnom = self.tiles.airmass(
-            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
-        esttime *= desisurvey.etc.airmass_exposure_factor(airmassnom)
+        sbprof = self.sbprof[self.tile_sel][0]
+        if not np.all(self.sbprof[self.tile_sel] == sbprof):
+            self.log.warning('Multiple SBPROF in same selection.')
+        weather_factor = ETC.weather_factor(seeing, transp, skylevel,
+                                            sbprof=sbprof)
+        esttime = self.esttime[self.tile_sel] / weather_factor
         esttime = np.clip(esttime, 0, self.maxtime.to(u.day).value)
+        airmassnow = self.tiles.airmass(
+            self.LST - self.tiles.tileRA[self.tile_sel], self.tile_sel)
 
         self.hourangle[:] = 0.
         self.hourangle[self.tile_sel] = (
             self.LST + 360*esttime/2 - self.tiles.tileRA[self.tile_sel])
         # Calculate the airmass of each available tile.
         self.airmass[:] = self.max_airmass
-        self.airmass[self.tile_sel] = self.tiles.airmass(
+        airmassnom = self.tiles.airmass(
             self.hourangle[self.tile_sel], self.tile_sel)
-        self.tile_sel &= self.airmass < self.max_airmass
+        self.airmass[self.tile_sel] = airmassnom
+        self.tile_sel[self.tile_sel] &= (
+            (airmassnow < self.max_airmass) & (airmassnom < self.max_airmass))
         absha = np.abs(((self.hourangle + 180) % 360)-180)
         self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):
@@ -335,15 +394,16 @@ class Scheduler(object):
             return None, None, None, None, None, program, mjd_program_end
         # Calculate (the log of a) Gaussian multiplicative penalty for
         # observing tiles away from their design hour angle.
-        cond = program
-        if self.nogray:
-            cond = 'DARK' if cond == 'GRAY' else cond
         dHA = (self.hourangle[self.tile_sel] -
-               self.plan.designhacond[cond][self.tile_sel])
+               self.plan.designha[self.tile_sel])
         dHA[dHA >= 180.] -= 360
         dHA[dHA < -180] += 360
         assert np.all((dHA >= -180) & (dHA < 180))
         # Calculate a score that combines dHA and instantaneous efficiency.
+        # penalize high airmass tiles more for being away from their design
+        # hour angles; it's important to get these very close to their design
+        # angles.
+        HA_sigma = HA_sigma * self.scale_dha_penalty_sigma[self.tile_sel]
         log_score = (
             -0.5 * (dHA / HA_sigma) ** 2 * (1 - greediness) +
             -np.log(self.exposure_factor[self.tile_sel]) * greediness)
