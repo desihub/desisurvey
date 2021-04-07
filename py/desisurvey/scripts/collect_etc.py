@@ -55,7 +55,8 @@ def cull_old_files(files, start_from):
 
 
 def scan_directory(dirname, start_from=None,
-                   offlinedepth=None, mtldone=None):
+                   offlinedepth=None, mtldone=None,
+                   offlinetiles=None):
     """Scan directory for spectra with ETC statistics to collect.
 
     Parameters
@@ -73,6 +74,9 @@ def scan_directory(dirname, start_from=None,
     offlinedepth : str
         offline depth file to use.  Fills out donefracs according to
         R_DEPTH in the file, plus config.nominal_exposure_time
+    offlinetiles : str
+        offline tile completeness file to use.  Fills out obsstatus according
+        to OBSSSTATUS in the file.
     mtldone : str
         mtl done file to use.  Fills out done status according to presence
         in mtl done file.
@@ -192,7 +196,7 @@ def scan_directory(dirname, start_from=None,
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('PROGRAM', 'U20'), ('EFFTIME', 'f4'),
         ('DONEFRAC', 'f4'),
-        ('NOBS', 'i4'), ('MTL_DONE', 'bool')])
+        ('NOBS', 'i4'), ('OFFLINE_DONE', 'bool'), ('MTL_DONE', 'bool')])
     s = np.argsort(exps['TILEID'])
     nomtimefa = np.zeros(len(tiles), dtype='f4')
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
@@ -205,6 +209,8 @@ def scan_directory(dirname, start_from=None,
         nomtimefa[i] = np.median(exps['GOALTIME'][ind])
         if np.any(np.abs(exps['GOALTIME'][ind] - nomtimefa[i]) > 1):
             log.warning('Inconsistent GOALTIME on tile ', tiles['TILEID'][i])
+    if offlinetiles is not None:
+        tiles = update_offlinetiles(tiles, offlinetiles)
     if mtldone is not None:
         tiles = update_mtldone(tiles, mtldone)
     tob = desisurvey.tiles.get_tiles()
@@ -386,6 +392,17 @@ def update_donefrac_from_offline(exps, offlinefn):
     exps = exps.copy()
     exps['EFFTIME_SPEC'][me] = offline_eff_time[mo]
     return exps
+
+
+def update_offlinetiles(tiles, offlinetilesfn):
+    otiles = astropy.table.Table.read(offlinetilesfn)
+    mt, mo = desisurvey.utils.match(tiles['TILEID'], otiles['TILEID'])
+    tiles = tiles.copy()
+    tiles['OFFLINE_DONE'] = False
+    ostatus = np.array([s.strip().lower() for s in otiles['OBSSTATUS']])
+    offlinedone = (ostatus == 'obsend') | (ostatus == 'done')
+    tiles['OFFLINE_DONE'][mt] = offlinedone[mo]
+    return tiles
 
 
 def update_mtldone(tiles, mtldonefn):
