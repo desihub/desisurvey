@@ -446,7 +446,7 @@ class NTS():
         days_to_seconds = 60*60*24
         if ((mjd <= self.scheduler.night_ephem['dusk']-5*onemin) or
                 (mjd >= self.scheduler.night_ephem['dawn']-5*onemin)):
-            splittime = 300/days_to_seconds
+            splittime = 301/days_to_seconds
             # in twilight, exposures should never be longer than 300 s
             # according to DJS.
 
