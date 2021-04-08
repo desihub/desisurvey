@@ -215,7 +215,6 @@ class Scheduler(object):
         if self.select_program_by_speed:
             program = self.conditions_to_program(
                 seeing, transparency, skylevel, airmass=airmass)
-            mjd_program_end = self.night_ephem['dawn']
             if ((program == 'DARK') and
                     (mjd_now < self.night_ephem['dusk'])):
                 return 'BRIGHT', self.night_changes[-1]
@@ -225,6 +224,10 @@ class Scheduler(object):
             # if we got here, conditions are good; it's okay to stay here
             # until dawn.  Moonrise would be another case, but the moon starts
             # low and the next tile will move on if conditions are bad enough.
+            if program == 'DARK':
+                mjd_program_end = self.night_ephem['dawn']
+            else:
+                mjd_program_end = self.night_changes[-1]
             return program, mjd_program_end
         # select program based on ephemerides, not conditions.
         idx = 0
