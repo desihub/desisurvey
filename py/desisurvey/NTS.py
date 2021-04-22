@@ -77,13 +77,13 @@ class QueuedList():
             try:
                 self.queued = ascii.read(self.fn, comment='#',
                                          names=['tileid'], format='no_header')
+                self.queued = list(self.queued['tileid'])
             except Exception as e:
                 self.log.error('Could not read in queued file; '
                                'record of past exposures lost!')
                 self.log.error('Got exception trying to load queued file!')
                 self.log.error(e)
-
-            self.queued = list(self.queued['tileid'])
+                self.queued = []
         else:
             self.queued = []
 
