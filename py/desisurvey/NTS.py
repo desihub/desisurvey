@@ -373,7 +373,7 @@ class NTS():
                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
                    'foundtile': False,
                    'conditions': '', 'program': '', 'exposure_factor': 0,
-                   'req_efftime': 0., 'sbprof': 'PSF'}
+                   'req_efftime': 0., 'sbprof': 'PSF', 'mintime': 0}
         if tileid is None:
             self.requestlog.logresponse(badtile)
             return badtile
@@ -418,7 +418,12 @@ class NTS():
 
         # avoid crossing program boundaries, don't observe longer than an hour.
         maxdwell = self.config.maxtime().to(u.day).value
-        mintime = self.config.mintime().to(u.day).value
+        mintime = getattr(programconf, 'mintime', None)
+        if mintime is not None:
+            mintime = mintime()
+        else:
+            mintime = self.config.mintime()
+        mintime = mintime.to(u.day).value
         texp_remaining = max([texp_remaining, mintime])
         texp_remaining = min([texp_remaining, maxdwell])
 
@@ -441,7 +446,7 @@ class NTS():
         days_to_seconds = 60*60*24
         if ((mjd <= self.scheduler.night_ephem['dusk']-5*onemin) or
                 (mjd >= self.scheduler.night_ephem['dawn']-5*onemin)):
-            splittime = 300/days_to_seconds
+            splittime = 301/days_to_seconds
             # in twilight, exposures should never be longer than 300 s
             # according to DJS.
 
@@ -472,7 +477,8 @@ class NTS():
                      'program': str(tile_program),
                      'exposure_factor': float(exposure_factor),
                      'req_efftime': float(efftime),
-                     'sbprof': str(sbprof)}
+                     'sbprof': str(sbprof),
+                     'mintime': float(mintime*days_to_seconds)}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)

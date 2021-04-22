@@ -168,19 +168,17 @@ def afternoon_plan(night=None, exposures=None,
         raise ValueError('Must pass spectra_dir to afternoon_plan or set '
                          'DESI_SPECTRA_DIR.')
 
-    fn = 'tsnr-exposures.fits'
-    os.system('wget -q https://data.desi.lbl.gov/desi/spectro/redux/daily/'
-              '{0} -O {0}.tmp'.format(fn))
-    filelen = os.stat('{}.tmp'.format(fn)).st_size
-    if filelen > 0:
-        os.rename('{}.tmp'.format(fn), fn)
-        offlinedepthfn = fn
-    else:
-        log.warning('Updating {} failed!'.format(fn))
-        if os.path.exists(fn):
-            offlinedepthfn = fn
+    offlinepipelinefiles = ['tsnr-exposures.fits', 'tiles.csv']
+    for i, fn in enumerate(offlinepipelinefiles):
+        os.system('wget -q https://data.desi.lbl.gov/desi/spectro/redux/daily/'
+                  '{0} -O {0}.tmp'.format(fn))
+        filelen = os.stat('{}.tmp'.format(fn)).st_size
+        if filelen > 0:
+            os.rename('{}.tmp'.format(fn), fn)
         else:
-            offlinedepthfn = None
+            log.warning('Updating {} failed!'.format(fn))
+        if not os.path.exists(fn):
+            offlinepipelinefiles[i] = None
 
     if surveyopsdir is None:
         os.system(
@@ -212,11 +210,15 @@ def afternoon_plan(night=None, exposures=None,
         exposures = os.path.join(expdir, 'exposures.ecsv')
     tiles, exps = collect_etc.scan_directory(
         spectra_dir, start_from=exposures,
-        offlinedepth=offlinedepthfn, mtldone=mtldonefn)
+        offlinedepth=offlinepipelinefiles[0],
+        offlinetiles=offlinepipelinefiles[1],
+        mtldone=mtldonefn)
     collect_etc.write_exp(exps, os.path.join(directory, 'exposures.ecsv'))
 
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC'],
                          ignore_pending=True)
+    m = tiles['OFFLINE_DONE'] != 0
+    planner.set_donefrac(tiles['TILEID'][m], status=['obsend']*np.sum(m))
     m = tiles['MTL_DONE'] != 0
     planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m))
 

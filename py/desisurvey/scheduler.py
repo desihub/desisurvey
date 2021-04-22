@@ -213,16 +213,21 @@ class Scheduler(object):
             if verbose:
                 self.log.warning('Tile requested after end of night.')
         if self.select_program_by_speed:
-            if mjd_now < self.night_ephem['dusk']:
-                return 'BRIGHT', self.night_changes[-1]
-            if mjd_now + 300/86400 > self.night_ephem['dawn']:
-                return 'BRIGHT', self.night_changes[-1]
             program = self.conditions_to_program(
                 seeing, transparency, skylevel, airmass=airmass)
-            mjd_program_end = self.night_ephem['dawn']
+            if ((program == 'DARK') and
+                    (mjd_now < self.night_ephem['dusk'])):
+                return 'BRIGHT', self.night_changes[-1]
+            if ((program == 'DARK') and
+                    (mjd_now + 300/86400 > self.night_ephem['dawn'])):
+                return 'BRIGHT', self.night_changes[-1]
             # if we got here, conditions are good; it's okay to stay here
             # until dawn.  Moonrise would be another case, but the moon starts
             # low and the next tile will move on if conditions are bad enough.
+            if program == 'DARK':
+                mjd_program_end = self.night_ephem['dawn']
+            else:
+                mjd_program_end = self.night_changes[-1]
             return program, mjd_program_end
         # select program based on ephemerides, not conditions.
         idx = 0

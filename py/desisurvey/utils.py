@@ -12,9 +12,6 @@ import pytz
 
 import astropy.time
 from astropy.coordinates import EarthLocation
-import astropy.utils.iers
-import astropy.utils.data
-import astropy.utils.exceptions
 import astropy.units as u
 
 import desiutil.log
