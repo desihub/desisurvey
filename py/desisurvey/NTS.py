@@ -373,7 +373,8 @@ class NTS():
                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
                    'foundtile': False,
                    'conditions': '', 'program': '', 'exposure_factor': 0,
-                   'req_efftime': 0., 'sbprof': 'PSF', 'mintime': 0}
+                   'req_efftime': 0., 'sbprof': 'PSF', 'mintime': 0,
+                   'cosmics_splittime': 1000}
         if tileid is None:
             self.requestlog.logresponse(badtile)
             return badtile
@@ -478,7 +479,8 @@ class NTS():
                      'exposure_factor': float(exposure_factor),
                      'req_efftime': float(efftime),
                      'sbprof': str(sbprof),
-                     'mintime': float(mintime*days_to_seconds)}
+                     'mintime': float(mintime*days_to_seconds),
+                     'cosmics_splittime': float(splittime*days_to_seconds)}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)
