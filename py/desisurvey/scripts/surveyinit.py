@@ -219,7 +219,8 @@ def calculate_initial_plan(args):
 
     for index, condition in enumerate(conditions):
         sel = tiles.allowed_in_conditions(condition) & tiles.in_desi
-        sel = sel & (tiletab['DONEFRAC'] < 1)
+        if 'DONEFRAC' in tiletab.dtype.names:
+            sel = sel & (tiletab['DONEFRAC'] < 1)
         if not np.any(sel):
             log.info('Skipping {} program with no tiles.'.format(condition))
             continue
