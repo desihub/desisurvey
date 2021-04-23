@@ -15,7 +15,7 @@ import astropy.io
 import astropy.utils.data
 import astropy.units as u
 
-from desisurvey.test.base import Tester
+from desisurvey.test.base import Tester, read_horizons_moon_ephem
 import desisurvey.utils as utils
 import desisurvey.config as config
 
@@ -23,23 +23,8 @@ import desisurvey.config as config
 class TestUtils(Tester):
 
     def setUp(self):
-        # Configure a CSV reader for the Horizons output format.
-        csv_reader = astropy.io.ascii.Csv()
-        csv_reader.header.comment = r'[^ ]'
-        csv_reader.data.start_line = 35
-        csv_reader.data.end_line = 203
         # Read moon ephemerides for the first week of 2020.
-        path = astropy.utils.data._find_pkg_data_path(
-            os.path.join('data', 'horizons_2020_week1_moon.csv'),
-            package='desisurvey')
-        self.table = csv_reader.read(path)
-        # Horizons CSV file has a trailing comma on each line.
-        self.table.remove_column('col10')
-        # Use more convenient column names.
-        names = ('date', 'jd', 'sun', 'moon', 'ra', 'dec',
-                 'az', 'alt', 'lst', 'frac')
-        for old_name, new_name in zip(self.table.colnames, names):
-            self.table[old_name].name = new_name
+        self.table = read_horizons_moon_ephem()
 
     def tearDown(self):
         pass
