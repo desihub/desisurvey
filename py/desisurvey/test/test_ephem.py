@@ -8,7 +8,7 @@ from astropy.coordinates import ICRS, AltAz
 import astropy.units as u
 import astropy.io
 
-from desisurvey.test.base import Tester
+from desisurvey.test.base import Tester, read_horizons_moon_ephem
 from desisurvey.ephem import get_ephem, get_grid, get_object_interpolator
 from desisurvey.utils import get_location
 
@@ -18,23 +18,8 @@ class TestEphemerides(Tester):
     @classmethod
     def setUpClass(cls):
         super(TestEphemerides, cls).setUpClass()
-        # Configure a CSV reader for the Horizons output format.
-        csv_reader = astropy.io.ascii.Csv()
-        csv_reader.header.comment = r'[^ ]'
-        csv_reader.data.start_line = 35
-        csv_reader.data.end_line = 203
         # Read moon ephemerides for the first week of 2020.
-        path = astropy.utils.data._find_pkg_data_path(
-            os.path.join('data', 'horizons_2020_week1_moon.csv'),
-            package='desisurvey')
-        cls.table = csv_reader.read(path)
-        # Horizons CSV file has a trailing comma on each line.
-        cls.table.remove_column('col10')
-        # Use more convenient column names.
-        names = ('date', 'jd', 'sun', 'moon', 'ra', 'dec',
-                 'az', 'alt', 'lst', 'frac')
-        for old_name, new_name in zip(cls.table.colnames, names):
-            cls.table[old_name].name = new_name
+        cls.table = read_horizons_moon_ephem()
 
     def test_get_ephem(self):
         """Test memory and disk caching"""
