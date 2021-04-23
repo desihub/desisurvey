@@ -2,16 +2,25 @@
 desisurvey change log
 =====================
 
-0.16.1 (unreleased)
+0.17.1 (unreleased)
+-------------------
+
+* No change yet.
+
+0.17.0 (2021-04-23)
 -------------------
 
 * Allow program selection according to conditions, rather than
   ephemerides.  Make NTS more robust.  Set max dwell times based on
   not hitting airmass or observing dark tiles in twilight.  Allow
   requiring low pass tiles before overlapping high pass tiles, and preferring
-  high pass tiles otherwise.  (PR `#132`)
+  high pass tiles otherwise.  (PR `#135`)
+* Fix ERFA and testing support for astropy 4.2 (PRs `#136`_, `#138`_).
+* Switch to github actions instead of travis for testing (PR `#138`_).
 
-.. _`#132`: https://github.com/desihub/desisurvey/pull/132
+.. _`#135`: https://github.com/desihub/desisurvey/pull/135
+.. _`#136`: https://github.com/desihub/desisurvey/pull/136
+.. _`#138`: https://github.com/desihub/desisurvey/pull/138
 
 0.16.0 (2021-03-31)
 -------------------
