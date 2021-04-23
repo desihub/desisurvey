@@ -39,7 +39,7 @@ jobs:
                 python -m pip install git+https://github.com/desihub/desimodel.git@0.13.0#egg=desimodel
                 svn export https://desi.lbl.gov/svn/code/desimodel/${DESIMODEL_DATA}/data
                 python -m pip install git+https://github.com/desihub/specsim.git@v0.14#egg=specsim
-                python -m pip install git+https://github.com/desihub/speclite.git@0.13#egg=speclite
+                python -m pip install git+https://github.com/desihub/speclite.git@v0.13#egg=speclite
                 python -m pip install -r requirements.txt
             - name: Run the test
               run: DESIMODEL=$(pwd) pytest
