@@ -369,7 +369,8 @@ class NTS():
                 'Program ends before exposure starts; is it daytime?')
             mjd_program_end = mjd + 1
 
-        badtile = {'esttime': 0., 'exptime': 0.,
+        badtile = {'ra': 0., 'dec': 90.,
+                   'esttime': 0., 'exptime': 0.,
                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
                    'foundtile': False,
                    'conditions': '', 'program': '', 'exposure_factor': 0,
@@ -468,19 +469,22 @@ class NTS():
             minexptime = minexptime.to(u.s).value
             splitexptime = max([splitexptime, minexptime/days_to_seconds])
 
-        selection = {'esttime': float(exptime*days_to_seconds),
-                     'exptime': float(splitexptime*days_to_seconds),
-                     'count': int(count),
-                     'maxtime': float(maxdwell*days_to_seconds),
-                     'fiberassign': int(tileid),
-                     'foundtile': True,
-                     'conditions': str(sched_program),
-                     'program': str(tile_program),
-                     'exposure_factor': float(exposure_factor),
-                     'req_efftime': float(efftime),
-                     'sbprof': str(sbprof),
-                     'mintime': float(mintime*days_to_seconds),
-                     'cosmics_splittime': float(splittime*days_to_seconds)}
+        selection = {
+            'ra': float(self.scheduler.tiles.tileRA[idx]),
+            'dec': float(self.scheduler.tiles.tileDEC[idx]),
+            'esttime': float(exptime*days_to_seconds),
+            'exptime': float(splitexptime*days_to_seconds),
+            'count': int(count),
+            'maxtime': float(maxdwell*days_to_seconds),
+            'fiberassign': int(tileid),
+            'foundtile': True,
+            'conditions': str(sched_program),
+            'program': str(tile_program),
+            'exposure_factor': float(exposure_factor),
+            'req_efftime': float(efftime),
+            'sbprof': str(sbprof),
+            'mintime': float(mintime*days_to_seconds),
+            'cosmics_splittime': float(splittime*days_to_seconds)}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)

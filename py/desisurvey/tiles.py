@@ -50,6 +50,12 @@ class Tiles(object):
     def __init__(self, tiles_file=None):
         config = desisurvey.config.Configuration()
         self.nogray = config.tiles_nogray()
+        bright_allowed_in_dark = getattr(
+            config, 'bright_allowed_in_dark', None)
+        if bright_allowed_in_dark is not None:
+            self.bright_allowed_in_dark = bright_allowed_in_dark()
+        else:
+            self.bright_allowed_in_dark = False
 
         # Read the specified tiles file.
         self.tiles_file = tiles_file or config.tiles_file()
@@ -226,7 +232,10 @@ class Tiles(object):
     def allowed_in_conditions(self, cond):
         if self.nogray and (cond == 'GRAY'):
             cond = 'DARK'
-        return (self.tileobsconditions == cond)
+        res = (self.tileobsconditions == cond)
+        if self.bright_allowed_in_dark and (cond == 'DARK'):
+            res = res | (self.tileobsconditions == 'BRIGHT')
+        return res
 
     @property
     def overlapping(self):

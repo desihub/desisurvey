@@ -362,6 +362,66 @@ def day_number(date):
     return (get_date(date) - config.first_day()).days
 
 
+def slewtime(ra1, dec1, ra2, dec2, freeslewtime=10,
+             ignore_positive_ra=False):
+    """Estimate slew times.
+
+    Uses slew model from DESI-3687.  Assumes that 10 s of slew time are
+    "free"---i.e., they can be overlapped with other overheads.
+
+    Parameters
+    ----------
+    ra1 : float
+        right ascension (deg)
+    dec1 : float
+        declination (deg)
+    ra2 : float
+        right ascension (deg)
+    dec2 : float
+        declination (deg)
+    freeslewtime : float
+        amount of time during which one can slew "for free" (s)
+    ignore_positive_ra : float
+        if True, slew time in the positive RA direction doesn't count.
+        Intended to provide no penalty for slews that are just keeping up
+        with the sky.
+
+    Returns
+    -------
+    Estimated slew time in s needed to reach target.
+    """
+    slewconstants = dict(ra=[0.45, 0.05, 8],
+                         dec=[0.45, 0.05, 8])
+    if ((ra1.shape != ra2.shape) or (ra1.shape != dec1.shape) or
+        (ra1.shape != dec2.shape)):
+        raise ValueError('ra1, ra2, dec1, dec2 must have same shape.')
+    isscalar = np.ndim(ra1) == 0
+    ra1 = np.atleast_1d(ra1)
+    dec1 = np.atleast_1d(dec1)
+    ra2 = np.atleast_1d(ra2)
+    dec2 = np.atleast_1d(dec2)
+    def slewtimefun(dx, slewtype):
+        v, a, t = slewconstants[slewtype]
+        dx = ((dx + 180) % 360)-180
+        if slewtype == 'ra' and ignore_positive_ra:
+            m = dx > 0
+            dx[m] = 0
+        dx = np.abs(dx)
+        m = dx < v**2/a
+        tt = np.zeros(len(dx), dtype='f4')
+        tt[m] = 2*np.sqrt(dx[m]/a)+t
+        tt[~m] = dx[~m]/v+t+v/a
+        return np.clip(tt-freeslewtime, 0, np.inf)
+    tra = slewtimefun(ra1-ra2, 'ra')
+    tdec = slewtimefun(dec1-dec2, 'dec')
+    tra = np.atleast_1d(tra)
+    tdec = np.atleast_1d(tdec)
+    tslew = np.max([tra, tdec], axis=0)
+    if isscalar:
+        tslew = tslew[0]
+    return tslew
+
+
 def separation_matrix(ra1, dec1, ra2, dec2, max_separation=None):
     """Build a matrix of pair-wise separation between (ra,dec) pointings.
 
