@@ -13,6 +13,18 @@ import desimodel.io
 import numpy as np
 
 
+def yesno(question):
+    """Simple Yes/No Function."""
+    prompt = f'{question} ? (y/n): '
+    ans = input(prompt).strip().lower()
+    if ans not in ['y', 'n', 'yes', 'no']:
+        print(f'{ans} is invalid, please try again...')
+        return yesno(question)
+    if ans == 'y':
+        return True
+    return False
+
+
 def afternoon_plan(night=None, exposures=None,
                    configfn='config.yaml',
                    fiber_assign_dir=None, spectra_dir=None,
@@ -102,6 +114,9 @@ def afternoon_plan(night=None, exposures=None,
         log.info('SURVEYOPS directory not found; not performing '
                  'surveyops updates.')
 
+    # update FIBER_ASSIGN_DIR
+    subprocess.run(['svn', 'up', os.environ['FIBER_ASSIGN_DIR']])
+
     tilefn = find_tile_file(config.tiles_file())
     rulesfn = find_rules_file(config.rules_file())
     if not os.path.exists(tilefn):
@@ -112,6 +127,23 @@ def afternoon_plan(night=None, exposures=None,
         return
     newtilefn = os.path.join(directory, os.path.basename(tilefn))
     newrulesfn = os.path.join(directory, os.path.basename(rulesfn))
+
+    if surveyopsdir is not None:
+        import filecmp
+        surveyopstilefn = os.path.join(surveyopsdir, 'ops',
+                                       os.path.basename(tilefn))
+        if not os.path.exists(surveyopstilefn):
+            log.info('No SURVEYOPS tile file; not updating from SURVEYOPS.')
+            doupdate = False
+        else:
+            doupdate = not filecmp.cmp(tilefn, surveyopstilefn, shallow=False)
+        if doupdate:
+            qstr = ('tile file in SURVEYOPS is updated relative '
+                    'to {}.  Overwrite with SURVEYOPS tile file?'.format(
+                        tilefn))
+            update = yesno(qstr)
+            if update:
+                shutil.copy(surveyopstilefn, tilefn)
 
     # config file will always be called config.yaml so ICS knows where to look
     newconfigfn = os.path.join(directory, 'config.yaml')
@@ -245,8 +277,9 @@ def afternoon_plan(night=None, exposures=None,
         subprocess.run(['cp', os.path.join(directory, 'exposures.ecsv'),
                         os.path.join(surveyopsdir, 'ops')])
         subprocess.run(['cp', newtilefn, os.path.join(surveyopsdir, 'ops')])
-        print('should run: svn ci '+surveyopsdir+
+        print('should run: svn ci ' + surveyopsdir +
               ' -m Update exposures and tiles for '+nightstr)
+    shutil.copy(newtilefn, tilefn)  # update working directory tilefn
 
 
 def find_rules_file(file_name):

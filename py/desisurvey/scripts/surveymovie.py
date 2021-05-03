@@ -143,7 +143,12 @@ class Animator(object):
         self.dec = self.tiles.tileDEC
         self.tileprogram = self.tiles.tileprogram
         self.tileid = self.tiles.tileID
-        self.prognames = self.tiles.programs
+        self.prognames = [p for p in self.tiles.programs]
+        # if DARK and BRIGHT are names, put them first
+        for pname in ['BRIGHT', 'DARK']:
+            if pname in self.prognames:
+                self.prognames.remove(pname)
+                self.prognames = [pname] + self.prognames
         nprogram = len(self.prognames)
         self.tiles_per_program = {p: np.sum(self.tiles.program_mask[p])
                                   for p in self.prognames}
@@ -241,13 +246,13 @@ class Animator(object):
                             xprog, yprog, lw=2, ls='-',
                             color=pcolors[pname])[0])
                     continue
-                if progidx >= len(self.tiles.programs):
+                if progidx >= len(self.prognames):
                     # e.g., for no-gray mode, where we have only two programs.
                     continue
                 ax.set_xlim(-55, 293)
                 ax.set_ylim(-20, 77)
                 # Draw label for this plot.
-                pname = self.tiles.programs[progidx]
+                pname = self.prognames[progidx]
                 pc = pcolors[pname]
                 self.labels.append(ax.annotate(
                     '{0} 100.0%'.format(pname),
@@ -436,7 +441,7 @@ class Animator(object):
             score = self.scores[iexp - self.iexp0]
             max_score = np.max(score)
         for progidx, scatter in enumerate(self.scatters):
-            sel = (self.tileprogram == self.tiles.programs[progidx])
+            sel = (self.tileprogram == self.prognames[progidx])
             done = self.status[sel] == 2
             avail = self.available[sel]
             inplan = self.planned[sel]

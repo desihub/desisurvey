@@ -303,6 +303,7 @@ class Scheduler(object):
             When no tile is observable, only the last two tuple fields
             will be valid, and this method should be called again after
             some dead-time delay.  The tuple fields are:
+
              - TILEID: ID of the tile to observe.
              - PROGRAM: program of the tile to observe.
              - DONEFRAC: fractional SNR2 already accumulated for the selected tile.

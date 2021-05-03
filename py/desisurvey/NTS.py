@@ -77,13 +77,13 @@ class QueuedList():
             try:
                 self.queued = ascii.read(self.fn, comment='#',
                                          names=['tileid'], format='no_header')
+                self.queued = list(self.queued['tileid'])
             except Exception as e:
                 self.log.error('Could not read in queued file; '
                                'record of past exposures lost!')
                 self.log.error('Got exception trying to load queued file!')
                 self.log.error(e)
-
-            self.queued = list(self.queued['tileid'])
+                self.queued = []
         else:
             self.queued = []
 
@@ -373,7 +373,8 @@ class NTS():
                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
                    'foundtile': False,
                    'conditions': '', 'program': '', 'exposure_factor': 0,
-                   'req_efftime': 0., 'sbprof': 'PSF', 'mintime': 0}
+                   'req_efftime': 0., 'sbprof': 'PSF', 'mintime': 0,
+                   'cosmics_splittime': 1000}
         if tileid is None:
             self.requestlog.logresponse(badtile)
             return badtile
@@ -478,7 +479,8 @@ class NTS():
                      'exposure_factor': float(exposure_factor),
                      'req_efftime': float(efftime),
                      'sbprof': str(sbprof),
-                     'mintime': float(mintime*days_to_seconds)}
+                     'mintime': float(mintime*days_to_seconds),
+                     'cosmics_splittime': float(splittime*days_to_seconds)}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)

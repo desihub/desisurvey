@@ -28,7 +28,7 @@ import desisurvey.tiles
 # survey validation and the 5-year main survey, so should
 # not normally need to be changed, except for testing.
 START_DATE = datetime.date(2019, 1, 1)
-STOP_DATE = datetime.date(2025, 12, 31)
+STOP_DATE = datetime.date(2027, 12, 31)
 
 _ephem = None
 

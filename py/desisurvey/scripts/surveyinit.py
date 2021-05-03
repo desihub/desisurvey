@@ -214,9 +214,13 @@ def calculate_initial_plan(args):
         log.info('Warning: some tiles are not observable in '
                  'gray/dark/bright.  These will not be observable by the NTS '
                  'by default.')
+        badprogram = np.unique(tiles.tileprogram[~tile_is_assignable])
+        log.info('Problematic programs: {}'.format(' '.join(badprogram)))
 
     for index, condition in enumerate(conditions):
         sel = tiles.allowed_in_conditions(condition) & tiles.in_desi
+        if 'DONEFRAC' in tiletab.dtype.names:
+            sel = sel & (tiletab['DONEFRAC'] < 1)
         if not np.any(sel):
             log.info('Skipping {} program with no tiles.'.format(condition))
             continue

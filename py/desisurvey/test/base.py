@@ -3,8 +3,10 @@ import os
 import datetime
 import tempfile
 import shutil
+from pkg_resources import resource_filename
 
 import astropy.table
+import astropy.io.ascii
 
 import desimodel.io
 
@@ -66,3 +68,34 @@ class Tester(unittest.TestCase):
         # Clear caches.
         desisurvey.ephem._ephem = None
         desisurvey.tiles._cached_tiles = {}
+
+def read_horizons_moon_ephem():
+    """Utility function for parsing data/horizons_2020_week1_moon.csv format
+
+    Returns astropy.table.Table of Horizons moom ephemeris
+    """
+    import astropy.io.ascii
+
+    filename = os.path.join('data', 'horizons_2020_week1_moon.csv')
+    horizonsfile = resource_filename('desisurvey', filename)
+
+    #- Horizons "csv" files have some non-standard header and footer data
+    #- separated by $$SOE (start of ephemeris) and $$EOE (end of ephemeris)
+    rows = list()
+    with open(horizonsfile) as fx:
+        #- Skip over header until "$$SOE" marker
+        for line in fx:
+            if line.startswith('$$SOE'):
+                break
+        #- Read data rows until "$$EOE" marker
+        for line in fx:
+            if line.startswith('$$EOE'):
+                break
+            else:
+                rows.append(line)
+
+    #- Parse CSV rows, providing column names
+    names = ('date', 'jd', 'sun', 'moon', 'ra', 'dec',
+             'az', 'alt', 'lst', 'frac', 'blank')
+    moon_ephem = astropy.io.ascii.read(rows, names=names)
+    return moon_ephem
