@@ -314,6 +314,8 @@ class NTS():
         seeing = conditions.get('seeing', None)
         skylevel = conditions.get('skylevel', None)
         transparency = conditions.get('transparency', None)
+        current_ra = conditions.get('current_ra', None)
+        current_dec = conditions.get('current_dec', None)
         if seeing is None:
             seeing = self.default_seeing
         if skylevel is None:
@@ -360,7 +362,7 @@ class NTS():
 
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program,
-            verbose=True)
+            verbose=True, current_ra=current_ra, current_dec=current_dec)
         self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
