@@ -209,7 +209,7 @@ class NTS():
             self.night = desisurvey.utils.get_date(night)
         if obsplan is None:
             if nts_survey is None:
-                nts_survey = 'sv1'
+                nts_survey = 'sv3'
             nts_survey = nts_survey.lower()
             nts_dir = (desisurvey.utils.night_to_str(self.night) + '-' +
                        nts_survey)
