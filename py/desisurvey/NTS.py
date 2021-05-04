@@ -314,8 +314,8 @@ class NTS():
         seeing = conditions.get('seeing', None)
         skylevel = conditions.get('skylevel', None)
         transparency = conditions.get('transparency', None)
-        current_ra = conditions.get('current_ra', None)
-        current_dec = conditions.get('current_dec', None)
+        current_ra = conditions.get('sky_ra', None)
+        current_dec = conditions.get('sky_dec', None)
         if seeing is None:
             seeing = self.default_seeing
         if skylevel is None:

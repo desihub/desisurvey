@@ -59,7 +59,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         moon_up_factor = getattr(nts.config.conditions, cond).moon_up_factor()
         expdict = dict(mjd=t0, previoustiles=previoustiles)
         conddict = dict(skylevel=moon_up_factor, seeing=seeing,
-                        current_ra=current_ra, current_dec=current_dec)
+                        sky_ra=current_ra, sky_dec=current_dec)
         res = nts.next_tile(exposure=expdict, conditions=conddict,
                             speculative=True)
         if not res['foundtile']:
