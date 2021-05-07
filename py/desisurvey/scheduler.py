@@ -79,6 +79,7 @@ class Scheduler(object):
 
         # Allocate memory for internal arrays.
         self.exposure_factor = np.zeros(ntiles)
+        self.slewtimes = np.zeros(ntiles)
         self.hourangle = np.zeros(ntiles)
         self.airmass = np.zeros(ntiles)
         self.in_night_pool = np.zeros(ntiles, bool)
@@ -251,7 +252,8 @@ class Scheduler(object):
         return program, mjd_program_end
 
     def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15.,
-                  greediness=0., program=None, verbose=False):
+                  greediness=0., program=None, verbose=False,
+                  current_ra=None, current_dec=None):
         r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -294,6 +296,10 @@ class Scheduler(object):
             PROGRAM of tile to select.  Default of None selects the appropriate
             PROGRAM given current moon/twilight conditions.  Forcing a particular
             program leads PROGEND to be infinity.
+        current_ra : float
+            current ra of telescope; used for computing penalties to long slews
+        current_dec : float
+            current dec of telescope; used for computing penalties to long slews
 
         Returns
         -------
@@ -364,7 +370,8 @@ class Scheduler(object):
         # Calculate the hour angle of each available tile in degrees.
 
         sbprof = self.sbprof[self.tile_sel][0]
-        if not np.all(self.sbprof[self.tile_sel] == sbprof):
+        if ((not np.all(self.sbprof[self.tile_sel] == sbprof)) and
+                (not self.tiles.bright_allowed_in_dark)):
             self.log.warning('Multiple SBPROF in same selection.')
         weather_factor = ETC.weather_factor(seeing, transp, skylevel,
                                             sbprof=sbprof)
@@ -389,6 +396,16 @@ class Scheduler(object):
             if verbose:
                 self.log.warning('No tiles left to observe after HA/airmass cut.')
             return None, None, None, None, None, program, mjd_program_end
+
+        if current_ra is not None:
+            self.slewtimes[:] = 1e8
+            self.slewtimes[self.tile_sel] = desisurvey.utils.slewtime(
+                current_ra*np.ones(np.sum(self.tile_sel)),
+                current_dec*np.ones(np.sum(self.tile_sel)),
+                self.tiles.tileRA[self.tile_sel],
+                self.tiles.tileDEC[self.tile_sel], ignore_positive_ra=True)
+        else:
+            self.slewtimes[:] = 0
 
         # Estimate exposure factors for all available tiles.
         self.exposure_factor[:] = 1e8
@@ -415,6 +432,8 @@ class Scheduler(object):
             -np.log(self.exposure_factor[self.tile_sel]) * greediness)
         # Add tile priorities.
         log_score += self.log_priority[self.tile_sel]
+        log_score += -self.slewtimes[self.tile_sel] / 100
+        # ~40 deg slew triggers a log score decrease of 1.
         # Select the tile with the highest (log) score.
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
 

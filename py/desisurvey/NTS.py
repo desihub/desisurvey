@@ -314,6 +314,8 @@ class NTS():
         seeing = conditions.get('seeing', None)
         skylevel = conditions.get('skylevel', None)
         transparency = conditions.get('transparency', None)
+        current_ra = conditions.get('sky_ra', None)
+        current_dec = conditions.get('sky_dec', None)
         if seeing is None:
             seeing = self.default_seeing
         if skylevel is None:
@@ -360,7 +362,7 @@ class NTS():
 
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program,
-            verbose=True)
+            verbose=True, current_ra=current_ra, current_dec=current_dec)
         self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
@@ -369,7 +371,8 @@ class NTS():
                 'Program ends before exposure starts; is it daytime?')
             mjd_program_end = mjd + 1
 
-        badtile = {'esttime': 0., 'exptime': 0.,
+        badtile = {'ra': 0., 'dec': 90.,
+                   'esttime': 0., 'exptime': 0.,
                    'count': 0, 'maxtime': 0., 'fiberassign': 0,
                    'foundtile': False,
                    'conditions': '', 'program': '', 'exposure_factor': 0,
@@ -468,19 +471,22 @@ class NTS():
             minexptime = minexptime.to(u.s).value
             splitexptime = max([splitexptime, minexptime/days_to_seconds])
 
-        selection = {'esttime': float(exptime*days_to_seconds),
-                     'exptime': float(splitexptime*days_to_seconds),
-                     'count': int(count),
-                     'maxtime': float(maxdwell*days_to_seconds),
-                     'fiberassign': int(tileid),
-                     'foundtile': True,
-                     'conditions': str(sched_program),
-                     'program': str(tile_program),
-                     'exposure_factor': float(exposure_factor),
-                     'req_efftime': float(efftime),
-                     'sbprof': str(sbprof),
-                     'mintime': float(mintime*days_to_seconds),
-                     'cosmics_splittime': float(splittime*days_to_seconds)}
+        selection = {
+            'ra': float(self.scheduler.tiles.tileRA[idx]),
+            'dec': float(self.scheduler.tiles.tileDEC[idx]),
+            'esttime': float(exptime*days_to_seconds),
+            'exptime': float(splitexptime*days_to_seconds),
+            'count': int(count),
+            'maxtime': float(maxdwell*days_to_seconds),
+            'fiberassign': int(tileid),
+            'foundtile': True,
+            'conditions': str(sched_program),
+            'program': str(tile_program),
+            'exposure_factor': float(exposure_factor),
+            'req_efftime': float(efftime),
+            'sbprof': str(sbprof),
+            'mintime': float(mintime*days_to_seconds),
+            'cosmics_splittime': float(splittime*days_to_seconds)}
         if not speculative:
             self.queuedlist.add(tileid)
         self.log.info('Next selection: %r' % selection)

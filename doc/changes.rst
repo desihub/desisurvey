@@ -5,7 +5,7 @@ desisurvey change log
 0.17.1 (unreleased)
 -------------------
 
-* No change yet.
+* Add slew time to simulations and favor short slews in tile selection.
 
 0.17.0 (2021-04-23)
 -------------------

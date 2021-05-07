@@ -220,7 +220,9 @@ def calculate_initial_plan(args):
     for index, condition in enumerate(conditions):
         sel = tiles.allowed_in_conditions(condition) & tiles.in_desi
         if 'DONEFRAC' in tiletab.dtype.names:
-            sel = sel & (tiletab['DONEFRAC'] < 1)
+            sel = (sel & (tiletab['DONEFRAC'] < 1) &
+                   (tiletab['STATUS'] != 'obsend') &
+                   (tiletab['STATUS'] != 'done'))
         if not np.any(sel):
             log.info('Skipping {} program with no tiles.'.format(condition))
             continue
@@ -286,7 +288,7 @@ def calculate_initial_plan(args):
 
     # add a DESIGNHA column or overwrite one to an existing tile file.
     tiletab['DESIGNHA'] = np.zeros(len(tiletab), dtype='f4')
-    tiletab['DESIGNHA'].format = '%7.3f'
+    tiletab['DESIGNHA'].format = '%7.2f'
     tiletab['DESIGNHA'].unit = tiletab['RA'].unit
     tiletab['DESIGNHA'].description = 'Design hour angles'
     _, mt, md = np.intersect1d(tiletab['TILEID'], design['TILEID'],

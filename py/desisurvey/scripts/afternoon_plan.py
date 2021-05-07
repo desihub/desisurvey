@@ -15,7 +15,7 @@ import numpy as np
 
 def yesno(question):
     """Simple Yes/No Function."""
-    prompt = f'{question} ? (y/n): '
+    prompt = f'{question}? (y/n): '
     ans = input(prompt).strip().lower()
     if ans not in ['y', 'n', 'yes', 'no']:
         print(f'{ans} is invalid, please try again...')
@@ -139,7 +139,7 @@ def afternoon_plan(night=None, exposures=None,
             doupdate = not filecmp.cmp(tilefn, surveyopstilefn, shallow=False)
         if doupdate:
             qstr = ('tile file in SURVEYOPS is updated relative '
-                    'to {}.  Overwrite with SURVEYOPS tile file?'.format(
+                    'to {}.  Overwrite with SURVEYOPS tile file'.format(
                         tilefn))
             update = yesno(qstr)
             if update:
@@ -278,7 +278,7 @@ def afternoon_plan(night=None, exposures=None,
                         os.path.join(surveyopsdir, 'ops')])
         subprocess.run(['cp', newtilefn, os.path.join(surveyopsdir, 'ops')])
         print('should run: svn ci ' + surveyopsdir +
-              ' -m Update exposures and tiles for '+nightstr)
+              ' -m "Update exposures and tiles for %s"' % nightstr)
     shutil.copy(newtilefn, tilefn)  # update working directory tilefn
 
 

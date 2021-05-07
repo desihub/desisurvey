@@ -286,7 +286,7 @@ class Planner(object):
     def obsend(self):
         return ((self.tile_status == 'obsend') |
                 (self.tile_status == 'done') |
-                (self.donefrac > self.min_snr2_fraction))
+                (self.donefrac >= self.min_snr2_fraction))
 
     def obsend_by_program(self):
         tiledone = self.obsend()
@@ -330,7 +330,7 @@ class Planner(object):
         t.meta = meta
         t['DESIGNHA'] = self.designha
         t['DESIGNHA'].format = '%7.2f'
-        t['DESIGNHA'].description = 'Design hour angle'
+        t['DESIGNHA'].description = 'Design hour angles'
         t['PRIORITY'] = self.tile_priority
         t['PRIORITY'].format = '%10.3e'
         t['PRIORITY'].description = 'Tile observation priority'
