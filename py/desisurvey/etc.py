@@ -236,30 +236,49 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     return _moonCoefficients.dot(X)
 
 
-def sky_level(mjd, ra, dec): 
-    ''' Calculate the sky surface brightness given MJD, RA, and Dec 
+def sky_level(mjd, ra, dec, moon_ill=None, moon_DECRA=None, moon_ALTAZ=None, sun_DECRA=None, sun_ALTAZ=None): 
+    ''' Calculate the sky level. Sky level is defined as sky surface brightness
+    for given MJD, RA, and Dec over nominal sky sufrace brightness 
 
     Parameters
     ----------
     mjd : float
-
+        date 
     ra : float 
         RA in deg
-
     dec : float
         Dec in degrees deg
+    moon_ill : float, optional
+        moon illumination 
+    moon_DECRA : optional
+        moon Dec and RA interpolator object from desisurvey.ephem
+    moon_ALTAZ : optional
+        moon Alt and AZ interpolator object from desisurvey.ephem
+    sun_DECRA : optional
+        sun Dec and RA interpolator object from desisurvey.ephem
+    sun_ALTAZ : optional
+        sun Alt and AZ interpolator object from desisurvey.ephem
 
     Returns
     -------
-    float 
-        sky surface brightness in units of 1e-17 erg/s/cm^2/A/arcsec^2
+    sky level : float 
+        current sky brightness over nominal sky brightness
     '''
-    ephem = desisurvey.ephem.get_ephem()
-    night = desisurvey.utils.get_date(mjd) 
-    night_ephem = ephem.get_night(night)
+    if moon_DECRA is None or moon_ALTAZ is None or sun_DECRA is None or sun_ALTAZ is None:
+        ephem = desisurvey.ephem.get_ephem()
+        night = desisurvey.utils.get_date(mjd) 
+        night_ephem = ephem.get_night(night)
 
-    # get moon illumination 
-    moon_ill = night_ephem['moon_illum_frac']
+        # calculate moon altitude and separation 
+        moon_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=False)
+        moon_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=True)
+
+        # sun moon altitude and separation 
+        sun_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=False)
+        sun_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=True)
+
+        # get moon illumination 
+        moon_ill = night_ephem['moon_illum_frac']
 
     if ra is None or dec is None: 
         # default values when there's no tile position yet 
@@ -276,45 +295,29 @@ def sky_level(mjd, ra, dec):
             astropy.time.Time(mjd, format='mjd'), 
             ra * u.deg, 
             dec * u.deg)
-
-    # calculate moon altitude and separation 
-    moon_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=False)
-    moon_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=True)
-
+    # moon ephem
     moon_alt, _ = moon_ALTAZ(mjd)     # moon altitude
     moon_dec, moon_ra = moon_DECRA(mjd)
     moon_sep = desisurvey.utils.separation_matrix( # separation 
             [moon_ra], [moon_dec], [ra], [dec])[0][0]
-
-    # sun moon altitude and separation 
-    sun_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=False)
-    sun_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=True)
-
+    # sun ephem
     sun_alt, _ = sun_ALTAZ(mjd) # altitude
     sun_dec, sun_ra = sun_DECRA(mjd)
     sun_sep = desisurvey.utils.separation_matrix([sun_ra], [sun_dec], [ra],
             [dec])[0][0]
-
-    print(airmass, moon_ill,moon_sep, moon_alt, sun_sep, sun_alt)
-
-    assert moon_sep > 30. - moon_alt
-    assert moon_sep < 160. - 1.1 * moon_alt
-    assert moon_sep < moon_alt + 250. 
-    assert moon_sep > moon_alt - 50.
     # sky brightness without twilight at 5000A for observing conditions 
     Isky5000_exp = Isky5000_notwilight_regression(airmass, moon_ill, moon_sep, moon_alt)
-
      # add twilight contribution 
     if sun_alt >= -18.:
         Isky5000_exp += Isky5000_twilight_regression(airmass, sun_sep, sun_alt)
+
+    Isky5000_nom = 1.1282850428182252 # 1e-17 erg/s/cm^2/A/arcsec2
     
-    ## sky fiber flux  
-    #fibflux5000_exp = Isky5000_exp * 1.862089 # 1e-17 erg/s/cm^2/A
-    #
-    ## 0.0629735016982807 = 1e-17 x (photons per bin) x throughput) at 5000A 
-    #sky_photon_per_sec_exp = fibflux5000_exp * 0.0629735016982807
-    #return sky_photon_per_sec_exp
-    return Isky5000_exp
+    #if moon_sep < 30. - moon_alt: print('moon sep < 30 - moon alt', Isky5000_exp) 
+    #if moon_sep > 160. - 1.1 * moon_alt: print('moon sep > 160 - 1.1 moon alt', Isky5000_exp) 
+    #if moon_sep > moon_alt + 250: print('moon sep > 250. + moon alt', Isky5000_exp) 
+    #if moon_sep < moon_alt - 50: print('moon sep > moon alt - 50', moon_sep, moon_alt, Isky5000_exp) 
+    return Isky5000_exp/Isky5000_nom
 
 
 def Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt): 
@@ -351,42 +354,62 @@ def Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt):
         twilight in units of erg/s/cm^2/A/arcsec^2
     '''
     # polynomial of order
-    norder = 5 
+    norder = 6 
     # polynomial regression cofficients for estimating exposure time factor during
     # non-twilight from airmass, moon_frac, moon_sep, moon_alt  
-    coeffs = np.array([ 
-        1.19728287e-02,  2.68146174e-02,  2.78840941e-02,  4.41723544e-03,
-       -1.02111676e-01,  7.65110151e-03,  1.63878220e-02, -3.08958375e-02,
-        3.85657345e-01,  6.83474920e-03,  3.06045766e-01,  2.55798622e-01,
-        1.19306254e-03, -1.04242412e-02, -3.34780689e-03, -1.68835833e-02,
-        1.11378109e-02, -1.75611187e-01, -2.38751513e-01,  1.46593863e-02,
-       -4.36980545e-02, -1.78128533e-01,  5.85014404e-03,  1.37745149e-02,
-       -1.81392009e-03, -1.27115538e-02,  9.35953790e-02, -1.52422946e-01,
-       -1.74469624e-04, -6.01814594e-03, -2.13820870e-04, -7.40115962e-05,
-       -4.43960687e-05,  1.31544250e-04,  5.23119315e-05, -3.07378710e-02,
-        3.50689477e-02,  1.85015093e-01,  6.13788213e-02,  1.98622649e-02,
-       -7.03566704e-02, -2.70010457e-01, -4.13256930e-03, -4.65235557e-03,
-        2.08199644e-03,  4.06645589e-03,  2.08415057e-01,  4.87587825e-01,
-       -7.34996335e-03,  1.37774943e-03,  6.26446800e-03,  2.14264776e-05,
-       -1.34520777e-05, -1.28680576e-04, -2.98020923e-05,  1.41853618e-03,
-       -2.22111586e-01, -5.77624465e-01, -1.09989601e-02, -2.77969195e-04,
-        2.17332386e-03,  1.47785979e-04,  1.63001051e-04,  3.10888811e-05,
-       -5.98993375e-05, -8.54879999e-08,  3.29709501e-07,  2.92447174e-08,
-       -2.79763418e-07, -2.38343236e-08, -1.10769335e-01,  8.24805309e-02,
-       -2.67759016e-02, -1.09365333e-03,  9.87385635e-03,  3.12620536e-02,
-        9.15874867e-02, -2.52374361e-05, -4.92100655e-04, -4.21467759e-04,
-        5.28695530e-03,  1.93471362e-01, -5.37647583e-02, -4.34387094e-04,
-       -2.25656833e-03, -7.15039182e-04,  1.18896366e-05,  2.77215519e-05,
-        2.81214300e-05, -2.48811976e-06,  1.29700918e-02, -1.92447646e-02,
-       -2.44212957e-01, -5.99603226e-03, -2.76089664e-03,  9.14612070e-04,
-        6.91296852e-05,  1.02360578e-04,  1.16371717e-05, -2.52971480e-05,
-       -1.37227312e-07, -3.75516901e-07,  5.48164999e-08,  5.06994020e-07,
-        1.93984829e-07,  5.32931890e-02,  5.79701139e-01,  4.34770814e-01,
-       -6.79348983e-03, -1.31426633e-02, -6.14432600e-05,  1.39891173e-04,
-        3.29198340e-04,  1.11812563e-04, -1.17664897e-05, -1.29847018e-06,
-       -3.91089212e-06, -2.85449951e-06, -3.27679136e-07,  3.48519396e-07,
-        3.29795490e-09,  7.65512533e-09,  6.37102357e-09,  5.95568585e-10,
-       -2.63641980e-09, -1.30434882e-09])
+    coeffs = np.array([ 1.37122205e-02,  1.19640701e-02,  8.16266472e-03,  1.39280691e-01,
+       -3.34998306e-05,  1.03669586e-02,  4.14594997e-03,  4.98021653e-02,
+        2.04047595e-03,  2.65405851e-03,  9.64071111e-02,  5.05776641e-02,
+       -1.83615882e-02, -3.08046695e-02, -6.42666661e-03,  1.85826555e-02,
+       -1.31684802e-03, -6.31654630e-02, -2.75126470e-02, -6.66878948e-04,
+        5.98373278e-02, -2.63741965e-02,  3.76787045e-02,  4.90090134e-02,
+        1.88864338e-02, -4.62783691e-03,  2.14026758e-02, -2.84568954e-03,
+        2.70850466e-02,  1.81878506e-02,  1.19064002e-03,  2.01685330e-05,
+        6.32815029e-05,  2.19722530e-04, -2.84904174e-05,  4.19099793e-02,
+       -3.35908059e-03, -4.04610260e-02,  5.02943104e-02, -2.51984239e-03,
+       -1.07739033e-03, -1.30186514e-01, -4.01654696e-02, -3.46066336e-02,
+       -1.18782966e-02, -1.50282808e-03,  2.07729906e-02, -6.47500952e-02,
+       -3.04598385e-02, -1.57347975e-02,  2.54821102e-03,  3.64911542e-05,
+       -4.62796429e-05, -3.23300406e-04, -1.78909655e-04, -1.24732804e-03,
+        6.34377564e-02, -2.72372301e-01, -2.71942506e-02, -1.10716987e-02,
+        4.76993374e-03, -3.56730604e-04, -1.03304340e-04, -1.68009283e-04,
+       -4.62115541e-05,  2.50550445e-06,  9.68241078e-07,  8.13914082e-07,
+        5.54375178e-07,  1.48456774e-06,  7.75842516e-02,  5.87414817e-04,
+        7.64725150e-02,  2.20412705e-02, -3.13542091e-04, -2.85748098e-02,
+       -5.79352294e-02,  1.68630867e-02,  8.05659390e-03, -9.36412652e-04,
+        6.02392576e-03,  6.04139180e-02, -3.02037097e-02,  2.86976403e-02,
+       -8.55838311e-04,  4.45485436e-03, -5.92335120e-05,  1.30608798e-04,
+        2.76992145e-04,  1.73417298e-04,  8.46802477e-05,  1.44803613e-01,
+       -1.41019852e-01, -8.82311141e-03,  2.40245147e-02,  8.55080444e-03,
+        1.65751285e-04, -3.06026118e-04,  2.47806624e-05, -1.04175553e-04,
+       -9.60076655e-07,  1.25270206e-06, -2.26510053e-07, -8.13034123e-07,
+       -3.62994514e-07,  8.10275226e-03,  1.30265610e-01, -2.59539811e-02,
+        2.81777445e-02, -2.72609442e-02, -6.15755933e-05, -6.96052078e-05,
+        4.44190852e-04,  1.88926726e-04, -9.41703486e-05,  3.33875647e-06,
+        4.69869178e-06,  3.38184992e-07,  3.36524261e-07,  7.88612964e-07,
+       -2.53343718e-08, -6.01290739e-08, -3.55412440e-08, -9.68385387e-09,
+       -2.70149823e-09, -7.00167017e-09,  1.20582063e-01,  1.44232169e-02,
+       -5.99644863e-02, -5.46588272e-02,  3.79091286e-03,  1.13505888e-01,
+        1.40498432e-01, -1.28698148e-03,  3.88926808e-03,  3.27254434e-03,
+        1.84300473e-02,  7.48888214e-02,  3.77593511e-02, -1.68928339e-02,
+       -1.38366855e-02, -7.65439127e-03,  3.79474387e-05, -7.28387298e-05,
+       -1.86982036e-04, -8.33117928e-05,  2.20980133e-03,  2.16668147e-01,
+        1.36526658e-01,  4.16746892e-03, -6.47206461e-03, -2.96650732e-03,
+        8.65687911e-05,  4.72609545e-04,  4.72384634e-04,  1.51577611e-04,
+       -3.88374762e-07, -1.41057120e-06, -1.18013283e-08,  1.54156990e-06,
+        4.42399919e-07, -4.41145646e-04,  1.39000704e-01, -4.37408535e-01,
+       -1.54311899e-02, -1.91755401e-03,  4.36138614e-03, -4.42645315e-05,
+       -8.34403032e-06, -1.53210208e-04, -3.48132905e-05,  7.41531513e-07,
+       -2.36866678e-06, -4.74525136e-06, -4.84825494e-06, -1.02298977e-06,
+       -1.75128388e-09,  1.07399591e-08,  1.26208068e-08,  4.31576944e-09,
+       -5.13099539e-09, -1.26290889e-09,  1.32565239e-02,  1.36316867e-01,
+        4.99691249e-01, -1.74968493e-02, -3.34139883e-03, -2.42772081e-03,
+        3.36178419e-04,  2.23896110e-04,  1.73634367e-04, -1.38246185e-06,
+       -2.40280959e-06, -2.66317367e-06, -2.80539906e-06, -4.19012237e-07,
+        4.36408043e-07, -5.34778782e-09, -2.87653770e-08, -2.16845793e-09,
+        3.21431780e-08,  2.09245593e-08,  1.66330738e-09,  1.08938813e-10,
+        3.53672248e-10,  3.43915997e-10,  7.83100372e-11, -2.92671982e-11,
+       -5.14346513e-13,  1.39651631e-11])
     
     theta = np.atleast_2d(np.array([airmass, moon_frac, moon_alt, moon_sep]).T)
 
@@ -404,12 +427,8 @@ def Isky5000_twilight_regression(airmass, sun_sep, sun_alt):
     during bright time. 
     
     Surface brightness is based on a polynomial regression model that was fit
-    to twilight contributions measured from BOSS exposures with sun altitutde >
-    -18deg.
-
-    TODO: 
-    * update fit using SV1 twilight exposures. 
-
+    to twilight contributions measured from SV1 and BOSS exposures with sun
+    altitutde > -18deg.
 
     For details, see jupyter notebook: 
     https://github.com/desi-bgs/bgs-cmxsv/blob/55850e44d65570da69de0788c652cff698416834/doc/nb/sky_model_twilight_fit.ipynb
@@ -429,10 +448,13 @@ def Isky5000_twilight_regression(airmass, sun_sep, sun_alt):
         Array of twilight contribution to sky surface brightness at 5000A for
         bright time in units of erg/s/cm^2/A/arcsec^2
     '''
-    norder = 1
+    norder = 2
     # coefficients fit in notebook
     # https://github.com/desi-bgs/bgs-cmxsv/blob/521211dccff7cb3b71b07d84522802acade26071/doc/nb/sky_model_twilight_fit.ipynb
-    skymodel_coeff = np.array([3.50300842, 2.63453598, 0.40491282, 0.0096106 ])
+    skymodel_coeff = np.array([ 
+        7.74536884e-01,  1.25866845e+00,  1.06073841e+00,  2.27595902e-01,
+        9.12671470e-01, -4.16253157e-02, -2.26899688e-02,  3.52752773e-02,
+        6.39485772e-03, -5.03964852e-04])
 
     theta = np.atleast_2d(np.array([airmass, sun_alt, sun_sep]).T)
 
@@ -686,7 +708,8 @@ class ExposureTimeCalculator(object):
         self.snr2frac_target = snr2frac + (texp_remaining / nexp) / self.texp_total
         # Initialize signal and background rate factors.
         self.srate0 = np.sqrt(self.weather_factor(seeing, transp, 1.0))
-        self.brate0 = sky
+        # effective sky / nominal sky based on SurveySpeed calculation 
+        self.brate0 = sky + 0.932/3.373 * (self.texp_total / 0.0115741) + 1.71 / 3.373
         self.signal = 0.
         self.background = 0.
         self.last_snr2frac = 0.
@@ -724,9 +747,9 @@ class ExposureTimeCalculator(object):
         dt = mjd_now - self.mjd_last
         self.mjd_last = mjd_now
         srate = np.sqrt(self.weather_factor(seeing, transp, 1.0))
-        brate = sky
+        # effective sky / nominal sky based on SurveySpeed calculation 
+        brate = sky + 0.932/3.373 * (dt / 0.0115741) + 1.71 / 3.373
         self.signal += dt * srate / self.srate0
-        #self.background += dt * (srate + brate) / (self.srate0 + self.brate0)
         self.background += dt * brate / self.brate0
         self._snr2frac = self._snr2frac_start + self.signal ** 2 / self.background / self.texp_total
         if self.save_history:
