@@ -27,7 +27,7 @@ def yesno(question):
 
 def afternoon_plan(night=None, exposures=None,
                    configfn='config.yaml',
-                   fiber_assign_dir=None, spectra_dir=None,
+                   spectra_dir=None,
                    desisurvey_output=None, nts_dir=None, sv=False,
                    surveyops=None):
     """Perform daily afternoon planning.
@@ -47,9 +47,6 @@ def afternoon_plan(night=None, exposures=None,
 
     configfn : str
         File name of desisurvey config to use for plan.
-
-    fiber_assign_dir : str
-        Directory where fiber assign files are found.
 
     spectra_dir : str
         Directory where spectra are found.
@@ -102,12 +99,16 @@ def afternoon_plan(night=None, exposures=None,
     directory = os.path.join(desisurvey_output, subdir)
     if not os.path.exists(directory):
         os.mkdir(directory)
-        os.chmod(directory, 0o777)
+        os.chmod(directory, 0o2777)
 
     surveyopsdir = (surveyops if surveyops is not None
                     else os.environ.get('SURVEYOPS', None))
     if surveyopsdir is not None:
-        ret = subprocess.run(['svn', 'up', surveyopsdir])
+        ret = subprocess.run(['svn', 'up',
+                              os.path.join(surveyopsdir, 'ops')])
+        ret = subprocess.run(
+            ['svn', 'up',
+             os.path.join(surveyopsdir, 'mtl', 'mtl-done-tiles.csv')])
         if ret.returncode != 0:
             log.info('Failed to update surveyops.')
     else:
@@ -270,7 +271,7 @@ def afternoon_plan(night=None, exposures=None,
                              donefracnight['NNIGHT'] / nneeded,
                              ignore_pending=True)
 
-    planner.afternoon_plan(night, fiber_assign_dir=fiber_assign_dir)
+    planner.afternoon_plan(night)
     planner.save(os.path.join(subdir, os.path.basename(newtilefn)))
     for fn in [newrulesfn, newconfigfn]:
         subprocess.run(['chmod', 'a-w', fn])

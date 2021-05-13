@@ -37,6 +37,7 @@
 
 import os
 import json
+import shutil
 import desisurvey
 import desisurvey.rules
 import desisurvey.plan
@@ -50,7 +51,6 @@ from astropy import coordinates
 from astropy import units as u
 from astropy import time
 import numpy as np
-
 
 try:
     import DOSlib.logger as Log
@@ -209,7 +209,7 @@ class NTS():
             self.night = desisurvey.utils.get_date(night)
         if obsplan is None:
             if nts_survey is None:
-                nts_survey = 'sv3'
+                nts_survey = 'main'
             nts_survey = nts_survey.lower()
             nts_dir = (desisurvey.utils.night_to_str(self.night) + '-' +
                        nts_survey)
@@ -255,6 +255,62 @@ class NTS():
         for queuedtile in self.queuedlist.queued:
             self.scheduler.plan.add_pending_tile(queuedtile)
         self.ETC = desisurvey.etc.ExposureTimeCalculator()
+
+    def move_tile_into_place(self, tileid, speculative=False):
+        """Move fiberassign file into place if not already there.
+
+        Observed fiberassign files are kept in DOS_DESI_TILES/FIBER_ASSIGN_DIR,
+        while unobserved ones are kept in FA_HOLDING_PEN.  This routine checks
+        if a given TILEID is already available in the primary location, and
+        otherwise copies it into place from the holding pen.
+
+        Parameters
+        ----------
+        tileid : int
+            the TILEID to copy into place
+        speculative : bool
+            if True, do not perform the actual copy; just check existence.
+        """
+        fadir = os.environ.get('DOS_DESI_TILES', None)
+        if fadir is None:
+            fadir = os.environ.get('FIBER_ASSIGN_DIR', None)
+        if fadir is None:
+            self.log.error('DOS_DESI_TILES and FIBER_ASSIGN_DIR not set!')
+            return False
+        tileidstr = '%06d' % tileid
+        fabasefn = os.path.join(tileidstr[0:3], 'fiberassign-%s' % tileidstr)
+        possible_extensions = ['.fits', '.fits.gz']
+        for ext in possible_extensions:
+            if os.path.exists(os.path.join(fadir, fabasefn+ext)):
+                return True
+        # file not present in fadir
+        holdingdir = os.environ.get('FA_HOLDING_PEN', None)
+        if holdingdir is None:
+            self.log.error('FA_HOLDING_PEN is not set; cannot find TILEID!')
+            return False
+        extension = None
+        for ext in possible_extensions:
+            if os.path.exists(os.path.join(holdingdir, fabasefn+ext)):
+                extension = ext
+        if ext is None:
+            self.log.error('Could not find TILEID {} at {}, failing!'.format(
+                tileid, os.path.join(holdingdir, fabasefn)))
+            return False
+        if speculative:  # skip actual copying.
+            return True
+        os.makedirs(os.path.dirname(os.path.join(fadir, fabasefn)),
+                    exist_ok=True, mode=0o2775)
+        shutil.copy(os.path.join(holdingdir, fabasefn+extension),
+                    os.path.join(fadir, fabasefn+extension))
+        extraextensions = ['.log', '.png']
+        for ext in extraextensions:
+            if os.path.exists(os.path.join(holdingdir, fabasefn+ext)):
+                shutil.copy(os.path.join(holdingdir, fabasefn+ext),
+                            os.path.join(fadir, fabasefn+ext))
+            else:
+                self.log.warning('Could not find expected file {}'.format(
+                    os.path.join(holdingdir, fabasefn+ext)))
+        return True
 
     def next_tile(self, conditions=None, exposure=None, constraints=None,
                   speculative=False):
@@ -379,6 +435,11 @@ class NTS():
                    'req_efftime': 0., 'sbprof': 'PSF', 'mintime': 0,
                    'cosmics_splittime': 1000}
         if tileid is None:
+            self.requestlog.logresponse(badtile)
+            return badtile
+
+        if not self.move_tile_into_place(tileid, speculative=speculative):
+            self.log.error('Could not find tile {}!'.format(tileid))
             self.requestlog.logresponse(badtile)
             return badtile
 

@@ -52,15 +52,25 @@ def load_design_hourangle():
         return design['HA'].data.copy()
 
 
-def get_fiber_assign_dir(fiber_assign_dir):
-    if fiber_assign_dir is None:
-        fiber_assign_dir = os.environ.get('FIBER_ASSIGN_DIR', None)
+def get_fiber_assign_dir():
+    fiber_assign_dirs = []
+    fiber_assign_dir = os.environ.get('FIBER_ASSIGN_DIR', None)
     if fiber_assign_dir is None:
         config = desisurvey.config.Configuration()
         fiber_assign_dir = getattr(config, 'fiber_assign_dir', None)
         if fiber_assign_dir is not None:
             fiber_assign_dir = fiber_assign_dir()
-    return fiber_assign_dir
+    if fiber_assign_dir is not None:
+        fiber_assign_dirs.append(fiber_assign_dir)
+    fa_holding_pen = os.environ.get('FA_HOLDING_PEN', None)
+    if fa_holding_pen is None:
+        config = desisurvey.config.Configuration()
+        fa_holding_pen = getattr(config, 'fa_holding_pen', None)
+        if fa_holding_pen is not None:
+            fa_holding_pen = fa_holding_pen()
+    if fa_holding_pen is not None:
+        fiber_assign_dirs.append(fa_holding_pen)
+    return fiber_assign_dirs
 
 
 def load_weather(start_date=None, stop_date=None, name='surveyinit.fits'):
@@ -377,7 +387,7 @@ class Planner(object):
                       .format(np.count_nonzero(run_now),
                               np.count_nonzero(delayed), night))
 
-    def fiberassign(self, dirname):
+    def fiberassign(self, dirnames):
         r"""Update list of tiles available for spectroscopy.
 
         Scans given directory looking for fiberassign file and populates Plan
@@ -385,8 +395,8 @@ class Planner(object):
 
         Parameters
         ----------
-        dirname : str
-            file name of directory where fiberassign files are to be found
+        dirnames : list
+            list of directory names where fiberassign files are to be found
             This directory is recursively scanned for all files with names
             matching tile-(\d+)\.fits.  TILEIDs are populated according to
             the name of the fiberassign file, and any header information is
@@ -394,7 +404,11 @@ class Planner(object):
         """
         import glob
         import re
-        files = glob.glob(os.path.join(dirname, '**/*.fits*'), recursive=True)
+        files = []
+        for dirname in dirnames:
+            files0 = glob.glob(os.path.join(dirname, '**/*.fits*'),
+                               recursive=True)
+            files = files + files0
         rgx = re.compile(r'.*fiberassign-(\d+)\.fits(\.gz)?')
         available_tileids = []
         for fn in files:
@@ -414,7 +428,7 @@ class Planner(object):
                 'Ignoring {} tiles that were assigned, '.format(sum(~mask)) +
                 'but not found in the tile file.')
 
-    def afternoon_plan(self, night, fiber_assign_dir=None):
+    def afternoon_plan(self, night):
         """Update plan for a given night.  Update tile availability and priority.
 
         Parameters
@@ -464,13 +478,13 @@ class Planner(object):
                 self.fiberassign_simulate(night)
             self.last_night = night
         else:
-            fiber_assign_dir = get_fiber_assign_dir(fiber_assign_dir)
-            if fiber_assign_dir is None:
+            fiber_assign_dirs = get_fiber_assign_dir()
+            if fiber_assign_dirs is None:
                 raise ValueError(
                     'fiber_assign_dir must be set either in '
                     'config.yaml or in FIBER_ASSIGN_DIR; failing!')
             oldavail = self.tile_available.copy()
-            self.fiberassign(fiber_assign_dir)
+            self.fiberassign(fiber_assign_dirs)
             filesavailable = self.tile_available.copy()
             self.tile_available = oldavail.copy()
         # Update tile priorities.
