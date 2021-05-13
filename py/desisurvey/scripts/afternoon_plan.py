@@ -108,7 +108,7 @@ def afternoon_plan(night=None, exposures=None,
                               os.path.join(surveyopsdir, 'ops')])
         ret = subprocess.run(
             ['svn', 'up',
-             os.path.join(surveyopsdir, 'mtl', 'mtl-done-tiles.csv')])
+             os.path.join(surveyopsdir, 'mtl', 'mtl-done-tiles.ecsv')])
         if ret.returncode != 0:
             log.info('Failed to update surveyops.')
     else:
