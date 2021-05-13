@@ -362,12 +362,12 @@ def day_number(date):
     return (get_date(date) - config.first_day()).days
 
 
-def slewtime(ra1, dec1, ra2, dec2, freeslewtime=10,
+def slewtime(ra1, dec1, ra2, dec2, freeslewtime=25,
              ignore_positive_ra=False):
     """Estimate slew times.
 
-    Uses slew model from DESI-3687.  Assumes that 10 s of slew time are
-    "free"---i.e., they can be overlapped with other overheads.
+    Uses slew model from DESI-3687.  Assumes that freeslewtime s of slew
+    time is "free"---i.e., it can be overlapped with other overheads.
 
     Parameters
     ----------
@@ -384,7 +384,8 @@ def slewtime(ra1, dec1, ra2, dec2, freeslewtime=10,
     ignore_positive_ra : float
         if True, slew time in the positive RA direction doesn't count.
         Intended to provide no penalty for slews that are just keeping up
-        with the sky.
+        with the sky.  In this case, slews in dec don't count if they
+        fit within the slew in RA.
 
     Returns
     -------
@@ -400,10 +401,10 @@ def slewtime(ra1, dec1, ra2, dec2, freeslewtime=10,
     dec1 = np.atleast_1d(dec1)
     ra2 = np.atleast_1d(ra2)
     dec2 = np.atleast_1d(dec2)
-    def slewtimefun(dx, slewtype):
+    def slewtimefun(dx, slewtype, ignore_positive=False):
         v, a, t = slewconstants[slewtype]
         dx = ((dx + 180) % 360)-180
-        if slewtype == 'ra' and ignore_positive_ra:
+        if ignore_positive:
             m = dx > 0
             dx[m] = 0
         dx = np.abs(dx)
@@ -412,8 +413,13 @@ def slewtime(ra1, dec1, ra2, dec2, freeslewtime=10,
         tt[m] = 2*np.sqrt(dx[m]/a)+t
         tt[~m] = dx[~m]/v+t+v/a
         return np.clip(tt-freeslewtime, 0, np.inf)
-    tra = slewtimefun(ra1-ra2, 'ra')
-    tdec = slewtimefun(dec1-dec2, 'dec')
+    tra = slewtimefun(ra2-ra1, 'ra')
+    tdec = slewtimefun(dec2-dec1, 'dec')
+    if ignore_positive_ra:
+        tra2 = slewtimefun(ra2-ra1, 'ra', ignore_positive=ignore_positive_ra)
+        m = tdec < tra
+        tdec[m] = np.clip(tdec[m], 0, tra2[m])
+        tra = tra2
     tra = np.atleast_1d(tra)
     tdec = np.atleast_1d(tdec)
     tslew = np.max([tra, tdec], axis=0)

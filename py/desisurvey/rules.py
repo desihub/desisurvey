@@ -57,6 +57,7 @@ class Rules(object):
         self.finish_started_priority = config.finish_started_priority()
         self.ignore_completed_priority = config.ignore_completed_priority()
         self.boost_priority_by_passnum = config.boost_priority_by_passnum()
+        self.adjacency_priority = config.adjacency_priority()
 
         tiles = desisurvey.tiles.get_tiles()
         NGC = (tiles.tileRA > 75.0) & (tiles.tileRA < 300.0)
@@ -225,7 +226,7 @@ class Rules(object):
             if not np.any(group_sel):
                 notilescoveredrules.append(name)
             ngroup = np.count_nonzero(group_sel)
-            completed = donefrac > self.min_snr2_fraction
+            completed = donefrac >= self.min_snr2_fraction
             ndone = np.count_nonzero(completed[group_sel])
             max_orphans = self.group_max_orphans[name]
             triggered[name] = (ndone + max_orphans >= ngroup)
@@ -246,7 +247,29 @@ class Rules(object):
             priorities[sel] = priority * self.dec_priority[sel]
         priorities *= (1 + self.boost_priority_by_passnum)**tiles.tilepass
         priorities *= (1 + self.finish_started_priority*(donefrac > 0))
+        neighborfrac = completed_neighbor_fraction(
+            tiles, donefrac >= self.min_snr2_fraction)
+        priorities *= (1 + self.adjacency_priority*neighborfrac)
         if self.ignore_completed_priority > 0:
-            priorities *= np.where(donefrac >= 1,
+            priorities *= np.where(donefrac >= self.min_snr2_fraction,
                                    self.ignore_completed_priority, 1)
+        priorities *= tiles.priority_boostfac
         return priorities
+
+
+def completed_neighbor_fraction(tiles, completed):
+    cache = getattr(completed_neighbor_fraction, 'neighborcache', None)
+    if cache is None:
+        n1 = np.repeat(np.arange(len(tiles.neighbors)),
+                       [len(x) for x in tiles.neighbors])
+        n2 = np.concatenate([x for x in tiles.neighbors if len(x) > 0])
+        completed_neighbor_fraction.neighborcache = (n1, n2)
+    else:
+        n1, n2 = cache
+    if len(completed) != tiles.ntiles:
+        raise ValueError('shape mismatch between completed and tiles!')
+    res = np.bincount(n1, weights=completed[n2],
+                      minlength=len(tiles.neighbors))
+    nneighbor = np.bincount(n1, minlength=len(tiles.neighbors))
+    res = res / (nneighbor + (nneighbor == 0))
+    return res

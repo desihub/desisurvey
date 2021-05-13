@@ -204,8 +204,8 @@ class Optimizer(object):
             self.ha = np.asarray(initial_ha)
         elif init == 'flat':
             if center is None:
-                # Try 5 equally spaced centers.
-                icenters = np.arange(0, self.nbins, self.nbins // 5)
+                # Try 72 equally spaced centers.
+                icenters = np.arange(0, self.nbins, self.nbins // 72)
             else:
                 # Find the closest bin edge to the requested value.
                 icenters = [np.argmin(np.abs(center - lst_edges))]

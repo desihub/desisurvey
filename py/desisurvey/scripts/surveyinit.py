@@ -183,11 +183,17 @@ def calculate_initial_plan(args):
         new_lst_hist[1, :] = lst_hist[2, :]
         lst_hist = new_lst_hist[0:2, :].copy()
 
+    if tiles.bright_allowed_in_dark:
+        new_lst_hist = lst_hist.copy()
+        new_lst_hist[0, :] = np.sum(lst_hist, axis=0)
+        lst_hist = new_lst_hist[0:1, :].copy()
+
     # Initialize the output results table.
+    conditions = ['DARK', 'GRAY', 'BRIGHT']
     if tiles.nogray:
-        conditions = ['DARK', 'BRIGHT']
-    else:
-        conditions = ['DARK', 'GRAY', 'BRIGHT']
+        conditions.remove('GRAY')
+    if tiles.bright_allowed_in_dark:
+        conditions.remove('BRIGHT')
     design = astropy.table.Table()
     design['INIT'] = np.zeros(tiles.ntiles)
     design['HA'] = np.zeros(tiles.ntiles)

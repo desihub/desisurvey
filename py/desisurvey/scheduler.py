@@ -253,7 +253,7 @@ class Scheduler(object):
 
     def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15.,
                   greediness=0., program=None, verbose=False,
-                  current_ra=None, current_dec=None):
+                  current_ra=None, current_dec=None, slew_penalty=400):
         r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -300,6 +300,11 @@ class Scheduler(object):
             current ra of telescope; used for computing penalties to long slews
         current_dec : float
             current dec of telescope; used for computing penalties to long slews
+        slew_penalty : float
+            slew penalty scale.  A tile requiring a slew of slew_penalty
+            seconds is penalized by log(score) of 1.  Slews in the positive
+            RA direction are not penalized for the slew time spent moving
+            the HA axis---we don't want to penalize keeping up with the sky.
 
         Returns
         -------
@@ -432,9 +437,7 @@ class Scheduler(object):
             -np.log(self.exposure_factor[self.tile_sel]) * greediness)
         # Add tile priorities.
         log_score += self.log_priority[self.tile_sel]
-        log_score += -self.slewtimes[self.tile_sel] / 100
-        # ~40 deg slew triggers a log score decrease of 1.
-        # Select the tile with the highest (log) score.
+        log_score += -self.slewtimes[self.tile_sel] / slew_penalty
         idx = np.where(self.tile_sel)[0][np.argmax(log_score)]
 
         # Return info about the selected tile and scheduled program.

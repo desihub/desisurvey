@@ -131,6 +131,9 @@ boost_priority_by_passnum: 0
 ignore_completed_priority: -1
 # in sims, don't repeat finished tiles.
 
+# Boost priority of tiles with completed neighbors.
+adjacency_priority: 0.08
+
 # do program selection by survey speed rather than ephemerides
 select_program_by_speed: False
 
