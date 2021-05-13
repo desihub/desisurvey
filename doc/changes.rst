@@ -13,6 +13,9 @@ desisurvey change log
   IN_DESI = False tiles in movies.
 * Enable identification of high priority 10k footprint tiles.
 * Add slew time to simulations and favor short slews in tile selection.
+* Implement "holding pen" where new fiberassign files are found (PR `#139`_).
+
+.. _`#139`: https://github.com/desihub/desisurvey/pull/139
 
 0.17.0 (2021-04-23)
 -------------------
