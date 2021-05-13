@@ -4,6 +4,9 @@ import numpy
 from desimodel import focalplane
 from astropy.io import fits
 from desitarget import targetmask
+from astropy.coordinates import SkyCoord
+from astropy import units as u
+
 
 basetiledtype = [
     ('TILEID', 'i4'), ('RA', 'f8'), ('DEC', 'f8'), ('PASS', 'i4'),
@@ -516,8 +519,6 @@ def add_info_fields(tiles, gaiadensitymapfile,
     except Exception:
         import dust
         ebva = dust.getval(la, ba, map='sfd')
-    from astropy.coordinates import SkyCoord
-    from astropy import units as u
     from astropy.table import Table
     if isinstance(tiles, Table):
         ra = tiles['RA'].data
@@ -636,8 +637,6 @@ def maketilefile(desitiles, gaiadensitymapfile, tycho2file, covfile,
     desitilesnew['IN_IMAGING'] = desitilesnew['IMAGEFRAC_GRZ'][centerind] > 0.9
     dc = desitilesnew['DEC'][centerind]
 
-    from astropy.coordinates import SkyCoord
-    from astropy import units as u
     coord = SkyCoord(ra=desitilesnew['RA']*u.deg,
                      dec=desitilesnew['DEC']*u.deg, frame='icrs')
     coordgal = coord.galactic
@@ -695,7 +694,6 @@ def writefiles(tiles, fnbase, overwrite=False, viewer=False):
                 'in_imaging': ('', 'Central tile has imagefrac_grz > 0.9'),
                 }
     metadatacaps = {k.upper(): v for k, v in metadata.items()}
-    from astropy import units as u
     unitdict = {'': None, 'deg': u.deg, 'mag': u.mag, 'deg^-2': 1/u.deg/u.deg}
     for name in tilestab.dtype.names:
         tilestab[name].unit = unitdict[metadatacaps[name][0]]
@@ -765,8 +763,6 @@ def extraqa(tiles):
     p.clf()
     setup_print((5, 4), scalefont=1.2)
     p.subplots_adjust(left=0.15, bottom=0.15)
-    from astropy.coordinates import SkyCoord
-    from astropy import units as u
     coord = SkyCoord(ra=tiles['RA']*u.deg, dec=tiles['DEC']*u.deg,
                      frame='icrs')
     coordgal = coord.galactic
@@ -982,8 +978,6 @@ def make_tiles_from_fiberassign(dirname, gaiadensitymapfile,
     for i, prog in enumerate(numpy.unique(tiles['PROGRAM'])):
         m = tiles['PROGRAM'] == prog
         tiles['PASS'][m] = i
-    from astropy.coordinates import SkyCoord
-    from astropy import units as u
     coord = SkyCoord(ra=tiles['RA']*u.deg,
                      dec=tiles['DEC']*u.deg, frame='icrs')
     coordgal = coord.galactic
@@ -1002,8 +996,6 @@ def decorate_djs_tilefile(fn, gaiafn, tychofn, coveragefn,
                           rewritecenterid=False):
     from astropy import table
     from astropy.table import Table
-    from astropy.coordinates import SkyCoord
-    from astropy import units as u
     tf = Table.read(fn)
     tf['EBV_MED'] = numpy.zeros(len(tf), dtype='f4')
     tf['STAR_DENSITY'] = numpy.zeros(len(tf), dtype='f4')
@@ -1026,3 +1018,47 @@ def decorate_djs_tilefile(fn, gaiafn, tychofn, coveragefn,
         (((numpy.abs(bc) > 22) & ((lc < 90) | (lc > 270))) |
          ((numpy.abs(bc) > 20) & (lc > 90) & (lc < 270))))
     return tfadd
+
+
+def tenkfootprint(tiles):
+    from matplotlib import path
+    northpoly = numpy.array(
+        [[272.32117571,  25.10016439],
+         [247.80111764,  19.15590789],
+         [245.20050542,  13.58316742],
+         [231.82592829,   7.26739489],
+         [226.25318782,  -15],
+         [123.71476317,  -15],
+         [102.16683335,  36.24564533],
+         [139.68995251,  49.62022246],
+         [186.50097247,  49.62022246],
+         [231.82592829,  51.47780262],
+         [264.89085508,  64.48086372],
+         [272.69269174,  64.85237975],
+         [289.78242918,  55.19296293],
+         [279.00846427,  27.70077661]])
+
+    southpoly = numpy.array(
+        [[50.15458896,   6.52436283],
+         [49.78307293,  -9.82234255],
+         [-4.45826765, -10.19385858],
+         [-5.20129972,  -6.47869827],
+         [-47.92564332,  -5.36415018],
+         [-47.92564332,  16.55529567],
+         [-32.69348604,  29.55835677],
+         [41.98123627,  31.0444209],
+         [33.43636755,  21.38500408],
+         [39.00910802,   7.63891092],
+         [58.32794165,   6.52436283]])
+    coord = SkyCoord(ra=tiles['RA']*u.deg, dec=tiles['DEC']*u.deg)
+    coordgal = coord.galactic
+    l, b = coordgal.l.to(u.deg).value, coordgal.b.to(u.deg).value
+    north = b > 0
+    south = b < 0
+    northpath = path.Path(list(northpoly)+list(northpoly)[0:1])
+    southpath = path.Path(list(southpoly)+list(southpoly)[0:1])
+    northmask = north & northpath.contains_points(
+        numpy.array([tiles['RA'], tiles['DEC']]).T)
+    southmask = south & southpath.contains_points(
+        numpy.array([((tiles['RA']+180) % 360)-180, tiles['DEC']]).T)
+    return northmask | southmask

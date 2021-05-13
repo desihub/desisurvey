@@ -149,10 +149,9 @@ class Animator(object):
             if pname in self.prognames:
                 self.prognames.remove(pname)
                 self.prognames = [pname] + self.prognames
-        nprogram = len(self.prognames)
         self.tiles_per_program = {p: np.sum(self.tiles.program_mask[p])
                                   for p in self.prognames}
-        self.psels = [ self.tiles.program_mask[p] for p in self.prognames ]
+        self.psels = [self.tiles.program_mask[p] for p in self.prognames]
         self.start_date = self.config.first_day()
         self.survey_weeks = int(np.ceil((self.config.last_day() - self.start_date).days / 7))
 
@@ -261,7 +260,7 @@ class Animator(object):
                     color=pc, horizontalalignment='left',
                     verticalalignment='top'))
                 # Draw the tile outlines for this program.
-                sel = (self.tileprogram == pname)
+                sel = self.tiles.program_mask[pname]
                 ntiles = np.count_nonzero(sel)
                 fc = np.empty((ntiles, 4))
                 fc[:] = self.defaultcolor
@@ -441,7 +440,7 @@ class Animator(object):
             score = self.scores[iexp - self.iexp0]
             max_score = np.max(score)
         for progidx, scatter in enumerate(self.scatters):
-            sel = (self.tileprogram == self.prognames[progidx])
+            sel = self.tiles.program_mask[self.prognames[progidx]]
             done = self.status[sel] == 2
             avail = self.available[sel]
             inplan = self.planned[sel]

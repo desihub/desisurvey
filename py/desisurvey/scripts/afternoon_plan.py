@@ -248,12 +248,13 @@ def afternoon_plan(night=None, exposures=None,
     collect_etc.write_exp(exps, os.path.join(directory, 'exposures.ecsv'))
 
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC'],
-                         ignore_pending=True)
+                         ignore_pending=True, nobs=tiles['NOBS'])
     m = tiles['OFFLINE_DONE'] != 0
-    planner.set_donefrac(tiles['TILEID'][m], status=['obsend']*np.sum(m))
+    planner.set_donefrac(tiles['TILEID'][m], status=['obsend']*np.sum(m),
+                         ignore_pending=True)
     m = tiles['MTL_DONE'] != 0
-    planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m))
-
+    planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m),
+                         ignore_pending=True)
     svmode = getattr(config, 'svmode', None)
     svmode = svmode() if svmode is not None else False
     if svmode:

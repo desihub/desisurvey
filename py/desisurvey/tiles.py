@@ -72,6 +72,9 @@ class Tiles(object):
         self.designha = None
         if 'DESIGNHA' in tiles.dtype.names:
             self.designha = tiles['DESIGNHA'].data.copy()
+        self.priority_boostfac = np.ones(len(tiles), dtype='f4')
+        if 'PRIORITY_BOOSTFAC' in tiles.dtype.names:
+            self.priority_boostfac = tiles['PRIORITY_BOOSTFAC']
 
         self.tileobsconditions = self.get_conditions()
         if self.nogray:
@@ -92,7 +95,7 @@ class Tiles(object):
         # Build tile masks for each program. A program will no tiles with have an empty mask.
         self.program_mask = {}
         for p in self.programs:
-            self.program_mask[p] = self.tileprogram == p
+            self.program_mask[p] = (self.tileprogram == p) & self.in_desi
         # Calculate and save dust exposure factors.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'].data)
         # Precompute coefficients to calculate tile observing airmass.
@@ -103,6 +106,7 @@ class Tiles(object):
         # Placeholders for overlap attributes that are expensive to calculate
         # so we use lazy evaluation the first time they are accessed.
         self._overlapping = None
+        self._neighbors = None
         self._fiberassign_delay = None
 
         # Calculate the maximum |HA| in degrees allowed for each tile to stay
@@ -253,6 +257,19 @@ class Tiles(object):
         return self._overlapping
 
     @property
+    def neighbors(self):
+        """Dictionary of tile neighbor matrices.
+
+        neighbors[i] is the list of tile row numbers that neighbor the
+        tile with row number i within a pass.
+
+        Neighboring tiles are only computed within a program and pass.
+        """
+        if self._neighbors is None:
+            self._calculate_neighbors()
+        return self._neighbors
+
+    @property
     def fiberassign_delay(self):
         """Delay between covering a tile and when it can be fiber assigned.
 
@@ -262,7 +279,6 @@ class Tiles(object):
         if self._fiberassign_delay is None:
             self._calculate_overlaps()
         return self._fiberassign_delay
-
 
     def _calculate_overlaps(self):
         """Initialize attributes _overlapping.
@@ -285,7 +301,7 @@ class Tiles(object):
                 delay = delay()
             else:
                 delay = -1
-            m = self.program_mask[program]
+            m = self.program_mask[program] & (self.in_desi != 0)
             rownum = np.flatnonzero(m)
             self._fiberassign_delay[m] = delay
             # self._overlapping: list of lists, giving tiles overlapping each
@@ -301,6 +317,45 @@ class Tiles(object):
                     # ignore self matches
                     continue
                 self._overlapping[rownum[ind1]].append(rownum[ind2])
+
+    def _calculate_neighbors(self):
+        """Initialize attribute _neighbors.  A neigbor is defined as a tile
+        in the same pass within 3 * config.tile_radius if config.tiles_lowpass
+        is True.  Otherwise, it's all tiles within the program within
+        3 * config.tile_radius.
+
+        This is relatively slow, so only used the first time ``overlapping``
+        properties are accessed.
+        """
+        self._neighbors = [[] for _ in range(self.ntiles)]
+        config = desisurvey.config.Configuration()
+        match_distance = 3 * config.tile_radius()
+        lowpass = config.tiles_lowpass()
+
+        for program in self.programs:
+            mprogram = self.program_mask[program]
+            rownum = np.flatnonzero(mprogram)
+            from astropy.coordinates import SkyCoord, search_around_sky
+            c = SkyCoord(self.tileRA[mprogram]*u.deg,
+                         self.tileDEC[mprogram]*u.deg)
+            idx1, idx2, sep2d, dist3d = search_around_sky(
+                c, c, match_distance)
+            if lowpass:
+                m = self.tilepass[idx1] == self.tilepass[idx2]
+                idx1 = idx1[m]
+                idx2 = idx2[m]
+            for ind1, ind2 in zip(idx1, idx2):
+                if ind1 == ind2:
+                    # ignore self matches
+                    continue
+                self._neighbors[rownum[ind1]].append(rownum[ind2])
+
+            for passnum in np.unique(self.tilepass[mprogram]):
+                m = (mprogram & (self.tilepass == passnum) &
+                     (self.in_desi != 0))
+                rownum = np.flatnonzero(m)
+                # self._neighbors: list of lists, giving tiles neighboring each
+                # tile
 
     def read_tiles_table(self):
         """Read and trim the tiles table.

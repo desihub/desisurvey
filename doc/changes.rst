@@ -5,6 +5,13 @@ desisurvey change log
 0.17.1 (unreleased)
 -------------------
 
+* Increase number of starting points in HA optimization.
+* Add priority to tiles with observed neighbors.
+* Mark a tile as having had observations started even if EFFTIME = 0,
+  as long as the tile has been used in a SCIENCE observation.
+* Don't count IN_DESI = False tiles against completeness.  Don't plot
+  IN_DESI = False tiles in movies.
+* Enable identification of high priority 10k footprint tiles.
 * Add slew time to simulations and favor short slews in tile selection.
 
 0.17.0 (2021-04-23)

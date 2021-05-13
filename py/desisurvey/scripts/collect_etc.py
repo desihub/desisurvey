@@ -204,7 +204,9 @@ def scan_directory(dirname, start_from=None,
         tiles['TILEID'][i] = exps['TILEID'][ind[0]]
         tiles['EFFTIME'][i] = np.sum(np.clip(
             exps['EFFTIME'][ind], 0, np.inf))
-        # potentially only want to consider "good" exposures here?
+        # intentionally include all exposures here, not just good ones
+        # this way, if a tile gets observed, we know we can't redesign it
+        # later; we need to cut a new TILEID instead.
         tiles['NOBS'][i] = len(ind)
         nomtimefa[i] = np.median(exps['GOALTIME'][ind])
         if np.any(np.abs(exps['GOALTIME'][ind] - nomtimefa[i]) > 1):
@@ -450,6 +452,8 @@ def parse(options=None):
                         help='etc_stats file to start from')
     parser.add_argument('--offlinedepth', type=str,
                         help='offline depth file to use')
+    parser.add_argument('--offlinetiles', type=str,
+                        help='offline tile file to use')
     parser.add_argument('--mtldone', type=str,
                         help='mtl done file to use')
     parser.add_argument('--config', type=str, default=None,
@@ -467,6 +471,7 @@ def main(args):
     _ = desisurvey.config.Configuration(args.config)
     res = scan_directory(args.directory, start_from=args.start_from,
                          offlinedepth=args.offlinedepth,
+                         offlinetiles=args.offlinetiles,
                          mtldone=args.mtldone)
     if res is not None:
         tiles, exps = res

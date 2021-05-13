@@ -184,7 +184,7 @@ class Planner(object):
                     raise ValueError('Fiberassign cadence mismatch.')
             self.tile_status = np.zeros(self.tiles.ntiles, dtype='U20')
             self.tile_status[:] = 'unobs'
-            self.tile_status[:] = t['STATUS']
+            self.tile_status[:] = [s.strip().lower() for s in t['STATUS']]
             self.tile_available = self.tiles.in_desi.copy()
             self.tile_priority = t['PRIORITY'].data.copy()
             self.donefrac = t['DONEFRAC'].data.copy()
@@ -243,7 +243,7 @@ class Planner(object):
         self.tile_available[overlapping] = 0
 
     def set_donefrac(self, tileid, donefrac=None, status=None,
-                     ignore_pending=False):
+                     ignore_pending=False, nobs=None):
         """Update planner with new tile donefrac.
 
         Parameters
@@ -260,6 +260,11 @@ class Planner(object):
 
         ignore_pending: bool
             do not mark newly started files as pending
+
+        nobs : array
+            1D array of number of observations of each tile
+            A tile with at least 1 observation will never be considered
+            unobserved, regardless of whether it has zero donefrac.
         """
         tileid = np.atleast_1d(tileid)
         if donefrac is not None:
@@ -274,10 +279,15 @@ class Planner(object):
                 donefrac = donefrac[mask]
             if status is not None:
                 status = status[mask]
+            if nobs is not None:
+                nobs = nobs[mask]
         if donefrac is not None:
             self.donefrac[tileind] = donefrac
         if status is not None:
             self.tile_status[tileind] = status
+        if nobs is not None:
+            m = (nobs > 0) & (self.tile_status[tileind] == 'unobs')
+            self.tile_status[tileind[m]] = 'obsstart'
         if not ignore_pending and (donefrac is not None):
             for tileid0, donefrac0 in zip(np.array(tileid)[mask], donefrac):
                 if donefrac0 > 0:
@@ -300,7 +310,7 @@ class Planner(object):
     def survey_completed(self):
         """Test if all tiles have been completed.
         """
-        return np.sum(self.obsend()) == self.tiles.ntiles
+        return np.sum(self.obsend()) == np.sum(self.tiles.in_desi)
 
     def save(self, name):
         """Save a snapshot of our current state that can be restored.
@@ -473,6 +483,10 @@ class Planner(object):
             self.add_pending_tile(tileid)
         if self.tiles_lowpass:
             self.prefer_low_passnum()
+        zeropriority = ((self.tile_status != 'unobs') &
+                        (self.tile_available == 0))
+        self.tile_priority[zeropriority] = 0
+        # tiles with priority > 0 may be designed.
         if not self.simulate:
             m = self.tile_available & ~filesavailable
             if np.any(m):
