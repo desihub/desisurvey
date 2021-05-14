@@ -108,8 +108,8 @@ def parse(options=None):
         epilog='EXAMPLE: %(prog)s [YYYYMMDD/config.yaml]')
     parser.add_argument('night', nargs='?', default=None, type=str,
                         help='nts_dir to use; default YYYYMMDD')
-    parser.add_argument('--survey', default='sv1', type=str,
-                        help='survey to use; default sv1')
+    parser.add_argument('--survey', default='main', type=str,
+                        help='survey to use; default main')
     parser.add_argument('--verbose', action='store_true', default=False,
                         help='verbose output')
     parser.add_argument('--nts-dir', default=None,
