@@ -17,7 +17,7 @@ def mjd_to_azstr(mjd):
 
 
 def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
-             seeing=1.1, table=False):
+             seeing=1.1, table=False, azrange=None):
     kpno = EarthLocation.of_site('kpno')
     if nts_dir is None:
         obsplan = None
@@ -52,6 +52,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
           'refft')
     current_ra = None
     current_dec = None
+    constraints = dict(azrange=azrange)
     while t0 < nts.scheduler.night_ephem['brightdawn']:
         cidx = np.interp(t0+300/86400, changes, np.arange(len(changes)))
         cidx = int(np.clip(cidx, 0, len(programs)-1))
@@ -61,7 +62,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         conddict = dict(skylevel=moon_up_factor, seeing=seeing,
                         sky_ra=current_ra, sky_dec=current_dec)
         res = nts.next_tile(exposure=expdict, conditions=conddict,
-                            speculative=True)
+                            speculative=True, constraints=constraints)
         if not res['foundtile']:
             t0 += 10*60/60/60/24
             continue
@@ -117,6 +118,8 @@ def parse(options=None):
     parser.add_argument('--seeing', default=1.1, help='set seeing for night.',
                         type=float)
     parser.add_argument('--table', default=False, action='store_true')
+    parser.add_argument('--azrange', default=None, nargs=2, type=float,
+                        help='Require tiles to land in given azrange.')
     if options is None:
         args = parser.parse_args()
     else:
@@ -127,4 +130,4 @@ def parse(options=None):
 def main(args):
     run_plan(night=args.night, nts_dir=args.nts_dir,
              survey=args.survey, verbose=args.verbose, seeing=args.seeing,
-             table=args.table)
+             table=args.table, azrange=args.azrange)
