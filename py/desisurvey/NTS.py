@@ -495,6 +495,10 @@ class NTS():
 
         lstnow = (self.scheduler.LST0 +
                   self.scheduler.dLST*(mjd - self.scheduler.MJD0))
+        if (lstnow < 0) or (lstnow > 360):
+            lstnow = lstnow % 360
+            self.log.warning(
+                'LST is out of range; is it daytime?')
         hanow = lstnow - self.scheduler.tiles.tileRA[idx]
         maxdha = self.scheduler.tiles.max_abs_ha[idx] - hanow
         maxdwell = min([maxdwell, maxdha/360])
