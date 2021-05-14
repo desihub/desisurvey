@@ -292,7 +292,7 @@ class NTS():
         for ext in possible_extensions:
             if os.path.exists(os.path.join(holdingdir, fabasefn+ext)):
                 extension = ext
-        if ext is None:
+        if extension is None:
             self.log.error('Could not find TILEID {} at {}, failing!'.format(
                 tileid, os.path.join(holdingdir, fabasefn)))
             return False
