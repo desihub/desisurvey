@@ -402,7 +402,8 @@ class NTS():
         if (azrange is not None) or (elrange is not None):
             tra = self.scheduler.tiles.tileRA
             tdec = self.scheduler.tiles.tileDEC
-            altazframe = desisurvey.utils.get_observer(now)
+            altazframe = desisurvey.utils.get_observer(
+                time.Time(mjd, format='mjd'))
             coordrd = coordinates.ICRS(ra=tra*u.deg, dec=tdec*u.deg)
             coordaz = coordrd.transform_to(altazframe)
             az = coordaz.az.to(u.deg).value
