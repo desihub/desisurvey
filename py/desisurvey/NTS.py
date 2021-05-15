@@ -302,11 +302,13 @@ class NTS():
                     exist_ok=True, mode=0o2775)
         shutil.copy(os.path.join(holdingdir, fabasefn+extension),
                     os.path.join(fadir, fabasefn+extension))
+        os.chmod(os.path.join(fadir, fabasefn+extension), 0o664)
         extraextensions = ['.log', '.png']
         for ext in extraextensions:
             if os.path.exists(os.path.join(holdingdir, fabasefn+ext)):
                 shutil.copy(os.path.join(holdingdir, fabasefn+ext),
                             os.path.join(fadir, fabasefn+ext))
+                os.chmod(os.path.join(fadir, fabasefn+ext), 0o664)
             else:
                 self.log.warning('Could not find expected file {}'.format(
                     os.path.join(holdingdir, fabasefn+ext)))
