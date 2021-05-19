@@ -27,6 +27,21 @@ def make_tileid_list(fadir):
 
 
 def tileid_to_clean(fadir, mtldone):
+    """Identify invalidated fiberassign files for deletion.
+
+    Scans fadir for fiberassign files.  Compares the MTLTIMES with the times in
+    the mtldone file.  If a fiberassign file was designed before an overlapping
+    tile which later had MTL updates, that fiberassign file is "invalid" and
+    should be deleted.
+
+    Parameters
+    ----------
+    fadir : str
+        directory name of fiberassign holding pen
+    mtldone : array
+        numpy array of finished tile MTL updates.  Must contain at least
+        TIMESTAMP and TILEID fields.
+    """
     cfg = desisurvey.config.Configuration()
     tiles = desisurvey.tiles.get_tiles()
     plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
@@ -56,7 +71,7 @@ def tileid_to_clean(fadir, mtldone):
     # we also need the MTL done time of all the tiles.
     index, mask = tiles.index(mtldone['TILEID'], return_mask=True)
     mtldonetime = np.zeros(tiles.ntiles, dtype='f8')
-    mtldonetime[index[mask]] = Time(mtldone[mask]).mjd
+    mtldonetime[index[mask]] = Time(mtldone['TIMESTAMP'][mask]).mjd
     maxoverlappingmtldonetime = np.zeros(tiles.ntiles, dtype='f8')
     for i, neighbors in enumerate(tiles.overlapping):
         maxoverlappingmtldonetime[i] = np.max(mtldonetime[neighbors])
@@ -73,7 +88,7 @@ def missing_tileid(fadir):
     for available, unobserved tiles.  It should include no TILEID
     for unavailable or observed tiles.  This function computes the list
     of TILEID that should exist, but do not, as well as the list of TILEID
-    that do not exist, but should.
+    that should not exist, but do.
 
     Parameters
     ----------
@@ -88,47 +103,81 @@ def missing_tileid(fadir):
     extratiles : array
         array of TILEID for tiles that exist, but should not.
     """
-    tiles = desisurvey.tiles.get_tiles()
-    tileid, fafn = make_tileid_list(fadir)
-    shouldexist = tiles.tileID[(tiles.tile_status == 'unobs') &
-                               (tiles.tile_priority > 0)]
-    alreadyexists = np.isin(tileid, shouldexist)
-    shouldnotexist = tiles.tileID[(tiles.tile_status != 'unobs') |
-                                  (tiles.tile_priority <= 0)]
-    doesexist = np.isin(tileid, shouldnotexist)
-    return (shouldexist[~alreadyexists],
-            shouldnotexist[doesexist])
-
-
-def maintain_svn(svn):
     cfg = desisurvey.config.Configuration()
     tiles = desisurvey.tiles.get_tiles()
     plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
-    res = subprocess.run(['svn', 'status', svn], capture_output=True)
-    output = res.stdout.decode('utf8')
-    rgx = re.compile(r'\d\d\d/fiberassign-(\d+)\.(fits|fits\.gz|png|log)')
+    tileid, fafn = make_tileid_list(fadir)
+    shouldexist = tiles.tileID[(plan.tile_status == 'unobs') &
+                               (plan.tile_priority > 0)]
+    missingtiles = set(shouldexist) - set(tileid)
+    shouldnotexist = tiles.tileID[(plan.tile_status != 'unobs') |
+                                  (plan.tile_priority <= 0)]
+    doesexist = np.isin(tileid, shouldnotexist)
+    return (np.sort(np.array([x for x in missingtiles])),
+            np.sort(tileid[doesexist]))
+
+
+def maintain_svn(svn, untrackedonly=True, verbose=False):
+    cfg = desisurvey.config.Configuration()
+    tiles = desisurvey.tiles.get_tiles()
+    plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
+    fnames = []
+    if untrackedonly:
+        res = subprocess.run(['svn', 'status', svn], capture_output=True)
+        output = res.stdout.decode('utf8')
+        for line in output.split('\n'):
+            if len(line) == 0:
+                continue
+            modtype = line[0]
+            if modtype != '?':
+                print('unrecognized line: "{}", ignoring.'.format(line))
+                continue
+            # new file.  We need to check it in or delete it.
+            fname = line[8:]
+            fnames.append(fname)
+    else:
+        import glob
+        fnames = glob.glob(os.path.join(svn, '**/*'), recursive=True)
+    rgx = re.compile(svn + '/' +
+                     r'\d\d\d/fiberassign-(\d+)\.(fits|fits\.gz|png|log)')
     todelete = []
     tocommit = []
-    for line in output.split('\n'):
-        if len(line) == 0:
-            continue
-        modtype = line[0]
-        if modtype != '?':
-            print('unrecognized line: "{}", ignoring.'.format(line))
-            continue
-        # new file.  We need to check it in or delete it.
-        fname = line[8:]
+    mintileid = np.min(tiles.tileID)
+    maxtileid = np.max(tiles.tileID)
+    for fname in fnames:
         match = rgx.match(fname)
         if not match:
-            print('unrecognized filename: "{}", ignoring.'.format(fname))
+            if verbose:
+                logger.warn('unrecognized filename: "{}", ignoring.'.format(fname))
             continue
         tileid = int(match.group(1))
         idx, mask = tiles.index(tileid, return_mask=True)
         if not mask:
-            print('unrecognized TILEID {}, ignoring.'.format(tileid))
+            if verbose and (tileid >= mintileid) and (tileid <= maxtileid):
+                logger.warn('unrecognized TILEID {}, ignoring.'.format(tileid))
             continue
         if plan.tile_status[idx] == 'unobs':
             todelete.append(fname)
         else:
             tocommit.append(fname)
+    if not untrackedonly:
+        tocommit = []
     return todelete, tocommit
+
+
+def execute_svn_maintenance(todelete, tocommit, echo=False, svnrm=False):
+    if echo:
+        cmd = ['echo', 'svn']
+    else:
+        cmd = ['svn']
+    for fname in todelete:
+        if svnrm:
+            subprocess.run(cmd + ['rm', fname])
+        else:
+            if not echo:
+                os.remove(fname)
+            else:
+                print('removing ', fname)
+    for fname in tocommit:
+        subprocess.run(cmd + ['add', fname])
+
