@@ -235,6 +235,7 @@ def execute_svn_maintenance(todelete, tocommit, echo=False, svnrm=False):
     for fname in tocommit:
         subprocess.run(cmd + ['add', fname])
 
+
 def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
     todelete, tocommit = maintain_svn(fbadir)
     if len(todelete) + len(tocommit) > 0:
@@ -252,13 +253,17 @@ def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
                          'Still okay?')
             if okay:
                 execute_svn_maintenance(todelete, tocommit)
+            okay = yesno('Commit to svn?')
+            if okay:
+                subprocess.run('svn', 'ci', fbadir,
+                               '-m "Adding newly observed tiles."')
     if mtldonefn is not None:
         invalid = tileid_to_clean(faholddir, fbadir, Table.read(mtldonefn))
     if len(invalid) > 0:
-        okay = yesno(('Deleting %d out-of-date fiberassign files from holding '
-                      'pen .  Continue?').format(len(toclean)))
+        okay = yesno(('Deleting %d out-of-date fiberassign files from ' +
+                      'holding pen .  Continue?').format(len(invalid)))
         if okay:
-            remove_tiles_from_dir(faholddir, toclean)
+            remove_tiles_from_dir(faholddir, invalid)
     missing, extra = missing_tileid(fbadir, faholddir)
     if len(extra) > 0:
         okay = yesno(('Deleting %d fiberassign files in SVN from the '
