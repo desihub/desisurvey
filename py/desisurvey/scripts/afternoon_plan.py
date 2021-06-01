@@ -287,7 +287,7 @@ def afternoon_plan(night=None, exposures=None,
         subprocess.run(['cp', os.path.join(directory, 'exposures.ecsv'),
                         os.path.join(surveyopsdir, 'ops')])
         subprocess.run(['cp', newtilefn, os.path.join(surveyopsdir, 'ops')])
-        print('should run: svn ci ' + surveyopsdir +
+        print('Please run: svn ci ' + os.path.join(surveyopsdir, 'ops') +
               ' -m "Update exposures and tiles for %s"' % nightstr)
     shutil.copy(newtilefn, tilefn)  # update working directory tilefn
 

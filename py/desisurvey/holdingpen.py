@@ -238,8 +238,10 @@ def execute_svn_maintenance(todelete, tocommit, echo=False, svnrm=False):
 def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
     todelete, tocommit = maintain_svn(fbadir)
     if len(todelete) + len(tocommit) > 0:
-        logger.info('To delete: ' + ' '.join(todelete))
-        logger.info('To commit: ' + ' '.join(tocommit))
+        logger.info(('To delete from %s: ' % fbadir) +
+                    ' '.join([os.path.basename(x) for x in todelete]))
+        logger.info(('To commit to %s: ' % fbadir) +
+                    ' '.join([os.path.basename(x) for x in tocommit]))
         qstr = ('Preparing to perform svn fiberassign maintenance, '
                 'deleting {} and committing {} files.  Continue?'.format(
                     len(todelete), len(tocommit)))
