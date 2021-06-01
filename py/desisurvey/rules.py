@@ -178,7 +178,7 @@ class Rules(object):
 
         # Check that all tiles are assigned to exactly one group.
         if np.any(group_ids == 0):
-            orphans = (group_ids == 0)
+            orphans = (group_ids == 0) & (tiles.in_desi)
             programs = ','.join([str(s) for s in np.unique(tiles.tileprogram[orphans])])
             self.log.warning(
                 '{0} tiles in passes {1} not assigned to any group.  These '

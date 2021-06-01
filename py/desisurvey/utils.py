@@ -393,14 +393,15 @@ def slewtime(ra1, dec1, ra2, dec2, freeslewtime=25,
     """
     slewconstants = dict(ra=[0.45, 0.05, 8],
                          dec=[0.45, 0.05, 8])
-    if ((ra1.shape != ra2.shape) or (ra1.shape != dec1.shape) or
-        (ra1.shape != dec2.shape)):
-        raise ValueError('ra1, ra2, dec1, dec2 must have same shape.')
     isscalar = np.ndim(ra1) == 0
     ra1 = np.atleast_1d(ra1)
     dec1 = np.atleast_1d(dec1)
     ra2 = np.atleast_1d(ra2)
     dec2 = np.atleast_1d(dec2)
+    if ((ra1.shape != ra2.shape) or (ra1.shape != dec1.shape) or
+            (ra1.shape != dec2.shape)):
+        raise ValueError('ra1, ra2, dec1, dec2 must have same shape.')
+
     def slewtimefun(dx, slewtype, ignore_positive=False):
         v, a, t = slewconstants[slewtype]
         dx = ((dx + 180) % 360)-180
@@ -506,3 +507,15 @@ def match(a, b):
     matches = a[sa[ind[m]]] == b[m]
     m[m] &= matches
     return sa[ind[m]], np.flatnonzero(m)
+
+
+def yesno(question):
+    """Simple Yes/No Function."""
+    prompt = f'{question} (y/n): '
+    ans = input(prompt).strip().lower()
+    if ans not in ['y', 'n', 'yes', 'no']:
+        print(f'{ans} is invalid, please try again...')
+        return yesno(question)
+    if ans == 'y':
+        return True
+    return False

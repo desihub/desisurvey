@@ -5,10 +5,12 @@ import glob
 import numpy as np
 from astropy.io import fits
 from astropy.time import Time
+from astropy.table import Table
 import desiutil.log
 import desisurvey.config
 import desisurvey.plan
 import desisurvey.tiles
+from desisurvey.utils import yesno
 
 logger = desiutil.log.get_logger()
 
@@ -26,41 +28,55 @@ def make_tileid_list(fadir):
     return np.array(existing_tileids), np.array(existing_fafiles)
 
 
-def tileid_to_clean(fadir, mtldone):
+def tileid_to_clean(faholddir, fadir, mtldone):
     """Identify invalidated fiberassign files for deletion.
 
-    Scans fadir for fiberassign files.  Compares the MTLTIMES with the times in
+    Scans faholddir for fiberassign files.  Compares the MTLTIMES with the times in
     the mtldone file.  If a fiberassign file was designed before an overlapping
     tile which later had MTL updates, that fiberassign file is "invalid" and
     should be deleted.
 
     Parameters
     ----------
-    fadir : str
+    faholddir : str
         directory name of fiberassign holding pen
+    fadir : str
+        directory name of svn-controlled fiber assign directory.
     mtldone : array
         numpy array of finished tile MTL updates.  Must contain at least
         TIMESTAMP and TILEID fields.
     """
+    import dateutil.parser
     cfg = desisurvey.config.Configuration()
     tiles = desisurvey.tiles.get_tiles()
     plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
     existing = tiles.tileID[plan.tile_status != 'unobs']
     m = (plan.tile_status == 'unobs') & (plan.tile_priority <= 0)
     unavailable = tiles.tileID[m]
-    existing_tileids, existing_fafiles = make_tileid_list(fadir)
+    existing_tileids, existing_fafiles = make_tileid_list(faholddir)
     intiles = np.isin(existing_tileids, tiles.tileID)
     existing_tileids = existing_tileids[intiles]
     existing_fafiles = existing_fafiles[intiles]
-    mtltime = np.array([fits.getheader(fn).get('MTLTIME', 'None')
-                        for fn in existing_fafiles])
-    mtltime = Time(mtltime).mjd
+    existing = existing[np.isin(existing, existing_tileids)]
+    logger.info('Reading in MTLTIME header from %d fiberassign files...' %
+                len(existing_fafiles))
+    mtltime = [fits.getheader(fn).get('MTLTIME', 'None')
+               for fn in existing_fafiles]
+    m = np.array([mtltime0 is not None for mtltime0 in mtltime])
+    if np.any(~m):
+        logger.warning('MTLTIME not found for tiles {}!'.format(
+            ' '.join([x for x in existing_fafiles[~m]])))
+    existing_tileids = existing_tileids[m]
+    existing_fafiles = existing_fafiles[m]
+    mtltime = np.array(mtltime)[m]
+    mtltime = Time([dateutil.parser.parse(mtltime0)
+                    for mtltime0 in mtltime]).mjd
     # we have the mtl times for all existing fa files.
     # we want the largest MTL time of any overlapping tile which has
     # status != 'unobs'
-    tilemtltime = np.zeros(tiles.ntiles, dtype='f8')
+    tilemtltime = np.zeros(tiles.ntiles, dtype='f8') - 1
     index, mask = tiles.index(existing_tileids, return_mask=True)
-    if np.sum(mask) > 0:
+    if np.sum(~mask) > 0:
         logger.info('Ignoring {} TILEID not in the tile file'.format(
             np.sum(~mask)))
     index = index[mask]
@@ -70,18 +86,38 @@ def tileid_to_clean(fadir, mtldone):
     # this has the MTL design time of all of the tiles.
     # we also need the MTL done time of all the tiles.
     index, mask = tiles.index(mtldone['TILEID'], return_mask=True)
-    mtldonetime = np.zeros(tiles.ntiles, dtype='f8')
-    mtldonetime[index[mask]] = Time(mtldone['TIMESTAMP'][mask]).mjd
-    maxoverlappingmtldonetime = np.zeros(tiles.ntiles, dtype='f8')
+    mtldonetime = [dateutil.parser.parse(mtltime0)
+                   for mtltime0 in mtldone['TIMESTAMP']]
+    mtldonetime = Time(mtldonetime).mjd
+    tilemtldonetime = np.zeros(tiles.ntiles, dtype='f8')
+    tilemtldonetime[index[mask]] = mtldonetime[mask]
+    maxoverlappingtilemtldonetime = np.zeros(tiles.ntiles, dtype='f8')
     for i, neighbors in enumerate(tiles.overlapping):
-        maxoverlappingmtldonetime[i] = np.max(mtldonetime[neighbors])
-    expired = maxoverlappingmtldonetime > mtltime
-    tilestoclean = np.unique(
-        np.concatenate([existing, unavailable, tiles.tileID[expired]]))
-    return tilestoclean
+        if len(neighbors) == 0:
+            continue
+        maxoverlappingtilemtldonetime[i] = np.max(tilemtldonetime[neighbors])
+    expired = ((maxoverlappingtilemtldonetime > tilemtltime)
+               & (plan.tile_status == 'unobs') & (tilemtltime > -1))
+    for tileid in existing:
+        tileidpadstr = '%06d' % tileid
+        fafn = os.path.join(fadir, tileidpadstr[:3],
+                            'fiberassign-%s.fits.gz' % tileidpadstr)
+        if not os.path.exists(fafn):
+            logger.error('Tile {} is not unobs, '.format(fafn) +
+                         'but does not exist in SVN?!')
+    return tiles.tileID[expired]
 
 
-def missing_tileid(fadir):
+def remove_tiles_from_dir(dirname, tileid):
+    for tileid0 in tileid:
+        for ext in ['fits.gz', 'png', 'log']:
+            expidstr= '{:06d}'.format(tileid0)
+            os.remove(os.path.join(
+                dirname, expidstr[:3],
+                'fiberassign-{}.{}'.format(expidstr, ext)))
+
+
+def missing_tileid(fadir, faholddir):
     """Return missing TILEID and superfluous TILEID.
 
     The fiberassign holding pen should include all TILEID
@@ -93,6 +129,8 @@ def missing_tileid(fadir):
     Parameters
     ----------
     fadir : str
+        directory name of fiberassign directory
+    faholddir : str
         directory name of fiberassign holding pen
 
     Returns
@@ -100,19 +138,36 @@ def missing_tileid(fadir):
     missingtiles, extratiles
     missingtiles : array
         array of TILEID for tiles that do not exist, but should.
+        These need to be designed and added to the holding pen.
     extratiles : array
         array of TILEID for tiles that exist, but should not.
+        These need to be deleted from the holding pen.
     """
     cfg = desisurvey.config.Configuration()
     tiles = desisurvey.tiles.get_tiles()
     plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
-    tileid, fafn = make_tileid_list(fadir)
+    tileid, fafn = make_tileid_list(faholddir)
     shouldexist = tiles.tileID[(plan.tile_status == 'unobs') &
                                (plan.tile_priority > 0)]
     missingtiles = set(shouldexist) - set(tileid)
     shouldnotexist = tiles.tileID[(plan.tile_status != 'unobs') |
                                   (plan.tile_priority <= 0)]
     doesexist = np.isin(tileid, shouldnotexist)
+    count = 0
+    for tileid0 in tileid[doesexist]:
+        expidstr = '{:06d}'.format(tileid0)
+        if not os.path.exists(os.path.join(
+                fadir, expidstr[:3],
+                'fiberassign-{}.fits.gz'.format(expidstr))):
+            logger.error('TILEID %d should be checked into and is not!' %
+                         tileid0)
+        else:
+            count += 1
+    if count > 0:
+        logger.info('Confirmed %d files in SVN also in holding pen.' %
+                    count)
+        logger.info('TILEID: ' + ' '.join(
+            [str(x) for x in np.sort(tileid[doesexist])]))
     return (np.sort(np.array([x for x in missingtiles])),
             np.sort(tileid[doesexist]))
 
@@ -181,3 +236,36 @@ def execute_svn_maintenance(todelete, tocommit, echo=False, svnrm=False):
     for fname in tocommit:
         subprocess.run(cmd + ['add', fname])
 
+def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
+    todelete, tocommit = maintain_svn(fbadir)
+    if len(todelete) + len(tocommit) > 0:
+        logger.info('To delete: ' + ' '.join(todelete))
+        logger.info('To commit: ' + ' '.join(tocommit))
+        qstr = ('Preparing to perform svn fiberassign maintenance, '
+                'deleting {} and committing {} files.  Continue?'.format(
+                    len(todelete), len(tocommit)))
+        okay = yesno(qstr)
+        if okay:
+            execute_svn_maintenance(todelete, tocommit, echo=True)
+            okay = yesno('The following commands will be executed.  '
+                         'Still okay?')
+            if okay:
+                execute_svn_maintenance(todelete, tocommit)
+    if mtldonefn is not None:
+        invalid = tileid_to_clean(faholddir, fbadir, Table.read(mtldonefn))
+    if len(invalid) > 0:
+        okay = yesno(('Deleting %d out-of-date fiberassign files from holding '
+                      'pen .  Continue?').format(len(toclean)))
+        if okay:
+            remove_tiles_from_dir(faholddir, toclean)
+    missing, extra = missing_tileid(fbadir, faholddir)
+    if len(extra) > 0:
+        okay = yesno(('Deleting %d fiberassign files in SVN from the '
+                      'holding pen.  Continue?') % len(extra))
+        if okay:
+            remove_tiles_from_dir(faholddir, extra)
+    if len(missing) < 100:
+        logger.info('Need to design the following tiles here! ' +
+                    ' '.join([str(x) for x in missing]))
+    else:
+        logger.info('Need to design many (%d) tiles here!' % len(missing))
