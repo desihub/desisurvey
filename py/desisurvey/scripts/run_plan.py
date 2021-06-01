@@ -89,14 +89,15 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
             print(f"|| {mjd_to_azstr(t0)} || {lst:5.1f} "
                   f"|| {res['fiberassign']} || "
                   f"{res['ra']} || {res['dec']}"
-                  f"|| SV3 {res['program']:6s} || "
+                  f"|| {res['program']:6s} || "
                   f"{{{{{{sequence=DESI, exptime=5400.0, guider_exptime=5.0, "
                   f"acquisition_exptime=15, "
                   f"focus_exptime=60.0, sky_exptime=60.0, flavor=science, "
-                  f"useetc=True,program='{res['program']}',"
-                  f"fiberassign={res['fiberassign']},"
+                  f"useetc=True, program='{res['program']}', "
+                  f"fiberassign={res['fiberassign']}, "
                   f"req_efftime={res['req_efftime']:.0f}, "
-                  f"sbprof='{res['sbprof']}'"
+                  f"sbprof='{res['sbprof']}', maxtime=5400, "
+                  f"esttime={int(res['esttime'])},"
                   f"}}}}}} ||")
 
         t0 += (res['exptime']+0*180)*res['count']/60/60/24

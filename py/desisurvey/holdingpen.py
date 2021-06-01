@@ -52,7 +52,6 @@ def tileid_to_clean(faholddir, fadir, mtldone):
     plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
     existing = tiles.tileID[plan.tile_status != 'unobs']
     m = (plan.tile_status == 'unobs') & (plan.tile_priority <= 0)
-    unavailable = tiles.tileID[m]
     existing_tileids, existing_fafiles = make_tileid_list(faholddir)
     intiles = np.isin(existing_tileids, tiles.tileID)
     existing_tileids = existing_tileids[intiles]
