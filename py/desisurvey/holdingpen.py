@@ -239,10 +239,10 @@ def execute_svn_maintenance(todelete, tocommit, echo=False, svnrm=False):
 def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
     todelete, tocommit = maintain_svn(fbadir)
     if len(todelete) + len(tocommit) > 0:
-        logger.info(('To delete from %s: ' % fbadir) +
-                    ' '.join([os.path.basename(x) for x in todelete]))
-        logger.info(('To commit to %s: ' % fbadir) +
-                    ' '.join([os.path.basename(x) for x in tocommit]))
+        logger.info(('To delete from %s:\n' % fbadir) +
+                    '\n'.join([os.path.basename(x) for x in todelete]))
+        logger.info(('To commit to %s:\n' % fbadir) +
+                    '\n'.join([os.path.basename(x) for x in tocommit]))
         qstr = ('Preparing to perform svn fiberassign maintenance, '
                 'deleting {} and committing {} files.  Continue?'.format(
                     len(todelete), len(tocommit)))
@@ -255,8 +255,8 @@ def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
                 execute_svn_maintenance(todelete, tocommit)
             okay = yesno('Commit to svn?')
             if okay:
-                subprocess.run('svn', 'ci', fbadir,
-                               '-m "Adding newly observed tiles."')
+                subprocess.run(['svn', 'ci', fbadir,
+                                '-m "Adding newly observed tiles."'])
     if mtldonefn is not None:
         invalid = tileid_to_clean(faholddir, fbadir, Table.read(mtldonefn))
     if len(invalid) > 0:

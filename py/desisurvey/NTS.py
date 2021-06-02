@@ -426,7 +426,7 @@ class NTS():
         if conditions.get('speed_dark_nts') is not None:
             speed = {k.upper(): conditions['speed_%s_nts' % k]
                      for k in ['dark', 'bright', 'backup']}
-        if program is None and speed is not None:
+        if program is None:
             # if no recent speed update, force BRIGHT program.
             transupdated = conditions.get('etc_transparency_updated', None)
             skyupdated = conditions.get('etc_skylevel_updated', None)
@@ -437,6 +437,9 @@ class NTS():
                     program = 'BRIGHT'
                     self.log.info('Conditions last updated more than 30 min '
                                   'in past, using BRIGHT program.')
+            # if no ETC speed information, force BRIGHT.
+            if speed is None:
+                program = 'BRIGHT'
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program,
             verbose=True, current_ra=current_ra, current_dec=current_dec,
