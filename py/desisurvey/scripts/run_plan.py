@@ -59,8 +59,13 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         cond = programs[cidx]
         moon_up_factor = getattr(nts.config.conditions, cond).moon_up_factor()
         expdict = dict(mjd=t0, previoustiles=previoustiles)
+        speed = {
+            'speed_%s_nts' % k.lower():
+            nts.ETC.weather_factor(seeing, 1., moon_up_factor, sbprof=prof)
+            for k, prof in (('DARK', 'ELG'), ('BRIGHT', 'BGS'),
+                            ('BACKUP', 'PSF'))}
         conddict = dict(skylevel=moon_up_factor, seeing=seeing,
-                        sky_ra=current_ra, sky_dec=current_dec)
+                        sky_ra=current_ra, sky_dec=current_dec, **speed)
         res = nts.next_tile(exposure=expdict, conditions=conddict,
                             speculative=True, constraints=constraints)
         if not res['foundtile']:
