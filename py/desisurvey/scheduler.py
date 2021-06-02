@@ -193,22 +193,29 @@ class Scheduler(object):
         #self.moon_ALTAZ = desisurvey.ephem.get_object_interpolator(self.night_ephem, 'moon', altaz=True)
 
     def conditions_to_program(self, seeing, transparency, skylevel,
-                              airmass=1):
+                              airmass=1, speed=None):
         if (seeing is None) or (transparency is None) or (skylevel is None):
             return 'BRIGHT'
-        expfac_dark = desisurvey.etc.seeing_exposure_factor(
-            seeing, sbprof='ELG')*skylevel/transparency**2
-        if expfac_dark < self.dark_expfac_cut:
-            return 'DARK'
-        expfac_bright = desisurvey.etc.seeing_exposure_factor(
-            seeing, sbprof='BGS')*skylevel/transparency**2
-        if expfac_bright < self.bright_expfac_cut:
-            return 'BRIGHT'
+        if (speed is None or speed.get('DARK') is None or
+                speed.get('BRIGHT') is None):
+            expfac_dark = desisurvey.etc.seeing_exposure_factor(
+                seeing, sbprof='ELG')*skylevel/transparency**2
+            if expfac_dark < self.dark_expfac_cut:
+                return 'DARK'
+            expfac_bright = desisurvey.etc.seeing_exposure_factor(
+                seeing, sbprof='BGS')*skylevel/transparency**2
+            if expfac_bright < self.bright_expfac_cut:
+                return 'BRIGHT'
+        else:
+            if speed['DARK'] > 1/self.dark_expfac_cut:
+                return 'DARK'
+            elif speed['BRIGHT'] > 1/self.bright_expfac_cut:
+                return 'BRIGHT'
         return 'BACKUP'
 
     def select_program(self, mjd_now, ETC, verbose=False,
                        seeing=None, transparency=None, skylevel=None,
-                       airmass=None):
+                       airmass=None, speed=None):
         """Select program to observe now.
         """
         if mjd_now < self.night_changes[0]:
@@ -219,7 +226,8 @@ class Scheduler(object):
                 self.log.warning('Tile requested after end of night.')
         if self.select_program_by_speed:
             program = self.conditions_to_program(
-                seeing, transparency, skylevel, airmass=airmass)
+                seeing, transparency, skylevel, airmass=airmass,
+                speed=speed)
             if ((program == 'DARK') and
                     (mjd_now < self.night_ephem['dusk'])):
                 return 'BRIGHT', self.night_changes[-1]
@@ -257,7 +265,7 @@ class Scheduler(object):
 
     def next_tile(self, mjd_now, ETC, seeing, transp, skylevel, HA_sigma=15.,
                   greediness=0., program=None, verbose=False,
-                  current_ra=None, current_dec=None):
+                  current_ra=None, current_dec=None, speed=None):
         r"""Select the next tile to observe.
 
         The :meth:`init_night` method must be called before calling this
@@ -304,6 +312,10 @@ class Scheduler(object):
             current ra of telescope; used for computing penalties to long slews
         current_dec : float
             current dec of telescope; used for computing penalties to long slews
+        speed : dict
+            dictionary of DARK, BRIGHT, BACKUP, giving current estimated survey
+            speeds in each program.  If present, used instead of
+            transp/skylevel/seeing to estimate exposure times and pick programs.
 
         Returns
         -------
@@ -332,7 +344,7 @@ class Scheduler(object):
             # Which program are we in?
             program, mjd_program_end = self.select_program(
                 mjd_now, ETC, verbose=verbose, seeing=seeing,
-                skylevel=skylevel, transparency=transp)
+                skylevel=skylevel, transparency=transp, speed=speed)
             self.tile_sel &= self.tiles.allowed_in_conditions(program)
             if verbose:
                 self.log.info(
@@ -363,7 +375,8 @@ class Scheduler(object):
             self.tile_sel[idx] = False
             if not np.any(self.tile_sel):
                 if verbose:
-                    self.log.warning('No tiles left to observe after moon separation cut.')
+                    self.log.warning('No tiles left to observe after moon '
+                                     'separation cut.')
                 # No tiles left to observe after moon avoidance veto.
                 return None, None, None, None, None, program, mjd_program_end
         else:
@@ -377,8 +390,16 @@ class Scheduler(object):
         if ((not np.all(self.sbprof[self.tile_sel] == sbprof)) and
                 (not self.tiles.bright_allowed_in_dark)):
             self.log.warning('Multiple SBPROF in same selection.')
-        weather_factor = ETC.weather_factor(seeing, transp, skylevel,
-                                            sbprof=sbprof)
+        if speed is None:
+            weather_factor = ETC.weather_factor(seeing, transp, skylevel,
+                                                sbprof=sbprof)
+        else:
+            if program not in speed:
+                self.log.warning('speed dictionary does not contain program %s'
+                                 % program)
+                weather_factor = speed['DARK']
+            else:
+                weather_factor = speed[program]
         esttime = self.esttime[self.tile_sel] / weather_factor
         esttime = np.clip(esttime, 0, self.maxtime.to(u.day).value)
         airmassnow = self.tiles.airmass(

@@ -56,7 +56,7 @@ def cull_old_files(files, start_from):
 
 def scan_directory(dirname, start_from=None,
                    offlinedepth=None, mtldone=None,
-                   offlinetiles=None):
+                   offlinetiles=None, badexp=None):
     """Scan directory for spectra with ETC statistics to collect.
 
     Parameters
@@ -80,6 +80,9 @@ def scan_directory(dirname, start_from=None,
     mtldone : str
         mtl done file to use.  Fills out done status according to presence
         in mtl done file.
+    badexp : str
+        bad exposure file to use.  EXPID marked bad in this file are also
+        marked bad in the exposures file.
     """
     log.info('Scanning {} for desi exposures...'.format(dirname))
     if start_from is None:
@@ -192,6 +195,10 @@ def scan_directory(dirname, start_from=None,
     # replace EFFTIME with EFFTIME_SPEC where available
     exps['EFFTIME'] = np.where(exps['EFFTIME_SPEC'] < 0,
                                exps['EFFTIME'], exps['EFFTIME_SPEC'])
+    if badexp is not None:
+        exps = mark_bad_expsosures(exps, badexp)
+    quality = np.array([q.strip().lower() for q in exps['QUALITY']])
+    exps['EFFTIME'][quality == 'bad'] = 0
     ntiles = len(np.unique(exps['TILEID']))
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('PROGRAM', 'U20'), ('EFFTIME', 'f4'),
@@ -421,6 +428,18 @@ def update_mtldone(tiles, mtldonefn):
     return tiles
 
 
+def mark_bad_expsosures(exps, badexp):
+    badexp = astropy.table.Table.read(badexp)
+    me, mb = desisurvey.utils.match(exps['EXPID'], badexp['EXPID'])
+    ok = (badexp['BAD'] == 'True') | (badexp['BAD'] == 'False')
+    if ~np.all(ok):
+        log.warning('Weird entries in badexp file, ignoring!')
+        log.warning(' '.join(np.unique(badexp['BAD'][~ok])))
+    m = badexp[mb]['BAD'] == 'True'
+    exps['QUALITY'][me[m]] = 'bad'
+    return exps
+
+
 def read_exp(fn):
     """Read tile & exposure ETC statistics file from filename.
 
@@ -456,6 +475,8 @@ def parse(options=None):
                         help='offline tile file to use')
     parser.add_argument('--mtldone', type=str,
                         help='mtl done file to use')
+    parser.add_argument('--badexp', type=str,
+                        help='bad exposure file to use')
     parser.add_argument('--config', type=str, default=None,
                         help='configuration file to use')
     if options is None:
@@ -472,7 +493,7 @@ def main(args):
     res = scan_directory(args.directory, start_from=args.start_from,
                          offlinedepth=args.offlinedepth,
                          offlinetiles=args.offlinetiles,
-                         mtldone=args.mtldone)
+                         mtldone=args.mtldone, badexp=args.badexp)
     if res is not None:
         tiles, exps = res
         write_exp(exps, args.outfile)

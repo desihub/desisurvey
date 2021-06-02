@@ -3,6 +3,7 @@ import desisurvey.tiles
 import desisurvey.rules
 import desisurvey.plan
 import desisurvey.scheduler
+import desisurvey.holdingpen
 import desiutil.log
 import re
 import os
@@ -11,18 +12,8 @@ import subprocess
 from desisurvey.scripts import collect_etc
 import desimodel.io
 import numpy as np
-
-
-def yesno(question):
-    """Simple Yes/No Function."""
-    prompt = f'{question}? (y/n): '
-    ans = input(prompt).strip().lower()
-    if ans not in ['y', 'n', 'yes', 'no']:
-        print(f'{ans} is invalid, please try again...')
-        return yesno(question)
-    if ans == 'y':
-        return True
-    return False
+from astropy.table import Table
+from desisurvey.utils import yesno
 
 
 def afternoon_plan(night=None, exposures=None,
@@ -115,8 +106,9 @@ def afternoon_plan(night=None, exposures=None,
         log.info('SURVEYOPS directory not found; not performing '
                  'surveyops updates.')
 
+    fbadir = os.environ['FIBER_ASSIGN_DIR']
     # update FIBER_ASSIGN_DIR
-    subprocess.run(['svn', 'up', os.environ['FIBER_ASSIGN_DIR']])
+    subprocess.run(['svn', 'up', fbadir])
 
     tilefn = find_tile_file(config.tiles_file())
     rulesfn = find_rules_file(config.rules_file())
@@ -140,7 +132,7 @@ def afternoon_plan(night=None, exposures=None,
             doupdate = not filecmp.cmp(tilefn, surveyopstilefn, shallow=False)
         if doupdate:
             qstr = ('tile file in SURVEYOPS is updated relative '
-                    'to {}.  Overwrite with SURVEYOPS tile file'.format(
+                    'to {}.  Overwrite with SURVEYOPS tile file?'.format(
                         tilefn))
             update = yesno(qstr)
             if update:
@@ -231,8 +223,10 @@ def afternoon_plan(night=None, exposures=None,
                 mtldonefn = './mtl-done-tiles.ecsv'
             else:
                 mtldonefn = None
+        badexpfn = None
     else:
         mtldonefn = os.path.join(surveyopsdir, 'mtl', 'mtl-done-tiles.ecsv')
+        badexpfn = os.path.join(surveyopsdir, 'ops', 'bad_exp_list.csv')
 
     if exposures is None:
         # expdir = os.path.join(os.environ['SURVEYOPS'], 'ops')
@@ -245,7 +239,8 @@ def afternoon_plan(night=None, exposures=None,
         spectra_dir, start_from=exposures,
         offlinedepth=offlinepipelinefiles[0],
         offlinetiles=offlinepipelinefiles[1],
-        mtldone=mtldonefn)
+        mtldone=mtldonefn,
+        badexp=badexpfn)
     collect_etc.write_exp(exps, os.path.join(directory, 'exposures.ecsv'))
 
     planner.set_donefrac(tiles['TILEID'], tiles['DONEFRAC'],
@@ -273,13 +268,26 @@ def afternoon_plan(night=None, exposures=None,
 
     planner.afternoon_plan(night)
     planner.save(os.path.join(subdir, os.path.basename(newtilefn)))
+    # force reload of tile file from cache.
+    _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
+    faholddir = os.environ.get('FA_HOLDING_PEN', None)
+    if faholddir is not None:
+        desisurvey.holdingpen.maintain_holding_pen_and_svn(
+            fbadir, faholddir, mtldonefn)
+    else:
+        logger.error('FA_HOLDING_PEN is None, skipping holding pen '
+                     'maintenance!')
+    # pick up any changes to available tiles.
+    planner.afternoon_plan(night)
+    planner.save(os.path.join(subdir, os.path.basename(newtilefn)))
+
     for fn in [newrulesfn, newconfigfn]:
         subprocess.run(['chmod', 'a-w', fn])
     if surveyopsdir is not None:
         subprocess.run(['cp', os.path.join(directory, 'exposures.ecsv'),
                         os.path.join(surveyopsdir, 'ops')])
         subprocess.run(['cp', newtilefn, os.path.join(surveyopsdir, 'ops')])
-        print('should run: svn ci ' + surveyopsdir +
+        print('Please run: svn ci ' + os.path.join(surveyopsdir, 'ops') +
               ' -m "Update exposures and tiles for %s"' % nightstr)
     shutil.copy(newtilefn, tilefn)  # update working directory tilefn
 

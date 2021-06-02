@@ -388,6 +388,9 @@ class NTS():
                           mjd)
 
         self.queuedlist.restore()
+        if len(self.queuedlist.queued) == 0:
+            current_ra = None
+            current_dec = None
 
         previoustiles = exposure.get('previoustiles', [])
         if previoustiles is None:
@@ -419,9 +422,25 @@ class NTS():
 
         program = exposure.get('program', None)
 
+        speed = None
+        if conditions.get('speed_dark_nts') is not None:
+            speed = {k.upper(): conditions['speed_%s_nts' % k]
+                     for k in ['dark', 'bright', 'backup']}
+        if program is None and speed is not None:
+            # if no recent speed update, force BRIGHT program.
+            transupdated = conditions.get('etc_transparency_updated', None)
+            skyupdated = conditions.get('etc_skylevel_updated', None)
+            if transupdated is not None and skyupdated is not None:
+                lastupdated = min([time.Time(transupdated).mjd,
+                                   time.Time(skyupdated).mjd])
+                if mjd - lastupdated > 0.5/24:  # 30 min
+                    program = 'BRIGHT'
+                    self.log.info('Conditions last updated more than 30 min '
+                                  'in past, using BRIGHT program.')
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program,
-            verbose=True, current_ra=current_ra, current_dec=current_dec)
+            verbose=True, current_ra=current_ra, current_dec=current_dec,
+            speed=speed)
         self.scheduler.in_night_pool = save_in_night_pool
         (tileid, passnum, snr2frac_start, exposure_factor, airmass,
          sched_program, mjd_program_end) = result
@@ -533,9 +552,9 @@ class NTS():
             mincount = 1
         count = np.max([mincount, count])
         splitexptime = exptime / count
-        minexptime = getattr(programconf, 'minimum_exposure_time', None)
+        minexptime = getattr(programconf, 'mintime', None)
         if minexptime:
-            minexptime = getattr(minexptime, sched_program)()
+            minexptime = minexptime()
             minexptime = minexptime.to(u.s).value
             splitexptime = max([splitexptime, minexptime/days_to_seconds])
 
