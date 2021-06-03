@@ -315,6 +315,10 @@ class NTS():
             self.scheduler.plan.add_pending_tile(queuedtile)
         self.ETC = desisurvey.etc.ExposureTimeCalculator()
 
+    # stub to retain ICS API compatibility.
+    def move_tile_into_place(self, tileid, speculative=False):
+        return move_tile_into_place(tileid, speculative=speculative)
+
     def next_tile(self, conditions=None, exposure=None, constraints=None,
                   speculative=False):
         """
