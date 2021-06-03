@@ -14,11 +14,15 @@ desisurvey change log
 * Enable identification of high priority 10k footprint tiles.
 * Add slew time to simulations and favor short slews in tile selection.
 * Implement "holding pen" where new fiberassign files are found (PR `#139`_).
-* Miscellaneous holding pen and tile selection improvements (PR `#140`_, `#141`_).
+* Miscellaneous holding pen and tile selection improvements (PR `#140`_,
+  `#141`_).
+* Let ICS move tiles into place.  Make tile selection only use speed
+  (PR `#142`_).
 
 .. _`#139`: https://github.com/desihub/desisurvey/pull/139
 .. _`#140`: https://github.com/desihub/desisurvey/pull/140
 .. _`#141`: https://github.com/desihub/desisurvey/pull/141
+.. _`#142`: https://github.com/desihub/desisurvey/pull/142
 
 0.17.0 (2021-04-23)
 -------------------
