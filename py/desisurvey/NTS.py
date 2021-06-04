@@ -51,6 +51,7 @@ from astropy import coordinates
 from astropy import units as u
 from astropy import time
 import numpy as np
+import subprocess
 
 try:
     import DOSlib.logger as Log
@@ -177,6 +178,15 @@ def azinrange(az, low, high):
     return (az >= low) & (az <= high)
 
 
+def get_fiberassign_dir():
+    fadir = os.environ.get('DOS_DESI_TILES', None)
+    if fadir is None:
+        fadir = os.environ.get('FIBER_ASSIGN_DIR', None)
+    if fadir is None:
+        logob.error('DOS_DESI_TILES and FIBER_ASSIGN_DIR not set!')
+    return fadir
+
+
 def move_tile_into_place(tileid, speculative=False):
     """Move fiberassign file into place if not already there.
 
@@ -192,11 +202,8 @@ def move_tile_into_place(tileid, speculative=False):
     speculative : bool
         if True, do not perform the actual copy; just check existence.
     """
-    fadir = os.environ.get('DOS_DESI_TILES', None)
+    fadir = get_fiberassign_dir()
     if fadir is None:
-        fadir = os.environ.get('FIBER_ASSIGN_DIR', None)
-    if fadir is None:
-        logob.error('DOS_DESI_TILES and FIBER_ASSIGN_DIR not set!')
         return False
     tileidstr = '%06d' % tileid
     fabasefn = os.path.join(tileidstr[0:3], 'fiberassign-%s' % tileidstr)
@@ -234,6 +241,29 @@ def move_tile_into_place(tileid, speculative=False):
             logob.warning('Could not find expected file {}'.format(
                 os.path.join(holdingdir, fabasefn+ext)))
     return True
+
+
+def design_tile_on_fly(tileid, speculative=False):
+    # don't actually design the tile, but say we did
+    # not sure what else we might want to check here.
+    if speculative:
+        return True
+    fadir = get_fiberassign_dir()
+    if fadir is None:
+        return False
+    tileidpad = '%06d' % tileid
+    subdir = tileidpad[:3]
+    outfnnogz = os.path.join(fadir, subdir, 'fiberassign-%s.fits' % tileidpad)
+    outfn = os.path.join(fadir, subdir, 'fiberassign-%s.fits.gz' % tileidpad)
+    if os.path.exists(outfnnogz) or os.path.exists(outfn):
+        return True
+    subprocess.call(['fba-main.sh', str(tileid), 'n'],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    subprocess.Popen(['fba-main.sh', str(tileid), 'y'],
+                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    if os.path.exists(outfn):
+        return True
+    return False
 
 
 class NTS():
@@ -287,6 +317,8 @@ class NTS():
             raise ValueError('Could not find obsplan configuration!')
         desisurvey.config.Configuration.reset()
         config = desisurvey.config.Configuration(obsplan)
+        self.log.info('Loading obsplan from {}, desisurvey version {}'.format(
+            obsplan, desisurvey.__version__))
         _ = desisurvey.tiles.get_tiles(use_cache=False, write_cache=True)
 
         self.default_seeing = defaults.get('seeing', 1.1)
@@ -296,6 +328,11 @@ class NTS():
         self.rules = desisurvey.rules.Rules(
             config.get_path(config.rules_file()))
         self.config = config
+        fa_on_the_fly = getattr(config, 'fa_on_the_fly', None)
+        if fa_on_the_fly is not None:
+            self.fa_on_the_fly = fa_on_the_fly()
+        else:
+            self.fa_on_the_fly = False
         try:
             self.planner = desisurvey.plan.Planner(
                 self.rules, restore=config.tiles_file(),
@@ -468,10 +505,16 @@ class NTS():
             self.requestlog.logresponse(badtile)
             return badtile
 
-        if not move_tile_into_place(tileid, speculative=speculative):
-            self.log.error('Could not find tile {}!'.format(tileid))
-            self.requestlog.logresponse(badtile)
-            return badtile
+        if self.fa_on_the_fly and not constraints.get('static_fa_only', False):
+            if not design_tile_on_fly(tileid, speculative=speculative):
+                self.log.error('fa-on-the-fly failed!')
+                self.requestlog.logresponse(badtile)
+                return badtile
+        else:
+            if not move_tile_into_place(tileid, speculative=speculative):
+                self.log.error('Could not find tile {}!'.format(tileid))
+                self.requestlog.logresponse(badtile)
+                return badtile
 
         self.scheduler.plan.add_pending_tile(tileid)
 
