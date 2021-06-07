@@ -503,18 +503,20 @@ class Planner(object):
         # tiles with priority > 0 may be designed.
         if not self.simulate:
             m = self.tile_available & ~filesavailable
-            nundesigned = np.sum(m)
-            if nundesigned > 0:
-                if nundesigned < 100:
-                    self.log.info(
-                        'Newly available tiles that have not yet been '
-                        'designed:  ' +
-                        ' '.join([str(x) for x in self.tiles.tileID[m]]))
-                else:
-                    self.log.info(
-                        'There are many ({}) available tiles that have '
-                        'not been designed.  Suppressing full list.'.format(
-                            nundesigned))
+            for prog, progmask in self.tiles.program_mask.items():
+                ma = m & progmask
+                nundesigned = np.sum(ma)
+                if nundesigned > 0:
+                    if nundesigned < 100:
+                        self.log.info(
+                            'Newly available {} tiles that '.format(prog) +
+                            'have not yet been designed:  ' +
+                            ' '.join([str(x) for x in self.tiles.tileID[ma]]))
+                    else:
+                        self.log.info(
+                            'There are many ({}) available {} tiles that have '
+                            'not been designed.  Suppressing full '
+                            'list.'.format(nundesigned, prog))
             self.tile_available[~filesavailable] = 0
         newlycompleted = ((self.tile_status == 'done') &
                           (oldstatus != 'done'))
