@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.17.1 (unreleased)
+0.18.1 (unreleased)
+-------------------
+
+* No changes yet.
+
+0.18.0 (2021-07-06)
 -------------------
 
 * Increase number of starting points in HA optimization.
