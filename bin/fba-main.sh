@@ -56,7 +56,7 @@ if [[ "$QA" == "y" ]]
 then
     CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --steps qa --log-stdout --doclean y --svntiledir $SVNTILEDIR --worldreadable"
 else
-    CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --nosteps qa --doclean n --svntiledir $SVNTILEDIR --worldreadable --log-stdout"
+    CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --nosteps qa --doclean n --svntiledir $SVNTILEDIR --worldreadable"
 fi
 echo $CMD
 eval $CMD

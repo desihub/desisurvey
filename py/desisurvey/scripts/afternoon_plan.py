@@ -106,6 +106,17 @@ def afternoon_plan(night=None, exposures=None,
         log.info('SURVEYOPS directory not found; not performing '
                  'surveyops updates.')
 
+    # compulsively make sure that the main SURVEYOPS repository is up to date
+    # this ensures that tiles designed on the fly will use recent MTLs.
+    # note, this occurs after the "private" surveyops/mtl/mtl-done-tiles.ecsv
+    # update.  In the event that a check in landed between the two svn updates,
+    # AP would not release updated tiles for observation that night.  That's
+    # fine.  In the opposite order, AP would release tiles, but they would use
+    # out of date MTLs, a disaster.
+    mainsurveyopsdir = os.path.join(
+        os.environ['DESI_ROOT'], 'survey', 'ops', 'surveyops', 'trunk')
+    subprocess.run(['svn', 'up', mainsurveyopsdir])
+
     fbadir = os.environ['FIBER_ASSIGN_DIR']
     # update FIBER_ASSIGN_DIR
     subprocess.run(['svn', 'up', fbadir])
@@ -206,24 +217,8 @@ def afternoon_plan(night=None, exposures=None,
             offlinepipelinefiles[i] = None
 
     if surveyopsdir is None:
-        os.system(
-            'wget -q '
-            'https://data.desi.lbl.gov/desi/survey/ops/surveyops/trunk/mtl/'
-            'mtl-done-tiles.ecsv -O ./mtl-done-tiles.new.ecsv')
-        try:
-            filelen = os.stat('mtl-done-tiles.new.ecsv').st_size
-        except Exception:
-            filelen = 0
-        if filelen > 0:
-            os.rename('mtl-done-tiles.new.ecsv', 'mtl-done-tiles.ecsv')
-            mtldonefn = './mtl-done-tiles.ecsv'
-        else:
-            log.warning('Updating mtl-done-tiles failed!')
-            if os.path.exists('./mtl-done-tiles.ecsv'):
-                mtldonefn = './mtl-done-tiles.ecsv'
-            else:
-                mtldonefn = None
-        badexpfn = None
+        raise ValueError('SURVEYOPS is not set; cannot do MTL updates; '
+                         'failing!')
     else:
         mtldonefn = os.path.join(surveyopsdir, 'mtl', 'mtl-done-tiles.ecsv')
         badexpfn = os.path.join(surveyopsdir, 'ops', 'bad_exp_list.csv')
@@ -275,8 +270,8 @@ def afternoon_plan(night=None, exposures=None,
         desisurvey.holdingpen.maintain_holding_pen_and_svn(
             fbadir, faholddir, mtldonefn)
     else:
-        logger.error('FA_HOLDING_PEN is None, skipping holding pen '
-                     'maintenance!')
+        log.error('FA_HOLDING_PEN is None, skipping holding pen '
+                  'maintenance!')
     # pick up any changes to available tiles.
     planner.afternoon_plan(night)
     planner.save(os.path.join(subdir, os.path.basename(newtilefn)))

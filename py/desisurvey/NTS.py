@@ -257,6 +257,7 @@ def design_tile_on_fly(tileid, speculative=False):
     outfn = os.path.join(fadir, subdir, 'fiberassign-%s.fits.gz' % tileidpad)
     if os.path.exists(outfnnogz) or os.path.exists(outfn):
         return True
+    logob.info('Designing tile %d on fly.' % tileid)
     subprocess.call(['fba-main.sh', str(tileid), 'n'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.Popen(['fba-main.sh', str(tileid), 'y'],

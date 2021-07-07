@@ -61,10 +61,13 @@ def tileid_to_clean(faholddir, fadir, mtldone):
                 len(existing_fafiles))
     mtltime = [fits.getheader(fn).get('MTLTIME', 'None')
                for fn in existing_fafiles]
-    m = np.array([mtltime0 is not None for mtltime0 in mtltime])
+    m = np.array([mtltime0 is not None for mtltime0 in mtltime],
+                 dtype='bool')
     if np.any(~m):
         logger.warning('MTLTIME not found for tiles {}!'.format(
             ' '.join([x for x in existing_fafiles[~m]])))
+    if np.sum(m) == 0:
+        return np.zeros(0, dtype='i4')
     existing_tileids = existing_tileids[m]
     existing_fafiles = existing_fafiles[m]
     mtltime = np.array(mtltime)[m]
@@ -158,7 +161,7 @@ def missing_tileid(fadir, faholddir):
         if not os.path.exists(os.path.join(
                 fadir, expidstr[:3],
                 'fiberassign-{}.fits.gz'.format(expidstr))):
-            logger.error('TILEID %d should be checked into and is not!' %
+            logger.error('TILEID %d should be checked into svn and is not!' %
                          tileid0)
         else:
             count += 1
