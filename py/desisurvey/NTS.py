@@ -258,9 +258,9 @@ def design_tile_on_fly(tileid, speculative=False):
     if os.path.exists(outfnnogz) or os.path.exists(outfn):
         return True
     logob.info('Designing tile %d on fly.' % tileid)
-    subprocess.call(['fba-main.sh', str(tileid), 'n'],
+    subprocess.call(['fba-main-onthefly.sh', str(tileid), 'n'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    subprocess.Popen(['fba-main.sh', str(tileid), 'y'],
+    subprocess.Popen(['fba-main-onthefly.sh', str(tileid), 'y'],
                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if os.path.exists(outfn):
         return True
