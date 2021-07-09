@@ -169,6 +169,11 @@ class Planner(object):
             nogray = nogray()
         self.nogray = nogray
 
+        fa_on_the_fly = getattr(config, 'fa_on_the_fly', False)
+        if not isinstance(fa_on_the_fly, bool):
+            fa_on_the_fly = fa_on_the_fly()
+        self.fa_on_the_fly = fa_on_the_fly
+
         self.tiles = desisurvey.tiles.get_tiles()
         self.ephem = desisurvey.ephem.get_ephem()
         if restore is not None:
@@ -501,23 +506,24 @@ class Planner(object):
                         (self.tile_available == 0))
         self.tile_priority[zeropriority] = 0
         # tiles with priority > 0 may be designed.
-        if not self.simulate:
+        if not self.simulate and not self.fa_on_the_fly:
             m = self.tile_available & ~filesavailable
+            self.tile_available[~filesavailable] = 0
             for prog, progmask in self.tiles.program_mask.items():
                 ma = m & progmask
                 nundesigned = np.sum(ma)
-                if nundesigned > 0:
-                    if nundesigned < 100:
-                        self.log.info(
-                            'Newly available {} tiles that '.format(prog) +
-                            'have not yet been designed:  ' +
-                            ' '.join([str(x) for x in self.tiles.tileID[ma]]))
-                    else:
-                        self.log.info(
-                            'There are many ({}) available {} tiles that have '
-                            'not been designed.  Suppressing full '
-                            'list.'.format(nundesigned, prog))
-            self.tile_available[~filesavailable] = 0
+                if nundesigned == 0:
+                    continue
+                elif nundesigned < 200:
+                    self.log.info(
+                        'Newly available {} tiles that '.format(prog) +
+                        'have not yet been designed:  ' +
+                        ' '.join([str(x) for x in self.tiles.tileID[ma]]))
+                else:
+                    self.log.info(
+                        'There are many ({}) available {} tiles that have '
+                        'not been designed.  Suppressing full '
+                        'list.'.format(nundesigned, prog))
         newlycompleted = ((self.tile_status == 'done') &
                           (oldstatus != 'done'))
         return newlystarted, newlycompleted

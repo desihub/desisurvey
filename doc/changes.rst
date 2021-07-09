@@ -23,11 +23,13 @@ desisurvey change log
   `#141`_).
 * Let ICS move tiles into place.  Make tile selection only use speed
   (PR `#142`_).
+* Add fiberassign-on-the-fly capability (PR `#143`_)
 
 .. _`#139`: https://github.com/desihub/desisurvey/pull/139
 .. _`#140`: https://github.com/desihub/desisurvey/pull/140
 .. _`#141`: https://github.com/desihub/desisurvey/pull/141
 .. _`#142`: https://github.com/desihub/desisurvey/pull/142
+.. _`#143`: https://github.com/desihub/desisurvey/pull/143
 
 0.17.0 (2021-04-23)
 -------------------
