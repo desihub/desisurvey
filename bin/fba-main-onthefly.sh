@@ -8,7 +8,6 @@ TILEID=$1 # e.g. 1000
 QA=$2   # y or n
 
 OUTDIR=$FA_HOLDING_PEN
-TILESFN=$SURVEYOPS/ops/tiles-main.ecsv
 DTCATVER=1.1.1
 
 # setting the proper environment
@@ -30,6 +29,8 @@ else
     echo Fiberassign on the fly should only be run for testing purposes at NERSC!
     # source /global/cfs/cdirs/desi/software/desi_environment.sh 21.5
 fi
+
+TILESFN=$DESI_SURVEYOPS/ops/tiles-main.ecsv
 
 if [ -z $FIBER_ASSIGN_DIR ]; then
     SVNTILEDIR=$DESI_TARGET/fiberassign/tiles/trunk
