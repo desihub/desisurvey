@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# this is necessary for the bash script to have access to the modules system
+# using the msdos user at KPNO.
+# I could alternatively make the script a --login script, but that seems like
+# it's doing more than I might want.
+# I haven't understood why one doesn't have access to the modules script when
+# coming in from the msdos native csh environment.
+if [ -z $NERSC_HOST ]; then
+    source /etc/profile.d/modules.sh
+fi
+
 # this script is a wrapper for a fba_launch call for one main tile
 # there is no "svn up" here, no SVN checks
 # the code will exit if a TILEID already existing in the official SVN folder exists
