@@ -6,7 +6,8 @@
 # it's doing more than I might want.
 # I haven't understood why one doesn't have access to the modules script when
 # coming in from the msdos native csh environment.
-if [ -z $NERSC_HOST ]; then
+
+if [ -z $NERSC_HOST ] && ! `module list &>/dev/null`; then
     source /etc/profile.d/modules.sh
 fi
 
@@ -28,6 +29,14 @@ if [ -z $NERSC_HOST ]; then
     export DESI_ROOT=/data/datasystems
     export DESI_TARGET=$DESI_ROOT/target
     export DESI_SURVEYOPS=$DESI_ROOT/survey/ops/surveyops/trunk
+    export XDG_CACHE_HOME=$HOME/users/datasystems/xdg_cache_home
+    export XDG_CONFIG_HOME=$HOME/users/datasystems/xdg_config_home
+    if [ -d $XDG_CACHE_HOME/astropy ]; then
+	echo Missing directory $XDG_CACHE_HOME !
+    fi
+    if [ -d $XDG_CONFIG_HOME/astropy ]; then
+	echo Missing directory $XDG_CONFIG_HOME !
+    fi
     module use $DESI_PRODUCT_ROOT/modulefiles
     module load desiconda
     module load desimodules/21.5
