@@ -43,7 +43,7 @@ if [ -z $NERSC_HOST ]; then
     module swap desitarget/1.2.2
     module swap fiberassign/5.1.1
     module swap desimeter/0.6.7
-    module swap desimodel/master
+    export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
 else
     echo Fiberassign on the fly should only be run for testing purposes at NERSC!
     # source /global/cfs/cdirs/desi/software/desi_environment.sh 21.5
