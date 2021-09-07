@@ -5,7 +5,9 @@ desisurvey change log
 0.18.1 (unreleased)
 -------------------
 
-* No changes yet.
+* Trust EFFTIME_SPEC from offline pipeline rather than using
+  ELG_EFFTIME_DARK or BGS_EFFTIME_BRIGHT explicitly.  This is to make
+  the transition to LRG_EFFTIME_DARK seamless.
 
 0.18.0 (2021-07-06)
 -------------------
