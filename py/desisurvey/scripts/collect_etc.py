@@ -177,7 +177,7 @@ def scan_directory(dirname, start_from=None,
         exps['QUALITY'][i] = 'good' if hasrequest else 'bad'
         exps['COMMENTS'][i] = ''
     exps['EFFTIME'] = -1
-    exptime_clipped = np.where(exps['EXPTIME'] < 59.0, 0, exps['EXPTIME'])
+    exptime_clipped = np.where(exps['EXPTIME'] < 60.0, 0, exps['EXPTIME'])
     exps['EFFTIME'] = np.where(exps['EFFTIME_ETC'] >= 0, exps['EFFTIME_ETC'],
                                exptime_clipped)
     obstypes = np.array([f.upper().strip() for f in exps['OBSTYPE']],
@@ -392,9 +392,7 @@ def update_donefrac_from_offline(exps, offlinefn):
     offlinetimetypes = np.zeros(len(offline), dtype='U80')
     offlinetimetypes[:] = 'DARK'
     offlinetimetypes[mo] = timetypes
-    offline_eff_time = np.where(offlinetimetypes == 'DARK',
-                                offline['ELG_EFFTIME_DARK'],
-                                offline['BGS_EFFTIME_BRIGHT'])
+    offline_eff_time = offline['EFFTIME_SPEC']
     if ((len(np.unique(exps['EXPID'])) != len(exps)) or
             (len(np.unique(offline['EXPID'])) != len(offline))):
         raise ValueError('weird duplicate EXPID in exps or offline')
