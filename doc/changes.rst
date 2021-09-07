@@ -5,6 +5,10 @@ desisurvey change log
 0.18.1 (unreleased)
 -------------------
 
+* Add retire_tile script to set IN_DESI = False for particular tiles,
+  adding duplicate tiles with new TILEID at those locations.  Used
+  when we want to abandon a particular design but still want
+  observations at that location in the future.
 * Trust EFFTIME_SPEC from offline pipeline rather than using
   ELG_EFFTIME_DARK or BGS_EFFTIME_BRIGHT explicitly.  This is to make
   the transition to LRG_EFFTIME_DARK seamless.

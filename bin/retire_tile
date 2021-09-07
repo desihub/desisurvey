@@ -1,0 +1,61 @@
+#!/usr/bin/env python
+
+import os
+import numpy as np
+import desiutil.log
+from astropy import table
+
+log = desiutil.log.get_logger()
+
+
+def retire_tiles(tileid, replace=False, tilefile=None):
+    if tilefile is None:
+        tilefile = os.environ.get('DESI_SURVEYOPS', None)
+        if tilefile is None:
+            raise ValueError('tilefile or DESI_SURVEYOPS must be set!')
+        tilefile = os.path.join(tilefile, 'ops', 'tiles-main.ecsv')
+    tiles = table.Table.read(tilefile)
+    for tileid0 in tileid:
+        m = tiles['TILEID'] == tileid0
+        if np.sum(m) == 0:
+            log.warning('Ignoring tileid {}, not found in tile file.'.format(
+                tileid0))
+            continue
+        elif np.sum(m) > 1:
+            log.error('Multiple tileid {}, something is wrong!'.format(
+                tileid0))
+        else:
+            rec = tiles[m].copy()
+            tiles['IN_DESI'][m] = False
+            if replace:
+                mprog = tiles['PROGRAM'] == tiles['PROGRAM'][m][0]
+                lasttileid = np.max(tiles['TILEID'][mprog])
+                if np.sum(tiles['TILEID'] == lasttileid + 1) > 0:
+                    raise ValueError('Not yet implemented: the next tile ID '
+                                     'in the sequence is taken.')
+                rec['TILEID'] = lasttileid + 1
+                rec['STATUS'] = 'unobs'
+                rec['DONEFRAC'] = 0
+                insertindex = np.flatnonzero(tiles['TILEID'] == lasttileid)[0]
+                tiles = table.vstack([tiles[:insertindex+1], rec,
+                                      tiles[insertindex+1:]])
+    if not np.all(np.diff(rec['TILEID']) > 0):
+        raise ValueError('Messed up sorting!')
+    tiles.write(tilefile, overwrite=True)
+
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(
+        description='Retire, and optionally replace, a tile.',
+        epilog='EXAMPLE: %(prog)s 1234')
+    parser.add_argument('tileid', type=int, nargs='+',
+                        help='TILEID to retire')
+    parser.add_argument('--replace', action='store_true', default=False,
+                        help=('Replace tiles with identical tiles '
+                              'in same location'))
+    parser.add_argument('--tilefile', default=None, type=str,
+                        help=('tile file to edit; default '
+                              '$SURVEYOPS/ops/tiles-main.ecsv'))
+    args = parser.parse_args()
+    retire_tiles(args.tileid, replace=args.replace, tilefile=args.tilefile)
