@@ -31,15 +31,16 @@ if [ -z $NERSC_HOST ]; then
     export DESI_SURVEYOPS=$DESI_ROOT/survey/ops/surveyops/trunk
     export XDG_CACHE_HOME=$HOME/users/datasystems/xdg_cache_home
     export XDG_CONFIG_HOME=$HOME/users/datasystems/xdg_config_home
-    if [ -d $XDG_CACHE_HOME/astropy ]; then
+    if [ ! -d $XDG_CACHE_HOME/astropy ]; then
 	echo Missing directory $XDG_CACHE_HOME !
     fi
-    if [ -d $XDG_CONFIG_HOME/astropy ]; then
+    if [ ! -d $XDG_CONFIG_HOME/astropy ]; then
 	echo Missing directory $XDG_CONFIG_HOME !
     fi
     module use $DESI_PRODUCT_ROOT/modulefiles
     module load desiconda
     module load desimodules/21.7e
+    module swap desitarget/1.2.2
     module swap fiberassign/master  # hack for testing with Klaus.
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
 else
