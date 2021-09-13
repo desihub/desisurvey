@@ -243,7 +243,7 @@ def move_tile_into_place(tileid, speculative=False):
     return True
 
 
-def design_tile_on_fly(tileid, speculative=False):
+def design_tile_on_fly(tileid, speculative=False, flylogfn=None):
     # don't actually design the tile, but say we did
     # not sure what else we might want to check here.
     if speculative:
@@ -258,10 +258,17 @@ def design_tile_on_fly(tileid, speculative=False):
     if os.path.exists(outfnnogz) or os.path.exists(outfn):
         return True
     logob.info('Designing tile %d on fly.' % tileid)
+    flylogfp = (open(flylogfn, 'a') if flylogfn is not None
+                else subprocess.DEVNULL)
     subprocess.call(['fba-main-onthefly.sh', str(tileid), 'n'],
-                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    stdout=flylogfp, stderr=flylogfp)
+    if flylogfn is not None:
+        flylogfp.flush()
     subprocess.Popen(['fba-main-onthefly.sh', str(tileid), 'y'],
-                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                     stdout=flylogfp, stderr=flylogfp)
+    if flylogfn is not None:
+        flylogfp.flush()
+        flylogfp.close()
     if os.path.exists(outfn):
         return True
     return False
@@ -310,6 +317,7 @@ class NTS():
             raise ValueError('NTS expects to find config in '
                              '$DESISURVEY_OUTPUT/dir/config-file.yaml')
         fulldir = os.path.join(os.environ['DESISURVEY_OUTPUT'], nts_dir)
+        self.dirname = fulldir
         obsplan = os.path.join(os.environ['DESISURVEY_OUTPUT'],
                                obsplan)
         if not os.path.exists(obsplan):
@@ -507,7 +515,9 @@ class NTS():
             return badtile
 
         if self.fa_on_the_fly and not constraints.get('static_fa_only', False):
-            if not design_tile_on_fly(tileid, speculative=speculative):
+            flylogfn = os.path.join(self.dirname, 'fa-fly.log')
+            if not design_tile_on_fly(tileid, speculative=speculative,
+                                      flylogfn=flylogfn):
                 self.log.error('fa-on-the-fly failed!')
                 self.requestlog.logresponse(badtile)
                 return badtile

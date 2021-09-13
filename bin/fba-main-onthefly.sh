@@ -21,6 +21,8 @@ QA=$2   # y or n
 OUTDIR=$FA_HOLDING_PEN
 DTCATVER=1.1.1
 
+echo Fiberassign running on `hostname`.
+
 # setting the proper environment
 # https://desi.lbl.gov/trac/wiki/SurveyOps/FiberAssignAtKPNO version #18
 if [ -z $NERSC_HOST ]; then
