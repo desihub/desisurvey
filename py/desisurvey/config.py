@@ -40,6 +40,11 @@ import yaml
 import astropy.units
 import astropy.utils.data
 
+try:
+    from astropy.utils.data import get_pkg_data_path
+except ImportError:
+    # Astropy < 4.3
+    from astropy.utils.data import _find_pkg_data_path as get_pkg_data_path
 
 # Extract a number from a string with optional leading and
 # trailing whitespace.
@@ -141,8 +146,7 @@ class Configuration(Node):
     def _get_full_path(file_name):
         # Locate the config file in our pkg data/ directory if no path is given.
         if os.path.split(file_name)[0] == '':
-            full_path = astropy.utils.data._find_pkg_data_path(
-                os.path.join('data', file_name))
+            full_path = get_pkg_data_path(os.path.join('data', file_name))
         else:
             full_path = file_name
         return full_path

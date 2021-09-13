@@ -21,6 +21,11 @@ import desisurvey.config
 import desisurvey.utils
 import desisurvey.tiles
 
+try:
+    from astropy.utils.data import get_pkg_data_path
+except ImportError:
+    # Astropy < 4.3
+    from astropy.utils.data import _find_pkg_data_path as get_pkg_data_path
 
 # Loads a YAML file with dictionary key ordering preserved.
 # https://stackoverflow.com/questions/5121931/
@@ -73,8 +78,7 @@ class Rules(object):
             full_path = config.get_path(file_name)
         else:
             # Locate the config file in our package data/ directory.
-            full_path = astropy.utils.data._find_pkg_data_path(
-                os.path.join('data', file_name))
+            full_path = get_pkg_data_path(os.path.join('data', file_name))
 
         # Read the YAML file into memory.
         with open(full_path) as f:
