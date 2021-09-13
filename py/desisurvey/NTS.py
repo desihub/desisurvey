@@ -260,12 +260,15 @@ def design_tile_on_fly(tileid, speculative=False, flylogfn=None):
     logob.info('Designing tile %d on fly.' % tileid)
     flylogfp = (open(flylogfn, 'a') if flylogfn is not None
                 else subprocess.DEVNULL)
-    subprocess.call(['fba-main-onthefly.sh', str(tileid), 'n'],
-                    stdout=flylogfp, stderr=flylogfp)
+    returncode = subprocess.call(['fba-main-onthefly.sh', str(tileid), 'n'],
+                                 stdout=flylogfp, stderr=flylogfp)
     if flylogfn is not None:
         flylogfp.flush()
-    subprocess.Popen(['fba-main-onthefly.sh', str(tileid), 'y'],
-                     stdout=flylogfp, stderr=flylogfp)
+    if returncode == 0:
+        subprocess.Popen(['fba-main-onthefly.sh', str(tileid), 'y'],
+                         stdout=flylogfp, stderr=flylogfp)
+    else:
+        logob.info('Weird return code from fa-on-the-fly, skipping QA.')
     if flylogfn is not None:
         flylogfp.flush()
         flylogfp.close()
