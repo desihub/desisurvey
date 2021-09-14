@@ -356,7 +356,7 @@ class NTS():
             self.requestlog = RequestLog(
                 '{}/requestlog.dat'.format(fulldir))
         except Exception as e:
-            print(e)
+            self.log.error(e)
             raise ValueError('Error restoring scheduler & planner files; '
                              'has afternoon planning been performed?')
         self.scheduler.init_night(self.night, use_twilight=True)

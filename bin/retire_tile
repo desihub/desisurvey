@@ -27,6 +27,7 @@ def retire_tiles(tileid, replace=False, tilefile=None):
         else:
             rec = tiles[m].copy()
             tiles['IN_DESI'][m] = False
+            tiles['AVAILABLE'][m] = False
             if replace:
                 mprog = tiles['PROGRAM'] == tiles['PROGRAM'][m][0]
                 lasttileid = np.max(tiles['TILEID'][mprog])
