@@ -43,7 +43,7 @@ if [ -z $NERSC_HOST ]; then
     module load desiconda
     module load desimodules/21.7e
     module swap desitarget/1.2.2
-    module swap fiberassign/5.2.2
+    module swap fiberassign/5.3.0
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
 else
     echo Fiberassign on the fly should only be run for testing purposes at NERSC!
