@@ -1,4 +1,5 @@
 import os
+import subprocess
 import pytz
 import numpy as np
 import desisurvey.NTS
@@ -16,8 +17,40 @@ def mjd_to_azstr(mjd):
     return tt.astimezone(tz).strftime('%H:%M')
 
 
+def worktile(tileid):
+    return subprocess.call(
+        ['fba-main-onthefly.sh', str(tileid), 'n', 'manual'],
+        stdout=subprocess.DEVNULL)
+
+
+def workqa(tileid):
+    return subprocess.call(
+        ['fba-main-onthefly.sh', str(tileid), 'y', 'manual'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def make_tiles(tilelist, nprocess=10):
+    from multiprocessing import Pool
+    pool = Pool(nprocess)
+    tilestrings = np.array([str(t) for t in tilelist])
+    print('Starting to write fiberassign tiles for ' +
+          ' '.join(tilestrings))
+    retcode1 = pool.map(worktile, tilelist)
+    retcode1 = np.array(retcode1)
+    if np.any(retcode1 != 0):
+        print('Weird return code for ' +
+              ' '.join(tilestrings[retcode1 != 0]))
+    print('Starting to write QA...')
+    retcode2 = pool.map(workqa, tilelist)
+    retcode2 = np.array(retcode2)
+    if np.any(retcode2 != 0):
+        print('Weird return code for ' +
+              ' '.join(tilestrings[retcode2 != 0]))
+    print('All done.')
+
+
 def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
-             seeing=1.1, table=False, azrange=None):
+             seeing=1.1, table=False, azrange=None, makebackuptiles=False):
     kpno = EarthLocation.of_site('kpno')
     if nts_dir is None:
         obsplan = None
@@ -53,6 +86,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
     current_ra = None
     current_dec = None
     constraints = dict(azrange=azrange)
+    tilelist = []
     while t0 < nts.scheduler.night_ephem['brightdawn']:
         cidx = np.interp(t0+300/86400, changes, np.arange(len(changes)))
         cidx = int(np.clip(cidx, 0, len(programs)-1))
@@ -71,6 +105,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         if not res['foundtile']:
             t0 += 10*60/60/60/24
             continue
+        tilelist.append(int(res['fiberassign']))
         previoustiles.append(int(res['fiberassign']))
         lst = Time(t0, format='mjd', location=kpno).sidereal_time('apparent')
         lst = lst.to(u.deg).value
@@ -107,6 +142,9 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
 
         t0 += (res['exptime']+0*180)*res['count']/60/60/24
 
+    if makebackuptiles:
+        make_tiles(tilelist)
+
 
 def parse(options=None):
     import argparse
@@ -126,6 +164,9 @@ def parse(options=None):
     parser.add_argument('--table', default=False, action='store_true')
     parser.add_argument('--azrange', default=None, nargs=2, type=float,
                         help='Require tiles to land in given azrange.')
+    parser.add_argument('--makebackuptiles', default=False,
+                        action='store_true',
+                        help='Design backup tiles and place in holding pen')
     if options is None:
         args = parser.parse_args()
     else:
@@ -136,4 +177,5 @@ def parse(options=None):
 def main(args):
     run_plan(night=args.night, nts_dir=args.nts_dir,
              survey=args.survey, verbose=args.verbose, seeing=args.seeing,
-             table=args.table, azrange=args.azrange)
+             table=args.table, azrange=args.azrange,
+             makebackuptiles=args.makebackuptiles)

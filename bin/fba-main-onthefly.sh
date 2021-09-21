@@ -17,6 +17,7 @@ fi
 
 TILEID=$1 # e.g. 1000
 QA=$2   # y or n
+MANUAL=$3  # manual to trigger not adding to SVN and only going to the holding pen.
 
 OUTDIR=$FA_HOLDING_PEN
 DTCATVER=1.1.1
@@ -58,6 +59,13 @@ else
     SVNTILEDIR=$FIBER_ASSIGN_DIR
 fi
 
+if [[ "$MANUAL" == "manual" ]]
+then
+    CMDEX=""
+else
+    CMDEX="--svntiledir $SVNTILEDIR "
+fi
+
 # grabbing the RA, DEC, PROGRAM, STATUS, HA for TILEID
 LINE=`awk '{if ($1 == '$TILEID') print $0}' $TILESFN`
 RA=`echo $LINE | awk '{print $3}'`
@@ -76,9 +84,9 @@ fi
 # calling fba_launch
 if [[ "$QA" == "y" ]]
 then
-    CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --steps qa --log-stdout --doclean y --svntiledir $SVNTILEDIR --worldreadable --forcetileid y"
+    CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --steps qa --log-stdout --doclean y --worldreadable --forcetileid y $CMDEX"
 else
-    CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --nosteps qa --doclean n --svntiledir $SVNTILEDIR --worldreadable"
+    CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --nosteps qa --doclean n --worldreadable $CMDEX"
 fi
 echo $CMD
 eval $CMD
