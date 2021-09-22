@@ -441,12 +441,12 @@ class NTS():
             self.log.info('No time specified, using current time, MJD: %f' %
                           mjd)
 
+        previoustiles = exposure.get('previoustiles', [])
         self.queuedlist.restore()
-        if len(self.queuedlist.queued) == 0:
+        if (len(self.queuedlist.queued) == 0) and (len(previoustiles) == 0):
             current_ra = None
             current_dec = None
 
-        previoustiles = exposure.get('previoustiles', [])
         if previoustiles is None:
             previoustiles = []
         previoustiles = previoustiles + self.queuedlist.queued

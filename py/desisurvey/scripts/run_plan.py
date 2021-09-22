@@ -5,6 +5,8 @@ import numpy as np
 import desisurvey.NTS
 import desisurvey.svstats
 import desiutil.log
+import desisurvey.utils
+import desisurvey.tiles
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 from astropy import units as u
@@ -29,7 +31,47 @@ def workqa(tileid):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
+def planplot(tileid, plan):
+    tiles = desisurvey.tiles.get_tiles()
+    idx = tiles.index(tileid)
+    mtonight = np.zeros(tiles.ntiles, dtype='bool')
+    mtonight[idx] = True
+    from matplotlib import pyplot as p
+    p.figure(figsize=(8.5, 11))
+    loff = -60
+    tra = ((tiles.tileRA - loff) % 360) + loff
+    for i, program in enumerate(['DARK', 'BRIGHT', 'BACKUP']):
+        m = (tiles.program_mask[program]) & (tiles.in_desi != 0)
+        p.subplot(3, 1, i+1)
+        p.title(program)
+        munobs = plan.tile_status == 'unobs'
+        p.scatter(tra[m & munobs], tiles.tileDEC[m & munobs],
+                  alpha=0.3, color='gray', s=5)
+        mcomplete = plan.tile_status == 'done'
+        p.scatter(tra[m & mcomplete], tiles.tileDEC[m & mcomplete],
+                  alpha=1, color='green', s=5)
+        mpending = ~(munobs | mcomplete)
+        p.scatter(tra[m & mpending], tiles.tileDEC[m & mpending],
+                  alpha=1, color='orange', s=20)
+        p.plot(tra[idx], tiles.tileDEC[idx], 'k--')
+        p.scatter(tra[m & mtonight], tiles.tileDEC[m & mtonight],
+                  alpha=1, facecolors='none', edgecolors='red',
+                  s=50, linewidth=3)
+        p.xlim(loff, loff+360)
+    p.savefig('plan.png')
+    p.show()
+
+
 def make_tiles(tilelist, nprocess=10):
+    import glob
+    hpdir = os.environ['FA_HOLDING_PEN']
+    allhpfiles = glob.glob(os.path.join(hpdir, '**'), recursive=True)
+    if desisurvey.utils.yesno('Deleting %d files in %s, continue?' %
+                              (len(allhpfiles), hpdir)):
+        import shutil
+        for fn in glob.glob(os.path.join(hpdir, '*')):
+            if desisurvey.utils.yesno('Deleting %s, continue?' % fn):
+                shutil.rmtree(fn)
     from multiprocessing import Pool
     pool = Pool(nprocess)
     tilestrings = np.array([str(t) for t in tilelist])
@@ -144,6 +186,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
 
     if makebackuptiles:
         make_tiles(tilelist)
+    planplot(tilelist, nts.planner)
 
 
 def parse(options=None):
