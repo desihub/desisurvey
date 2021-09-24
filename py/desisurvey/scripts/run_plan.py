@@ -62,7 +62,7 @@ def planplot(tileid, plan):
     p.show()
 
 
-def make_tiles(tilelist, nprocess=10):
+def make_tiles(tilelist, plan, nprocess=10):
     import glob
     hpdir = os.environ['FA_HOLDING_PEN']
     allhpfiles = glob.glob(os.path.join(hpdir, '**'), recursive=True)
@@ -72,6 +72,13 @@ def make_tiles(tilelist, nprocess=10):
         for fn in glob.glob(os.path.join(hpdir, '*')):
             if desisurvey.utils.yesno('Deleting %s, continue?' % fn):
                 shutil.rmtree(fn)
+    tiles = desisurvey.tiles.get_tiles()
+    tilelist = np.array(tilelist)
+    idx = tiles.index(tilelist)
+    m = plan.tile_status[idx] == 'unobs'
+    obstiles = ' '.join([str(t) for t in tilelist[~m]])
+    print('Skipping tiles with status != unobs: %s' % obstiles)
+    tilelist = tilelist[m]
     from multiprocessing import Pool
     pool = Pool(nprocess)
     tilestrings = np.array([str(t) for t in tilelist])
@@ -185,7 +192,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         t0 += (res['exptime']+0*180)*res['count']/60/60/24
 
     if makebackuptiles:
-        make_tiles(tilelist)
+        make_tiles(tilelist, nts.planner)
     planplot(tilelist, nts.planner)
 
 
