@@ -65,13 +65,14 @@ def planplot(tileid, plan):
 def make_tiles(tilelist, plan, nprocess=10):
     import glob
     hpdir = os.environ['FA_HOLDING_PEN']
+    if len(hpdir) == 0:
+        raise ValueError('FA_HOLDING_PEN must be set')
     allhpfiles = glob.glob(os.path.join(hpdir, '**'), recursive=True)
     if desisurvey.utils.yesno('Deleting %d files in %s, continue?' %
                               (len(allhpfiles), hpdir)):
         import shutil
         for fn in glob.glob(os.path.join(hpdir, '*')):
-            if desisurvey.utils.yesno('Deleting %s, continue?' % fn):
-                shutil.rmtree(fn)
+            shutil.rmtree(fn)
     tiles = desisurvey.tiles.get_tiles()
     tilelist = np.array(tilelist)
     idx = tiles.index(tilelist)
