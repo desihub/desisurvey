@@ -197,11 +197,11 @@ def maintain_svn(svn, untrackedonly=True, verbose=False):
     plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
     if untrackedonly:
         fnames = get_untracked_fnames(svn)
-        rgxdir = re.compile(svn + '/' + r'\d\d\d')
+        rgxdir = re.compile(svn + '/' + r'\d\d\d$')
         for fname in fnames:
             # if it's a new directory, go ahead and add it
             # so that we can see its contents.
-            matchdir = rgxdir.match(fname)
+            matchdir = rgxdir.match(fname.strip())
             if matchdir:
                 subprocess.run(['svn', 'add', fname,
                                 '--depth=empty'])
@@ -286,7 +286,7 @@ def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
     missing, extra = missing_tileid(fbadir, faholddir)
     if len(extra) > 0:
         okay = yesno(('Deleting {} fiberassign files in SVN from the '
-                      'holding pen.  Continue?') % len(extra))
+                      'holding pen.  Continue?').format(len(extra)))
         if okay:
             remove_tiles_from_dir(faholddir, extra)
     if len(missing) < 100:
