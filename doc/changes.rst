@@ -12,6 +12,10 @@ desisurvey change log
 * Trust EFFTIME_SPEC from offline pipeline rather than using
   ELG_EFFTIME_DARK or BGS_EFFTIME_BRIGHT explicitly.  This is to make
   the transition to LRG_EFFTIME_DARK seamless.
+* Simplify afternoon planning.  Automatically make backup tiles as
+  part of manual plan.  Make night plots.  (PR `#144`_)
+
+.. _`#144`: https://github.com/desihub/desisurvey/pull/144
 
 0.18.0 (2021-07-06)
 -------------------

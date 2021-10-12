@@ -1,9 +1,12 @@
 import os
+import subprocess
 import pytz
 import numpy as np
 import desisurvey.NTS
 import desisurvey.svstats
 import desiutil.log
+import desisurvey.utils
+import desisurvey.tiles
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 from astropy import units as u
@@ -16,8 +19,88 @@ def mjd_to_azstr(mjd):
     return tt.astimezone(tz).strftime('%H:%M')
 
 
+def worktile(tileid):
+    return subprocess.call(
+        ['fba-main-onthefly.sh', str(tileid), 'n', 'manual'],
+        stdout=subprocess.DEVNULL)
+
+
+def workqa(tileid):
+    return subprocess.call(
+        ['fba-main-onthefly.sh', str(tileid), 'y', 'manual'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def planplot(tileid, plan):
+    tiles = desisurvey.tiles.get_tiles()
+    idx = tiles.index(tileid)
+    mtonight = np.zeros(tiles.ntiles, dtype='bool')
+    mtonight[idx] = True
+    from matplotlib import pyplot as p
+    p.figure(figsize=(8.5, 11))
+    loff = -60
+    tra = ((tiles.tileRA - loff) % 360) + loff
+    for i, program in enumerate(['DARK', 'BRIGHT', 'BACKUP']):
+        m = (tiles.program_mask[program]) & (tiles.in_desi != 0)
+        p.subplot(3, 1, i+1)
+        p.title(program)
+        munobs = plan.tile_status == 'unobs'
+        p.scatter(tra[m & munobs], tiles.tileDEC[m & munobs],
+                  alpha=0.3, color='gray', s=5)
+        mcomplete = plan.tile_status == 'done'
+        p.scatter(tra[m & mcomplete], tiles.tileDEC[m & mcomplete],
+                  alpha=1, color='green', s=5)
+        mpending = ~(munobs | mcomplete)
+        p.scatter(tra[m & mpending], tiles.tileDEC[m & mpending],
+                  alpha=1, color='orange', s=20)
+        p.plot(tra[idx], tiles.tileDEC[idx], 'k--')
+        p.scatter(tra[m & mtonight], tiles.tileDEC[m & mtonight],
+                  alpha=1, facecolors='none', edgecolors='red',
+                  s=50, linewidth=3)
+        p.xlim(loff, loff+360)
+    p.savefig('plan.png')
+    p.show()
+
+
+def make_tiles(tilelist, plan, nprocess=10):
+    import glob
+    hpdir = os.environ['FA_HOLDING_PEN']
+    if len(hpdir) == 0:
+        raise ValueError('FA_HOLDING_PEN must be set')
+    allhpfiles = glob.glob(os.path.join(hpdir, '**'), recursive=True)
+    if desisurvey.utils.yesno('Deleting %d files in %s, continue?' %
+                              (len(allhpfiles), hpdir)):
+        import shutil
+        for fn in glob.glob(os.path.join(hpdir, '*')):
+            shutil.rmtree(fn)
+    tiles = desisurvey.tiles.get_tiles()
+    tilelist = np.array(tilelist)
+    idx = tiles.index(tilelist)
+    m = plan.tile_status[idx] == 'unobs'
+    obstiles = ' '.join([str(t) for t in tilelist[~m]])
+    print('Skipping tiles with status != unobs: %s' % obstiles)
+    tilelist = tilelist[m]
+    from multiprocessing import Pool
+    pool = Pool(nprocess)
+    tilestrings = np.array([str(t) for t in tilelist])
+    print('Starting to write fiberassign tiles for ' +
+          ' '.join(tilestrings))
+    retcode1 = pool.map(worktile, tilelist)
+    retcode1 = np.array(retcode1)
+    if np.any(retcode1 != 0):
+        print('Weird return code for ' +
+              ' '.join(tilestrings[retcode1 != 0]))
+    print('Starting to write QA...')
+    retcode2 = pool.map(workqa, tilelist)
+    retcode2 = np.array(retcode2)
+    if np.any(retcode2 != 0):
+        print('Weird return code for ' +
+              ' '.join(tilestrings[retcode2 != 0]))
+    print('All done.')
+
+
 def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
-             seeing=1.1, table=False, azrange=None):
+             seeing=1.1, table=False, azrange=None, makebackuptiles=False):
     kpno = EarthLocation.of_site('kpno')
     if nts_dir is None:
         obsplan = None
@@ -53,6 +136,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
     current_ra = None
     current_dec = None
     constraints = dict(azrange=azrange)
+    tilelist = []
     while t0 < nts.scheduler.night_ephem['brightdawn']:
         cidx = np.interp(t0+300/86400, changes, np.arange(len(changes)))
         cidx = int(np.clip(cidx, 0, len(programs)-1))
@@ -71,6 +155,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         if not res['foundtile']:
             t0 += 10*60/60/60/24
             continue
+        tilelist.append(int(res['fiberassign']))
         previoustiles.append(int(res['fiberassign']))
         lst = Time(t0, format='mjd', location=kpno).sidereal_time('apparent')
         lst = lst.to(u.deg).value
@@ -107,6 +192,10 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
 
         t0 += (res['exptime']+0*180)*res['count']/60/60/24
 
+    if makebackuptiles:
+        make_tiles(tilelist, nts.planner)
+    planplot(tilelist, nts.planner)
+
 
 def parse(options=None):
     import argparse
@@ -126,6 +215,9 @@ def parse(options=None):
     parser.add_argument('--table', default=False, action='store_true')
     parser.add_argument('--azrange', default=None, nargs=2, type=float,
                         help='Require tiles to land in given azrange.')
+    parser.add_argument('--makebackuptiles', default=False,
+                        action='store_true',
+                        help='Design backup tiles and place in holding pen')
     if options is None:
         args = parser.parse_args()
     else:
@@ -136,4 +228,5 @@ def parse(options=None):
 def main(args):
     run_plan(night=args.night, nts_dir=args.nts_dir,
              survey=args.survey, verbose=args.verbose, seeing=args.seeing,
-             table=args.table, azrange=args.azrange)
+             table=args.table, azrange=args.azrange,
+             makebackuptiles=args.makebackuptiles)

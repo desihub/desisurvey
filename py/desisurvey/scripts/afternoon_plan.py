@@ -285,11 +285,15 @@ def afternoon_plan(night=None, exposures=None,
     for fn in [newrulesfn, newconfigfn]:
         subprocess.run(['chmod', 'a-w', fn])
     if surveyopsdir is not None:
+        surveyopsopsdir = os.path.join(surveyopsdir, 'ops')
         subprocess.run(['cp', os.path.join(directory, 'exposures.ecsv'),
-                        os.path.join(surveyopsdir, 'ops')])
-        subprocess.run(['cp', newtilefn, os.path.join(surveyopsdir, 'ops')])
-        print('Please run: svn ci ' + os.path.join(surveyopsdir, 'ops') +
-              ' -m "Update exposures and tiles for %s"' % nightstr)
+                        surveyopsopsdir])
+        subprocess.run(['cp', newtilefn, surveyopsopsdir])
+        subprocess.run(['svn', 'status', surveyopsopsdir])
+        if yesno('Okay to commit updates to SURVEYOPS svn?'):
+            subprocess.run(
+                ['svn', 'ci', surveyopsopsdir,
+                 '-m "Update exposures and tiles for %s"' % nightstr])
     shutil.copy(newtilefn, tilefn)  # update working directory tilefn
 
 

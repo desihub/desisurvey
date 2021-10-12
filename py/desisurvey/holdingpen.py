@@ -174,24 +174,39 @@ def missing_tileid(fadir, faholddir):
             np.sort(tileid[doesexist]))
 
 
+def get_untracked_fnames(svn):
+    fnames = []
+    res = subprocess.run(['svn', 'status', svn], capture_output=True)
+    output = res.stdout.decode('utf8')
+    for line in output.split('\n'):
+        if len(line) == 0:
+            continue
+        modtype = line[0]
+        if modtype != '?':
+            print('unrecognized line: "{}", ignoring.'.format(line))
+            continue
+        # new file.  We need to check it in or delete it.
+        fname = line[8:]
+        fnames.append(fname)
+    return fnames
+
+
 def maintain_svn(svn, untrackedonly=True, verbose=False):
     cfg = desisurvey.config.Configuration()
     tiles = desisurvey.tiles.get_tiles()
     plan = desisurvey.plan.Planner(restore=cfg.tiles_file())
-    fnames = []
     if untrackedonly:
-        res = subprocess.run(['svn', 'status', svn], capture_output=True)
-        output = res.stdout.decode('utf8')
-        for line in output.split('\n'):
-            if len(line) == 0:
-                continue
-            modtype = line[0]
-            if modtype != '?':
-                print('unrecognized line: "{}", ignoring.'.format(line))
-                continue
-            # new file.  We need to check it in or delete it.
-            fname = line[8:]
-            fnames.append(fname)
+        fnames = get_untracked_fnames(svn)
+        rgxdir = re.compile(svn + '/' + r'\d\d\d$')
+        for fname in fnames:
+            # if it's a new directory, go ahead and add it
+            # so that we can see its contents.
+            matchdir = rgxdir.match(fname.strip())
+            if matchdir:
+                subprocess.run(['svn', 'add', fname,
+                                '--depth=empty'])
+                print('svn-adding new directory %s' % fname)
+        fnames = get_untracked_fnames(svn)
     else:
         import glob
         fnames = glob.glob(os.path.join(svn, '**/*'), recursive=True)
@@ -205,8 +220,9 @@ def maintain_svn(svn, untrackedonly=True, verbose=False):
         match = rgx.match(fname)
         if not match:
             if verbose:
-                logger.warn('unrecognized filename: "{}", ignoring.'.format(fname))
-            continue
+                logger.warn('unrecognized filename: "{}", '
+                            'ignoring.'.format(fname))
+                continue
         tileid = int(match.group(1))
         idx, mask = tiles.index(tileid, return_mask=True)
         if not mask:
@@ -263,14 +279,14 @@ def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
     if mtldonefn is not None:
         invalid = tileid_to_clean(faholddir, fbadir, Table.read(mtldonefn))
     if len(invalid) > 0:
-        okay = yesno(('Deleting %d out-of-date fiberassign files from ' +
-                      'holding pen .  Continue?').format(len(invalid)))
+        okay = yesno(('Deleting {} out-of-date fiberassign files from ' +
+                      'holding pen.  Continue?').format(len(invalid)))
         if okay:
             remove_tiles_from_dir(faholddir, invalid)
     missing, extra = missing_tileid(fbadir, faholddir)
     if len(extra) > 0:
-        okay = yesno(('Deleting %d fiberassign files in SVN from the '
-                      'holding pen.  Continue?') % len(extra))
+        okay = yesno(('Deleting {} fiberassign files in SVN from the '
+                      'holding pen.  Continue?').format(len(extra)))
         if okay:
             remove_tiles_from_dir(faholddir, extra)
     if len(missing) < 100:
