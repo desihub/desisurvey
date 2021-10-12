@@ -442,13 +442,13 @@ class NTS():
                           mjd)
 
         previoustiles = exposure.get('previoustiles', [])
+        if previoustiles is None:
+            previoustiles = []
         self.queuedlist.restore()
         if (len(self.queuedlist.queued) == 0) and (len(previoustiles) == 0):
             current_ra = None
             current_dec = None
 
-        if previoustiles is None:
-            previoustiles = []
         previoustiles = previoustiles + self.queuedlist.queued
         # remove previous tiles from possible tiles to schedule
         ind, mask = self.scheduler.tiles.index(previoustiles,
