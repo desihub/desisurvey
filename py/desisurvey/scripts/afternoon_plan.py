@@ -20,7 +20,7 @@ def afternoon_plan(night=None, exposures=None,
                    configfn='config.yaml',
                    spectra_dir=None,
                    desisurvey_output=None, nts_dir=None, sv=False,
-                   surveyops=None):
+                   surveyops=None, skip_mtl_done=False):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -58,6 +58,11 @@ def afternoon_plan(night=None, exposures=None,
     surveyops : str
         surveyops SVN directory.  Default of None triggers looking at the
         SURVEYOPS environment variable.
+
+
+    skip_mtl_done : bool
+        Don't set status = DONE for any tiles using the mtl-done-tiles.  This
+        forces breadth-first observing.
     """
     log = desiutil.log.get_logger()
     if night is None:
@@ -243,9 +248,10 @@ def afternoon_plan(night=None, exposures=None,
     m = tiles['OFFLINE_DONE'] != 0
     planner.set_donefrac(tiles['TILEID'][m], status=['obsend']*np.sum(m),
                          ignore_pending=True)
-    m = tiles['MTL_DONE'] != 0
-    planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m),
-                         ignore_pending=True)
+    if not skip_mtl_done:
+        m = tiles['MTL_DONE'] != 0
+        planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m),
+                             ignore_pending=True)
     svmode = getattr(config, 'svmode', None)
     svmode = svmode() if svmode is not None else False
     if svmode:
@@ -334,6 +340,9 @@ def parse(options=None):
     parser.add_argument('--sv',
                         action='store_true',
                         help='turn on special SV planning mode.')
+    parser.add_argument('--skip-mtl-done', action='store_true',
+                        help=('Do not set done from MTL done file.  No '
+                              'overlapping tile observations allowed'))
     if options is None:
         args = parser.parse_args()
     else:
@@ -360,4 +369,4 @@ def main(args):
 
     afternoon_plan(night=args.night, exposures=args.exposures,
                    configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
-                   surveyops=args.surveyops)
+                   surveyops=args.surveyops, skip_mtl_done=args.skip_mtl_done)
