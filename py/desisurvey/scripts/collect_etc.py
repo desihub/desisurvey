@@ -203,7 +203,8 @@ def scan_directory(dirname, start_from=None,
     tiles = np.zeros(ntiles, dtype=[
         ('TILEID', 'i4'), ('PROGRAM', 'U20'), ('EFFTIME', 'f4'),
         ('DONEFRAC', 'f4'),
-        ('NOBS', 'i4'), ('OFFLINE_DONE', 'bool'), ('MTL_DONE', 'bool')])
+        ('NOBS', 'i4'), ('OFFLINE_DONE', 'bool'), ('MTL_DONE', 'bool'),
+        ('MTL_DONE_ZDATE', 'i4')])
     s = np.argsort(exps['TILEID'])
     nomtimefa = np.zeros(len(tiles), dtype='f4')
     for i, (f, l) in enumerate(subslices(exps['TILEID'][s])):
@@ -418,6 +419,8 @@ def update_mtldone(tiles, mtldonefn):
     tiles = tiles.copy()
     tiles['MTL_DONE'] = False
     tiles['MTL_DONE'][mt] = True
+    tiles['MTL_DONE_ZDATE'][:] = 0
+    tiles['MTL_DONE_ZDATE'][mt] = [int(x) for x in mtldone['ZDATE'][mm]]
     usedmtl = np.zeros(len(mtldone), dtype='i4')
     usedmtl[mm] = 1
     nunused = np.sum(usedmtl == 0)
