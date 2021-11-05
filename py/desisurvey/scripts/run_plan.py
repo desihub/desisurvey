@@ -31,7 +31,7 @@ def workqa(tileid):
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
-def planplot(tileid, plan):
+def planplot(tileid, plan, title='Nightly plan'):
     tiles = desisurvey.tiles.get_tiles()
     idx = tiles.index(tileid)
     mtonight = np.zeros(tiles.ntiles, dtype='bool')
@@ -58,6 +58,7 @@ def planplot(tileid, plan):
                   alpha=1, facecolors='none', edgecolors='red',
                   s=50, linewidth=3)
         p.xlim(loff, loff+360)
+    p.suptitle(title)
     p.savefig('plan.png')
     p.show()
 
@@ -111,6 +112,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
             night = desisurvey.utils.get_date(night)
         obsplan = os.path.join(nts_dir, 'config.yaml')
     nts = desisurvey.NTS.NTS(obsplan=obsplan, night=night, nts_survey=survey)
+    night = nts.night
     t0 = nts.scheduler.night_ephem['brightdusk']
     nts_dir, _ = os.path.split(nts.obsplan)
     if not verbose:
@@ -192,9 +194,10 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
 
         t0 += (res['exptime']+0*180)*res['count']/60/60/24
 
+    planplot(tilelist, nts.planner,
+             title='%4d%02d%02d' % (night.year, night.month, night.day))
     if makebackuptiles:
         make_tiles(tilelist, nts.planner)
-    planplot(tilelist, nts.planner)
 
 
 def parse(options=None):

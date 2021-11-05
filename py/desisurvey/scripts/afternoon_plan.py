@@ -20,7 +20,8 @@ def afternoon_plan(night=None, exposures=None,
                    configfn='config.yaml',
                    spectra_dir=None,
                    desisurvey_output=None, nts_dir=None, sv=False,
-                   surveyops=None, skip_mtl_done_since=np.inf):
+                   surveyops=None, skip_mtl_done_range=None,
+                   moonsep=50):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -60,9 +61,10 @@ def afternoon_plan(night=None, exposures=None,
         SURVEYOPS environment variable.
 
 
-    skip_mtl_done_since : float
+    skip_mtl_done_range : [float, float], or None
         Don't set status = DONE for any tiles using the mtl-done-tiles with
-        ZDATE > skip_mtl_done_since.  This forces breadth-first observing.
+        skip_mtl_done_range[0] <= ZDATE <= skip_mtl_done_range[1].  This
+        prevents overlapping these tiles.
     """
     log = desiutil.log.get_logger()
     if night is None:
@@ -166,6 +168,7 @@ def afternoon_plan(night=None, exposures=None,
     editedtiles = False
     editedrules = False
     editedoutputpath = False
+    editedmoon = False
 
     with open(configfn) as fp:
         lines = fp.readlines()
@@ -177,17 +180,20 @@ def afternoon_plan(night=None, exposures=None,
                 editedoutputpath = True
             elif re.match('^tiles_file:.*', lines[i]):
                 lines[i] = (
-                    "tiles_file: {}/{}  # edited by afternoon planning")
+                    "tiles_file: {}/{}  # edited by afternoon planning\n")
                 lines[i] = lines[i].format(subdir, os.path.basename(newtilefn))
                 editedtiles = True
             elif re.match('^rules_file:.*', lines[i]):
                 lines[i] = (
-                    "rules_file: {}/{}  # edited by afternoon planning")
+                    "rules_file: {}/{}  # edited by afternoon planning\n")
                 lines[i] = lines[i].format(subdir,
                                            os.path.basename(newrulesfn))
                 editedrules = True
-    if not (editedtiles and editedrules and editedoutputpath):
-        log.error('Could not find either tiles, rules, or output_path '
+            elif re.match(r'^(\s)*moon:.*', lines[i]):
+                lines[i] = '    moon: {} deg\n'.format(moonsep)
+                editedmoon = True
+    if not (editedtiles and editedrules and editedoutputpath and editedmoon):
+        log.error('Could not find either tiles, rules, output_path, or moon '
                   'in config file; failing!')
         return
 
@@ -248,8 +254,11 @@ def afternoon_plan(night=None, exposures=None,
     m = tiles['OFFLINE_DONE'] != 0
     planner.set_donefrac(tiles['TILEID'][m], status=['obsend']*np.sum(m),
                          ignore_pending=True)
-    m = ((tiles['MTL_DONE'] != 0) &
-         (tiles['MTL_DONE_ZDATE'] < skip_mtl_done_since))
+    m = (tiles['MTL_DONE'] != 0)
+    if skip_mtl_done_range is not None:
+        m = (m & ~(
+            (tiles['MTL_DONE_ZDATE'] >= skip_mtl_done_range[0]) &
+            (tiles['MTL_DONE_ZDATE'] <= skip_mtl_done_range[1])))
     planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m),
                          ignore_pending=True)
     svmode = getattr(config, 'svmode', None)
@@ -344,10 +353,14 @@ def parse(options=None):
     parser.add_argument('--sv',
                         action='store_true',
                         help='turn on special SV planning mode.')
-    parser.add_argument('--skip-mtl-done-since', type=float, default=np.inf,
+    parser.add_argument('--skip-mtl-done-range', type=float, default=None,
+                        nargs=2,
                         help=('Do not set done from MTL done file for tiles '
-                              'with ZDATE > X.  No overlapping observations '
-                              'of recent tiles allowed.'))
+                              'with X < ZDATE > Y.  No overlapping '
+                              'observations tiles in this range allowed.'))
+    parser.add_argument('--moonsep', type=float, default=50,
+                        help=('Moon separation to use; do not observe within '
+                              'X degrees of the moon.'))
     if options is None:
         args = parser.parse_args()
     else:
@@ -375,4 +388,5 @@ def main(args):
     afternoon_plan(night=args.night, exposures=args.exposures,
                    configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
                    surveyops=args.surveyops,
-                   skip_mtl_done_since=args.skip_mtl_done_since)
+                   skip_mtl_done_range=args.skip_mtl_done_range,
+                   moonsep=args.moonsep)
