@@ -14,8 +14,10 @@ desisurvey change log
   the transition to LRG_EFFTIME_DARK seamless.
 * Simplify afternoon planning.  Automatically make backup tiles as
   part of manual plan.  Make night plots.  (PR `#144`_)
+* Minor updates to unit test configuration (PR `#145`_).
 
 .. _`#144`: https://github.com/desihub/desisurvey/pull/144
+.. _`#145`: https://github.com/desihub/desisurvey/pull/145
 
 0.18.0 (2021-07-06)
 -------------------
