@@ -20,7 +20,6 @@ QA=$2   # y or n
 MANUAL=$3  # manual to trigger not adding to SVN and only going to the holding pen.
 
 OUTDIR=$FA_HOLDING_PEN
-DTCATVER=1.1.1
 
 echo Fiberassign running on `hostname`.
 
@@ -43,9 +42,10 @@ if [ -z $NERSC_HOST ]; then
     module use $DESI_PRODUCT_ROOT/modulefiles
     module load desiconda
     module load desimodules/21.7e
-    module swap desitarget/1.2.2
-    module swap fiberassign/5.3.0
+    module swap desitarget/2.2.1
+    module swap fiberassign/5.4.0
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
+    export SKYHEALPIXS_DIR=$DESI_ROOT/target/skyhealpixs/v1
 else
     echo Fiberassign on the fly should only be run for testing purposes at NERSC!
     # source /global/cfs/cdirs/desi/software/desi_environment.sh 21.5
@@ -73,6 +73,13 @@ DEC=`echo $LINE | awk '{print $4}'`
 PROGRAM=`echo $LINE | awk '{print $5}'`
 STATUS=`echo $LINE | awk '{print $8}'`
 HA=`echo $LINE | awk '{print $10}'`
+
+if [[ "$PROGRAM" == "BACKUP" ]]
+then
+    DTCATVER=2.2.0
+else
+    DTCATVER=1.1.1
+fi
 
 # small sanity check
 if [[ "$STATUS" != "unobs" ]]

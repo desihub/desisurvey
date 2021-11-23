@@ -568,8 +568,13 @@ class NTS():
         texp_tot *= boost_factor
         texp_remaining *= boost_factor
 
+        days_to_seconds = 60*60*24
+
         # avoid crossing program boundaries, don't observe longer than an hour.
         maxdwell = self.config.maxtime().to(u.day).value
+        if tile_program == 'BACKUP':
+            maxdwell = min([maxdwell, 600/days_to_seconds])
+
         mintime = getattr(programconf, 'mintime', None)
         if mintime is not None:
             mintime = mintime()
@@ -595,11 +600,11 @@ class NTS():
         if ((sched_program != 'BRIGHT') and
                 (mjd_program_end > self.scheduler.night_ephem['dusk'])):
             texp_remaining = min([texp_remaining, mjd_program_end-mjd])
+            maxdwell = min([maxdwell, mjd_program_end-mjd])
 
         exptime = texp_remaining
         splittime = self.config.cosmic_ray_split().to(u.day).value
 
-        days_to_seconds = 60*60*24
         if ((mjd <= self.scheduler.night_ephem['dusk']-5*onemin) or
                 (mjd >= self.scheduler.night_ephem['dawn']-5*onemin)):
             splittime = 301/days_to_seconds
