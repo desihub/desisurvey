@@ -612,7 +612,7 @@ class NTS():
             # according to DJS.
 
         if exptime > splittime:
-            count = int((exptime / splittime).astype('i4') + 1)
+            count = int((exptime / splittime) + 1)
         else:
             count = 1
         mincount = getattr(programconf, 'min_exposures', None)
