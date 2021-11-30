@@ -61,9 +61,9 @@ def afternoon_plan(night=None, exposures=None,
         SURVEYOPS environment variable.
 
 
-    skip_mtl_done_range : [float, float], or None
+    skip_mtl_done_range : [[float, float], ...], or None
         Don't set status = DONE for any tiles using the mtl-done-tiles with
-        skip_mtl_done_range[0] <= ZDATE <= skip_mtl_done_range[1].  This
+        range[0] <= ZDATE <= range[1], for range in skip_mtl_done_range.  This
         prevents overlapping these tiles.
     """
     log = desiutil.log.get_logger()
@@ -256,9 +256,10 @@ def afternoon_plan(night=None, exposures=None,
                          ignore_pending=True)
     m = (tiles['MTL_DONE'] != 0)
     if skip_mtl_done_range is not None:
-        m = (m & ~(
-            (tiles['MTL_DONE_ZDATE'] >= skip_mtl_done_range[0]) &
-            (tiles['MTL_DONE_ZDATE'] <= skip_mtl_done_range[1])))
+        for rr in skip_mtl_done_range:
+            m = (m & ~(
+                (tiles['MTL_DONE_ZDATE'] >= rr[0]) &
+                (tiles['MTL_DONE_ZDATE'] <= rr[1])))
     planner.set_donefrac(tiles['TILEID'][m], status=['done']*np.sum(m),
                          ignore_pending=True)
     svmode = getattr(config, 'svmode', None)
@@ -354,7 +355,7 @@ def parse(options=None):
                         action='store_true',
                         help='turn on special SV planning mode.')
     parser.add_argument('--skip-mtl-done-range', type=float, default=None,
-                        nargs=2,
+                        nargs=2, action='append',
                         help=('Do not set done from MTL done file for tiles '
                               'with X < ZDATE > Y.  No overlapping '
                               'observations tiles in this range allowed.'))
