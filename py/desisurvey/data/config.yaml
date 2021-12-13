@@ -180,7 +180,7 @@ fiber_assignment_delay:
     BRIGHT: 0
 
 # Nominal tile radius for determining whether two tiles overlap.
-tile_radius: 1.63 deg
+tile_radius: 1.62 deg
 
 #-------------------------------------------------------------------
 # Parameters to locate files needed by desisurvey.

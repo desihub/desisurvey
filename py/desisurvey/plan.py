@@ -191,11 +191,21 @@ class Planner(object):
                 raise ValueError('mismatch between tiles and status file; '
                                  'should not be possible!')
             if self.simulate:
-                self.first_night = desisurvey.utils.get_date(t.meta['FIRST'])
-                self.last_night = desisurvey.utils.get_date(t.meta['LAST'])
+                if 'FIRST' in t.meta:
+                    self.first_night = desisurvey.utils.get_date(
+                        t.meta['FIRST'])
+                    self.last_night = desisurvey.utils.get_date(
+                        t.meta['LAST'])
+                else:
+                    self.first_night = self.last_night = None
                 self.tile_countdown = np.zeros(self.tiles.ntiles, dtype='i4')
-                self.tile_countdown = t['COUNTDOWN'].data.copy()
-                if t.meta['CADENCE'] != self.fiberassign_cadence:
+                if 'COUNTDOWN' in t:
+                    self.tile_countdown = t['COUNTDOWN'].data.copy()
+                else:
+                    self.tile_countdown[:] = (
+                        self.tiles.fiberassign_delay.copy())
+                if ('CADENCE' in t.meta) and (
+                        t.meta['CADENCE'] != self.fiberassign_cadence):
                     raise ValueError('Fiberassign cadence mismatch.')
             self.tile_status = np.zeros(self.tiles.ntiles, dtype='U20')
             self.tile_status[:] = 'unobs'

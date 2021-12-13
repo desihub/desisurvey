@@ -362,7 +362,7 @@ def day_number(date):
     return (get_date(date) - config.first_day()).days
 
 
-def slewtime(ra1, dec1, ra2, dec2, freeslewtime=25,
+def slewtime(ra1, dec1, ra2, dec2, freeslewtime=10,
              ignore_positive_ra=False):
     """Estimate slew times.
 
@@ -519,3 +519,37 @@ def yesno(question):
     if ans == 'y':
         return True
     return False
+
+
+def get_average_dome_closed_fractions(first, last, smooth=7):
+    """Get daily averaged dome-closed fractions between first and last.
+
+    Returns the fraction of the time the dome is closed on each night.
+
+    Parameters
+    ----------
+    first : datetime.date
+        Date of first night.
+    last : datetime.date
+        Date of last night.  Survey stops the morning of this date.
+    smooth : float
+        Number of days to smooth dome closed fraction by.
+
+    Returns
+    -------
+    np.ndarray giving dome closed fraction on each night.
+    """
+    years = np.arange(2007, 2018)
+    fractions = []
+    for year in years:
+        fractions.append(
+            desimodel.weather.dome_closed_fractions(
+                first, first+datetime.timedelta(days=365),
+                replay='Y{}'.format(year)))
+    from scipy.ndimage import gaussian_filter
+    fractions = gaussian_filter(fractions, smooth, mode='wrap')
+    fractions = np.mean(fractions, axis=0)
+    nnight = (last-first).days
+    nyear = nnight // 365 + 1
+    fractions = np.tile(fractions, nyear)
+    return fractions[:nnight]

@@ -5,6 +5,9 @@ desisurvey change log
 0.18.1 (unreleased)
 -------------------
 
+* Adopt normal import numpy as np convention in tileqa.
+* Return to 1.62 deg instead of 1.63 deg for tile overlap definition.
+* Add some forecast plot trend lines.
 * Add retire_tile script to set IN_DESI = False for particular tiles,
   adding duplicate tiles with new TILEID at those locations.  Used
   when we want to abandon a particular design but still want
