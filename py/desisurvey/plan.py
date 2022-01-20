@@ -199,7 +199,7 @@ class Planner(object):
                 else:
                     self.first_night = self.last_night = None
                 self.tile_countdown = np.zeros(self.tiles.ntiles, dtype='i4')
-                if 'COUNTDOWN' in t:
+                if 'COUNTDOWN' in t.keys():
                     self.tile_countdown = t['COUNTDOWN'].data.copy()
                 else:
                     self.tile_countdown[:] = (

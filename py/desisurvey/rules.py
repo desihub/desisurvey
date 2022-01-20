@@ -148,11 +148,9 @@ class Rules(object):
                 if lo == hi:
                     dec_priority[group_sel] = 1.0
                 elif slope > 0:
-                    dec_priority[group_sel] = (
-                        1 + slope * (hi-dec_group) / (hi-lo))
+                    dec_priority[group_sel] *= np.exp(-(dec_group-lo)/slope)
                 else:
-                    dec_priority[group_sel] = (
-                        1 - slope * (dec_group-lo) / (hi-lo))
+                    dec_priority[group_sel] *= np.exp((hi-dec_group)/slope)
             else:
                 assert np.all(dec_priority[group_sel] == 1)
 
