@@ -7,19 +7,19 @@
 # each of the DARK, GRAY, BRIGHT subset of layers.
 
 DARK:
-    dec_order: +0.2
+    dec_order: +160
     programs: DARK
     rules:
         DARK(DARK): { START: 1.0 }
 
 GRAY:
-    dec_order: +0.2
+    dec_order: +160
     programs: GRAY
     rules:
         GRAY(GRAY): { START: 1.0 }
 
 BRIGHT:
-    dec_order: +0.2
+    dec_order: +160
     programs: BRIGHT
     rules:
         BRIGHT(BRIGHT): { START: 1.0 }

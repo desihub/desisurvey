@@ -5,6 +5,8 @@ desisurvey change log
 0.18.1 (unreleased)
 -------------------
 
+* Change dec prioritization scheme in rules.yaml to make the
+  dlog(priority)/ddec not depend on the range of dec in the group.
 * Adopt normal import numpy as np convention in tileqa.
 * Return to 1.62 deg instead of 1.63 deg for tile overlap definition.
 * Add some forecast plot trend lines.

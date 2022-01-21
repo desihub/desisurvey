@@ -12,7 +12,7 @@ NHI:
     cap: N
     programs: GRAY, DARK, BRIGHT
     dec_min: 18
-    dec_order: +0.2
+    dec_order: 160
     rules:
         NHI(GRAY): { START: 1.0 }
         NHI(DARK): { START: 1.0 }
@@ -23,7 +23,7 @@ NLO:
     cap: N
     programs: GRAY, DARK, BRIGHT
     dec_max: 18
-    dec_order: -0.2
+    dec_order: -160
     rules:
         NLO(GRAY): { START: 1.0 }
         NLO(DARK): { START: 1.0 }
@@ -34,7 +34,7 @@ SHI:
     cap: S
     programs: GRAY, DARK, BRIGHT
     dec_min: 2
-    dec_order: +0.2
+    dec_order: +160
     rules:
         SHI(GRAY): { START: 1.0 }
         SHI(DARK): { START: 1.0 }
@@ -45,7 +45,7 @@ SLO:
     cap: S
     programs: GRAY, DARK, BRIGHT
     dec_max: 2
-    dec_order: -0.2
+    dec_order: -160
     rules:
         SLO(GRAY): { START: 1.0 }
         SLO(DARK): { START: 1.0 }
