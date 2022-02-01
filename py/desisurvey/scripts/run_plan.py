@@ -2,11 +2,14 @@ import os
 import subprocess
 import pytz
 import numpy as np
+import datetime
+import ephem as pyephem
 import desisurvey.NTS
 import desisurvey.svstats
 import desiutil.log
 import desisurvey.utils
 import desisurvey.tiles
+import desisurvey.ephem
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 from astropy import units as u
@@ -122,12 +125,22 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
     ephem = nts.scheduler.night_ephem
     changes = nts.scheduler.night_changes
     programs = nts.scheduler.night_programs
-    night_labels = np.array(['noon', '12 deg dusk', '15 deg dusk',
+    mayall = desisurvey.ephem.get_mayall(noar=True)
+    mayall.date = desisurvey.utils.local_noon_on_date(night).datetime
+    mayall.horizon = '-6:00'
+    sun = pyephem.Sun()
+    mjd6degdusk = Time(
+        mayall.next_setting(sun, use_center=True).datetime()).mjd
+    night_labels = np.array(['noon', '6 deg dusk', '12 deg dusk',
+                             '15 deg dusk',
                              '15 deg dawn', '12 deg dawn',
                              'moonrise', 'moonset'])
-    night_names = np.array(['noon', 'brightdusk', 'dusk', 'dawn', 'brightdawn',
+    night_names = np.array(['noon', '6degdusk', 'brightdusk', 'dusk',
+                            'dawn', 'brightdawn',
                             'moonrise', 'moonset'])
-    night_times = np.array([ephem[name] for name in night_names])
+    night_times = np.array([ephem[name]
+                            if name != '6degdusk' else mjd6degdusk
+                            for name in night_names])
     s = np.argsort(night_times)
     print(nts.scheduler.night)
     for name, tt in zip(night_labels[s], night_times[s]):

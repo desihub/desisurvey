@@ -90,6 +90,22 @@ def get_ephem(use_cache=True, write_cache=True):
     return _ephem
 
 
+def get_mayall(config=None, noar=False):
+    if config is None:
+        config = desisurvey.config.Configuration()
+    mayall = ephem.Observer()
+    mayall.lat = config.location.latitude().to(u.rad).value
+    mayall.lon = config.location.longitude().to(u.rad).value
+    mayall.elevation = config.location.elevation().to(u.m).value
+    # Configure atmospheric refraction model for rise/set calculations.
+    if not noar:
+        mayall.pressure = 1e3 * config.location.pressure().to(u.bar).value
+    else:
+        mayall.pressure = 0
+    mayall.temp = config.location.temperature().to(u.C).value
+    return mayall
+
+
 class Ephemerides(object):
     """Tabulate ephemerides.
 
