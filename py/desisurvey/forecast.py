@@ -197,7 +197,7 @@ class Forecast(object):
             ntiles_observed += ntiles
 
 
-def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None):
+def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None, ratio=False):
     from matplotlib import pyplot as p
     if surveyopsdir is None:
         surveyopsdir = os.environ['DESI_SURVEYOPS']
@@ -256,7 +256,6 @@ def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None):
     maxind = np.max(np.flatnonzero(countdone[s] > 0))
     p.plot(nightind[s[:maxind]], doneetimefrac[:maxind]*100,
            label='cost-adjusted % tiles completed')
-    p.legend()
     p.xlabel('nights since 2021-05-14')
     p.ylabel('Percentage complete')
     darkfrac = (
@@ -282,3 +281,15 @@ def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None):
            transform=p.gca().transAxes)
     p.xlim(0, 5*365.25)
     p.ylim(0, 100)
+    p.legend()
+    if ratio:
+        p.twinx()
+        timefrac = np.interp(
+            nightind[s[:maxind]],
+            np.arange(len(weatheradjustedhours)),
+            np.cumsum(weatheradjustedhours)/np.sum(weatheradjustedhours))
+        p.plot(nightind[s[:maxind]], (doneetimefrac[:maxind]/timefrac-1)*100,
+               color='green', linestyle='--', label='overall margin')
+        p.ylim(-10, 300)
+        p.ylabel('overall margin')
+        print((timefrac-1)*100)
