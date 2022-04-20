@@ -240,6 +240,8 @@ def move_tile_into_place(tileid, speculative=False):
         else:
             logob.warning('Could not find expected file {}'.format(
                 os.path.join(holdingdir, fabasefn+ext)))
+    logob.info('Moved fiber assign files for tileid {} to {}'.format(
+        tileid, os.path.join(fadir, fabasefn)))
     return True
 
 
