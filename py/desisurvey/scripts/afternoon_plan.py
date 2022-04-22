@@ -77,7 +77,7 @@ def afternoon_plan(night=None, exposures=None,
         if os.environ.get('DESISURVEY_OUTPUT') is None:
             log.error('Must set environment variable '
                       'DESISURVEY_OUTPUT!')
-            return
+            return -1
         desisurvey_output = os.environ['DESISURVEY_OUTPUT']
 
     if os.path.exists(configfn):
@@ -132,10 +132,10 @@ def afternoon_plan(night=None, exposures=None,
     rulesfn = find_rules_file(config.rules_file())
     if not os.path.exists(tilefn):
         log.error('{} does not exist, failing!'.format(tilefn))
-        return
+        return -1
     if not os.path.exists(rulesfn):
         log.error('{} does not exist, failing!'.format(rulesfn))
-        return
+        return -1
     newtilefn = os.path.join(directory, os.path.basename(tilefn))
     newrulesfn = os.path.join(directory, os.path.basename(rulesfn))
 
@@ -160,10 +160,10 @@ def afternoon_plan(night=None, exposures=None,
     newconfigfn = os.path.join(directory, 'config.yaml')
     if os.path.exists(newtilefn):
         log.error('{} already exists, failing!'.format(newtilefn))
-        return
+        return -1
     if os.path.exists(newrulesfn):
         log.error('{} already exists, failing!'.format(newrulesfn))
-        return
+        return -1
 
     editedtiles = False
     editedrules = False
@@ -195,7 +195,7 @@ def afternoon_plan(night=None, exposures=None,
     if not (editedtiles and editedrules and editedoutputpath and editedmoon):
         log.error('Could not find either tiles, rules, output_path, or moon '
                   'in config file; failing!')
-        return
+        return -1
 
     with open(newconfigfn, 'w') as fp:
         fp.writelines(lines)
@@ -386,8 +386,9 @@ def main(args):
         config = desisurvey.config.Configuration(configfn)
     log.info('Loading configuration from {}...'.format(config.file_name))
 
-    afternoon_plan(night=args.night, exposures=args.exposures,
-                   configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
-                   surveyops=args.surveyops,
-                   skip_mtl_done_range=args.skip_mtl_done_range,
-                   moonsep=args.moonsep)
+    return afternoon_plan(
+        night=args.night, exposures=args.exposures,
+        configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
+        surveyops=args.surveyops,
+        skip_mtl_done_range=args.skip_mtl_done_range,
+        moonsep=args.moonsep)
