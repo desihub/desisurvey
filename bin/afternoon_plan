@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import desisurvey.scripts.afternoon_plan
+import sys
 
 if __name__ == '__main__':
     try:
