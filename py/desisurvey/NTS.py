@@ -496,6 +496,13 @@ class NTS():
             # if no ETC speed information, force BRIGHT.
             if speed is None:
                 program = 'BRIGHT'
+
+        days_to_seconds = 60*60*24
+        if mjd+180/days_to_seconds < self.scheduler.night_ephem['brightdusk']:
+            program = 'BACKUP'
+        if mjd > self.scheduler.night_ephem['brightdawn']:
+            program = 'BACKUP'
+
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program,
             verbose=True, current_ra=current_ra, current_dec=current_dec,
@@ -569,8 +576,6 @@ class NTS():
             getattr(self.config.conditions, sched_program).boost_factor())
         texp_tot *= boost_factor
         texp_remaining *= boost_factor
-
-        days_to_seconds = 60*60*24
 
         # avoid crossing program boundaries, don't observe longer than an hour.
         maxdwell = self.config.maxtime().to(u.day).value

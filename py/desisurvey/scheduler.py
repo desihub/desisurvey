@@ -235,7 +235,7 @@ class Scheduler(object):
                     (mjd_now + 300/86400 > self.night_ephem['dawn'])):
                 return 'BRIGHT', self.night_changes[-1]
             if ((program == 'BRIGHT') and
-                    (mjd_now + 120/86400 < self.night_ephem['brightdusk'])):
+                    (mjd_now + 180/86400 < self.night_ephem['brightdusk'])):
                 return 'BACKUP', self.night_ephem['brightdawn']+1000/86400
             if ((program == 'BRIGHT') and
                     (mjd_now > self.night_ephem['brightdawn'])):
