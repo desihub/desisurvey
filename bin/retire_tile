@@ -57,6 +57,6 @@ if __name__ == "__main__":
                               'in same location'))
     parser.add_argument('--tilefile', default=None, type=str,
                         help=('tile file to edit; default '
-                              '$SURVEYOPS/ops/tiles-main.ecsv'))
+                              '$DESI_SURVEYOPS/ops/tiles-main.ecsv'))
     args = parser.parse_args()
     retire_tiles(args.tileid, replace=args.replace, tilefile=args.tilefile)

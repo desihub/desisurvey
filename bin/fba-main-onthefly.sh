@@ -42,8 +42,8 @@ if [ -z $NERSC_HOST ]; then
     module use $DESI_PRODUCT_ROOT/modulefiles
     module load desiconda
     module load desimodules/21.7e
-    module swap desitarget/2.2.1
-    module swap fiberassign/5.4.0
+    module swap desitarget/2.5.0
+    module swap fiberassign/5.6.0
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
     export SKYHEALPIXS_DIR=$DESI_ROOT/target/skyhealpixs/v1
 else
