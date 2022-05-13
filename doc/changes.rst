@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.18.1 (unreleased)
+0.19.1 (unreleased)
+-------------------
+
+* No changes yet.
+
+0.19.0 (2022-05-13)
 -------------------
 
 * Change dec prioritization scheme in rules.yaml to make the
