@@ -111,6 +111,9 @@ def parse(options=None):
     parser.add_argument(
         '--include-weather', default=True, type=bool,
         help='Use past weather to discount available LST when planning.')
+    parser.add_argument(
+        '--start', default=None, type=str,
+        help='Use this start date instead of config.')
 
     if options is None:
         args = parser.parse_args()
@@ -156,7 +159,10 @@ def calculate_initial_plan(args):
     # Save the weather fractions as the primary HDU.
     hdr['FIRST'] = first.isoformat()
     hdr['YEARS'] = ','.join(['{}'.format(yr) for yr in years])
-    start = config.first_day()
+    if args.start is None:
+        start = config.first_day()
+    else:
+        start = desisurvey.utils.get_date(args.start)
     stop = config.last_day()
     assert start >= first and stop <= last
     hdr['START'] = start.isoformat()
@@ -172,6 +178,7 @@ def calculate_initial_plan(args):
     else:
         tweather = None
     lst_hist, lst_bins = ephem.get_available_lst(
+        start_date=start, stop_date=stop,
         nbins=args.nbins, weather=tweather,
         include_twilight=args.include_twilight)
     lst_centers = 0.5*(lst_bins[:-1]+lst_bins[1:])

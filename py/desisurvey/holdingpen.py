@@ -255,7 +255,8 @@ def execute_svn_maintenance(todelete, tocommit, echo=False, svnrm=False):
         subprocess.run(cmd + ['add', fname])
 
 
-def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
+def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn,
+                                 no_network=False):
     todelete, tocommit = maintain_svn(fbadir)
     if len(todelete) + len(tocommit) > 0:
         logger.info(('To delete from %s:\n' % fbadir) +
@@ -272,10 +273,11 @@ def maintain_holding_pen_and_svn(fbadir, faholddir, mtldonefn):
                          'Still okay?')
             if okay:
                 execute_svn_maintenance(todelete, tocommit)
-            okay = yesno('Commit to svn?')
-            if okay:
-                subprocess.run(['svn', 'ci', fbadir,
-                                '-m "Adding newly observed tiles."'])
+            if not no_network:
+                okay = yesno('Commit to svn?')
+                if okay:
+                    subprocess.run(['svn', 'ci', fbadir,
+                                    '-m "Adding newly observed tiles."'])
     if mtldonefn is not None:
         invalid = tileid_to_clean(faholddir, fbadir, Table.read(mtldonefn))
     if len(invalid) > 0:

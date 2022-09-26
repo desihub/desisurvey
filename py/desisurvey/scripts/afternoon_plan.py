@@ -21,7 +21,7 @@ def afternoon_plan(night=None, exposures=None,
                    spectra_dir=None,
                    desisurvey_output=None, nts_dir=None, sv=False,
                    surveyops=None, skip_mtl_done_range=None,
-                   moonsep=50):
+                   moonsep=50, no_network=False):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -65,6 +65,9 @@ def afternoon_plan(night=None, exposures=None,
         Don't set status = DONE for any tiles using the mtl-done-tiles with
         range[0] <= ZDATE <= range[1], for range in skip_mtl_done_range.  This
         prevents overlapping these tiles.
+
+    no_network : bool
+        Skip svn & wget steps.
     """
     log = desiutil.log.get_logger()
     if night is None:
@@ -101,7 +104,7 @@ def afternoon_plan(night=None, exposures=None,
 
     surveyopsdir = (surveyops if surveyops is not None
                     else os.environ.get('SURVEYOPS', None))
-    if surveyopsdir is not None:
+    if surveyopsdir is not None and not no_network:
         ret = subprocess.run(['svn', 'up',
                               os.path.join(surveyopsdir, 'ops')])
         ret = subprocess.run(
@@ -109,6 +112,8 @@ def afternoon_plan(night=None, exposures=None,
              os.path.join(surveyopsdir, 'mtl', 'mtl-done-tiles.ecsv')])
         if ret.returncode != 0:
             log.info('Failed to update surveyops.')
+    elif no_network:
+        log.info('svn updates disabled due to no_network')
     else:
         log.info('SURVEYOPS directory not found; not performing '
                  'surveyops updates.')
@@ -122,11 +127,13 @@ def afternoon_plan(night=None, exposures=None,
     # out of date MTLs, a disaster.
     mainsurveyopsdir = os.path.join(
         os.environ['DESI_ROOT'], 'survey', 'ops', 'surveyops', 'trunk')
-    subprocess.run(['svn', 'up', mainsurveyopsdir])
+    if not no_network:
+        subprocess.run(['svn', 'up', mainsurveyopsdir])
 
     fbadir = os.environ['FIBER_ASSIGN_DIR']
     # update FIBER_ASSIGN_DIR
-    subprocess.run(['svn', 'up', fbadir])
+    if not no_network:
+        subprocess.run(['svn', 'up', fbadir])
 
     tilefn = find_tile_file(config.tiles_file())
     rulesfn = find_rules_file(config.rules_file())
@@ -217,13 +224,15 @@ def afternoon_plan(night=None, exposures=None,
 
     offlinepipelinefiles = ['tsnr-exposures.fits', 'tiles.csv']
     for i, fn in enumerate(offlinepipelinefiles):
-        os.system('wget -q https://data.desi.lbl.gov/desi/spectro/redux/daily/'
-                  '{0} -O {0}.tmp'.format(fn))
-        filelen = os.stat('{}.tmp'.format(fn)).st_size
-        if filelen > 0:
-            os.rename('{}.tmp'.format(fn), fn)
-        else:
-            log.warning('Updating {} failed!'.format(fn))
+        if not no_network:
+            os.system(
+                'wget -q https://data.desi.lbl.gov/desi/spectro/redux/daily/'
+                '{0} -O {0}.tmp'.format(fn))
+            filelen = os.stat('{}.tmp'.format(fn)).st_size
+            if filelen > 0:
+                os.rename('{}.tmp'.format(fn), fn)
+            else:
+                log.warning('Updating {} failed!'.format(fn))
         if not os.path.exists(fn):
             offlinepipelinefiles[i] = None
 
@@ -284,7 +293,7 @@ def afternoon_plan(night=None, exposures=None,
     faholddir = os.environ.get('FA_HOLDING_PEN', None)
     if faholddir is not None:
         desisurvey.holdingpen.maintain_holding_pen_and_svn(
-            fbadir, faholddir, mtldonefn)
+            fbadir, faholddir, mtldonefn, no_network=no_network)
     else:
         log.error('FA_HOLDING_PEN is None, skipping holding pen '
                   'maintenance!')
@@ -299,11 +308,12 @@ def afternoon_plan(night=None, exposures=None,
         subprocess.run(['cp', os.path.join(directory, 'exposures.ecsv'),
                         surveyopsopsdir])
         subprocess.run(['cp', newtilefn, surveyopsopsdir])
-        subprocess.run(['svn', 'status', surveyopsopsdir])
-        if yesno('Okay to commit updates to SURVEYOPS svn?'):
-            subprocess.run(
-                ['svn', 'ci', surveyopsopsdir,
-                 '-m "Update exposures and tiles for %s"' % nightstr])
+        if not no_network:
+            subprocess.run(['svn', 'status', surveyopsopsdir])
+            if yesno('Okay to commit updates to SURVEYOPS svn?'):
+                subprocess.run(
+                    ['svn', 'ci', surveyopsopsdir,
+                     '-m "Update exposures and tiles for %s"' % nightstr])
     shutil.copy(newtilefn, tilefn)  # update working directory tilefn
 
 
@@ -362,6 +372,8 @@ def parse(options=None):
     parser.add_argument('--moonsep', type=float, default=50,
                         help=('Moon separation to use; do not observe within '
                               'X degrees of the moon.'))
+    parser.add_argument('--no-network', action='store_true', default=False,
+                        help='Skip steps requiring external network access.')
     if options is None:
         args = parser.parse_args()
     else:
@@ -391,4 +403,4 @@ def main(args):
         configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
         surveyops=args.surveyops,
         skip_mtl_done_range=args.skip_mtl_done_range,
-        moonsep=args.moonsep)
+        moonsep=args.moonsep, no_network=args.no_network)

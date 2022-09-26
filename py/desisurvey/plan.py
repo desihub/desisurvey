@@ -436,7 +436,7 @@ class Planner(object):
         self.tile_available = self.tiles.in_desi & available
         self.log.info('Observations possible for {} tiles.'.format(
             np.count_nonzero(available)))
-        if np.count_nonzero(available) == 0:
+        if (not self.fa_on_the_fly) and (np.count_nonzero(available) == 0):
             self.log.error('No fiberassign files available for scheduling!')
         if np.any(~mask):
             self.log.debug(

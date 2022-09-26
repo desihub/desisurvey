@@ -98,6 +98,7 @@ class Tiles(object):
             self.program_mask[p] = (self.tileprogram == p) & self.in_desi
         # Calculate and save dust exposure factors.
         self.dust_factor = desisurvey.etc.dust_exposure_factor(tiles['EBV_MED'].data)
+        self.ebv = tiles['EBV_MED'].data.copy()
         # Precompute coefficients to calculate tile observing airmass.
         latitude = np.radians(config.location.latitude())
         tile_dec_rad = np.radians(self.tileDEC)

@@ -197,12 +197,18 @@ class Forecast(object):
             ntiles_observed += ntiles
 
 
-def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None, ratio=False):
+def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
+                   include_backup=False, cfgfile=None, ratio=False,
+                   nownight=None):
     from matplotlib import pyplot as p
     if surveyopsdir is None:
         surveyopsdir = os.environ['DESI_SURVEYOPS']
-    tmain = Table.read(os.path.join(surveyopsdir, 'ops', 'tiles-main.ecsv'))
-    exps = Table.read(os.path.join(surveyopsdir, 'ops', 'exposures.ecsv'))
+    if tmain is None:
+        tmain = Table.read(os.path.join(
+            surveyopsdir, 'ops', 'tiles-main.ecsv'))
+    if exps is None:
+        exps = Table.read(os.path.join(
+            surveyopsdir, 'ops', 'exposures.ecsv'))
     cfg = desisurvey.config.Configuration(cfgfile)
     ephem = desisurvey.ephem.get_ephem()
     scheduled = ephem.get_program_hours()
@@ -210,9 +216,18 @@ def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None, ratio=
         cfg.first_day(), cfg.last_day())
     programnames = ['DARK', 'GRAY', 'BRIGHT']
     weatheradjustedhours = [
-        (1-closefracs)* sched / getattr(cfg.conditions, prog).moon_up_factor()
+        (1-closefracs) * sched / getattr(cfg.conditions, prog).moon_up_factor()
         for sched, prog in zip(scheduled, programnames)]
     weatheradjustedhours = np.sum(weatheradjustedhours, axis=0)
+    if nownight is not None:
+        # add a pseudo-exposure on a tile.  Ugly hack!
+        from copy import deepcopy
+        t1000ind = np.flatnonzero(exps['TILEID'] == 1000)[0]
+        pseudoexp = deepcopy(exps[t1000ind])
+        pseudoexp['NIGHT'] = nownight
+        pseudoexp['EFFTIME'] = 0
+        exps.add_row(pseudoexp)
+
     cz = desisurvey.utils.cos_zenith(tmain['DESIGNHA']*u.deg,
                                      tmain['DEC']*u.deg)
     am = desisurvey.utils.cos_zenith_to_airmass(cz)
@@ -237,43 +252,68 @@ def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None, ratio=
         lastday.year*10000 + lastday.month*100 + lastday.day)
     lastmjd = Time(['-'.join([str(n)[:4], str(n)[4:6], str(n)[6:8]])
                     for n in lastnight]).mjd
+
     startdatetime = datetime.datetime.combine(
         cfg.first_day(), datetime.time())
     nightind = (lastmjd - Time(startdatetime).mjd).astype('i4')
     p.plot(
         np.cumsum(weatheradjustedhours)/np.sum(weatheradjustedhours)*100,
-        label='weather-adjusted % of hours elapsed')
+        label='adjusted % of time elapsed', color='tab:blue',
+        linestyle='--')
     for i in range(5):
         p.axvline(365*(i+1), linestyle='--', color='gray')
+        p.text(365*(i+1)-20, 0.75, f'{2021+i+1}-05-14', rotation=90,
+               transform=p.gca().get_xaxis_transform(),
+               bbox=dict(facecolor='white', pad=3, edgecolor='none',
+                         alpha=0.5))
     countdone = tmain['DONEFRAC'].copy()
     countdone = np.clip(countdone, 0, 1)
     countdone[(tmain['STATUS'] == 'done') |
               (tmain['STATUS'] == 'obsend')] = 1
     s = np.argsort(nightind)
     doneetime = costetime*include*countdone
-    doneetimefrac = np.cumsum(doneetime[s])
-    doneetimefrac /= np.sum(costetime*include)
+    dark = tmain['PROGRAM'] == 'DARK'
+    bright = tmain['PROGRAM'] == 'BRIGHT'
+    overall = dark | bright
+    doneetimefracdict = dict()
+    for name, mask in dict(dark=dark, bright=bright, overall=overall).items():
+        doneetimefracdict[name] = np.cumsum((doneetime*mask)[s])
+        doneetimefracdict[name] /= np.sum(costetime*include*mask)
+    colors = dict(bright='tab:orange', dark='black', overall='tab:blue')
     maxind = np.max(np.flatnonzero(countdone[s] > 0))
-    p.plot(nightind[s[:maxind]], doneetimefrac[:maxind]*100,
-           label='cost-adjusted % tiles completed')
+    for label, mask in doneetimefracdict.items():
+        p.plot(nightind[s[:maxind+1]], doneetimefracdict[label][:maxind+1]*100,
+               label=f'% {label} done',
+               color=colors[label])
     p.xlabel('nights since 2021-05-14')
     p.ylabel('Percentage complete')
+
+    p.axvline(nightind[s[maxind]], linestyle='--', color='gray')
+    nownightstr = str(lastnight[s[maxind]])
+    nownightstr = nownightstr[:4]+'-'+nownightstr[4:6]+'-'+nownightstr[6:8]
+    p.text(nightind[s[maxind]]-20, 0.75, f'{nownightstr}',
+           rotation=90,
+           transform=p.gca().get_xaxis_transform(),
+           bbox=dict(facecolor='white', pad=3, edgecolor='none',
+                     alpha=0.5))
+
     darkfrac = (
-        np.sum(doneetime*include*(tmain['PROGRAM'] == 'DARK')) /
-        np.sum(costetime*include*(tmain['PROGRAM'] == 'DARK')))
+        np.sum(doneetime*include*dark) /
+        np.sum(costetime*include*dark))
     brightfrac = (
-        np.sum(doneetime*include*(tmain['PROGRAM'] == 'BRIGHT')) /
-        np.sum(costetime*include*(tmain['PROGRAM'] == 'BRIGHT')))
+        np.sum(doneetime*include*bright) /
+        np.sum(costetime*include*bright))
     overallfrac = (
-        np.sum(doneetime*include)/np.sum(costetime*include))
+        np.sum(doneetime*include*overall) /
+        np.sum(costetime*include*overall))
     lastnight = nightind[s[maxind]]
     elapsedfrac = (np.sum(weatheradjustedhours[:lastnight]) /
                    np.sum(weatheradjustedhours))
     p.text(0.95, 0.05,
-           ('adjusted hours elapsed: {:5.2%}\n'
-            'adjusted tiles done: {:5.2%}\n'
-            'adjusted dark done: {:5.2%}\n'
-            'adjusted bright done: {:5.2%}\n'
+           ('adj. time elapsed: {:5.2%}\n'
+            'overall: {:5.2%}\n'
+            'dark: {:5.2%}\n'
+            'bright: {:5.2%}\n'
             'implied margin: {:5.2%}').format(
                 elapsedfrac, overallfrac, darkfrac, brightfrac,
                 overallfrac/elapsedfrac - 1),
@@ -285,11 +325,44 @@ def forecast_plots(surveyopsdir=None, include_backup=False, cfgfile=None, ratio=
     if ratio:
         p.twinx()
         timefrac = np.interp(
-            nightind[s[:maxind]],
+            nightind[s[:maxind+1]],
             np.arange(len(weatheradjustedhours)),
             np.cumsum(weatheradjustedhours)/np.sum(weatheradjustedhours))
-        p.plot(nightind[s[:maxind]], (doneetimefrac[:maxind]/timefrac-1)*100,
+        p.plot(nightind[s[:maxind]],
+               (doneetimefracdict['overall'][:maxind+1]/timefrac-1)*100,
                color='green', linestyle='--', label='overall margin')
         p.ylim(-10, 300)
         p.ylabel('overall margin')
         print((timefrac-1)*100)
+
+
+def surveysim_exps_to_exps_and_tmain(expsfn, tmain, maxnight=None):
+    from astropy.io import fits
+    exps = fits.getdata(expsfn, 'EXPOSURES')
+    tdata = fits.getdata(expsfn, 'TILEDATA')
+
+    expsout = np.zeros(len(exps),
+                       dtype=[('NIGHT', 'U8'), ('TILEID', 'i4'),
+                              ('EFFTIME', 'f4')])
+    expsout['TILEID'] = exps['TILEID']
+    nightstr = []
+    for mjd in exps['MJD']:
+        dt = Time(mjd, format='mjd').datetime
+        nightstr.append('%04d%02d%02d' % (dt.year, dt.month, dt.day))
+    expsout['NIGHT'] = nightstr
+    if maxnight is not None:
+        m = expsout['NIGHT'] <= maxnight
+        expsout = expsout[m]
+        exps = exps[m]
+
+    tmainout = tmain.copy()
+    donefrac = np.bincount(exps['TILEID'], weights=exps['DSNR2FRAC'],
+                           minlength=max(tdata['TILEID'])+1)
+    tmainout['DONEFRAC'] = donefrac[tmainout['TILEID']]
+    mnotstarted = tmainout['DONEFRAC'] == 0
+    mdone = tmainout['DONEFRAC'] > 0.85
+    tmainout['STATUS'] = 'unobs'
+    tmainout['STATUS'][~mnotstarted] = 'obsstart'
+    tmainout['STATUS'][mdone] = 'done'
+
+    return expsout, tmainout
