@@ -291,7 +291,7 @@ def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
     p.axvline(nightind[s[maxind]], linestyle='--', color='gray')
     nownightstr = str(lastnight[s[maxind]])
     nownightstr = nownightstr[:4]+'-'+nownightstr[4:6]+'-'+nownightstr[6:8]
-    p.text(nightind[s[maxind]]-20, 0.75, f'{nownightstr}',
+    p.text(nightind[s[maxind]]+10, 0.75, f'{nownightstr}',
            rotation=90,
            transform=p.gca().get_xaxis_transform(),
            bbox=dict(facecolor='white', pad=3, edgecolor='none',
@@ -334,7 +334,100 @@ def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
         p.ylim(-10, 300)
         p.ylabel('overall margin')
         print((timefrac-1)*100)
+    print('Dark months ahead: ', (darkfrac - elapsedfrac)*55)
 
+
+def summarize_daterange(
+        startdate, enddate, exps=None, surveyopsdir=None,
+        tmain=None, cfgfile=None):
+    # we have some date range; it corresponds to a certain amount
+    # of nominal elapsed time.
+    # we have the number of exposures we actually finished in
+    # that time.
+    # we compare those?
+    if surveyopsdir is None:
+        surveyopsdir = os.environ['DESI_SURVEYOPS']
+    if exps is None:
+        exps = Table.read(os.path.join(
+            surveyopsdir, 'ops', 'exposures.ecsv'))
+    exps = exps[(exps['NIGHT'] >= str(startdate)) &
+                (exps['NIGHT'] < str(enddate))]
+    if tmain is None:
+        tmain = Table.read(os.path.join(
+            surveyopsdir, 'ops', 'tiles-main.ecsv'))
+
+    cfg = desisurvey.config.Configuration(cfgfile)
+    ephem = desisurvey.ephem.get_ephem()
+    scheduled = ephem.get_program_hours(start_date=cfg.first_day(),
+                                        stop_date=cfg.last_day())
+    closefracs = desisurvey.utils.get_average_dome_closed_fractions(
+        cfg.first_day(), cfg.last_day())
+    programnames = ['DARK', 'GRAY', 'BRIGHT']
+    weatheradjustedhours = [
+        (1-closefracs) * sched / getattr(cfg.conditions, prog).moon_up_factor()
+        for sched, prog in zip(scheduled, programnames)]
+    weatheradjustedhours = np.sum(weatheradjustedhours, axis=0)
+
+    startdaynum = desisurvey.utils.day_number(
+        desisurvey.utils.str_to_night(startdate))
+    enddaynum = desisurvey.utils.day_number(
+        desisurvey.utils.str_to_night(enddate))
+    elapsedfrac = (np.sum(weatheradjustedhours[startdaynum:enddaynum]) /
+                   np.sum(weatheradjustedhours))
+
+    cz = desisurvey.utils.cos_zenith(tmain['DESIGNHA']*u.deg,
+                                     tmain['DEC']*u.deg)
+    am = desisurvey.utils.cos_zenith_to_airmass(cz)
+    amfac = desisurvey.etc.airmass_exposure_factor(am)
+    dustfac = desisurvey.etc.dust_exposure_factor(tmain['EBV_MED'])
+    cost = amfac*dustfac
+    costetime = cost*desisurvey.tiles.get_nominal_program_times(
+        tmain['PROGRAM'])
+    include = tmain['IN_DESI'] != 0
+    tileid_to_rownum = {t: i for i, t in enumerate(tmain['TILEID'])}
+    lastnight = np.zeros(len(tmain), dtype='i4')
+    totprogramtime = {
+        p: np.sum(costetime*include*(tmain['PROGRAM'] == p))
+        for p in ['DARK', 'BRIGHT', 'BACKUP']}
+
+    programtime = dict()
+    programtile = dict()
+    programetcefftime = dict()
+    # 20210530 has invalid PROGRAM entries in the NTS exposures file
+    expsprogram = np.array([
+        tmain['PROGRAM'][tileid_to_rownum.get(t, -1)].lower()
+        for t in exps['TILEID']])
+    for program in ['DARK', 'BRIGHT', 'BACKUP']:
+        goaltime = getattr(cfg.programs, program).efftime().to(u.s).value
+        m = (expsprogram == program.lower()) & (exps['EFFTIME'] > 0)
+        m2 = (expsprogram == program.lower()) & (exps['EFFTIME_ETC'] > 0)
+        tileexpefftime = np.bincount(
+            exps['TILEID'][m], weights=exps['EFFTIME'][m])
+        tileexpefftime[tileexpefftime > 0.85*goaltime] = goaltime
+        tileexpetcefftime = np.bincount(exps['TILEID'][m2],
+                                        weights=exps['EFFTIME_ETC'][m2])
+        utileid = np.flatnonzero(tileexpefftime)
+        ntile = 0
+        time = 0
+        etcefftime = 0
+        for tileid in utileid:
+            r = tileid_to_rownum.get(tileid, -1)
+            tcost = 1.6 if r == -1 else costetime[r]
+            etcefftime += tcost*tileexpetcefftime[tileid]/goaltime
+            if r < 0:
+                continue
+            time += costetime[r]*include[r]*tileexpefftime[tileid]/goaltime
+            ntile += tileexpefftime[tileid]/goaltime
+        programtime[program] = time
+        programtile[program] = ntile
+        programetcefftime[program] = etcefftime
+    print(f'Elapsed fraction of five year survey, weather adjusted: '
+          f'{100*elapsedfrac:5.2f}%')
+    for p in programtime:
+        print(f'{p:8s} {programtile[p]:7.1f} '
+              f'{100*programtime[p]/totprogramtime[p]:5.2f}% '
+              f'(naive sum(efftime_etc): '
+              f'{100*programetcefftime[p]/totprogramtime[p]:5.2f}%)')
 
 def surveysim_exps_to_exps_and_tmain(expsfn, tmain, maxnight=None):
     from astropy.io import fits

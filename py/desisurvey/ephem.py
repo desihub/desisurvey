@@ -505,7 +505,7 @@ class Ephemerides(object):
             First night to include or use the first date of the survey. Must
             be convertible to a date using :func:`desisurvey.utils.get_date`.
         stop_date : date or None
-            First night to include or use the last date of the survey. Must
+            Last night to include or use the last date of the survey. Must
             be convertible to a date using :func:`desisurvey.utils.get_date`.
         include_monsoon : bool
             Include nights during the annual monsoon shutdowns.
@@ -562,7 +562,7 @@ class Ephemerides(object):
             First night to include or use the first date of the survey. Must
             be convertible to a date using :func:`desisurvey.utils.get_date`.
         stop_date : date or None
-            First night to include or use the last date of the survey. Must
+            Last night to include or use the last date of the survey. Must
             be convertible to a date using :func:`desisurvey.utils.get_date`.
         nbins : int
             Number of LST bins to use.

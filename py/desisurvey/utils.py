@@ -342,6 +342,11 @@ def night_to_str(date):
     return date.isoformat().replace('-', '')
 
 
+def str_to_night(date):
+    s = str(date)
+    return get_date('-'.join([s[:4], s[4:6], s[6:8]]))
+
+
 def day_number(date):
     """Return the number of elapsed days since the start of the survey.
 
