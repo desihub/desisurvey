@@ -280,7 +280,8 @@ def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
         doneetimefracdict[name] = np.cumsum((doneetime*mask)[s])
         doneetimefracdict[name] /= np.sum(costetime*include*mask)
     colors = dict(bright='tab:orange', dark='black', overall='tab:blue')
-    maxind = np.max(np.flatnonzero(countdone[s] > 0))
+    maxind = np.max(np.flatnonzero((countdone[s] > 0) &
+                                   (tmain['PROGRAM'][s] != 'BACKUP')))
     for label, mask in doneetimefracdict.items():
         p.plot(nightind[s[:maxind+1]], doneetimefracdict[label][:maxind+1]*100,
                label=f'% {label} done',
@@ -426,8 +427,10 @@ def summarize_daterange(
     for p in programtime:
         print(f'{p:8s} {programtile[p]:7.1f} '
               f'{100*programtime[p]/totprogramtime[p]:5.2f}% '
-              f'(naive sum(efftime_etc): '
-              f'{100*programetcefftime[p]/totprogramtime[p]:5.2f}%)')
+              )
+#              f'(naive sum(efftime_etc): '
+#              f'{100*programetcefftime[p]/totprogramtime[p]:5.2f}%)'
+
 
 def surveysim_exps_to_exps_and_tmain(expsfn, tmain, maxnight=None):
     from astropy.io import fits
