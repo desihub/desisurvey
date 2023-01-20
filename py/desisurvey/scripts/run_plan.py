@@ -131,15 +131,21 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
     sun = pyephem.Sun()
     mjd6degdusk = Time(
         mayall.next_setting(sun, use_center=True).datetime()).mjd
-    night_labels = np.array(['noon', '6 deg dusk', '12 deg dusk',
+    mayall.horizon = '-10:00'
+    mjd10degdusk = Time(
+        mayall.next_setting(sun, use_center=True).datetime()).mjd
+    extratimes = {'6degdusk': mjd6degdusk, '10degdusk': mjd10degdusk}
+    night_labels = np.array(['noon', '6 deg dusk', '10 deg dusk',
+                             '12 deg dusk',
                              '15 deg dusk',
                              '15 deg dawn', '12 deg dawn',
                              'moonrise', 'moonset'])
-    night_names = np.array(['noon', '6degdusk', 'brightdusk', 'dusk',
+    night_names = np.array(['noon', '6degdusk', '10degdusk',
+                            'brightdusk', 'dusk',
                             'dawn', 'brightdawn',
                             'moonrise', 'moonset'])
     night_times = np.array([ephem[name]
-                            if name != '6degdusk' else mjd6degdusk
+                            if name not in extratimes else extratimes[name]
                             for name in night_names])
     s = np.argsort(night_times)
     print(nts.scheduler.night)
