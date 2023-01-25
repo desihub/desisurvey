@@ -1,38 +1,39 @@
 """
-  Next Tile Selector
+Next Tile Selector
 
-  Based on our google sheet (
-  these are the expected inputs
+Based on our google sheet () these are the expected inputs::
 
-        skylevel: current sky level [counts s-1 cm-2 arcsec-2]   (from ETC, at the end of last exposure)
-        seeing: current atmospheric seeing PSF FWHM [arcsec]     (from ETC, at the end of last exposure)
-        transparency: current atmospheric transparency [0-1, where 0=total cloud cover]   (from ETC, at the end of last exposure)
+    skylevel: current sky level [counts s-1 cm-2 arcsec-2]   (from ETC, at the end of last exposure)
+    seeing: current atmospheric seeing PSF FWHM [arcsec]     (from ETC, at the end of last exposure)
+    transparency: current atmospheric transparency [0-1, where 0=total cloud cover]   (from ETC, at the end of last exposure)
 
-        obsplan: filename containing that nights observing plan
-        program (optional): request a tile will be in that program,
-                            otherwise get next field chooses program based on current conditions
+    obsplan: filename containing that nights observing plan
+    program (optional): request a tile will be in that program,
+                        otherwise get next field chooses program based on current conditions
 
-        previoustiles (optional): list of tiles that have been observed that night
+    previoustiles (optional): list of tiles that have been observed that night
 
-  These variables are in the
-        RA _prior:  in degrees, used only for user over-ride, defaults to -99
-        DEC_prior:  in degrees, used only for user over-ride, defaults to -99
-            EFS: for slewing minimization; not used.
+These variables are in the::
 
-  If input values are missing (e.g. first exposure of the night), the NTS falls back to reasonable defaults for skylevel etc.
+    RA _prior:  in degrees, used only for user over-ride, defaults to -99
+    DEC_prior:  in degrees, used only for user over-ride, defaults to -99
+    EFS: for slewing minimization; not used.
+
+If input values are missing (e.g. first exposure of the night), the NTS falls back to reasonable defaults for skylevel etc.
 
 
-  The primary output of the NTS will be a dictionary with the name of the fiber assign file (full path)
-  The naming convention is fiberassign_<tileid>.fits
+The primary output of the NTS will be a dictionary with the name of the fiber assign file (full path)
+ The naming convention is fiberassign_<tileid>.fits
 
-  In addition, the following keys/information is returned by the NTS:
-        tileid: (int) DESI Tile ID
-        s2n: (foat) Requested signal to noice (for ETC)
-        foundtile (boolean): indicates whether field selector was successful.
-        exptime: expected exposure time based on ETC information from previous exposure [seconds]
-        maxtime: maximum allowable exposure time [seconds]
+In addition, the following keys/information is returned by the NTS::
 
-        Names are converted to FITS convention: TILEID, S2NREQ, EXTTIME, MAXTIME, FBRASSGN
+    tileid: (int) DESI Tile ID
+    s2n: (foat) Requested signal to noice (for ETC)
+    foundtile (boolean): indicates whether field selector was successful.
+    exptime: expected exposure time based on ETC information from previous exposure [seconds]
+    maxtime: maximum allowable exposure time [seconds]
+
+Names are converted to FITS convention: TILEID, S2NREQ, EXTTIME, MAXTIME, FBRASSGN
 """
 
 import os
