@@ -5,7 +5,9 @@ desisurvey change log
 0.19.1 (unreleased)
 -------------------
 
-* No changes yet.
+* Update API documentation for completeness (PR `#151`_).
+
+.. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
 0.19.0 (2022-05-13)
 -------------------
