@@ -2,10 +2,24 @@
 DESI Survey Planning and Scheduler
 ==================================
 
+|Actions Status| |Coveralls Status| |Documentation Status|
+
+.. |Actions Status| image:: https://github.com/desihub/desisurvey/workflows/CI/badge.svg
+    :target: https://github.com/desihub/desisurvey/actions
+    :alt: GitHub Actions CI Status
+
+.. |Coveralls Status| image:: https://coveralls.io/repos/desihub/desisurvey/badge.svg
+    :target: https://coveralls.io/github/desihub/desisurvey
+    :alt: Test Coverage Status
+
+.. |Documentation Status| image:: https://readthedocs.org/projects/desisurvey/badge/?version=latest
+    :target: https://desisurvey.readthedocs.io/en/latest/
+    :alt: Documentation Status
+
 Introduction
 ------------
 
-This package provides the tools to plan and schedule observations of the 
+This package provides the tools to plan and schedule observations of the
 predefined tiles in the DESI footprint, each associated with an
 observing program (DARK/GRAY/BRIGHT). The algorithms in this package
 do not deal with individual targets or their assignment to fibers.
@@ -21,26 +35,7 @@ Full Documentation
 
 Please visit `desisurvey on Read the Docs`_
 
-.. image:: https://readthedocs.org/projects/desisurvey/badge/?version=latest
-    :target: http://desisurvey.readthedocs.io/en/latest/
-    :alt: Documentation Status
-
-.. _`desisurvey on Read the Docs`: http://desisurvey.readthedocs.io/en/latest/
-
-Travis Build Status
--------------------
-
-.. image:: https://img.shields.io/travis/desihub/desisurvey.svg
-    :target: https://travis-ci.org/desihub/desisurvey
-    :alt: Travis Build Status
-
-
-Test Coverage Status
---------------------
-
-.. image:: https://coveralls.io/repos/desihub/desisurvey/badge.svg?service=github
-    :target: https://coveralls.io/github/desihub/desisurvey
-    :alt: Test Coverage Status
+.. _`desisurvey on Read the Docs`: https://desisurvey.readthedocs.io/en/latest/
 
 License
 -------
