@@ -5,7 +5,7 @@ desisurvey change log
 0.19.1 (unreleased)
 -------------------
 
-* No changes yet.
+* Harden AP against NaNs in offline pipeline EFFTIMEs; zero such cases.
 
 0.19.0 (2022-05-13)
 -------------------

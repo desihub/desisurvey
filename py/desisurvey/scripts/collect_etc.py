@@ -393,7 +393,13 @@ def update_donefrac_from_offline(exps, offlinefn):
     offlinetimetypes = np.zeros(len(offline), dtype='U80')
     offlinetimetypes[:] = 'DARK'
     offlinetimetypes[mo] = timetypes
-    offline_eff_time = offline['EFFTIME_SPEC']
+    offline_eff_time = offline['EFFTIME_SPEC'].copy()
+    mbad = ~np.isfinite(offline_eff_time)
+    if np.any(mbad[mo]):
+        badrecords = offline[mo][mbad[mo]]
+        log.warning('SOME EXPOSURES HAVE NaN EFFTIME, USING ZERO!!')
+        log.warning(' '.join([str(x) for x in badrecords['TILEID']]))
+        offline_eff_time[mbad] = 0
     if ((len(np.unique(exps['EXPID'])) != len(exps)) or
             (len(np.unique(offline['EXPID'])) != len(offline))):
         raise ValueError('weird duplicate EXPID in exps or offline')
