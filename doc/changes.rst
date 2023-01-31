@@ -5,7 +5,10 @@ desisurvey change log
 0.19.1 (unreleased)
 -------------------
 
+* Update API documentation for completeness (PR `#151`_).
 * Harden AP against NaNs in offline pipeline EFFTIMEs; zero such cases.
+
+.. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
 0.19.0 (2022-05-13)
 -------------------

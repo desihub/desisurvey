@@ -25,6 +25,24 @@ desisurvey.etc
 .. automodule:: desisurvey.etc
     :members:
 
+desisurvey.forecast
+-------------------
+
+.. automodule:: desisurvey.forecast
+    :members:
+
+desisurvey.holdingpen
+---------------------
+
+.. automodule:: desisurvey.holdingpen
+    :members:
+
+desisurvey.NTS
+--------------
+
+.. automodule:: desisurvey.NTS
+    :members:
+
 desisurvey.optimize
 -------------------
 
@@ -49,22 +67,28 @@ desisurvey.rules
 .. automodule:: desisurvey.rules
     :members:
 
-desisurvey.tiles
-----------------
-
-.. automodule:: desisurvey.tiles
-    :members:
-
 desisurvey.scheduler
 --------------------
 
 .. automodule:: desisurvey.scheduler
     :members:
 
-desisurvey.forecast
--------------------
+desisurvey.svstats
+------------------
 
-.. automodule:: desisurvey.forecast
+.. automodule:: desisurvey.svstats
+    :members:
+
+desisurvey.tileqa
+-----------------
+
+.. automodule:: desisurvey.tileqa
+    :members:
+
+desisurvey.tiles
+----------------
+
+.. automodule:: desisurvey.tiles
     :members:
 
 desisurvey.utils
@@ -75,6 +99,24 @@ desisurvey.utils
 
 Command-Line Scripts
 ====================
+
+afternoon_plan
+--------------
+
+.. automodule:: desisurvey.scripts.afternoon_plan
+    :members:
+
+collect_etc
+-----------
+
+.. automodule:: desisurvey.scripts.collect_etc
+    :members:
+
+run_plan
+--------
+
+.. automodule:: desisurvey.scripts.run_plan
+    :members:
 
 surveyinit
 ----------
