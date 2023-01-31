@@ -6,6 +6,7 @@ desisurvey change log
 -------------------
 
 * Update API documentation for completeness (PR `#151`_).
+* Harden AP against NaNs in offline pipeline EFFTIMEs; zero such cases.
 
 .. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
