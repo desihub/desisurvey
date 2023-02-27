@@ -7,6 +7,9 @@ desisurvey change log
 
 * Update API documentation for completeness (PR `#151`_).
 * Harden AP against NaNs in offline pipeline EFFTIMEs; zero such cases.
+* Add 10 deg dusk to afternoon plan output.
+* Add routines for plotting & summarizing survey progress.
+* Add option for disabling network access during afternoon planning.
 
 .. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
