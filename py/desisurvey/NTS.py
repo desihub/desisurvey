@@ -499,10 +499,12 @@ class NTS():
                 program = 'BRIGHT'
 
         days_to_seconds = 60*60*24
-        if mjd+180/days_to_seconds < self.scheduler.night_ephem['brightdusk']:
-            program = 'BACKUP'
-        if mjd > self.scheduler.night_ephem['brightdawn']:
-            program = 'BACKUP'
+        if exposure.get('program', None) is None:
+            if (mjd+180/days_to_seconds <
+                self.scheduler.night_ephem['brightdusk']):
+                program = 'BACKUP'
+            if mjd > self.scheduler.night_ephem['brightdawn']:
+                program = 'BACKUP'
 
         result = self.scheduler.next_tile(
             mjd, self.ETC, seeing, transparency, skylevel, program=program,
