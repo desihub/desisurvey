@@ -335,7 +335,8 @@ def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
         p.ylim(-10, 300)
         p.ylabel('overall margin')
         print((timefrac-1)*100)
-    print('Dark months ahead: ', (darkfrac - elapsedfrac)*55)
+    print('Dark months ahead: %5.2f' % ((darkfrac - elapsedfrac)*55))
+    print('Dark margin: %5.2f%%' % (100*(darkfrac - elapsedfrac)/ elapsedfrac))
 
 
 def summarize_daterange(

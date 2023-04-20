@@ -460,11 +460,12 @@ def qa(desitiles, nside=1024, npts=1000, compare=False,
 
     p.figure('Full Sky')
     setup_print((8, 5), scalefont=1.2)
-    p.subplots_adjust(left=0.125, bottom=0.1)
+    p.subplots_adjust(left=0.1, bottom=0.06, top=0.97, right=0.97)
     p.clf()
     tim, xx, yy = heal2cart(ims['Tiles v3'], interp=False, return_pts=True)
     p.imshow(tim, cmap='binary', origin='lower', extent=[360, 0, -90, 90],
              vmin=0, vmax=9)
+    p.gca().xaxis.set_ticks([360, 300, 240, 180, 120, 60, 0])
     p.gca().set_aspect('equal')
     p.xlabel(r'$\alpha$ ($\degree$)')
     p.ylabel(r'$\delta$ ($\degree$)')
