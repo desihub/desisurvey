@@ -10,6 +10,8 @@ desisurvey change log
 * Add 10 deg dusk to afternoon plan output.
 * Add routines for plotting & summarizing survey progress.
 * Add option for disabling network access during afternoon planning.
+* Do not force BACKUP program during day if another program is
+  explicitly requested.
 
 .. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
