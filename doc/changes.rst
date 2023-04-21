@@ -5,6 +5,7 @@ desisurvey change log
 0.19.1 (unreleased)
 -------------------
 
+* Ignore file names with wrong file name pattern in holding pen.
 * Update API documentation for completeness (PR `#151`_).
 * Harden AP against NaNs in offline pipeline EFFTIMEs; zero such cases.
 * Add 10 deg dusk to afternoon plan output.

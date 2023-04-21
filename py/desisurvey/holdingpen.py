@@ -222,7 +222,7 @@ def maintain_svn(svn, untrackedonly=True, verbose=False):
             if verbose:
                 logger.warn('unrecognized filename: "{}", '
                             'ignoring.'.format(fname))
-                continue
+            continue
         tileid = int(match.group(1))
         idx, mask = tiles.index(tileid, return_mask=True)
         if not mask:
