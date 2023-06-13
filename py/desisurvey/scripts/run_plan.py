@@ -10,9 +10,11 @@ import desiutil.log
 import desisurvey.utils
 import desisurvey.tiles
 import desisurvey.ephem
+import desisurvey.config
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 from astropy import units as u
+from functools import partial
 
 
 def mjd_to_azstr(mjd):
@@ -22,16 +24,24 @@ def mjd_to_azstr(mjd):
     return tt.astimezone(tz).strftime('%H:%M')
 
 
-def worktile(tileid):
+def worktile(tileid, logdir=None):
+    if logdir is None:
+        stdout = subprocess.DEVNULL
+    else:
+        stdout = open(os.path.join(logdir, f'log-{tileid}-main.log'), 'w')
     return subprocess.call(
         ['fba-main-onthefly.sh', str(tileid), 'n', 'manual'],
-        stdout=subprocess.DEVNULL)
+        stdout=stdout)
 
 
-def workqa(tileid):
+def workqa(tileid, logdir=None):
+    if logdir is None:
+        stdout = subprocess.DEVNULL
+    else:
+        stdout = open(os.path.join(logdir, f'log-{tileid}-qa.log'), 'w')
     return subprocess.call(
         ['fba-main-onthefly.sh', str(tileid), 'y', 'manual'],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        stdout=stdout, stderr=stdout)
 
 
 def planplot(tileid, plan, title='Nightly plan'):
@@ -66,7 +76,7 @@ def planplot(tileid, plan, title='Nightly plan'):
     p.show()
 
 
-def make_tiles(tilelist, plan, nprocess=10):
+def make_tiles(tilelist, plan, nprocess=10, logdir=None):
     import glob
     hpdir = os.environ['FA_HOLDING_PEN']
     if len(hpdir) == 0:
@@ -89,13 +99,13 @@ def make_tiles(tilelist, plan, nprocess=10):
     tilestrings = np.array([str(t) for t in tilelist])
     print('Starting to write fiberassign tiles for ' +
           ' '.join(tilestrings))
-    retcode1 = pool.map(worktile, tilelist)
+    retcode1 = pool.map(partial(worktile, logdir=logdir), tilelist)
     retcode1 = np.array(retcode1)
     if np.any(retcode1 != 0):
         print('Weird return code for ' +
               ' '.join(tilestrings[retcode1 != 0]))
     print('Starting to write QA...')
-    retcode2 = pool.map(workqa, tilelist)
+    retcode2 = pool.map(partial(workqa, logdir=logdir), tilelist)
     retcode2 = np.array(retcode2)
     if np.any(retcode2 != 0):
         print('Weird return code for ' +
@@ -216,7 +226,34 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
     planplot(tilelist, nts.planner,
              title='%4d%02d%02d' % (night.year, night.month, night.day))
     if makebackuptiles:
-        make_tiles(tilelist, nts.planner)
+        backuplogdir = os.path.join(
+            os.path.dirname(desisurvey.config.Configuration().file_name),
+            'backup-tile-logs')
+        if not os.path.exists(backuplogdir):
+            os.mkdir(backuplogdir)
+        make_tiles(tilelist, nts.planner, logdir=backuplogdir)
+        check_permissions()
+
+
+def check_permissions():
+    import stat
+    hpdir = os.environ.get('FA_HOLDING_PEN', None)
+    log = desiutil.log.get_logger()
+    bad = False
+    if hpdir is None:
+        log.warning('FA_HOLDING_PEN is not set!')
+    else:
+        dirs = os.listdir(hpdir)
+        for dirname in dirs:
+            tdirname = os.path.join(hpdir, dirname)
+            mode = stat.S_IMODE(
+                os.lstat(tdirname).st_mode)
+            if mode != 0o2775:
+                bad = True
+                log.error(f'{tdirname} has bad permissions!')
+    if bad:
+        log.error('Some files in the holding pen have bad permissions!'
+                  'Raise the alarm in #survey-ops!')
 
 
 def parse(options=None):

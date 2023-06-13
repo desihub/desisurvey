@@ -2,6 +2,7 @@
 
 import desisurvey.scripts.afternoon_plan
 import sys
+import traceback
 
 if __name__ == '__main__':
     try:
@@ -9,6 +10,7 @@ if __name__ == '__main__':
         retval = desisurvey.scripts.afternoon_plan.main(args)
     except Exception as e:
         print(e)
+        print(traceback.format_exc())
         sys.exit(-1)
     if retval is not None and retval != 0:
         sys.exit(retval)

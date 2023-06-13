@@ -405,6 +405,25 @@ def update_donefrac_from_offline(exps, offlinefn):
         raise ValueError('weird duplicate EXPID in exps or offline')
     exps = exps.copy()
     exps['EFFTIME_SPEC'][me] = offline_eff_time[mo]
+    m = ((exps['TILEID'] > 0) & (exps['TILEID'] < 70000) &
+         (exps['EFFTIME_SPEC'] < 0) &
+         (exps['EFFTIME_ETC'] > 0))
+    # exposures where we're relying on the EFFTIME_ETC rather than
+    # EFFTIME_SPEC.
+    if np.any(m):
+        log.warning(f'Some ({np.sum(m)}) exposures are missing '
+                    'offline effective times.')
+        errmsg = 'List of nights with tiles with exposures with missing times:\n'
+        for night in np.unique(exps['NIGHT'][m]):
+            m2 = exps['NIGHT'] == night
+            errmsg += f'{night} ({np.sum(m & m2)}): '
+            for tileid in np.unique(exps['TILEID'][m & m2]):
+                m3 = exps['TILEID'] == tileid
+                tilestr = f'{tileid} (%s), ' % ' '.join(
+                    [str(x) for x in exps['EXPID'][m & m3]])
+                errmsg += tilestr
+            errmsg += '\n'
+        log.warning(errmsg)
     return exps
 
 
