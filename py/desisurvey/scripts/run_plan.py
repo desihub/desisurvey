@@ -10,6 +10,7 @@ import desiutil.log
 import desisurvey.utils
 import desisurvey.tiles
 import desisurvey.ephem
+import desisurvey.config
 from astropy.time import Time
 from astropy.coordinates import EarthLocation
 from astropy import units as u
@@ -225,17 +226,17 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
     planplot(tilelist, nts.planner,
              title='%4d%02d%02d' % (night.year, night.month, night.day))
     if makebackuptiles:
-        import desisurvey.config
         backuplogdir = os.path.join(
-            os.path.dirname(desisurvey.config.Configuration.file_name),
+            os.path.dirname(desisurvey.config.Configuration().file_name),
             'backup-tile-logs')
-        os.mkdir(backuplogdir)
+        if not os.path.exists(backuplogdir):
+            os.mkdir(backuplogdir)
         make_tiles(tilelist, nts.planner, logdir=backuplogdir)
         check_permissions()
 
 
 def check_permissions():
-    from os import stat
+    import stat
     hpdir = os.environ.get('FA_HOLDING_PEN', None)
     log = desiutil.log.get_logger()
     bad = False

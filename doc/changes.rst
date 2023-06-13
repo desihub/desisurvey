@@ -13,6 +13,9 @@ desisurvey change log
 * Add option for disabling network access during afternoon planning.
 * Do not force BACKUP program during day if another program is
   explicitly requested.
+* More carefully log things associated with holding pen construction.
+* Check that permissions of holding pen are correct following construction.
+* Print out tiles for which offline information is missing during AP.
 
 .. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
