@@ -199,7 +199,7 @@ class Forecast(object):
 
 def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
                    include_backup=False, cfgfile=None, ratio=False,
-                   nownight=None):
+                   nownight=None, airmasspower=1.25):
     from matplotlib import pyplot as p
     if surveyopsdir is None:
         surveyopsdir = os.environ['DESI_SURVEYOPS']
@@ -231,7 +231,8 @@ def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
     cz = desisurvey.utils.cos_zenith(tmain['DESIGNHA']*u.deg,
                                      tmain['DEC']*u.deg)
     am = desisurvey.utils.cos_zenith_to_airmass(cz)
-    amfac = desisurvey.etc.airmass_exposure_factor(am)
+    # amfac = desisurvey.etc.airmass_exposure_factor(am)
+    amfac = am ** airmasspower
     dustfac = desisurvey.etc.dust_exposure_factor(tmain['EBV_MED'])
     cost = amfac*dustfac
     costetime = cost*desisurvey.tiles.get_nominal_program_times(

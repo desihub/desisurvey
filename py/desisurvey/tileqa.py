@@ -459,13 +459,14 @@ def qa(desitiles, nside=1024, npts=1000, compare=False,
     p.savefig('onepass.pdf', dpi=200)
 
     p.figure('Full Sky')
-    setup_print((8, 5), scalefont=1.2)
-    p.subplots_adjust(left=0.1, bottom=0.06, top=0.97, right=0.97)
+    setup_print((8, 4.3), scalefont=1.2)
+    p.subplots_adjust(left=0.1, bottom=0.06, top=0.99, right=0.97)
     p.clf()
-    tim, xx, yy = heal2cart(ims['Tiles v3'], interp=False, return_pts=True)
-    p.imshow(tim, cmap='binary', origin='lower', extent=[360, 0, -90, 90],
+    tim, xx, yy = heal2cart(ims['Tiles v3'], interp=False, return_pts=True,
+                            startra=300)
+    p.imshow(tim, cmap='binary', origin='lower', extent=[300, -60, -90, 90],
              vmin=0, vmax=9)
-    p.gca().xaxis.set_ticks([360, 300, 240, 180, 120, 60, 0])
+    p.gca().xaxis.set_ticks([300, 300, 240, 180, 120, 60, 0, -60])
     p.gca().set_aspect('equal')
     p.xlabel(r'$\alpha$ ($\degree$)')
     p.ylabel(r'$\delta$ ($\degree$)')
@@ -872,13 +873,13 @@ def rotate2(l, b, l0, b0, phi0=0.):
     return rotate(l, b, phi0, b0, phi0=l0)
 
 
-def heal2cart(heal, interp=True, return_pts=False):
+def heal2cart(heal, interp=True, return_pts=False, startra=360):
     import healpy
     nside = healpy.get_nside(heal)  #*(2 if interp else 1)
     owidth = 8*nside
     oheight = 4*nside-1
     dm, rm = np.mgrid[0:oheight, 0:owidth]
-    rm = 360.-(rm+0.5) / float(owidth) * 360.
+    rm = startra-(rm+0.5) / float(owidth) * 360.
     dm = -90. + (dm+0.5) / float(oheight) * 180.
     t, p = lb2tp(rm.ravel(), dm.ravel())
     if interp:
