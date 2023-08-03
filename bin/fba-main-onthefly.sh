@@ -100,3 +100,17 @@ else
 fi
 echo $CMD
 eval $CMD
+
+# fix up permissions; needed until we update fiberassign
+TILEIDSTR=$(printf %06d $TILEID)
+SUBDIR=${TILEIDSTR:0:3}
+
+chmod 775 $OUTDIR
+chmod 775 $OUTDIR/$SUBDIR
+if [[ "$QA" == "y" ]]
+then
+    chmod 664 $OUTDIR/$SUBDIR/fiberassign-$TILEIDSTR.png
+else
+    chmod 664 $OUTDIR/$SUBDIR/fiberassign-$TILEIDSTR.log
+    chmod 664 $OUTDIR/$SUBDIR/fiberassign-$TILEIDSTR.fits.gz
+fi
