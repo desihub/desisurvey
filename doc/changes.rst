@@ -16,6 +16,7 @@ desisurvey change log
 * More carefully log things associated with holding pen construction.
 * Check that permissions of holding pen are correct following construction.
 * Print out tiles for which offline information is missing during AP.
+* Add -f flag when swapping modules due to new modules behavior.
 
 .. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
