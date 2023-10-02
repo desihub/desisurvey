@@ -17,6 +17,9 @@ desisurvey change log
 * Check that permissions of holding pen are correct following construction.
 * Print out tiles for which offline information is missing during AP.
 * Add -f flag when swapping modules due to new modules behavior.
+* Make sure new directories in FIBER_ASSIGN_DIR get group write permission.
+* Change power law used for the relationship of airmass and cost.
+* Leave design hour angles of observed tiles unchanged when updating HAs.
 
 .. _`#151`: https://github.com/desihub/desisurvey/pull/151
 
