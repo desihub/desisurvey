@@ -148,7 +148,7 @@ def airmass_exposure_factor(airmass):
         raise ValueError('Got invalid airmass value < 1.')
     config = desisurvey.config.Configuration()
     X0 = config.nominal_conditions.airmass()
-    return np.power((X / X0), 1.25)
+    return np.power((X / X0), 1.75)
 
 
 # Linear regression coefficients for converting scattered moon V-band

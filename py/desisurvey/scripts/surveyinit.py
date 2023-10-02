@@ -203,7 +203,7 @@ def calculate_initial_plan(args):
         conditions.remove('BRIGHT')
     design = astropy.table.Table()
     design['INIT'] = np.zeros(tiles.ntiles)
-    design['HA'] = np.zeros(tiles.ntiles)
+    design['HA'] = np.full(tiles.ntiles, np.nan)
     design['TEXP'] = np.zeros(tiles.ntiles)
     design['TILEID'] = tiles.tileID
     design['RA'] = tiles.tileRA
@@ -299,14 +299,16 @@ def calculate_initial_plan(args):
     hdus.writeto(fullname, overwrite=True)
     log.info('Saved initial plan to "{}".'.format(fullname))
 
-    # add a DESIGNHA column or overwrite one to an existing tile file.
-    tiletab['DESIGNHA'] = np.zeros(len(tiletab), dtype='f4')
+    # add a DESIGNHA column to an existing tile file if needed.
+    if 'DESIGNHA' not in tiletab.dtype.names:
+        tiletab['DESIGNHA'] = np.zeros(len(tiletab), dtype='f4')
     tiletab['DESIGNHA'].format = '%7.2f'
     tiletab['DESIGNHA'].unit = tiletab['RA'].unit
     tiletab['DESIGNHA'].description = 'Design hour angles'
     _, mt, md = np.intersect1d(tiletab['TILEID'], design['TILEID'],
                                return_indices=True)
-    tiletab['DESIGNHA'][mt] = design['HA'][md]
+    m = np.isfinite(design['HA'][md])
+    tiletab['DESIGNHA'][mt[m]] = design['HA'][md[m]]
     # drop unnecessary columns
     dropcolumns = ['AIRMASS', 'STAR_DENSITY', 'EXPOSEFAC', 'OBSCONDITIONS',
                    'IMAGEFRAC_G', 'IMAGEFRAC_R', 'IMAGEFRAC_Z',

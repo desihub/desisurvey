@@ -229,6 +229,7 @@ def move_tile_into_place(tileid, speculative=False):
         return True
     os.makedirs(os.path.dirname(os.path.join(fadir, fabasefn)),
                 exist_ok=True, mode=0o2775)
+    os.chmod(os.path.join(fadir, tileidstr[0:3]), 0o775)
     shutil.copy(os.path.join(holdingdir, fabasefn+extension),
                 os.path.join(fadir, fabasefn+extension))
     os.chmod(os.path.join(fadir, fabasefn+extension), 0o664)
