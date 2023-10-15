@@ -12,7 +12,11 @@ from __future__ import print_function, division
 
 import numpy as np
 
+from itertools import chain, combinations_with_replacement
+
+import astropy.time
 import astropy.units as u
+from astropy.coordinates import SkyCoord
 
 import specsim.atmosphere
 
@@ -20,6 +24,7 @@ import desiutil.log
 
 import desisurvey.config
 import desisurvey.tiles
+import desisurvey.ephem
 
 
 def seeing_exposure_factor(seeing, sbprof='ELG'):
@@ -229,6 +234,236 @@ def moon_exposure_factor(moon_frac, moon_sep, moon_alt, airmass):
     # Evaluate the linear regression model.
     X = np.array((1, np.exp(-V), 1/V, 1/V**2, 1/V**3))
     return _moonCoefficients.dot(X)
+
+
+def sky_level(mjd, ra, dec, moon_ill=None, moon_DECRA=None, moon_ALTAZ=None, sun_DECRA=None, sun_ALTAZ=None): 
+    ''' Calculate the sky level. Sky level is defined as sky surface brightness
+    for given MJD, RA, and Dec over nominal sky sufrace brightness 
+
+    Parameters
+    ----------
+    mjd : float
+        date 
+    ra : float 
+        RA in deg
+    dec : float
+        Dec in degrees deg
+    moon_ill : float, optional
+        moon illumination 
+    moon_DECRA : optional
+        moon Dec and RA interpolator object from desisurvey.ephem
+    moon_ALTAZ : optional
+        moon Alt and AZ interpolator object from desisurvey.ephem
+    sun_DECRA : optional
+        sun Dec and RA interpolator object from desisurvey.ephem
+    sun_ALTAZ : optional
+        sun Alt and AZ interpolator object from desisurvey.ephem
+
+    Returns
+    -------
+    sky level : float 
+        current sky brightness over nominal sky brightness
+    '''
+    if moon_DECRA is None or moon_ALTAZ is None or sun_DECRA is None or sun_ALTAZ is None:
+        ephem = desisurvey.ephem.get_ephem()
+        night = desisurvey.utils.get_date(mjd) 
+        night_ephem = ephem.get_night(night)
+
+        # calculate moon altitude and separation 
+        moon_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=False)
+        moon_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'moon', altaz=True)
+
+        # sun moon altitude and separation 
+        sun_DECRA = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=False)
+        sun_ALTAZ = desisurvey.ephem.get_object_interpolator(night_ephem, 'sun', altaz=True)
+
+        # get moon illumination 
+        moon_ill = night_ephem['moon_illum_frac']
+
+    if ra is None or dec is None: 
+        # default values when there's no tile position yet 
+        frame = desisurvey.utils.get_observer(astropy.time.Time(mjd, format='mjd'))
+        # get RA and Dec at the zenith 
+        altaz = SkyCoord(alt=90.*u.deg, az=0*u.deg,
+                obstime=astropy.time.Time(mjd, format='mjd'), 
+                frame='altaz', 
+                location=frame.location)
+        ra, dec = altaz.icrs.ra.to(u.deg).value, altaz.icrs.dec.to(u.deg).value
+
+    # calculate airmass 
+    airmass = desisurvey.utils.get_airmass(
+            astropy.time.Time(mjd, format='mjd'), 
+            ra * u.deg, 
+            dec * u.deg)
+    # moon ephem
+    moon_alt, _ = moon_ALTAZ(mjd)     # moon altitude
+    moon_dec, moon_ra = moon_DECRA(mjd)
+    moon_sep = desisurvey.utils.separation_matrix( # separation 
+            [moon_ra], [moon_dec], [ra], [dec])[0][0]
+    # sun ephem
+    sun_alt, _ = sun_ALTAZ(mjd) # altitude
+    sun_dec, sun_ra = sun_DECRA(mjd)
+    sun_sep = desisurvey.utils.separation_matrix([sun_ra], [sun_dec], [ra],
+            [dec])[0][0]
+    # sky brightness without twilight at 5000A for observing conditions 
+    Isky5000_exp = Isky5000_notwilight_regression(airmass, moon_ill, moon_sep, moon_alt)
+     # add twilight contribution 
+    if sun_alt >= -18.:
+        Isky5000_exp += Isky5000_twilight_regression(airmass, sun_sep, sun_alt)
+
+    Isky5000_nom = 1.1282850428182252 # 1e-17 erg/s/cm^2/A/arcsec2
+    
+    #if moon_sep < 30. - moon_alt: print('moon sep < 30 - moon alt', Isky5000_exp) 
+    #if moon_sep > 160. - 1.1 * moon_alt: print('moon sep > 160 - 1.1 moon alt', Isky5000_exp) 
+    #if moon_sep > moon_alt + 250: print('moon sep > 250. + moon alt', Isky5000_exp) 
+    #if moon_sep < moon_alt - 50: print('moon sep > moon alt - 50', moon_sep, moon_alt, Isky5000_exp) 
+    return Isky5000_exp/Isky5000_nom
+
+
+def Isky5000_notwilight_regression(airmass, moon_frac, moon_sep, moon_alt): 
+    ''' Calculate sky surface brightness at 5000A during bright time without
+    twilight. 
+
+    Surface brightness is based on a polynomial regression model fit to
+    log(observed sky brightness). The observed sky brightnesses were compiled
+    from 
+    * DESI SV1 bright exposures with TRANSP > 0.95 and SUN_ALT < -18 
+    * DESI CMX exposures with transparency > 0.95
+    * BOSS exposures with sun alt < -18 
+    
+    For details, see jupyter notebook: 
+    https://github.com/desi-bgs/bgs-cmxsv/blob/521211dccff7cb3b71b07d84522802acade26071/doc/nb/sv1_sky_model_fit.ipynb
+
+    Parameters
+    ----------
+    airmass : array 
+        Array of airmass used for observing this tile, must be >= 1.
+    moon_frac : array 
+        Array of illuminated fraction of the moon within range [0,1].
+    moon_sep : array
+        Array of separation angles between field center and moon in degrees within the
+        range [0,180].
+    moon_alt : array
+        Array of altitude angle of the moon above the horizon in degrees within
+        range [-90,90].
+
+    Returns
+    -------
+    array
+        Array of sky surface brightness at 5000A for bright time without
+        twilight in units of erg/s/cm^2/A/arcsec^2
+    '''
+    # polynomial of order
+    norder = 6 
+    # polynomial regression cofficients for estimating exposure time factor during
+    # non-twilight from airmass, moon_frac, moon_sep, moon_alt  
+    coeffs = np.array([ 1.37122205e-02,  1.19640701e-02,  8.16266472e-03,  1.39280691e-01,
+       -3.34998306e-05,  1.03669586e-02,  4.14594997e-03,  4.98021653e-02,
+        2.04047595e-03,  2.65405851e-03,  9.64071111e-02,  5.05776641e-02,
+       -1.83615882e-02, -3.08046695e-02, -6.42666661e-03,  1.85826555e-02,
+       -1.31684802e-03, -6.31654630e-02, -2.75126470e-02, -6.66878948e-04,
+        5.98373278e-02, -2.63741965e-02,  3.76787045e-02,  4.90090134e-02,
+        1.88864338e-02, -4.62783691e-03,  2.14026758e-02, -2.84568954e-03,
+        2.70850466e-02,  1.81878506e-02,  1.19064002e-03,  2.01685330e-05,
+        6.32815029e-05,  2.19722530e-04, -2.84904174e-05,  4.19099793e-02,
+       -3.35908059e-03, -4.04610260e-02,  5.02943104e-02, -2.51984239e-03,
+       -1.07739033e-03, -1.30186514e-01, -4.01654696e-02, -3.46066336e-02,
+       -1.18782966e-02, -1.50282808e-03,  2.07729906e-02, -6.47500952e-02,
+       -3.04598385e-02, -1.57347975e-02,  2.54821102e-03,  3.64911542e-05,
+       -4.62796429e-05, -3.23300406e-04, -1.78909655e-04, -1.24732804e-03,
+        6.34377564e-02, -2.72372301e-01, -2.71942506e-02, -1.10716987e-02,
+        4.76993374e-03, -3.56730604e-04, -1.03304340e-04, -1.68009283e-04,
+       -4.62115541e-05,  2.50550445e-06,  9.68241078e-07,  8.13914082e-07,
+        5.54375178e-07,  1.48456774e-06,  7.75842516e-02,  5.87414817e-04,
+        7.64725150e-02,  2.20412705e-02, -3.13542091e-04, -2.85748098e-02,
+       -5.79352294e-02,  1.68630867e-02,  8.05659390e-03, -9.36412652e-04,
+        6.02392576e-03,  6.04139180e-02, -3.02037097e-02,  2.86976403e-02,
+       -8.55838311e-04,  4.45485436e-03, -5.92335120e-05,  1.30608798e-04,
+        2.76992145e-04,  1.73417298e-04,  8.46802477e-05,  1.44803613e-01,
+       -1.41019852e-01, -8.82311141e-03,  2.40245147e-02,  8.55080444e-03,
+        1.65751285e-04, -3.06026118e-04,  2.47806624e-05, -1.04175553e-04,
+       -9.60076655e-07,  1.25270206e-06, -2.26510053e-07, -8.13034123e-07,
+       -3.62994514e-07,  8.10275226e-03,  1.30265610e-01, -2.59539811e-02,
+        2.81777445e-02, -2.72609442e-02, -6.15755933e-05, -6.96052078e-05,
+        4.44190852e-04,  1.88926726e-04, -9.41703486e-05,  3.33875647e-06,
+        4.69869178e-06,  3.38184992e-07,  3.36524261e-07,  7.88612964e-07,
+       -2.53343718e-08, -6.01290739e-08, -3.55412440e-08, -9.68385387e-09,
+       -2.70149823e-09, -7.00167017e-09,  1.20582063e-01,  1.44232169e-02,
+       -5.99644863e-02, -5.46588272e-02,  3.79091286e-03,  1.13505888e-01,
+        1.40498432e-01, -1.28698148e-03,  3.88926808e-03,  3.27254434e-03,
+        1.84300473e-02,  7.48888214e-02,  3.77593511e-02, -1.68928339e-02,
+       -1.38366855e-02, -7.65439127e-03,  3.79474387e-05, -7.28387298e-05,
+       -1.86982036e-04, -8.33117928e-05,  2.20980133e-03,  2.16668147e-01,
+        1.36526658e-01,  4.16746892e-03, -6.47206461e-03, -2.96650732e-03,
+        8.65687911e-05,  4.72609545e-04,  4.72384634e-04,  1.51577611e-04,
+       -3.88374762e-07, -1.41057120e-06, -1.18013283e-08,  1.54156990e-06,
+        4.42399919e-07, -4.41145646e-04,  1.39000704e-01, -4.37408535e-01,
+       -1.54311899e-02, -1.91755401e-03,  4.36138614e-03, -4.42645315e-05,
+       -8.34403032e-06, -1.53210208e-04, -3.48132905e-05,  7.41531513e-07,
+       -2.36866678e-06, -4.74525136e-06, -4.84825494e-06, -1.02298977e-06,
+       -1.75128388e-09,  1.07399591e-08,  1.26208068e-08,  4.31576944e-09,
+       -5.13099539e-09, -1.26290889e-09,  1.32565239e-02,  1.36316867e-01,
+        4.99691249e-01, -1.74968493e-02, -3.34139883e-03, -2.42772081e-03,
+        3.36178419e-04,  2.23896110e-04,  1.73634367e-04, -1.38246185e-06,
+       -2.40280959e-06, -2.66317367e-06, -2.80539906e-06, -4.19012237e-07,
+        4.36408043e-07, -5.34778782e-09, -2.87653770e-08, -2.16845793e-09,
+        3.21431780e-08,  2.09245593e-08,  1.66330738e-09,  1.08938813e-10,
+        3.53672248e-10,  3.43915997e-10,  7.83100372e-11, -2.92671982e-11,
+       -5.14346513e-13,  1.39651631e-11])
+    
+    theta = np.atleast_2d(np.array([airmass, moon_frac, moon_alt, moon_sep]).T)
+
+    combs = chain.from_iterable(combinations_with_replacement(range(4), i) for i in range(0, norder+1))
+
+    theta_transform = np.empty((theta.shape[0], len(coeffs)))
+    for i, comb in enumerate(combs):
+        theta_transform[:, i] = theta[:, comb].prod(1)
+
+    return np.exp(np.dot(theta_transform, coeffs.T)) 
+
+
+def Isky5000_twilight_regression(airmass, sun_sep, sun_alt): 
+    ''' Calculate twilight contribution to sky surface brightness at 5000A
+    during bright time. 
+    
+    Surface brightness is based on a polynomial regression model that was fit
+    to twilight contributions measured from SV1 and BOSS exposures with sun
+    altitutde > -18deg.
+
+    For details, see jupyter notebook: 
+    https://github.com/desi-bgs/bgs-cmxsv/blob/55850e44d65570da69de0788c652cff698416834/doc/nb/sky_model_twilight_fit.ipynb
+    
+    Parameters
+    ----------
+    airmass : array 
+        Array of airmass used for observing this tile, must be >= 1.
+    sun_sep : array 
+        Arry of separations angles between field center and sun in degrees
+    sun_alt : float 
+        Altitude angle of the sun in degrees
+
+    Returns
+    -------
+    array
+        Array of twilight contribution to sky surface brightness at 5000A for
+        bright time in units of erg/s/cm^2/A/arcsec^2
+    '''
+    norder = 2
+    # coefficients fit in notebook
+    # https://github.com/desi-bgs/bgs-cmxsv/blob/521211dccff7cb3b71b07d84522802acade26071/doc/nb/sky_model_twilight_fit.ipynb
+    skymodel_coeff = np.array([ 
+        7.74536884e-01,  1.25866845e+00,  1.06073841e+00,  2.27595902e-01,
+        9.12671470e-01, -4.16253157e-02, -2.26899688e-02,  3.52752773e-02,
+        6.39485772e-03, -5.03964852e-04])
+
+    theta = np.atleast_2d(np.array([airmass, sun_alt, sun_sep]).T)
+
+    combs = chain.from_iterable(combinations_with_replacement(range(3), i) for i in range(0, norder+1))
+    theta_transform = np.empty((theta.shape[0], len(skymodel_coeff)))
+    for i, comb in enumerate(combs):
+        theta_transform[:, i] = theta[:, comb].prod(1)
+
+    return np.clip(np.dot(theta_transform, skymodel_coeff.T), 0, None) 
 
 
 def exposure_time(program, seeing, transparency, airmass, EBV,
@@ -473,7 +708,8 @@ class ExposureTimeCalculator(object):
         self.snr2frac_target = snr2frac + (texp_remaining / nexp) / self.texp_total
         # Initialize signal and background rate factors.
         self.srate0 = np.sqrt(self.weather_factor(seeing, transp, 1.0))
-        self.brate0 = sky
+        # effective sky / nominal sky based on SurveySpeed calculation 
+        self.brate0 = sky + 0.932/3.373 * (self.texp_total / 0.0115741) + 1.71 / 3.373
         self.signal = 0.
         self.background = 0.
         self.last_snr2frac = 0.
@@ -511,9 +747,9 @@ class ExposureTimeCalculator(object):
         dt = mjd_now - self.mjd_last
         self.mjd_last = mjd_now
         srate = np.sqrt(self.weather_factor(seeing, transp, 1.0))
-        brate = sky
+        # effective sky / nominal sky based on SurveySpeed calculation 
+        brate = sky + 0.932/3.373 * (dt / 0.0115741) + 1.71 / 3.373
         self.signal += dt * srate / self.srate0
-        #self.background += dt * (srate + brate) / (self.srate0 + self.brate0)
         self.background += dt * brate / self.brate0
         self._snr2frac = self._snr2frac_start + self.signal ** 2 / self.background / self.texp_total
         if self.save_history:
