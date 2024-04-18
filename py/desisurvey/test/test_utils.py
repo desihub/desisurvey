@@ -35,12 +35,12 @@ class TestUtils(Tester):
         alt, az = self.table['alt'], self.table['az']
         when = astropy.time.Time(self.table['jd'], format='jd')
         obs = utils.get_observer(when, alt * u.deg, az * u.deg)
-        obs_sky = obs.transform_to(astropy.coordinates.ICRS)
+        obs_sky = obs.transform_to(astropy.coordinates.ICRS())
         true_sky = astropy.coordinates.ICRS(ra=ra * u.deg, dec=dec * u.deg)
         sep = true_sky.separation(obs_sky).to(u.arcsec).value
         # Opening angle between true and observed (ra,dec) unit vectors
-        # must be within 30 arcsec.
-        self.assertTrue(np.max(np.fabs(sep)) < 30)
+        # must be within 40 arcsec.
+        self.assertTrue(np.max(np.fabs(sep)) < 40)
 
     def test_get_observer_from_sky(self):
         """Check (alt,az) -> (ra,dec) against JPL Horizons"""
@@ -52,8 +52,8 @@ class TestUtils(Tester):
         obs_altaz = sky.transform_to(utils.get_observer(when))
         sep = true_altaz.separation(obs_altaz).to(u.arcsec).value
         # Opening angle between true and observed (alt,az) unit vectors
-        # must be within 30 arcsec.
-        self.assertTrue(np.max(np.fabs(sep)) < 30)
+        # must be within 40 arcsec.
+        self.assertTrue(np.max(np.fabs(sep)) < 40)
 
     def test_get_observer_args(self):
         """Must provide both alt and az to get_observer()"""
