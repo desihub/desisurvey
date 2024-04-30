@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.19.1 (unreleased)
+0.20.1 (unreleased)
+-------------------
+
+* No changes yet
+
+0.20.0 (2024-04-30)
 -------------------
 
 * Ignore file names with wrong file name pattern in holding pen.
@@ -15,13 +20,21 @@ desisurvey change log
   explicitly requested.
 * More carefully log things associated with holding pen construction.
 * Check that permissions of holding pen are correct following construction.
+  (PR `#152`_).
 * Print out tiles for which offline information is missing during AP.
-* Add -f flag when swapping modules due to new modules behavior.
+* Add -f flag when swapping modules due to new modules behavior. (PR `#153`_).
 * Make sure new directories in FIBER_ASSIGN_DIR get group write permission.
+  (PR `#154`_, PR `#156`_).
 * Change power law used for the relationship of airmass and cost.
 * Leave design hour angles of observed tiles unchanged when updating HAs.
+* Updates for astropy/6.x compatibility (PR `#158`_).
 
 .. _`#151`: https://github.com/desihub/desisurvey/pull/151
+.. _`#152`: https://github.com/desihub/desisurvey/pull/152
+.. _`#153`: https://github.com/desihub/desisurvey/pull/153
+.. _`#154`: https://github.com/desihub/desisurvey/pull/154
+.. _`#156`: https://github.com/desihub/desisurvey/pull/156
+.. _`#158`: https://github.com/desihub/desisurvey/pull/158
 
 0.19.0 (2022-05-13)
 -------------------
