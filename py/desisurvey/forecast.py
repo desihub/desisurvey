@@ -199,7 +199,7 @@ class Forecast(object):
 
 def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
                    include_backup=False, cfgfile=None, ratio=False,
-                   nownight=None, airmasspower=1.25):
+                   nownight=None, airmasspower=1.25, return_plot=False):
     from matplotlib import pyplot as p
     if surveyopsdir is None:
         surveyopsdir = os.environ['DESI_SURVEYOPS']
@@ -338,6 +338,9 @@ def forecast_plots(tmain=None, exps=None, surveyopsdir=None,
         print((timefrac-1)*100)
     print('Dark months ahead: %5.2f' % ((darkfrac - elapsedfrac)*55))
     print('Dark margin: %5.2f%%' % (100*(darkfrac - elapsedfrac)/ elapsedfrac))
+
+    if return_plot:
+        return p
 
 
 def summarize_daterange(

@@ -5,7 +5,9 @@ desisurvey change log
 0.20.1 (unreleased)
 -------------------
 
-* No changes yet
+* Allow plot to be returned from forecast_plots() (PR `#159`_).
+
+.. _`#159`: https://github.com/desihub/desisurvey/pull/159
 
 0.20.0 (2024-04-30)
 -------------------
