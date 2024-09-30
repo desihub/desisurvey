@@ -213,10 +213,10 @@ class Scheduler(object):
                 return 'BRIGHT'
         return 'BACKUP'
 
-    def select_program(self, mjd_now, ETC, verbose=False,
+    def current_conditions(self, mjd_now, ETC, verbose=False,
                        seeing=None, transparency=None, skylevel=None,
                        airmass=None, speed=None):
-        """Select program to observe now.
+        """Return current conditions, based on ephemerides or speed.
         """
         if mjd_now < self.night_changes[0]:
             if verbose:
@@ -248,7 +248,9 @@ class Scheduler(object):
             else:
                 mjd_program_end = self.night_changes[-1]
             return program, mjd_program_end
+
         # select program based on ephemerides, not conditions.
+        # we have not actually used this in DESI.
         idx = 0
         while ((idx + 1 < len(self.night_changes)) and
                (mjd_now >= self.night_changes[idx + 1])):
@@ -348,14 +350,15 @@ class Scheduler(object):
         self.tile_sel = np.ones(self.tiles.ntiles, dtype=bool)
         if program is None:
             # Which program are we in?
-            program, mjd_program_end = self.select_program(
+            conditions, mjd_program_end = self.current_conditions(
                 mjd_now, ETC, verbose=verbose, seeing=seeing,
                 skylevel=skylevel, transparency=transp, speed=speed)
-            self.tile_sel &= self.tiles.allowed_in_conditions(program)
+            self.tile_sel &= self.tiles.allowed_in_conditions(conditions)
             if verbose:
                 self.log.info(
                     'Selecting a tile observable in {} conditions.'.format(
                         program))
+            program = conditions
         else:
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?

@@ -9,6 +9,8 @@ import numpy as np
 
 import astropy.table
 import astropy.io.fits
+from astropy.coordinates import SkyCoord
+from astropy import units as u
 
 import desiutil.log
 
@@ -512,6 +514,7 @@ class Planner(object):
             self.add_pending_tile(tileid)
         if self.tiles_lowpass:
             self.prefer_low_passnum()
+        self.require_program_dependencies()
         zeropriority = ((self.tile_status != 'unobs') &
                         (self.tile_available == 0))
         self.tile_priority[zeropriority] = 0
@@ -559,3 +562,24 @@ class Planner(object):
                     # unobserved, overlapping tiles with lower pass numbers.
                     mfree[idx] = 0
         self.tile_available[~mfree] = 0
+
+    def require_program_dependencies(self):
+        depends_on = self.tiles.program_dependencies()
+        config = desisurvey.config.Configuration()
+        tile_diameter = 2 * config.tile_radius()
+
+        for program in depends_on:
+            mprog = self.tiles.program_mask[program]
+            mtodo = ((self.tile_status != 'done') &
+                     (self.tiles.in_desi != 0))
+            otherprog = depends_on[program]
+            # tiles we still intend to do in the underlying program
+            motherprog = self.tiles.program_mask[otherprog] & mtodo
+            cprog = SkyCoord(self.tiles.tileRA[mprog]*u.deg,
+                             self.tiles.tileDEC[mprog]*u.deg)
+            cotherprog = SkyCoord(self.tiles.tileRA[motherprog]*u.deg,
+                                  self.tiles.tileDEC[motherprog]*u.deg)
+            idxo, idxp, _, _ = cprog.search_around_sky(cotherprog, tile_diameter)
+            mblocked = np.zeros(len(mprog), dtype='bool')
+            mblocked[np.flatnonzero(mprog)[idxp]] = True
+            self.tile_available[mblocked] = 0

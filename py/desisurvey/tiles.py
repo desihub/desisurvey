@@ -242,6 +242,17 @@ class Tiles(object):
             res = res | (self.tileobsconditions == 'BRIGHT')
         return res
 
+    def program_dependencies(self):
+        depends_on = dict()
+        config = desisurvey.config.Configuration()
+        for program in config.programs.keys:
+            prognode = getattr(config.programs, program)
+            dependencies = getattr(prognode, 'depends_on', None)
+            if dependencies is not None:
+                depends_on[program] = dependencies()
+        return depends_on
+
+
     @property
     def overlapping(self):
         """Dictionary of tile overlap matrices.
@@ -350,11 +361,6 @@ class Tiles(object):
                     # ignore self matches
                     continue
                 self._neighbors[rownum[ind1]].append(rownum[ind2])
-
-            for passnum in np.unique(self.tilepass[mprogram]):
-                m = (mprogram & (self.tilepass == passnum) &
-                     (self.in_desi != 0))
-                rownum = np.flatnonzero(m)
                 # self._neighbors: list of lists, giving tiles neighboring each
                 # tile
 
