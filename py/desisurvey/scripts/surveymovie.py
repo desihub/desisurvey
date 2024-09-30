@@ -145,7 +145,7 @@ class Animator(object):
         self.tileid = self.tiles.tileID
         self.prognames = [p for p in self.tiles.programs]
         # if DARK and BRIGHT are names, put them first
-        for pname in ['BRIGHT', 'DARK']:
+        for pname in ['BRIGHT1B', 'DARK1B', 'BRIGHT', 'DARK']:
             if pname in self.prognames:
                 self.prognames.remove(pname)
                 self.prognames = [pname] + self.prognames
@@ -200,7 +200,7 @@ class Animator(object):
         self.figure = plt.figure(
             frameon=False,figsize=(width / self.dpi, height / self.dpi),
             dpi=self.dpi)
-        grid = matplotlib.gridspec.GridSpec(2, 2)
+        grid = matplotlib.gridspec.GridSpec(3, 2)
         grid.update(left=0, right=1, bottom=0, top=0.97, hspace=0, wspace=0)
         axes = []
         self.labels = []
@@ -222,7 +222,7 @@ class Animator(object):
         self.nowcolor = np.array([0., 0.7, 0., 1.])
         pcolors = desisurvey.plots.program_color
         progidx = 0
-        for row in range(2):
+        for row in range(3):
             for col in range(2):
                 # Create the axes for this program.
                 ax = plt.subplot(grid[row, col], facecolor=bgcolor)
@@ -230,7 +230,7 @@ class Animator(object):
                 ax.set_yticks([])
                 axes.append(ax)
                 # Bottom-right corner is reserved for integrated progress plots.
-                if row == 1 and col == 1:
+                if row == 2 and col == 1:
                     ax.set_xlim(0, self.survey_weeks)
                     ax.set_ylim(0, 1)
                     ax.plot([0, self.survey_weeks], [0., 1.], 'w-')
@@ -249,7 +249,7 @@ class Animator(object):
                     # e.g., for no-gray mode, where we have only two programs.
                     continue
                 ax.set_xlim(-55, 293)
-                ax.set_ylim(-20, 77)
+                ax.set_ylim(-30, 77)
                 # Draw label for this plot.
                 pname = self.prognames[progidx]
                 pc = pcolors[pname]
@@ -553,7 +553,8 @@ def main(args):
         animation = matplotlib.animation.FuncAnimation(
             animator.figure, update, init_func=init, blit=True, frames=nframes)
         writer = matplotlib.animation.writers['ffmpeg'](
-            bitrate=2400, fps=args.fps, metadata=dict(artist='surveymovie'))
+            bitrate=2400, fps=args.fps, codec='vp9',
+            metadata=dict(artist='surveymovie'))
         save_name = args.save + '.mp4'
         animation.save(save_name, writer=writer, dpi=animator.dpi)
         log.info('Saved {0}.'.format(save_name))

@@ -114,6 +114,9 @@ def parse(options=None):
     parser.add_argument(
         '--start', default=None, type=str,
         help='Use this start date instead of config.')
+    parser.add_argument(
+        '--stop', default=None, type=str,
+        help='Use this stop date instead of config.')
 
     if options is None:
         args = parser.parse_args()
@@ -163,7 +166,10 @@ def calculate_initial_plan(args):
         start = config.first_day()
     else:
         start = desisurvey.utils.get_date(args.start)
-    stop = config.last_day()
+    if args.stop is None:
+        stop = config.last_day()
+    else:
+        stop = desisurvey.utils.get_date(args.stop)
     assert start >= first and stop <= last
     hdr['START'] = start.isoformat()
     hdr['STOP'] = stop.isoformat()

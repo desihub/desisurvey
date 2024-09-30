@@ -19,7 +19,8 @@ import desisurvey.utils
 
 # Color associated with each program in the functions below.
 program_color = {'DARK': 'black', 'GRAY': 'gray', 'BRIGHT': 'orange',
-                 'BACKUP': 'green'}
+                 'BACKUP': 'green', 'DARK1B': 'purple',
+                 'BRIGHT1B': 'red'}
 
 
 def plot_sky_passes(ra, dec, passnum, z, clip_lo=None, clip_hi=None,
