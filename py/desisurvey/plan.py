@@ -569,6 +569,8 @@ class Planner(object):
         tile_diameter = 2 * config.tile_radius()
 
         for program in depends_on:
+            if program not in self.tiles.program_mask:
+                continue
             mprog = self.tiles.program_mask[program]
             mtodo = ((self.tile_status != 'done') &
                      (self.tiles.in_desi != 0))
