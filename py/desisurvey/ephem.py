@@ -23,12 +23,10 @@ import desisurvey.utils
 import desisurvey.tiles
 
 
-# Date range 2019-2025 for tabulated ephemerides.
-# This range is chosen large enough to cover commissioning,
-# survey validation and the 5-year main survey, so should
-# not normally need to be changed, except for testing.
+# Date range 2019-2029 for tabulated ephemerides.
+# This range is intended to cover out through the DESI extension.
 START_DATE = datetime.date(2019, 1, 1)
-STOP_DATE = datetime.date(2027, 12, 31)
+STOP_DATE = datetime.date(2029, 12, 31)
 
 _ephem = None
 
