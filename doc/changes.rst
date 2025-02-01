@@ -6,8 +6,11 @@ desisurvey change log
 -------------------
 
 * Allow plot to be returned from forecast_plots() (PR `#159`_).
+* Require `pytest` instead of `python setup.py test` for compatibility
+  with desiutil 3.5.0 (PR `#161`_).
 
 .. _`#159`: https://github.com/desihub/desisurvey/pull/159
+.. _`#161`: https://github.com/desihub/desisurvey/pull/161
 
 0.20.0 (2024-04-30)
 -------------------
