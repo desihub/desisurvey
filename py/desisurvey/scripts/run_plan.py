@@ -162,7 +162,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
     for name, tt in zip(night_labels[s], night_times[s]):
         print('%11s %s' % (name, mjd_to_azstr(tt)))
 
-    print('local   lst   cond  tile    ra   dec    program   x fac  tot  split ' +
+    print('local   lst   cond   tile    ra   dec    program   x fac  tot  split ' +
           'refft')
     current_ra = None
     current_dec = None
@@ -200,7 +200,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         refft = res['req_efftime']
         if not table:
             print(
-                ('%s %5.1f %6s %5d %5.1f %5.1f %10s %3.1f %3.1f '
+                ('%s %5.1f %6s %6d %5.1f %5.1f %10s %3.1f %3.1f '
                  '%4d %6s %4d') % (
                      mjd_to_azstr(t0), lst, res['conditions'],
                      res['fiberassign'], ra, dec, res['program'],
