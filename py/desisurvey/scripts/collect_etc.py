@@ -405,7 +405,12 @@ def update_donefrac_from_offline(exps, offlinefn):
         raise ValueError('weird duplicate EXPID in exps or offline')
     exps = exps.copy()
     exps['EFFTIME_SPEC'][me] = offline_eff_time[mo]
-    m = ((exps['TILEID'] > 0) & (exps['TILEID'] < 70000) &
+    # this cut should probably be np.isin(exps['TILEID'], tiles.tileid)
+    # instead of the selection on tile number; the goal is just to avoid
+    # printing a warning message for non "main" survey tiles that we're
+    # actually trying to complete.
+    m = ((exps['TILEID'] > 0) &
+         ((exps['TILEID'] < 70000) | (exps['TILEID'] >= 100000)) &
          (exps['EFFTIME_SPEC'] < 0) &
          (exps['EFFTIME_ETC'] > 0))
     # exposures where we're relying on the EFFTIME_ETC rather than
