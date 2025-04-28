@@ -51,8 +51,13 @@ def planplot(tileid, plan, title='Nightly plan'):
     mtonight[idx] = True
     from matplotlib import pyplot as p
     allprog = ['DARK', 'BRIGHT', 'BACKUP', 'DARK1B', 'BRIGHT1B']
+    # existing programs
     prog2plot = [
         prog for prog in allprog if prog in tiles.program_mask.keys()
+    ]
+    # existing programs with enabled tiles
+    prog2plot = [
+        prog for prog in prog2plot if tiles.program_mask[prog].sum() > 0
     ]
     nrow = 3
     if 'DARK1B' in prog2plot:
