@@ -59,18 +59,19 @@ def planplot(tileid, plan, title='Nightly plan'):
         p.title(program)
         munobs = plan.tile_status == 'unobs'
         p.scatter(tra[m & munobs], tiles.tileDEC[m & munobs],
-                  alpha=0.3, color='gray', s=5)
+                  alpha=1.0, color='green', s=5, label='unobs ({})'.format((m & munobs).sum()))
         mcomplete = plan.tile_status == 'done'
         p.scatter(tra[m & mcomplete], tiles.tileDEC[m & mcomplete],
-                  alpha=1, color='green', s=5)
+                  alpha=0.1, color='gray', s=5, label='done ({})'.format((m & mcomplete).sum()))
         mpending = ~(munobs | mcomplete)
         p.scatter(tra[m & mpending], tiles.tileDEC[m & mpending],
-                  alpha=1, color='orange', s=20)
+                  alpha=1, color='orange', s=20, label='pending ({})'.format((m & mpending).sum()))
         p.plot(tra[idx], tiles.tileDEC[idx], 'k--')
         p.scatter(tra[m & mtonight], tiles.tileDEC[m & mtonight],
                   alpha=1, facecolors='none', edgecolors='red',
                   s=50, linewidth=3)
-        p.xlim(loff, loff+360)
+        p.xlim(loff+360, loff)
+        p.legend(loc=1)
     p.suptitle(title)
     p.savefig('plan.png')
     p.show()
