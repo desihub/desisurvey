@@ -80,6 +80,9 @@ HA=`echo $LINE | awk '{print $10}'`
 if [[ "$PROGRAM" == "BACKUP" ]]
 then
     DTCATVER=2.2.0
+elif [[ "$PROGRAM" == "DARK1B" ]]
+then
+    DTCATVER=3.0.0
 else
     DTCATVER=1.1.1
 fi
