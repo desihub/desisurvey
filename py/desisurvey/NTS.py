@@ -576,8 +576,9 @@ class NTS():
         if not isinstance(sbprof, str):
             sbprof = 'PSF'
 
+        sched_cond = getattr(self.config.programs, sched_program).conditions()
         boost_factor = (
-            getattr(self.config.conditions, sched_program).boost_factor())
+            getattr(self.config.conditions, sched_cond).boost_factor())
         texp_tot *= boost_factor
         texp_remaining *= boost_factor
 
@@ -608,7 +609,7 @@ class NTS():
 
         onemin = 1/60/24
         # end dark/gray programs at 15 deg dawn, sharp.
-        if ((sched_program not in ['BRIGHT', 'BACKUP']) and
+        if ((sched_cond not in ['BRIGHT', 'BACKUP']) and
                 (mjd_program_end > self.scheduler.night_ephem['dusk'])):
             texp_remaining = min([texp_remaining, mjd_program_end-mjd])
             maxdwell = min([maxdwell, mjd_program_end-mjd])
