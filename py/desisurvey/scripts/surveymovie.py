@@ -369,7 +369,7 @@ class Animator(object):
                 nprog = np.count_nonzero(psel)
                 ndone = np.count_nonzero(self.status[psel] == 2)
                 yprog = iplot.get_ydata()
-                yprog[week_num] = 1.0 * ndone / nprog
+                yprog[week_num] = 1.0 * ndone / (nprog + (nprog == 0))
                 iplot.set_ydata(yprog)
         # Lookup which tiles are available and planned for tonight.
         day_number = desisurvey.utils.day_number(date)

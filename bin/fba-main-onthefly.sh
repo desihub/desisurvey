@@ -27,7 +27,7 @@ echo Fiberassign running on `hostname`.
 # https://desi.lbl.gov/trac/wiki/SurveyOps/FiberAssignAtKPNO version #18
 if [ -z $NERSC_HOST ]; then
     # at KPNO
-    export DESI_PRODUCT_ROOT=/software/datasystems/desiconda/20200924
+    export DESI_PRODUCT_ROOT=/software/datasystems/desiconda/kpno-20250320-2.2.1.dev
     export DESI_ROOT=/data/datasystems
     export DESI_TARGET=$DESI_ROOT/target
     export DESI_SURVEYOPS=$DESI_ROOT/survey/ops/surveyops/trunk
@@ -41,12 +41,13 @@ if [ -z $NERSC_HOST ]; then
     fi
     module use $DESI_PRODUCT_ROOT/modulefiles
     module load desiconda
-    module load desimodules/21.7e
+    module load desimodules/25.3
     # need -f switch in recent modules versions to force
-    # swapping even though earlier desitarget / fiberassigns
-    # are dependencies of desimodules/21.7e
-    module swap -f desitarget/2.5.0
-    module swap -f fiberassign/5.6.0
+    # swapping even though earlier desitarget / fiberassign
+    # are dependencies of desimodules
+    module swap -f desitarget/3.0.0
+    module swap -f desimeter/0.8.0
+    module swap -f fiberassign/5.8.0
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
     export SKYHEALPIXS_DIR=$DESI_ROOT/target/skyhealpixs/v1
 else
