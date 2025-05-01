@@ -354,11 +354,11 @@ class Scheduler(object):
                 mjd_now, ETC, verbose=verbose, seeing=seeing,
                 skylevel=skylevel, transparency=transp, speed=speed)
             self.tile_sel &= self.tiles.allowed_in_conditions(conditions)
+            program = conditions
             if verbose:
                 self.log.info(
                     'Selecting a tile observable in {} conditions.'.format(
                         program))
-            program = conditions
         else:
             self.tile_sel &= self.tiles.program_mask[program]
             mjd_program_end = self.night_changes[-1]  # end of night?
