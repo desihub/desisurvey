@@ -50,12 +50,30 @@ def planplot(tileid, plan, title='Nightly plan'):
     mtonight = np.zeros(tiles.ntiles, dtype='bool')
     mtonight[idx] = True
     from matplotlib import pyplot as p
-    p.figure(figsize=(8.5, 11))
+    allprog = ['DARK', 'BRIGHT', 'BACKUP', 'DARK1B', 'BRIGHT1B']
+    # existing programs
+    prog2plot = [
+        prog for prog in allprog if prog in tiles.program_mask.keys()
+    ]
+    # existing programs with enabled tiles
+    prog2plot = [
+        prog for prog in prog2plot if tiles.program_mask[prog].sum() > 0
+    ]
+    nrow = 3
+    if 'DARK1B' in prog2plot:
+        p.figure(figsize=(17, 11))
+        ncol = 2
+        ii = [1, 3, 5, 2, 4]
+    else:
+        p.figure(figsize=(8.5, 11))
+        ncol = 1
+        ii = [1, 2, 3]
+    ii = [ii[j] for j in range(len(ii)) if allprog[j] in prog2plot]
     loff = -60
     tra = ((tiles.tileRA - loff) % 360) + loff
-    for i, program in enumerate(['DARK', 'BRIGHT', 'BACKUP']):
+    for i, program in zip(ii, prog2plot):
         m = (tiles.program_mask[program]) & (tiles.in_desi != 0)
-        p.subplot(3, 1, i+1)
+        p.subplot(nrow, ncol, i)
         p.title(program)
         munobs = plan.tile_status == 'unobs'
         p.scatter(tra[m & munobs], tiles.tileDEC[m & munobs],
