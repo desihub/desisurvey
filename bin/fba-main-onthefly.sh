@@ -84,6 +84,9 @@ then
 elif [[ "$PROGRAM" == "DARK1B" ]]
 then
     DTCATVER=3.0.0
+elif [[ "$PROGRAM" == "BRIGHT1B" ]]
+then
+    DTCATVER=3.1.0
 else
     DTCATVER=1.1.1
 fi
