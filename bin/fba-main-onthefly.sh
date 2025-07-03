@@ -29,7 +29,7 @@ fi
 # there is no "svn up" here, no SVN checks
 # the code will exit if a TILEID already existing in the official SVN folder exists
 
-while getopts ":h:m:q:t:H:" option; do
+while getopts "h:m:q:t:H:" option; do
     case $option in
         h) # display help
             help_message
