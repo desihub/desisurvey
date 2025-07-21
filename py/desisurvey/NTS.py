@@ -548,8 +548,7 @@ class NTS():
 
             # Some duplicated code to compute scheduled HA (current HA of tile)
             idx = self.scheduler.tiles.index(int(tileid))
-            lstnow = (self.scheduler.LST0 +
-                      self.scheduler.dLST*(mjd - self.scheduler.MJD0))
+            lstnow = self.scheduler.LST0 + self.scheduler.dLST*(mjd - self.scheduler.MJD0)
             hanow = lstnow - self.scheduler.tiles.tileRA[idx]
             hanow = ((hanow + 180) % 360) - 180  # force into -180, 180 range.
 
