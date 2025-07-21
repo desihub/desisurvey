@@ -8,8 +8,8 @@ help_message()
     echo "options:"
     echo "  -h              Print help"
     echo "  -m manual       Run manually, no SVN commits"
-    echo "  -q QA:          Run QA (y or n)"
-    echo "  -t TILEID:      Specify tile"
+    echo "  -q QA:          Run QA (y or n, required)"
+    echo "  -t TILEID:      Specify tile (required)"
     echo "  -H HA:          Specified hour angle"
     echo
 }
@@ -66,10 +66,19 @@ while getopts "h:m:q:t:H:" option; do
             echo "Error: invalid option"
             echo
             help_message
-            exit
+            exit 1
             ;;
     esac
 done
+
+# Check for required options; exit if not supplied.
+if [ -z "$TILEID" ] || [ -z "$QA" ]; then
+    echo
+    echo "Missing -t or -q option(s)" >&2
+    echo
+    help_message
+    exit 1
+fi
 
 #TILEID=$1 # e.g. 1000
 #QA=$2   # y or n
@@ -132,7 +141,10 @@ RA=`echo $LINE | awk '{print $3}'`
 DEC=`echo $LINE | awk '{print $4}'`
 PROGRAM=`echo $LINE | awk '{print $5}'`
 STATUS=`echo $LINE | awk '{print $8}'`
-HA=`echo $LINE | awk '{print $10}'`
+if [ -z "${HA}" ]; then
+    # only read the DESIGNHA from the tiles file if HA is not already provided.
+    HA=`echo $LINE | awk '{print $10}'`
+fi
 
 if [[ "$PROGRAM" == "BACKUP" ]]
 then
