@@ -489,9 +489,9 @@ class NTS():
                      for k in ['dark', 'bright', 'backup']}
         if program is None:
             # if no recent speed update, assume slow speeds
-            slowspeed = dict(speed_dark_nts=0.2,
-                             speed_bright_nts=0.2,
-                             speed_backup_nts=0.2)
+            slowspeed = dict(DARK=0.2,
+                             BRIGHT=0.2,
+                             BACKUP=0.2)
             transupdated = conditions.get('etc_transparency_updated', None)
             skyupdated = conditions.get('etc_skylevel_updated', None)
             if transupdated is not None and skyupdated is not None:
