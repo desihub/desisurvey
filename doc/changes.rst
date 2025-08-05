@@ -2,15 +2,17 @@
 desisurvey change log
 =====================
 
-0.20.1 (unreleased)
+0.21.0 (unreleased)
 -------------------
 
 * Allow plot to be returned from forecast_plots() (PR `#159`_).
 * Require `pytest` instead of `python setup.py test` for compatibility
   with desiutil 3.5.0 (PR `#161`_).
+* Use observed HA rather than design HA in fiberassign on the fly (PR `#175`_).
 
 .. _`#159`: https://github.com/desihub/desisurvey/pull/159
 .. _`#161`: https://github.com/desihub/desisurvey/pull/161
+.. _`#175`: https://github.com/desihub/desisurvey/pull/175
 
 0.20.0 (2024-04-30)
 -------------------

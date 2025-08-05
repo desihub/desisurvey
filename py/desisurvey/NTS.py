@@ -250,7 +250,7 @@ def move_tile_into_place(tileid, speculative=False):
     return True
 
 
-def design_tile_on_fly(tileid, speculative=False, flylogfn=None):
+def design_tile_on_fly(tileid, speculative=False, flylogfn=None, sched_ha=None):
     # don't actually design the tile, but say we did
     # not sure what else we might want to check here.
     if speculative:
@@ -267,13 +267,23 @@ def design_tile_on_fly(tileid, speculative=False, flylogfn=None):
     logob.info('Designing tile %d on fly.' % tileid)
     flylogfp = (open(flylogfn, 'a') if flylogfn is not None
                 else subprocess.DEVNULL)
-    returncode = subprocess.call(['fba-main-onthefly.sh', str(tileid), 'n'],
-                                 stdout=flylogfp, stderr=flylogfp)
+
+    # Call the fba shell script. Append user-specified hour angle if desired.
+    fba_cmd = f'fba-main-onthefly.sh -t {tileid} -q n'
+    if sched_ha is not None:
+        fba_cmd += f' -H {sched_ha}'
+    fba_cmd = fba_cmd.split()
+
+    returncode = subprocess.call(fba_cmd, stdout=flylogfp, stderr=flylogfp)
+
     if flylogfn is not None:
         flylogfp.flush()
     if returncode == 0:
-        subprocess.Popen(['fba-main-onthefly.sh', str(tileid), 'y'],
-                         stdout=flylogfp, stderr=flylogfp)
+        fba_cmd = f'fba-main-onthefly.sh -t {tileid} -q y'
+        if sched_ha is not None:
+            fba_cmd += f' -H {sched_ha}'
+        fba_cmd = fba_cmd.split()
+        subprocess.Popen(fba_cmd, stdout=flylogfp, stderr=flylogfp)
     else:
         logob.info('Weird return code from fa-on-the-fly, skipping QA.')
     if flylogfn is not None:
@@ -538,8 +548,14 @@ class NTS():
 
         if self.fa_on_the_fly and not constraints.get('static_fa_only', False):
             flylogfn = os.path.join(self.dirname, 'fa-fly.log')
-            if not design_tile_on_fly(tileid, speculative=speculative,
-                                      flylogfn=flylogfn):
+
+            # Some duplicated code to compute scheduled HA (current HA of tile)
+            idx = self.scheduler.tiles.index(int(tileid))
+            lstnow = self.scheduler.LST0 + self.scheduler.dLST*(mjd - self.scheduler.MJD0)
+            hanow = lstnow - self.scheduler.tiles.tileRA[idx]
+            hanow = ((hanow + 180) % 360) - 180  # force into -180, 180 range.
+
+            if not design_tile_on_fly(tileid, speculative=speculative, flylogfn=flylogfn, sched_ha=hanow):
                 self.log.error('fa-on-the-fly failed!')
                 self.requestlog.logresponse(badtile)
                 return badtile

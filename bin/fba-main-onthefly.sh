@@ -1,5 +1,19 @@
 #!/bin/bash
 
+help_message()
+{
+    echo "fba-main-onthefly script"
+    echo
+    echo "Syntax: fba-main-onthefly.sh [-h|t|q]"
+    echo "options:"
+    echo "  -h              Print help"
+    echo "  -m manual       Run manually, no SVN commits"
+    echo "  -q QA:          Run QA (y or n, required)"
+    echo "  -t TILEID:      Specify tile (required)"
+    echo "  -H HA:          Specified hour angle"
+    echo
+}
+
 # this is necessary for the bash script to have access to the modules system
 # using the msdos user at KPNO.
 # I could alternatively make the script a --login script, but that seems like
@@ -15,9 +29,60 @@ fi
 # there is no "svn up" here, no SVN checks
 # the code will exit if a TILEID already existing in the official SVN folder exists
 
-TILEID=$1 # e.g. 1000
-QA=$2   # y or n
-MANUAL=$3  # manual to trigger not adding to SVN and only going to the holding pen.
+while getopts "h:m:q:t:H:" option; do
+    case $option in
+        h) # display help
+            help_message
+            exit
+            ;;
+        m) # manual mode, prevents adding tiles to SVN
+            if [[ "$OPTARG" =~ ^manual$ ]]; then
+                MANUAL=$OPTARG
+            else
+                echo "Error: syntax: only -m manual allowed"
+                exit
+            fi
+            ;;
+        q) # run QA (y or n)
+            if [[ "$OPTARG" =~ ^[ny]$ ]]; then
+                QA=$OPTARG
+            else
+                echo "Error: invalid QA, must be y or n"
+                exit
+            fi
+            ;;
+        t) # tileid
+            TILEID=$OPTARG
+            ;;
+        H) # input hour angle
+            if [[ "$OPTARG" =~ ^[0-9]+\.?[0-9]*(e[+-]?[0-9]+)?$ ]]; then
+                HA=$OPTARG
+            else
+                echo "Error: HA must be a valid number"
+                exit
+            fi
+            ;;
+        \?) # invalid option
+            echo "Error: invalid option"
+            echo
+            help_message
+            exit 1
+            ;;
+    esac
+done
+
+# Check for required options; exit if not supplied.
+if [ -z "$TILEID" ] || [ -z "$QA" ]; then
+    echo
+    echo "Missing -t or -q option(s)" >&2
+    echo
+    help_message
+    exit 1
+fi
+
+#TILEID=$1 # e.g. 1000
+#QA=$2   # y or n
+#MANUAL=$3  # manual to trigger not adding to SVN and only going to the holding pen.
 
 OUTDIR=$FA_HOLDING_PEN
 
@@ -76,7 +141,10 @@ RA=`echo $LINE | awk '{print $3}'`
 DEC=`echo $LINE | awk '{print $4}'`
 PROGRAM=`echo $LINE | awk '{print $5}'`
 STATUS=`echo $LINE | awk '{print $8}'`
-HA=`echo $LINE | awk '{print $10}'`
+if [ -z "${HA}" ]; then
+    # only read the DESIGNHA from the tiles file if HA is not already provided.
+    HA=`echo $LINE | awk '{print $10}'`
+fi
 
 if [[ "$PROGRAM" == "BACKUP" ]]
 then
