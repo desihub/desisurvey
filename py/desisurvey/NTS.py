@@ -498,19 +498,22 @@ class NTS():
             speed = {k.upper(): conditions['speed_%s_nts' % k]
                      for k in ['dark', 'bright', 'backup']}
         if program is None:
-            # if no recent speed update, force BRIGHT program.
+            # if no recent speed update, assume slow speeds
+            slowspeed = dict(DARK=0.2,
+                             BRIGHT=0.2,
+                             BACKUP=0.2)
             transupdated = conditions.get('etc_transparency_updated', None)
             skyupdated = conditions.get('etc_skylevel_updated', None)
             if transupdated is not None and skyupdated is not None:
                 lastupdated = min([time.Time(transupdated).mjd,
                                    time.Time(skyupdated).mjd])
                 if mjd - lastupdated > 0.5/24:  # 30 min
-                    program = 'BRIGHT'
+                    speed = slowspeed
                     self.log.info('Conditions last updated more than 30 min '
-                                  'in past, using BRIGHT program.')
+                                  'in past, assuming slow speed.')
             # if no ETC speed information, force BRIGHT.
             if speed is None:
-                program = 'BRIGHT'
+                speed = slowspeed
 
         days_to_seconds = 60*60*24
         if exposure.get('program', None) is None:
