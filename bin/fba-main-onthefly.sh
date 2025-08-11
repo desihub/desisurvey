@@ -137,6 +137,7 @@ fi
 
 # grabbing the RA, DEC, PROGRAM, STATUS, HA for TILEID
 LINE=`awk '{if ($1 == '$TILEID') print $0}' $TILESFN`
+PASS=`echo $LINE | awk '{print $2}'`
 RA=`echo $LINE | awk '{print $3}'`
 DEC=`echo $LINE | awk '{print $4}'`
 PROGRAM=`echo $LINE | awk '{print $5}'`
@@ -172,6 +173,10 @@ then
     CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --steps qa --log-stdout --doclean y --worldreadable --forcetileid y $CMDEX"
 else
     CMD="fba_launch --outdir $OUTDIR --tileid $TILEID --tilera $RA --tiledec $DEC --survey main --program $PROGRAM --ha $HA --dtver $DTCATVER --nosteps qa --doclean n --worldreadable $CMDEX"
+fi
+if [[ "$PROGRAM" == "BRIGHT1B" ]] && [[ "$PASS" == 8 ]];
+then
+    CMD="`echo $CMD` --lookup_sky_source gaia"
 fi
 echo $CMD
 eval $CMD
