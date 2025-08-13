@@ -8,13 +8,14 @@ desisurvey change log
 * Allow plot to be returned from forecast_plots() (PR `#159`_).
 * Require `pytest` instead of `python setup.py test` for compatibility
   with desiutil 3.5.0 (PR `#161`_).
-* Use observed HA rather than design HA in fiberassign on the fly (PR `#175`_).
+* Use observed HA rather than design HA in fiberassign on the fly (PR `#175`_, `#182`_).
 * When ETC condition measurements are stale, use a default "slow" speed that picks a program rather than defaulting to the BRIGHT program (PR `#180`_).
 
 .. _`#159`: https://github.com/desihub/desisurvey/pull/159
 .. _`#161`: https://github.com/desihub/desisurvey/pull/161
 .. _`#175`: https://github.com/desihub/desisurvey/pull/175
 .. _`#180`: https://github.com/desihub/desisurvey/pull/180
+.. _`#182`: https://github.com/desihub/desisurvey/pull/182
 
 0.20.0 (2024-04-30)
 -------------------
