@@ -52,7 +52,12 @@ while getopts "h:m:q:t:H:" option; do
             fi
             ;;
         t) # tileid
-            TILEID=$OPTARG
+            if [[ "$OPTARG" =~ ^[0-9]+$ ]]; then
+                TILEID=$OPTARG
+            else
+                echo "Error: Tile ID must be a valid number"
+                exit
+            fi
             ;;
         H) # input hour angle
             if [[ "$OPTARG" =~ ^[0-9]+\.?[0-9]*(e[+-]?[0-9]+)?$ ]]; then
