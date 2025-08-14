@@ -10,7 +10,7 @@ desisurvey change log
   with desiutil 3.5.0 (PR `#161`_).
 * Use observed HA rather than design HA in fiberassign on the fly (PR `#175`_, `#182`_, `#184`_, `#185`_).
 * When ETC condition measurements are stale, use a default "slow" speed that picks a program rather than defaulting to the BRIGHT program (PR `#180`_).
-* When observing M31/M33 outside the DR9 footprint, use lookup_sky_source=gaia (PR `#181`_).
+* When observing M31/M33 outside the DR9 footprint, use lookup_sky_source=gaia (PR `#181`_, `#187`_).
 
 .. _`#159`: https://github.com/desihub/desisurvey/pull/159
 .. _`#161`: https://github.com/desihub/desisurvey/pull/161
@@ -20,6 +20,7 @@ desisurvey change log
 .. _`#182`: https://github.com/desihub/desisurvey/pull/182
 .. _`#184`: https://github.com/desihub/desisurvey/pull/184
 .. _`#185`: https://github.com/desihub/desisurvey/pull/185
+.. _`#187`: https://github.com/desihub/desisurvey/pull/187
 
 0.20.0 (2024-04-30)
 -------------------
