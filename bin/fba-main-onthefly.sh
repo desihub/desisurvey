@@ -60,7 +60,7 @@ while getopts "h:m:q:t:H:" option; do
             fi
             ;;
         H) # input hour angle
-            if [[ "$OPTARG" =~ ^[0-9]+\.?[0-9]*(e[+-]?[0-9]+)?$ ]]; then
+            if [[ "$OPTARG" =~ ^-?[0-9]+\.?[0-9]*(e[+-]?[0-9]+)?$ ]]; then
                 HA=$OPTARG
             else
                 echo "Error: HA must be a valid number"
