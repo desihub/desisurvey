@@ -29,9 +29,9 @@ def worktile(tileid, logdir=None):
         stdout = subprocess.DEVNULL
     else:
         stdout = open(os.path.join(logdir, f'log-{tileid}-main.log'), 'w')
-    return subprocess.call(
-        ['fba-main-onthefly.sh', str(tileid), 'n', 'manual'],
-        stdout=stdout)
+
+    fba_cmd = f'fba-main-onthefly.sh -t {tileid} -q n -m manual'.split()
+    return subprocess.call(fba_cmd, stdout=stdout)
 
 
 def workqa(tileid, logdir=None):
@@ -39,9 +39,9 @@ def workqa(tileid, logdir=None):
         stdout = subprocess.DEVNULL
     else:
         stdout = open(os.path.join(logdir, f'log-{tileid}-qa.log'), 'w')
-    return subprocess.call(
-        ['fba-main-onthefly.sh', str(tileid), 'y', 'manual'],
-        stdout=stdout, stderr=stdout)
+
+    fba_cmd = f'fba-main-onthefly.sh -t {tileid} -q y -m manual'.split()
+    return subprocess.call(fba_cmd, stdout=stdout, stderr=stdout)
 
 
 def planplot(tileid, plan, title='Nightly plan'):
