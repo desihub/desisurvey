@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.21.0 (unreleased)
+0.21.1 (unreleased)
+-------------------
+
+* no changes yet
+
+0.21.0 (2025-08-15)
 -------------------
 
 * Allow plot to be returned from forecast_plots() (PR `#159`_).
