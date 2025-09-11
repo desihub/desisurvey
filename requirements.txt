@@ -1,6 +1,0 @@
-setuptools
-numpy
-scipy
-astropy
-pyephem
-pytz
