@@ -61,6 +61,8 @@ jobs:
               env:
                   DESIMODEL_DATA: branches/test-0.19
               run: install_desimodel_data --desimodel-version ${DESIMODEL_DATA}
+            - name: Print Python package versions
+              run: python -m pip freeze
             - name: Run the test
               run: pytest
 
@@ -96,6 +98,8 @@ jobs:
               env:
                   DESIMODEL_DATA: branches/test-0.19
               run: install_desimodel_data --desimodel-version ${DESIMODEL_DATA}
+            - name: Print Python package versions
+              run: python -m pip freeze
             - name: Run the test with coverage
               run: pytest --cov
             - name: Coveralls
