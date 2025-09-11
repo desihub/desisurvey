@@ -20,10 +20,22 @@ jobs:
                     - os: ubuntu-latest
                       python-version: '3.13'
                       numpy-version: '<3'
+                      matplotlib-version: '<3.11'
                       astropy-version: '<8'
+                    - os: ubuntu-latest
+                      python-version: '3.12'
+                      numpy-version: '<2.3'
+                      matplotlib-version: '<3.10'
+                      astropy-version: '<8'
+                    - os: ubuntu-latest
+                      python-version: '3.11'
+                      numpy-version: '<2.2'
+                      matplotlib-version: '<3.9'
+                      astropy-version: '<7.1'
                     - os: ubuntu-latest
                       python-version: '3.10'
                       numpy-version: '<2'
+                      matplotlib-version: '<3.7'
                       astropy-version: '<7'
 
         steps:
@@ -73,7 +85,7 @@ jobs:
             - name: Install Python dependencies
               run: |
                 python -m pip install --upgrade pip setuptools wheel ephem pytz pytest pytest-cov coveralls
-                python -m pip install "numpy<1.23" "astropy<6.1"
+                python -m pip install "numpy<1.23" "matplotlib<3.7" "astropy<6.1"
             - name: Install DESI packages
               env:
                   DESIMODEL_VERSION: 0.19.3
