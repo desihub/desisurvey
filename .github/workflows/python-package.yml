@@ -16,36 +16,41 @@ jobs:
         strategy:
             fail-fast: true
             matrix:
-                os: [ubuntu-latest]
-                python-version: [3.8, 3.9]
-                astropy-version: ['4.0.2', '4.2', '<5.0']
-        env:
-            DESIMODEL_DATA: branches/test-0.13
+                include:
+                    - os: ubuntu-latest
+                      python-version: '3.13'
+                      numpy-version: '<3'
+                      astropy-version: '<8'
+                    - os: ubuntu-latest
+                      python-version: '3.10'
+                      numpy-version: '<2'
+                      astropy-version: '<7'
 
         steps:
+            - name: Install system packages
+              run: sudo apt install libbz2-dev subversion
             - name: Checkout code
-              uses: actions/checkout@v2
-              with:
-                fetch-depth: 0
-            - name: System packages
-              run: |
-                sudo apt install subversion
+              uses: actions/checkout@v4
             - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v2
+              uses: actions/setup-python@v5
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
               run: |
-                python -m pip install --upgrade pip wheel
-                python -m pip install pytest
-                python -m pip install git+https://github.com/desihub/desiutil.git@3.2.6#egg=desiutil
-                python -m pip install git+https://github.com/desihub/desimodel.git@0.18.0#egg=desimodel
-                svn export https://desi.lbl.gov/svn/code/desimodel/${DESIMODEL_DATA}/data
-                python -m pip install git+https://github.com/desihub/specsim.git@v0.16#egg=specsim
-                python -m pip install git+https://github.com/desihub/speclite.git@v0.16#egg=speclite
-                python -m pip install -r requirements.txt
+                python -m pip install --upgrade pip setuptools wheel ephem pytz pytest
+                python -m pip install "numpy${{ matrix.numpy-version }}" "astropy${{ matrix.astropy-version }}"
+            - name: Install DESI packages
+              env:
+                  DESIMODEL_VERSION: 0.19.3
+              run: |
+                python -m pip install desiutil speclite specsim
+                python -m pip install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
+            - name: Install desimodel data
+              env:
+                  DESIMODEL_DATA: branches/test-0.19
+              run: install_desimodel_data --desimodel-version ${DESIMODEL_DATA}
             - name: Run the test
-              run: DESIMODEL=$(pwd) pytest
+              run: pytest
 
     coverage:
         name: Test coverage
@@ -54,34 +59,33 @@ jobs:
             fail-fast: true
             matrix:
                 os: [ubuntu-latest]
-                python-version: [3.8]
-        env:
-            DESIMODEL_DATA: branches/test-0.13
+                python-version: [3.10]
 
         steps:
+            - name: Install system packages
+              run: sudo apt install libbz2-dev subversion
             - name: Checkout code
-              uses: actions/checkout@v2
-              with:
-                fetch-depth: 0
-            - name: System packages
-              run: |
-                sudo apt install subversion
+              uses: actions/checkout@v4
             - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v2
+              uses: actions/setup-python@v5
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
               run: |
-                python -m pip install --upgrade pip wheel
-                python -m pip install pytest pytest-cov coveralls
-                python -m pip install git+https://github.com/desihub/desiutil.git@3.2.3#egg=desiutil
-                python -m pip install git+https://github.com/desihub/desimodel.git@0.13.0#egg=desimodel
-                svn export https://desi.lbl.gov/svn/code/desimodel/${DESIMODEL_DATA}/data
-                python -m pip install git+https://github.com/desihub/specsim.git@v0.14#egg=specsim
-                python -m pip install git+https://github.com/desihub/speclite.git@v0.13#egg=speclite
-                python -m pip install -r requirements.txt
+                python -m pip install --upgrade pip setuptools wheel ephem pytz pytest pytest-cov coveralls
+                python -m pip install "numpy<1.23" "astropy<6.1"
+            - name: Install DESI packages
+              env:
+                  DESIMODEL_VERSION: 0.19.3
+              run: |
+                python -m pip install desiutil speclite specsim
+                python -m pip install git+https://github.com/desihub/desimodel.git@${DESIMODEL_VERSION}#egg=desimodel
+            - name: Install desimodel data
+              env:
+                  DESIMODEL_DATA: branches/test-0.19
+              run: install_desimodel_data --desimodel-version ${DESIMODEL_DATA}
             - name: Run the test with coverage
-              run: DESIMODEL=$(pwd) pytest --cov
+              run: pytest --cov
             - name: Coveralls
               env:
                 COVERALLS_REPO_TOKEN: ${{ secrets.COVERALLS_REPO_TOKEN }}
@@ -95,18 +99,39 @@ jobs:
             fail-fast: false
             matrix:
                 os: [ubuntu-latest]
-                python-version: [3.8]
+                python-version: ['3.10']
 
         steps:
             - name: Checkout code
-              uses: actions/checkout@v2
-              with:
-                fetch-depth: 0
+              uses: actions/checkout@v4
             - name: Set up Python ${{ matrix.python-version }}
-              uses: actions/setup-python@v2
+              uses: actions/setup-python@v5
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
-              run: python -m pip install --upgrade pip wheel Sphinx sphinx-rtd-theme
+              run: python -m pip install --upgrade pip setuptools wheel Sphinx sphinx-rtd-theme
             - name: Test the documentation
               run: sphinx-build -W --keep-going -b html doc doc/_build/html
+
+    style:
+        name: Style check
+        runs-on: ${{ matrix.os }}
+        strategy:
+            fail-fast: false
+            matrix:
+                os: [ubuntu-latest]
+                python-version: ['3.10']
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+            - name: Set up Python ${{ matrix.python-version }}
+              uses: actions/setup-python@v5
+              with:
+                python-version: ${{ matrix.python-version }}
+            - name: Install Python dependencies
+              run: python -m pip install --upgrade pip setuptools wheel pycodestyle
+            - name: Test the style; failures can be allowed if necessary
+              # This is equivalent to an allowed falure.
+              continue-on-error: true
+              run: pycodestyle --count --statistics py/desisurvey
