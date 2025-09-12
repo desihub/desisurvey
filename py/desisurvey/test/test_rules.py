@@ -20,11 +20,3 @@ class TestRules(Tester):
         for i in range(10):
             donefrac[gen.choice(tiles.ntiles, tiles.ntiles // 10, replace=False)] = 1
             rules.apply(donefrac)
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

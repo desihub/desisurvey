@@ -228,11 +228,3 @@ class TestUtils(Tester):
         assert np.allclose(utils.separation_matrix([90], [0], [90], [90]), 90.)
         assert np.allclose(utils.separation_matrix([0], [0], [0], [-45]), 45.)
         assert np.allclose(utils.separation_matrix([330], [0], [30], [0]), 60.)
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

@@ -59,11 +59,3 @@ class TestScheduler(Tester):
                 if tileid is not None:
                     scheduler.update_snr(tileid, 1.)
                     scheduler2.update_snr(tileid, 1.)
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

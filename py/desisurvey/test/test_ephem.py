@@ -132,11 +132,3 @@ class TestEphemerides(Tester):
                          obstime=t, location=location, pressure=0)
             sep = truth.separation(calc)
             self.assertTrue(abs(sep.to(u.deg).value) < 0.3)
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

@@ -188,11 +188,3 @@ class TestConfig(Tester):
         c = Configuration()
         with self.assertRaises(RuntimeError):
             k = c.avoid_bodies.moon.keys
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)
