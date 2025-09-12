@@ -3,7 +3,6 @@ import tempfile
 import shutil
 import datetime
 import os
-from pkg_resources import resource_filename
 
 import numpy as np
 

@@ -5,6 +5,7 @@ import desisurvey.plan
 import desisurvey.scheduler
 import desisurvey.holdingpen
 import desiutil.log
+from importlib import resources
 import re
 import os
 import shutil
@@ -318,14 +319,12 @@ def afternoon_plan(night=None, exposures=None,
 
 
 def find_rules_file(file_name):
-    from pkg_resources import resource_filename
     if os.path.isabs(file_name):
         full_path = file_name
     elif os.path.exists(file_name):
         return os.path.abspath(file_name)
     else:
-        full_path = resource_filename('desisurvey',
-                                      os.path.join('data', file_name))
+        full_path = str(resources.files('desisurvey').joinpath('data', file_name))
     return full_path
 
 
