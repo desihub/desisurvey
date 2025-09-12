@@ -2,8 +2,6 @@
 """
 from __future__ import print_function, division
 
-import pkg_resources
-
 import numpy as np
 import scipy.special
 
@@ -510,7 +508,7 @@ class Optimizer(object):
         return idx, dha_sign
 
     def improve(self, frac=1.):
-        """Perform one iteration of improving the hour angle assignments.
+        r"""Perform one iteration of improving the hour angle assignments.
 
         Each call will adjust the HA of a single tile with a magnitude \|dHA\|
         specified by the `frac` parameter.

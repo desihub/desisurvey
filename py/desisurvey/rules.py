@@ -69,7 +69,7 @@ class Rules(object):
         SGC = ~NGC
 
         # Initialize regexp for parsing "GROUP_NAME(PROGRAM)"
-        parser = re.compile('([^\(]+)\(([^\(]+)\)$')
+        parser = re.compile(r'([^(]+)\(([^(]+)\)$')
 
         # Get the full path of the YAML file to read.
         if os.path.isabs(file_name):

@@ -42,11 +42,3 @@ class TestPlan(Tester):
                 # Save and restore our state.
                 plan.save('snapshot.ecsv')
                 plan2 = Planner(restore='snapshot.ecsv', simulate=True)
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

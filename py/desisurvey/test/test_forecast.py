@@ -22,11 +22,3 @@ class TestForecast(Tester):
         for twilight in True, False:
             forecast = Forecast(use_twilight=twilight, design_hourangle=HA, weather=W)
             forecast.summary()
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

@@ -52,11 +52,3 @@ class TestTiles(Tester):
                 tiles.tileRA[IDX1], tiles.tileDEC[IDX1])
             self.assertEqual(sep.shape, (1, len(IDX1)))
             self.assertTrue(np.max(sep) <= 2 * config.tile_radius().to(u.deg).value)
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

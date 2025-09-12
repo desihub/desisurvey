@@ -110,11 +110,3 @@ class TestExpCalc(unittest.TestCase):
             self.assertFalse(ETC.active)
             self.assertEqual(ETC.exptime, now - 1.)
             self.assertTrue((not done) or (ETC.snr2frac >= 1))
-
-
-def test_suite():
-    """Allows testing of only this module with the command::
-
-        python setup.py test -m <modulename>
-    """
-    return unittest.defaultTestLoader.loadTestsFromName(__name__)

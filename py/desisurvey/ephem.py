@@ -340,10 +340,10 @@ class Ephemerides(object):
         self._table['nearest_full_moon'][~next_is_nearest] = -prev_full_moon[~next_is_nearest]
 
         # Calculate apparent LST at each brightdusk/dawn in degrees.
-        dusk_t = astropy.time.Time(self._table['brightdusk'].data, format='mjd')
-        dawn_t = astropy.time.Time(self._table['brightdawn'].data, format='mjd')
-        dusk_t.location = desisurvey.utils.get_location()
-        dawn_t.location = desisurvey.utils.get_location()
+        dusk_t = astropy.time.Time(self._table['brightdusk'].data, format='mjd',
+                                   location=desisurvey.utils.get_location())
+        dawn_t = astropy.time.Time(self._table['brightdawn'].data, format='mjd',
+                                   location=desisurvey.utils.get_location())
         self._table['brightdusk_LST'] = dusk_t.sidereal_time('apparent').to(u.deg).value
         self._table['brightdawn_LST'] = dawn_t.sidereal_time('apparent').to(u.deg).value
         # Subtract 360 deg if LST wraps around during this night, so that the

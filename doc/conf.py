@@ -121,8 +121,8 @@ napoleon_include_private_with_doc = True
 # building process.
 autodoc_mock_imports = []
 for missing in ('astropy', 'desimodel', 'desitarget', 'desiutil', 'ephem',
-                'healpy', 'matplotlib', 'numpy', 'pandas', 'scipy', 'speclite',
-                'specsim', 'yaml'):
+                'healpy', 'matplotlib', 'numpy', 'pandas', 'pytz', 'scipy',
+                'speclite', 'specsim', 'yaml'):
     try:
         foo = import_module(missing)
     except ImportError:
