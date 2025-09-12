@@ -3,7 +3,7 @@ import os
 import datetime
 import tempfile
 import shutil
-from pkg_resources import resource_filename
+from importlib.resources import files
 
 import astropy.table
 import astropy.io.ascii
@@ -76,9 +76,7 @@ def read_horizons_moon_ephem():
     """
     import astropy.io.ascii
 
-    filename = os.path.join('data', 'horizons_2020_week1_moon.csv')
-    horizonsfile = resource_filename('desisurvey', filename)
-
+    horizonsfile = str(files('desisurvey').joinpath('data', 'horizons_2020_week1_moon.csv'))
     #- Horizons "csv" files have some non-standard header and footer data
     #- separated by $$SOE (start of ephemeris) and $$EOE (end of ephemeris)
     rows = list()
