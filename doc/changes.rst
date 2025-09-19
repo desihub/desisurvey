@@ -14,9 +14,10 @@ desisurvey change log
 
 .. _`#191`: https://github.com/desihub/desisurvey/pull/191
 
-0.21.0 (2025-08-15)
--------------------
+0.2.1 (2025-08-15)
+------------------
 
+* Note that this tag was accidentially named 0.2.1 instead of 0.21.0!
 * Allow plot to be returned from forecast_plots() (PR `#159`_).
 * Require `pytest` instead of `python setup.py test` for compatibility
   with desiutil 3.5.0 (PR `#161`_).
