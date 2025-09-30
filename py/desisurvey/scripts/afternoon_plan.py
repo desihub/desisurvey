@@ -22,7 +22,8 @@ def afternoon_plan(night=None, exposures=None,
                    spectra_dir=None,
                    desisurvey_output=None, nts_dir=None, sv=False,
                    surveyops=None, skip_mtl_done_range=None,
-                   moonsep=50, no_network=False):
+                   moonsep=50, no_network=False,
+                   defaultyn=None):
     """Perform daily afternoon planning.
 
     Afternoon planning identifies tiles available for observation and assigns
@@ -69,6 +70,9 @@ def afternoon_plan(night=None, exposures=None,
 
     no_network : bool
         Skip svn & wget steps.
+
+    defaultyn : str or None
+        If not None, the default answer to yes/no questions.
     """
     log = desiutil.log.get_logger()
     if night is None:
@@ -160,7 +164,7 @@ def afternoon_plan(night=None, exposures=None,
             qstr = ('tile file in SURVEYOPS is updated relative '
                     'to {}.  Overwrite with SURVEYOPS tile file?'.format(
                         tilefn))
-            update = yesno(qstr)
+            update = yesno(qstr, defaultyn)
             if update:
                 shutil.copy(surveyopstilefn, tilefn)
 
@@ -311,7 +315,7 @@ def afternoon_plan(night=None, exposures=None,
         subprocess.run(['cp', newtilefn, surveyopsopsdir])
         if not no_network:
             subprocess.run(['svn', 'status', surveyopsopsdir])
-            if yesno('Okay to commit updates to SURVEYOPS svn?'):
+            if yesno('Okay to commit updates to SURVEYOPS svn?', defaultyn):
                 subprocess.run(
                     ['svn', 'ci', surveyopsopsdir,
                      '-m "Update exposures and tiles for %s"' % nightstr])
@@ -373,6 +377,13 @@ def parse(options=None):
                               'X degrees of the moon.'))
     parser.add_argument('--no-network', action='store_true', default=False,
                         help='Skip steps requiring external network access.')
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('--allno', action='store_true', default=False,
+                       help='Default all answers to no')
+    group.add_argument('--allyes', action='store_true', default=False,
+                       help='Default all answers to yes')
+
     if options is None:
         args = parser.parse_args()
     else:
@@ -397,9 +408,12 @@ def main(args):
         config = desisurvey.config.Configuration(configfn)
     log.info('Loading configuration from {}...'.format(config.file_name))
 
+    default = 'y' if args.allyes else 'n' if args.allno else None
+
     return afternoon_plan(
         night=args.night, exposures=args.exposures,
         configfn=args.config, nts_dir=args.nts_dir, sv=args.sv,
         surveyops=args.surveyops,
         skip_mtl_done_range=args.skip_mtl_done_range,
-        moonsep=args.moonsep, no_network=args.no_network)
+        moonsep=args.moonsep, no_network=args.no_network,
+        defaultyn=default)
