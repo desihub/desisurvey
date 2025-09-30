@@ -514,10 +514,15 @@ def match(a, b):
     return sa[ind[m]], np.flatnonzero(m)
 
 
-def yesno(question):
-    """Simple Yes/No Function."""
-    prompt = f'{question} (y/n): '
-    ans = input(prompt).strip().lower()
+def yesno(question, default=None):
+    """Simple Yes/No Function.
+    """
+    if default is None:
+        prompt = f'{question} (y/n): '
+        ans = input(prompt).strip().lower()
+    else:
+        ans = default
+
     if ans not in ['y', 'n', 'yes', 'no']:
         print(f'{ans} is invalid, please try again...')
         return yesno(question)
