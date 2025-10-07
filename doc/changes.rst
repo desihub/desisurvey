@@ -5,7 +5,9 @@ desisurvey change log
 0.21.2 (unreleased)
 -------------------
 
-* No changes yet.
+* Update fiberassign-on-the-fly to use desitarget 4.1.1 (PR `#192`_).
+
+.. _`#192`: https://github.com/desihub/desisurvey/pull/192
 
 0.21.1 (2025-09-19)
 -------------------
