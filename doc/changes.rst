@@ -2,7 +2,13 @@
 desisurvey change log
 =====================
 
-0.21.2 (unreleased)
+0.22.1 (unreleased)
+-------------------
+
+* No changes ywt.
+
+
+0.22.0 (2025-10-07)
 -------------------
 
 * Update fiberassign-on-the-fly to use desitarget 4.1.1 (PR `#192`_).
