@@ -22,7 +22,7 @@ desisurvey change log
 
 .. _`#191`: https://github.com/desihub/desisurvey/pull/191
 
-0.2.1 (2025-08-15)
+0.20.1 (2025-08-15)
 ------------------
 
 * Note that this tag was accidentially named 0.2.1 instead of 0.21.0!
