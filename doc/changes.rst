@@ -2,11 +2,13 @@
 desisurvey change log
 =====================
 
-0.22.1 (unreleased)
+0.23.0 (unreleased)
 -------------------
 
-* No changes ywt.
+* Update fiberassign-on-the-fly to use desitarget 4.3.0 (PR `#194`_).
+  Also pins setuptools to pip==25.2 for unit tests.
 
+.. _`#194`: https://github.com/desihub/desisurvey/pull/194
 
 0.22.0 (2025-10-07)
 -------------------
