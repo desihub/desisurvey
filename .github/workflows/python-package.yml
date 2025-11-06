@@ -49,7 +49,7 @@ jobs:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
               run: |
-                python -m pip install --upgrade pip setuptools wheel ephem pytz pytest
+                python -m pip install --upgrade pip==25.2 setuptools wheel ephem pytz pytest
                 python -m pip install "numpy${{ matrix.numpy-version }}" "scipy${{ matrix.scipy-version }}" "astropy${{ matrix.astropy-version }}"
             - name: Install DESI packages
               env:
@@ -86,7 +86,7 @@ jobs:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
               run: |
-                python -m pip install --upgrade pip setuptools wheel ephem pytz pytest pytest-cov coveralls
+                python -m pip install --upgrade pip==25.2 setuptools wheel ephem pytz pytest pytest-cov coveralls
                 python -m pip install "numpy<1.23" "scipy<1.9" "astropy<6.1"
             - name: Install DESI packages
               env:
@@ -125,7 +125,7 @@ jobs:
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
-              run: python -m pip install --upgrade pip setuptools wheel Sphinx sphinx-rtd-theme
+              run: python -m pip install --upgrade pip==25.2 setuptools wheel Sphinx sphinx-rtd-theme
             - name: Test the documentation
               run: sphinx-build -W --keep-going -b html doc doc/_build/html
 
@@ -146,7 +146,7 @@ jobs:
               with:
                 python-version: ${{ matrix.python-version }}
             - name: Install Python dependencies
-              run: python -m pip install --upgrade pip setuptools wheel pycodestyle
+              run: python -m pip install --upgrade pip==25.2 setuptools wheel pycodestyle
             - name: Test the style; failures can be allowed if necessary
               # This is equivalent to an allowed falure.
               continue-on-error: true
