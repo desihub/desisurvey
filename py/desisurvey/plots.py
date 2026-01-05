@@ -876,7 +876,7 @@ def plot_monthly(p, program='DARK', monsoon=False, fullmoon=True,
 
     weather_weights = 1 - desisurvey.utils.dome_closed_probabilities()
     for m in range(12):
-        sel = np.in1d(p.calendar['weather'], [weather_weights[m],])
+        sel = np.isin(p.calendar['weather'], [weather_weights[m],])
         month[sel] = m
 
     # Restrict to the specified program.
