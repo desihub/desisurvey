@@ -21,12 +21,12 @@ jobs:
                       python-version: '3.13'
                       numpy-version: '<3'
                       scipy-version: '<1.16'
-                      astropy-version: '<7'
+                      astropy-version: '<8'
                     - os: ubuntu-latest
                       python-version: '3.12'
                       numpy-version: '<2.3'
                       scipy-version: '<1.15'
-                      astropy-version: '<7'
+                      astropy-version: '<8'
                     - os: ubuntu-latest
                       python-version: '3.11'
                       numpy-version: '<2.2'
