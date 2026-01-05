@@ -244,7 +244,7 @@ class Progress(object):
                 only_passes = tuple(only_passes)
             except TypeError:
                 only_passes = only_passes,
-            sel = np.in1d(self._table['pass'].data, only_passes)
+            sel = np.isin(self._table['pass'].data, only_passes)
             table = self._table[sel]
         else:
             table = self._table
