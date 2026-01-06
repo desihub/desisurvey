@@ -5,7 +5,10 @@ desisurvey change log
 0.23.1 (unreleased)
 -------------------
 
-* No changes yet.
+* Minor: enable astropy 7.x in GitHub tests. Replace deprecated ``numpy.in1d``
+  with ``numpy.isin`` (PR `#196`_).
+
+.. _`#196`: https://github.com/desihub/desisurvey/pull/196
 
 0.23.0 (2025-11-07)
 -------------------
