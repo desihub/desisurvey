@@ -32,10 +32,11 @@ desisurvey change log
 
 .. _`#191`: https://github.com/desihub/desisurvey/pull/191
 
-0.2.1 (2025-08-15)
+0.21.0 (2025-08-15)
 ------------------
 
-* Note that this tag was accidentially named 0.2.1 instead of 0.21.0!
+* Note that this tag was originally named 0.2.1 instead of 0.21.0,
+  then later retagged.
 * Allow plot to be returned from forecast_plots() (PR `#159`_).
 * Require `pytest` instead of `python setup.py test` for compatibility
   with desiutil 3.5.0 (PR `#161`_).
@@ -400,6 +401,11 @@ This version was tagged for the 2% sprint data challenge.
 ------------------
 
 First release after refactoring.
+
+0.2.1 (2025-08-15)
+------------------
+
+Accidentally tagged 0.21.0 as 0.2.1; retagged as 0.21.0.
 
 0.2.0 (2016-11-19)
 ------------------
