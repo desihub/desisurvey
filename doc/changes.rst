@@ -10,6 +10,7 @@ desisurvey change log
 0.21.0 (2025-08-15)
 -------------------
 
+* Note: this was originally mistakenly tagged as 0.2.1
 * Allow plot to be returned from forecast_plots() (PR `#159`_).
 * Require `pytest` instead of `python setup.py test` for compatibility
   with desiutil 3.5.0 (PR `#161`_).
@@ -374,6 +375,11 @@ This version was tagged for the 2% sprint data challenge.
 ------------------
 
 First release after refactoring.
+
+0.2.1 (2025-08-15)
+-------------------
+
+Originally accidentally tagged 0.21.0 as 0.2.1
 
 0.2.0 (2016-11-19)
 ------------------
