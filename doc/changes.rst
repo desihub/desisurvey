@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.23.1 (unreleased)
+0.23.2 (unreleased)
+-------------------
+
+* No changes yet.
+
+0.23.1 (2026-03-19)
 -------------------
 
 * Minor: enable astropy 7.x in GitHub tests. Replace deprecated ``numpy.in1d``
