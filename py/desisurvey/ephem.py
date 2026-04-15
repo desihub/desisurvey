@@ -24,9 +24,9 @@ import desisurvey.tiles
 
 
 # Date range 2019-2029 for tabulated ephemerides.
-# This range is intended to cover out through the DESI extension.
+# This range is intended to cover out through the DESI extension and DESI2.
 START_DATE = datetime.date(2019, 1, 1)
-STOP_DATE = datetime.date(2029, 12, 31)
+STOP_DATE = datetime.date(2035, 12, 31)
 
 _ephem = None
 
