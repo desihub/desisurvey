@@ -117,7 +117,7 @@ if [ -z $NERSC_HOST ]; then
     # are dependencies of desimodules
     module swap -f desitarget/5.1.0
     module swap -f desimeter/0.8.0
-    module swap -f fiberassign/6.0.0
+    module swap -f fiberassign/6.0.1
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
     export SKYHEALPIXS_DIR=$DESI_ROOT/target/skyhealpixs/v1
 else
