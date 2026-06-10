@@ -165,7 +165,7 @@ else
     DTCATVER=1.1.1
 fi
 
-DR11DTVER=5.1.0
+DR11DTVER=5.2.0
 DTCATVER="${DTCATVER},${DR11DTVER}"
 
 # small sanity check
