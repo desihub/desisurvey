@@ -10,10 +10,12 @@ desisurvey change log
 0.24.0 (2026-06-11)
 -------------------
 
+* Extend ephemerides to expected end date of DESI 2 (2035) (PR `#199`_).
 * Update fiberassign-on-the-fly for DR11 targets (PR `#200`_). Includes:
-  * Update code to `desitarget/5.1.0` and `fiberassign/6.0.1`.
-  * Update directory for new targets to `5.2.0`.
+    * Update code to `desitarget/5.1.0` and `fiberassign/6.0.1`.
+    * Update directory for new targets to `5.2.0`.
 
+.. _`#199`: https://github.com/desihub/desisurvey/pull/199
 .. _`#200`: https://github.com/desihub/desisurvey/pull/200
 
 0.23.1 (2026-03-19)
