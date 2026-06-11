@@ -2,10 +2,19 @@
 desisurvey change log
 =====================
 
-0.23.2 (unreleased)
+0.24.1 (unreleased)
 -------------------
 
 * No changes yet.
+
+0.24.0 (2026-06-11)
+-------------------
+
+* Update fiberassign-on-the-fly for DR11 targets (PR `#200`_). Includes:
+  * Update code to `desitarget/5.1.0` and `fiberassign/6.0.1`.
+  * Update directory for new targets to `5.2.0`.
+
+.. _`#200`: https://github.com/desihub/desisurvey/pull/200
 
 0.23.1 (2026-03-19)
 -------------------
