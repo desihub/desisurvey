@@ -115,9 +115,9 @@ if [ -z $NERSC_HOST ]; then
     # need -f switch in recent modules versions to force
     # swapping even though earlier desitarget / fiberassign
     # are dependencies of desimodules
-    module swap -f desitarget/4.3.0
+    module swap -f desitarget/5.1.0
     module swap -f desimeter/0.8.0
-    module swap -f fiberassign/5.9.1
+    module swap -f fiberassign/6.0.1
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
     export SKYHEALPIXS_DIR=$DESI_ROOT/target/skyhealpixs/v1
 else
@@ -164,6 +164,9 @@ then
 else
     DTCATVER=1.1.1
 fi
+
+DR11DTVER=5.2.0
+DTCATVER="${DTCATVER},${DR11DTVER}"
 
 # small sanity check
 if [[ "$STATUS" != "unobs" ]]
