@@ -215,7 +215,7 @@ def run_plan(night=None, nts_dir=None, verbose=False, survey=None,
         dec = nts.scheduler.tiles.tileDEC[ind]
         current_ra = ra
         current_dec = dec
-        am = nts.scheduler.tiles.airmass_at_mjd(t0, mask=ind)
+        am = nts.scheduler.tiles.airmass_at_mjd(t0, mask=ind)[0]
         refft = res['req_efftime']
         if not table:
             print(
