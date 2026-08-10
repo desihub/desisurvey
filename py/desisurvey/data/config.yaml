@@ -106,6 +106,19 @@ min_altitude: 30 deg
 # Never observe at larger HA than 5 hr.
 max_hour_angle: 75 deg
 
+# Declination-dependent hour-angle limit (B. Weiner, 2026-08; the limits are
+# set by a threshold of 0.29 arcsec rms image motion among the fibers in a
+# 20 min exposure).  Comma-separated "<dec_deg>:<ha_limit_hours>" nodes, which
+# are linearly interpolated in declination and clamped to the end values
+# outside the tabulated range.  Applied on top of, and never looser than, the
+# flat max_hour_angle above.  Empty or absent disables it, leaving the flat
+# max_hour_angle as the only HA cut.
+#   max_hour_angle_by_dec: "-30:0.5, -20:1.5, -10:2.3, 0:3.0, 10:3.3, 20:3.5, 30:4.0, 40:4.0, 50:5.0, 60:5.0"
+# Note this must stay a single quoted string: config.py rejects YAML sequences
+# and requires mapping keys to be valid python identifiers, so neither a list
+# nor a "-30:" key can be used here.
+max_hour_angle_by_dec: ""
+
 # Time required to setup for a new field, including slew, fiber positioning, etc.
 new_field_setup : 120 s
 
