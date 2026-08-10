@@ -28,6 +28,29 @@ class TestTiles(Tester):
         tiles2 = get_tiles()
         assert id(tiles1) == id(tiles2)
 
+    def test_max_abs_ha_by_dec(self):
+        spec = '-30:0.5, -20:1.5, -10:2.3, 0:3.0, 10:3.3, 20:3.5, 30:4.0'
+        config = desisurvey.config.Configuration()
+        # Restore the default (disabled) limit and the cached tiles even if
+        # this test fails, since both are global state.
+        self.addCleanup(get_tiles, use_cache=False)
+        self.addCleanup(config.max_hour_angle_by_dec.set_value, '')
+
+        # With no declination dependent limit, the window is set by the
+        # minimum altitude alone.
+        config.max_hour_angle_by_dec.set_value('')
+        baseline = get_tiles(use_cache=False).max_abs_ha.copy()
+
+        config.max_hour_angle_by_dec.set_value(spec)
+        tiles = get_tiles(use_cache=False)
+        limit = desisurvey.utils.max_ha_by_dec(tiles.tileDEC, spec)
+        # The configured limit is intersected with the altitude window, so it
+        # can only tighten it.
+        assert np.allclose(tiles.max_abs_ha, np.minimum(baseline, limit))
+        assert np.all(tiles.max_abs_ha <= baseline)
+        # These test tiles all lie where the limit is the tighter of the two.
+        assert np.all(tiles.max_abs_ha < baseline)
+
     def test_overlap(self):
         tiles = Tiles()
         overlapping = tiles.overlapping
