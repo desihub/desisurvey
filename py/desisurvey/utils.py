@@ -558,3 +558,75 @@ def get_average_dome_closed_fractions(first, last, smooth=7):
     nyear = nnight // 365 + 1
     fractions = np.tile(fractions, nyear)
     return fractions[:nnight]
+
+
+def parse_ha_limit_spec(spec):
+    """Parse a declination-dependent hour-angle limit specification.
+
+    The specification is the string stored in the ``max_hour_angle_by_dec``
+    configuration parameter: comma-separated ``"<dec_deg>:<ha_limit_hours>"``
+    nodes, e.g. ``"-30:0.5, -20:1.5, -10:2.3"``.  A string is used rather than
+    a list because :class:`desisurvey.config.Configuration` does not support
+    YAML sequences and requires mapping keys to be valid python identifiers.
+
+    Parameters
+    ----------
+    spec : str
+        Node specification, as described above.  Nodes need not be sorted.
+
+    Returns
+    -------
+    tuple
+        Arrays ``(dec_deg, ha_deg)`` of the node declinations and their hour
+        angle limits, sorted by increasing declination.  Note the limits are
+        converted from the hours used in the specification to degrees.
+    """
+    decs, has = [], []
+    for item in spec.split(','):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            dec_str, ha_str = item.split(':')
+            decs.append(float(dec_str))
+            has.append(float(ha_str) * 15.)
+        except ValueError:
+            raise ValueError(
+                'Invalid "<dec>:<ha_hours>" node {0!r} in hour angle limit '
+                'specification {1!r}.'.format(item, spec))
+    if len(decs) < 2:
+        raise ValueError(
+            'Need at least 2 nodes in hour angle limit specification {0!r}.'
+            .format(spec))
+    order = np.argsort(decs)
+    return np.asarray(decs)[order], np.asarray(has)[order]
+
+
+def max_ha_by_dec(dec, spec, ceiling=None):
+    """Calculate a declination-dependent maximum |HA| for each tile.
+
+    The limit is linearly interpolated in declination between the nodes of
+    ``spec`` and clamped to the end values outside the tabulated range, so a
+    declination below the first node keeps that node's limit.
+
+    Parameters
+    ----------
+    dec : float or array
+        Declination(s) in degrees.
+    spec : str
+        Node specification, passed to :func:`parse_ha_limit_spec`.
+    ceiling : float or None
+        Optional upper bound in degrees, normally the global
+        ``max_hour_angle``.  When set, the returned limits can only tighten
+        that bound, never loosen it.
+
+    Returns
+    -------
+    array
+        Maximum |HA| in degrees, with the same shape as ``dec``.
+    """
+    dec_nodes, ha_nodes = parse_ha_limit_spec(spec)
+    limit = np.interp(np.asarray(dec, float), dec_nodes, ha_nodes)
+    if ceiling is not None:
+        limit = np.minimum(limit, ceiling)
+    return limit
