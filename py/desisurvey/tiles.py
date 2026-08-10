@@ -121,6 +121,19 @@ class Tiles(object):
         m = ~np.isfinite(self.max_abs_ha) | (self.max_abs_ha < 3.75)
         self.max_abs_ha[m] = 7.5  # always give at least a half hour window.
 
+        # Optionally tighten the per-tile window with a declination-dependent
+        # hour angle limit (see config.max_hour_angle_by_dec).  This is applied
+        # after the half-hour floor above, so a limit smaller than that floor
+        # wins.  Disabled by default, in which case max_abs_ha is set by the
+        # minimum altitude alone.
+        ha_by_dec = getattr(config, 'max_hour_angle_by_dec', None)
+        if ha_by_dec is not None and not isinstance(ha_by_dec, str):
+            ha_by_dec = ha_by_dec()
+        if ha_by_dec:
+            self.max_abs_ha = np.minimum(
+                self.max_abs_ha,
+                desisurvey.utils.max_ha_by_dec(self.tileDEC, ha_by_dec))
+
     CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
     CONDITION_INDEX = {cond: i for i, cond in enumerate(CONDITIONS)}
 
