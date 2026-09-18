@@ -2,7 +2,12 @@
 desisurvey change log
 =====================
 
-0.24.1 (unreleased)
+0.24.2 (unreleased)
+-------------------
+
+* No changes yet.
+
+0.24.1 (2026-09-17)
 -------------------
 
 * Fix airmass calculation to extract first element for numpy 2.x (PR `#201`_).
