@@ -560,6 +560,37 @@ def get_average_dome_closed_fractions(first, last, smooth=7):
     return fractions[:nnight]
 
 
+def get_ha_limit_spec(config=None):
+    """Return the configured declination-dependent hour-angle limit, if any.
+
+    Reads the ``max_hour_angle_by_dec`` configuration parameter, which is
+    absent on versions of this package that predate it and is an empty string
+    when the limit is disabled.  Use this rather than reading the parameter
+    directly, so that the three places applying the limit
+    (:mod:`desisurvey.tiles`, :mod:`desisurvey.scheduler` and
+    :mod:`desisurvey.plan`) cannot disagree about when it is in force.
+
+    Parameters
+    ----------
+    config : :class:`desisurvey.config.Configuration` or None
+        Configuration to read.  Uses the singleton when None.
+
+    Returns
+    -------
+    str or None
+        The node specification, suitable for :func:`parse_ha_limit_spec`, or
+        None when no limit is configured.
+    """
+    if config is None:
+        config = Configuration()
+    spec = getattr(config, 'max_hour_angle_by_dec', None)
+    # A configured value arrives as a config node that must be called; a value
+    # set programmatically in a test may already be a plain string.
+    if spec is not None and not isinstance(spec, str):
+        spec = spec()
+    return spec or None
+
+
 def parse_ha_limit_spec(spec):
     """Parse a declination-dependent hour-angle limit specification.
 

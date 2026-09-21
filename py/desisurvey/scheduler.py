@@ -76,9 +76,7 @@ class Scheduler(object):
         # that depends on declination (see config.max_hour_angle_by_dec).  The
         # flat value is used as a ceiling, so this can only tighten the cut.
         # Must follow get_tiles() above, since it needs the tile declinations.
-        ha_by_dec = getattr(config, 'max_hour_angle_by_dec', None)
-        if ha_by_dec is not None and not isinstance(ha_by_dec, str):
-            ha_by_dec = ha_by_dec()
+        ha_by_dec = desisurvey.utils.get_ha_limit_spec(config)
         if ha_by_dec:
             self.max_ha = desisurvey.utils.max_ha_by_dec(
                 self.tiles.tileDEC, ha_by_dec, ceiling=self.max_ha)

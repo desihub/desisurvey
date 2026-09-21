@@ -224,10 +224,7 @@ class Planner(object):
             # desisurvey.optimize does for design hour angles it computes
             # itself.  Only done when a declination dependent HA limit is
             # configured, so that restoring is otherwise unchanged.
-            ha_by_dec = getattr(config, 'max_hour_angle_by_dec', None)
-            if ha_by_dec is not None and not isinstance(ha_by_dec, str):
-                ha_by_dec = ha_by_dec()
-            if ha_by_dec:
+            if desisurvey.utils.get_ha_limit_spec(config):
                 nclip = np.sum(
                     np.abs(self.designha) > self.tiles.max_abs_ha)
                 self.designha = np.clip(

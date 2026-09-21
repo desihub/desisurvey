@@ -126,9 +126,7 @@ class Tiles(object):
         # after the half-hour floor above, so a limit smaller than that floor
         # wins.  Disabled by default, in which case max_abs_ha is set by the
         # minimum altitude alone.
-        ha_by_dec = getattr(config, 'max_hour_angle_by_dec', None)
-        if ha_by_dec is not None and not isinstance(ha_by_dec, str):
-            ha_by_dec = ha_by_dec()
+        ha_by_dec = desisurvey.utils.get_ha_limit_spec(config)
         if ha_by_dec:
             self.max_abs_ha = np.minimum(
                 self.max_abs_ha,

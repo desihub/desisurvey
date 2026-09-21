@@ -228,6 +228,25 @@ class TestUtils(Tester):
         assert np.allclose(utils.separation_matrix([0], [0], [0], [-45]), 45.)
         assert np.allclose(utils.separation_matrix([330], [0], [30], [0]), 60.)
 
+    def test_get_ha_limit_spec(self):
+        cfg = config.Configuration()
+        # Restore the default even if this test fails, since it is global.
+        self.addCleanup(cfg.max_hour_angle_by_dec.set_value, '')
+        # Disabled by default, and an empty value reads as no limit rather
+        # than as an empty specification.
+        cfg.max_hour_angle_by_dec.set_value('')
+        assert utils.get_ha_limit_spec(cfg) is None
+        spec = '-30:0.5, 0:3.0, 30:4.0'
+        cfg.max_hour_angle_by_dec.set_value(spec)
+        assert utils.get_ha_limit_spec(cfg) == spec
+        # The singleton is used when no configuration is passed.
+        assert utils.get_ha_limit_spec() == spec
+        # A version of the package predating the parameter must read as no
+        # limit rather than raise.
+        class NoSuchParameter:
+            pass
+        assert utils.get_ha_limit_spec(NoSuchParameter()) is None
+
     def test_parse_ha_limit_spec(self):
         dec, ha = utils.parse_ha_limit_spec('-30:0.5, 0:3.0, 30:4.0')
         assert np.allclose(dec, [-30, 0, 30])
