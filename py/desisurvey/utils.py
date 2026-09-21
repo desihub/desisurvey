@@ -603,7 +603,7 @@ def parse_ha_limit_spec(spec):
 
 
 def max_ha_by_dec(dec, spec, ceiling=None):
-    """Calculate a declination-dependent maximum |HA| for each tile.
+    """Calculate a declination-dependent maximum ``|HA|`` for each tile.
 
     The limit is linearly interpolated in declination between the nodes of
     ``spec`` and clamped to the end values outside the tabulated range, so a
@@ -623,7 +623,7 @@ def max_ha_by_dec(dec, spec, ceiling=None):
     Returns
     -------
     array
-        Maximum |HA| in degrees, with the same shape as ``dec``.
+        Maximum ``|HA|`` in degrees, with the same shape as ``dec``.
     """
     dec_nodes, ha_nodes = parse_ha_limit_spec(spec)
     limit = np.interp(np.asarray(dec, float), dec_nodes, ha_nodes)
