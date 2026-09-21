@@ -273,6 +273,46 @@ class TestUtils(Tester):
         with self.assertRaises(ValueError):
             utils.parse_ha_limit_spec('-30:0.5, 0:3.0:9')
 
+    def test_parse_ha_limit_spec_rejects_unusable(self):
+        # A specification that cannot be used must be rejected rather than
+        # silently reinterpreted.
+        # Declinations that cannot exist, e.g. a transposed node.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('0.5:-30, 3.0:0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 120:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, nan:3.0')
+        # A limit of zero deselects every tile at that declination.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0, 0:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:-0.5, 0:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 0:inf')
+        # Limits are in hours, so a value that looks like degrees is a
+        # mistake rather than a very loose limit.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:7.5, 0:45')
+        # 12 hr is the largest meaningful limit, and is allowed.
+        dec, ha = utils.parse_ha_limit_spec('-30:0.5, 0:12')
+        assert np.allclose(ha, [7.5, 180.])
+        # A repeated declination is resolved silently by the interpolation,
+        # with the winner depending on the sort, so refuse it.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('0:1.0, 0:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 0:3.0, -30:2.0')
+
+    def test_parse_ha_limit_spec_warns_below_floor(self):
+        # desisurvey.tiles applies this limit after its half hour window
+        # floor, so a smaller node overrides that floor.  Legitimate, but
+        # worth a warning since it is easy to do by accident.
+        with self.assertLogs(level='WARNING') as caught:
+            dec, ha = utils.parse_ha_limit_spec('-30:0.25, 0:3.0')
+        assert np.allclose(ha, [3.75, 45.])
+        assert any('window floor' in m for m in caught.output)
+
     def test_max_ha_by_dec(self):
         spec = '-30:0.5, -20:1.5, 0:3.0, 40:4.0, 60:5.0'
         # Node values are reproduced exactly.
