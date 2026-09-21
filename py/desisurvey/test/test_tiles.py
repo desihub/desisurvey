@@ -51,6 +51,27 @@ class TestTiles(Tester):
         # These test tiles all lie where the limit is the tighter of the two.
         assert np.all(tiles.max_abs_ha < baseline)
 
+    def test_max_abs_ha_by_dec_is_logged(self):
+        config = desisurvey.config.Configuration()
+        self.addCleanup(get_tiles, use_cache=False)
+        self.addCleanup(config.max_hour_angle_by_dec.set_value, '')
+
+        # A limit that bites is reported with what it actually did, so that a
+        # run which silently applied nothing can be told apart from one that
+        # narrowed the windows.
+        config.max_hour_angle_by_dec.set_value('-30:0.5, 30:4.0')
+        with self.assertLogs(level='INFO') as caught:
+            get_tiles(use_cache=False)
+        assert any('narrowed' in m and 'tile windows' in m
+                   for m in caught.output)
+
+        # A limit looser than the altitude window everywhere narrows nothing,
+        # which is almost always a mistake and so warns.
+        config.max_hour_angle_by_dec.set_value('-30:10.0, 30:10.0')
+        with self.assertLogs(level='WARNING') as caught:
+            get_tiles(use_cache=False)
+        assert any('narrowed no tile windows' in m for m in caught.output)
+
     def test_overlap(self):
         tiles = Tiles()
         overlapping = tiles.overlapping
