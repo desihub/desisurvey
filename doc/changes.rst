@@ -2,8 +2,15 @@
 desisurvey change log
 =====================
 
-0.24.2 (unreleased)
+0.24.3 (unreleased)
 -------------------
+
+0.24.2 (2026-09-21)
+-------------------
+
+* Upgrade fba-main-onthefly.sh to work with new KPNO software stack (PR `#203`_).
+
+.. _`#203`: https://github.com/desihub/desisurvey/pull/203
 
 * No changes yet.
 

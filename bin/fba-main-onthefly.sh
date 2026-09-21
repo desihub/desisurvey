@@ -113,9 +113,9 @@ if [ -z $NERSC_HOST ]; then
     module load desiconda
     module load desimodules/26.3
 
-	# Module version overrides:
+    # Module version overrides:
     # need -f switch in recent module versions to force swapping even though earlier
-	# desitarget / fiberassign are dependencies of desimodules. E.g.,
+    # desitarget / fiberassign are dependencies of desimodules. E.g.,
     # module swap -f desitarget/5.1.0
     export DESIMODEL=$DESI_ROOT/survey/ops/desimodel/trunk
     export SKYHEALPIXS_DIR=$DESI_ROOT/target/skyhealpixs/v1
