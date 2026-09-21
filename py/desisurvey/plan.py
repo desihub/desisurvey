@@ -216,6 +216,24 @@ class Planner(object):
             self.tile_priority = t['PRIORITY'].data.copy()
             self.donefrac = t['DONEFRAC'].data.copy()
             self.designha = t['DESIGNHA'].data.copy()
+            # Restored design hour angles were computed under whatever limits
+            # were in force when the status file was written, so they can fall
+            # outside the window currently allowed for a tile.  That would
+            # leave the scheduler's dHA penalty peaked at an hour angle its own
+            # HA cut rejects.  Clip them back into the window, which is what
+            # desisurvey.optimize does for design hour angles it computes
+            # itself.  Only done when a declination dependent HA limit is
+            # configured, so that restoring is otherwise unchanged.
+            if desisurvey.utils.get_ha_limit_spec(config):
+                nclip = np.sum(
+                    np.abs(self.designha) > self.tiles.max_abs_ha)
+                self.designha = np.clip(
+                    self.designha,
+                    -self.tiles.max_abs_ha, +self.tiles.max_abs_ha)
+                if nclip > 0:
+                    self.log.info(
+                        'Clipped {} restored design hour angles to the '
+                        'configured per-tile limits.'.format(nclip))
             if 'AVAILABLE' in t.dtype.names:
                 self.tile_available[:] &= t['AVAILABLE'].data.copy()
             self.log.debug(('Restored plan with {} unobserved, {} pending, '

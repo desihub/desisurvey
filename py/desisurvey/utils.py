@@ -558,3 +558,163 @@ def get_average_dome_closed_fractions(first, last, smooth=7):
     nyear = nnight // 365 + 1
     fractions = np.tile(fractions, nyear)
     return fractions[:nnight]
+
+
+def get_ha_limit_spec(config=None):
+    """Return the configured declination-dependent hour-angle limit, if any.
+
+    Reads the ``max_hour_angle_by_dec`` configuration parameter, which is
+    absent on versions of this package that predate it and is an empty string
+    when the limit is disabled.  Use this rather than reading the parameter
+    directly, so that the three places applying the limit
+    (:mod:`desisurvey.tiles`, :mod:`desisurvey.scheduler` and
+    :mod:`desisurvey.plan`) cannot disagree about when it is in force.
+
+    Parameters
+    ----------
+    config : :class:`desisurvey.config.Configuration` or None
+        Configuration to read.  Uses the singleton when None.
+
+    Returns
+    -------
+    str or None
+        The node specification, suitable for :func:`parse_ha_limit_spec`, or
+        None when no limit is configured.
+    """
+    if config is None:
+        config = Configuration()
+    spec = getattr(config, 'max_hour_angle_by_dec', None)
+    # A configured value arrives as a config node that must be called; a value
+    # set programmatically in a test may already be a plain string.
+    if spec is not None and not isinstance(spec, str):
+        spec = spec()
+    return spec or None
+
+
+def parse_ha_limit_spec(spec):
+    """Parse a declination-dependent hour-angle limit specification.
+
+    The specification is the string stored in the ``max_hour_angle_by_dec``
+    configuration parameter: comma-separated ``"<dec_deg>:<ha_limit_hours>"``
+    nodes, e.g. ``"-30:0.5, -20:1.5, -10:2.3"``.  A string is used rather than
+    a list because :class:`desisurvey.config.Configuration` does not support
+    YAML sequences and requires mapping keys to be valid python identifiers.
+
+    A specification that cannot be used is rejected here rather than silently
+    reinterpreted, since a limit that is quietly wrong is indistinguishable
+    from one that is quietly absent.  A node smaller than the half hour window
+    floor applied in :mod:`desisurvey.tiles` is allowed but warned about,
+    because it overrides that floor rather than being clipped by it.
+
+    Parameters
+    ----------
+    spec : str
+        Node specification, as described above.  Nodes need not be sorted.
+
+    Returns
+    -------
+    tuple
+        Arrays ``(dec_deg, ha_deg)`` of the node declinations and their hour
+        angle limits, sorted by increasing declination.  Note the limits are
+        converted from the hours used in the specification to degrees.
+
+    Raises
+    ------
+    ValueError
+        A node is malformed, there are fewer than two nodes, a declination is
+        duplicated or outside -90 to +90, or a limit is not a positive number
+        of hours no larger than 12.
+    """
+    decs, has = [], []
+    for item in spec.split(','):
+        item = item.strip()
+        if not item:
+            continue
+        try:
+            dec_str, ha_str = item.split(':')
+            decs.append(float(dec_str))
+            has.append(float(ha_str) * 15.)
+        except ValueError:
+            raise ValueError(
+                'Invalid "<dec>:<ha_hours>" node {0!r} in hour angle limit '
+                'specification {1!r}.'.format(item, spec))
+    if len(decs) < 2:
+        raise ValueError(
+            'Need at least 2 nodes in hour angle limit specification {0!r}.'
+            .format(spec))
+    decs, has = np.asarray(decs), np.asarray(has)
+
+    # A declination that cannot exist, most likely a transposed node.
+    bad = ~np.isfinite(decs) | (np.abs(decs) > 90)
+    if np.any(bad):
+        raise ValueError(
+            'Declination {0} is outside -90 to +90 in hour angle limit '
+            'specification {1!r}.'.format(decs[bad][0], spec))
+
+    # A limit of zero or less would deselect every tile at that declination,
+    # and one above 12 hr is not a limit at all.  A value near 40 is the
+    # likely symptom of writing the limit in degrees rather than hours.
+    bad = ~np.isfinite(has) | (has <= 0)
+    if np.any(bad):
+        raise ValueError(
+            'Hour angle limit {0} hr is not a positive number in hour angle '
+            'limit specification {1!r}.'.format(has[bad][0] / 15., spec))
+    bad = has > 12. * 15.
+    if np.any(bad):
+        raise ValueError(
+            'Hour angle limit {0} hr exceeds 12 hr in hour angle limit '
+            'specification {1!r}; note the limits are in hours, not degrees.'
+            .format(has[bad][0] / 15., spec))
+
+    order = np.argsort(decs)
+    decs, has = decs[order], has[order]
+
+    # Duplicated nodes are silently resolved by the interpolation below, and
+    # which of the two limits wins depends on the sort, so refuse them.
+    dup = np.diff(decs) == 0
+    if np.any(dup):
+        raise ValueError(
+            'Declination {0} is repeated in hour angle limit specification '
+            '{1!r}.'.format(decs[:-1][dup][0], spec))
+
+    # desisurvey.tiles applies this limit after its half hour window floor, so
+    # a smaller node wins rather than being clipped.  Legitimate for the far
+    # south, but easy to do by accident, so say so.
+    small = has < 7.5
+    if np.any(small):
+        desiutil.log.get_logger().warning(
+            'Hour angle limit {0} hr at declination {1} is below the half '
+            'hour window floor, which it overrides.'.format(
+                has[small][0] / 15., decs[small][0]))
+
+    return decs, has
+
+
+def max_ha_by_dec(dec, spec, ceiling=None):
+    """Calculate a declination-dependent maximum ``|HA|`` for each tile.
+
+    The limit is linearly interpolated in declination between the nodes of
+    ``spec`` and clamped to the end values outside the tabulated range, so a
+    declination below the first node keeps that node's limit.
+
+    Parameters
+    ----------
+    dec : float or array
+        Declination(s) in degrees.
+    spec : str
+        Node specification, passed to :func:`parse_ha_limit_spec`.
+    ceiling : float or None
+        Optional upper bound in degrees, normally the global
+        ``max_hour_angle``.  When set, the returned limits can only tighten
+        that bound, never loosen it.
+
+    Returns
+    -------
+    array
+        Maximum ``|HA|`` in degrees, with the same shape as ``dec``.
+    """
+    dec_nodes, ha_nodes = parse_ha_limit_spec(spec)
+    limit = np.interp(np.asarray(dec, float), dec_nodes, ha_nodes)
+    if ceiling is not None:
+        limit = np.minimum(limit, ceiling)
+    return limit
