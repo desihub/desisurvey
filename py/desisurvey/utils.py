@@ -600,6 +600,12 @@ def parse_ha_limit_spec(spec):
     a list because :class:`desisurvey.config.Configuration` does not support
     YAML sequences and requires mapping keys to be valid python identifiers.
 
+    A specification that cannot be used is rejected here rather than silently
+    reinterpreted, since a limit that is quietly wrong is indistinguishable
+    from one that is quietly absent.  A node smaller than the half hour window
+    floor applied in :mod:`desisurvey.tiles` is allowed but warned about,
+    because it overrides that floor rather than being clipped by it.
+
     Parameters
     ----------
     spec : str
@@ -611,6 +617,13 @@ def parse_ha_limit_spec(spec):
         Arrays ``(dec_deg, ha_deg)`` of the node declinations and their hour
         angle limits, sorted by increasing declination.  Note the limits are
         converted from the hours used in the specification to degrees.
+
+    Raises
+    ------
+    ValueError
+        A node is malformed, there are fewer than two nodes, a declination is
+        duplicated or outside -90 to +90, or a limit is not a positive number
+        of hours no larger than 12.
     """
     decs, has = [], []
     for item in spec.split(','):
@@ -629,8 +642,52 @@ def parse_ha_limit_spec(spec):
         raise ValueError(
             'Need at least 2 nodes in hour angle limit specification {0!r}.'
             .format(spec))
+    decs, has = np.asarray(decs), np.asarray(has)
+
+    # A declination that cannot exist, most likely a transposed node.
+    bad = ~np.isfinite(decs) | (np.abs(decs) > 90)
+    if np.any(bad):
+        raise ValueError(
+            'Declination {0} is outside -90 to +90 in hour angle limit '
+            'specification {1!r}.'.format(decs[bad][0], spec))
+
+    # A limit of zero or less would deselect every tile at that declination,
+    # and one above 12 hr is not a limit at all.  A value near 40 is the
+    # likely symptom of writing the limit in degrees rather than hours.
+    bad = ~np.isfinite(has) | (has <= 0)
+    if np.any(bad):
+        raise ValueError(
+            'Hour angle limit {0} hr is not a positive number in hour angle '
+            'limit specification {1!r}.'.format(has[bad][0] / 15., spec))
+    bad = has > 12. * 15.
+    if np.any(bad):
+        raise ValueError(
+            'Hour angle limit {0} hr exceeds 12 hr in hour angle limit '
+            'specification {1!r}; note the limits are in hours, not degrees.'
+            .format(has[bad][0] / 15., spec))
+
     order = np.argsort(decs)
-    return np.asarray(decs)[order], np.asarray(has)[order]
+    decs, has = decs[order], has[order]
+
+    # Duplicated nodes are silently resolved by the interpolation below, and
+    # which of the two limits wins depends on the sort, so refuse them.
+    dup = np.diff(decs) == 0
+    if np.any(dup):
+        raise ValueError(
+            'Declination {0} is repeated in hour angle limit specification '
+            '{1!r}.'.format(decs[:-1][dup][0], spec))
+
+    # desisurvey.tiles applies this limit after its half hour window floor, so
+    # a smaller node wins rather than being clipped.  Legitimate for the far
+    # south, but easy to do by accident, so say so.
+    small = has < 7.5
+    if np.any(small):
+        desiutil.log.get_logger().warning(
+            'Hour angle limit {0} hr at declination {1} is below the half '
+            'hour window floor, which it overrides.'.format(
+                has[small][0] / 15., decs[small][0]))
+
+    return decs, has
 
 
 def max_ha_by_dec(dec, spec, ceiling=None):
