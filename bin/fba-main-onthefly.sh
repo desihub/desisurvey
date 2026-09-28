@@ -164,7 +164,19 @@ else
     DTCATVER=1.1.1
 fi
 
-DR11DTVER=5.2.0
+# DR11 desitarget catalog version.
+# BRIGHT and BRIGHT1B use 5.5.0 since the BRIGHT ledgers were updated with
+# DR11 MWS targets made with desitarget 5.5.0 (surveyops r7720-r7723,
+# 2026-09-28). BRIGHT1B also reads the bright ledger, so it needs 5.5.0 too.
+# The other programs stay on 5.2.0 until their ledgers are updated.
+# Note: --dtver takes ONE version per --dr (dr9,dr11), so 5.2.0 and 5.5.0
+# cannot both be passed for DR11.
+if [[ "$PROGRAM" == "BRIGHT" ]] || [[ "$PROGRAM" == "BRIGHT1B" ]]
+then
+    DR11DTVER=5.5.0
+else
+    DR11DTVER=5.2.0
+fi
 DTCATVER="${DTCATVER},${DR11DTVER}"
 
 # small sanity check
