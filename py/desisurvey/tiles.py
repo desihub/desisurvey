@@ -121,6 +121,34 @@ class Tiles(object):
         m = ~np.isfinite(self.max_abs_ha) | (self.max_abs_ha < 3.75)
         self.max_abs_ha[m] = 7.5  # always give at least a half hour window.
 
+        # Optionally tighten the per-tile window with a declination-dependent
+        # hour angle limit (see config.max_hour_angle_by_dec).  This is applied
+        # after the half-hour floor above, so a limit smaller than that floor
+        # wins.  Disabled by default, in which case max_abs_ha is set by the
+        # minimum altitude alone.
+        ha_by_dec = desisurvey.utils.get_ha_limit_spec(config)
+        if ha_by_dec:
+            narrowed = np.minimum(
+                self.max_abs_ha,
+                desisurvey.utils.max_ha_by_dec(self.tileDEC, ha_by_dec))
+            # Report what the limit actually did.  A configured limit that
+            # narrows nothing is indistinguishable from one that was never
+            # read, which is the failure this message exists to make visible.
+            changed = narrowed < self.max_abs_ha
+            log = desiutil.log.get_logger()
+            if np.any(changed):
+                log.info(
+                    'Hour angle limit narrowed {0} of {1} tile windows, '
+                    'median {2:.1f} to {3:.1f} deg.'.format(
+                        np.count_nonzero(changed), self.ntiles,
+                        np.median(self.max_abs_ha[changed]),
+                        np.median(narrowed[changed])))
+            else:
+                log.warning(
+                    'Hour angle limit {0!r} narrowed no tile windows.'
+                    .format(ha_by_dec))
+            self.max_abs_ha = narrowed
+
     CONDITIONS = ['DARK', 'GRAY', 'BRIGHT']
     CONDITION_INDEX = {cond: i for i, cond in enumerate(CONDITIONS)}
 

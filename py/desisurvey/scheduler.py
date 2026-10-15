@@ -72,6 +72,15 @@ class Scheduler(object):
         self.tiles = desisurvey.tiles.get_tiles()
         ntiles = self.tiles.ntiles
 
+        # Optionally replace the flat maximum |HA| above with a per-tile limit
+        # that depends on declination (see config.max_hour_angle_by_dec).  The
+        # flat value is used as a ceiling, so this can only tighten the cut.
+        # Must follow get_tiles() above, since it needs the tile declinations.
+        ha_by_dec = desisurvey.utils.get_ha_limit_spec(config)
+        if ha_by_dec:
+            self.max_ha = desisurvey.utils.max_ha_by_dec(
+                self.tiles.tileDEC, ha_by_dec, ceiling=self.max_ha)
+
         d2x = self.tiles.airmass_second_derivative(0)
         self.scale_dha_penalty_sigma = np.clip(np.sqrt(1/d2x)/60, 0.5, 1)
 
@@ -424,6 +433,11 @@ class Scheduler(object):
         self.airmass[self.tile_sel] = airmassnom
         self.tile_sel[self.tile_sel] &= (
             (airmassnow < self.max_airmass) & (airmassnom < self.max_airmass))
+        # Cut on |HA| at the midpoint of the estimated exposure, not at the
+        # current instant; max_ha is either a scalar or, when a declination
+        # dependent limit is configured, one limit per tile.  Tiles outside
+        # tile_sel have hourangle 0 from above and so are unaffected by this
+        # cut, but note that a limit of exactly 0 would deselect everything.
         absha = np.abs(((self.hourangle + 180) % 360)-180)
         self.tile_sel &= (absha < self.max_ha)
         if not np.any(self.tile_sel):

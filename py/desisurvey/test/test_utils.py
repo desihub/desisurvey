@@ -227,3 +227,107 @@ class TestUtils(Tester):
         assert np.allclose(utils.separation_matrix([90], [0], [90], [90]), 90.)
         assert np.allclose(utils.separation_matrix([0], [0], [0], [-45]), 45.)
         assert np.allclose(utils.separation_matrix([330], [0], [30], [0]), 60.)
+
+    def test_get_ha_limit_spec(self):
+        cfg = config.Configuration()
+        # Restore the default even if this test fails, since it is global.
+        self.addCleanup(cfg.max_hour_angle_by_dec.set_value, '')
+        # Disabled by default, and an empty value reads as no limit rather
+        # than as an empty specification.
+        cfg.max_hour_angle_by_dec.set_value('')
+        assert utils.get_ha_limit_spec(cfg) is None
+        spec = '-30:0.5, 0:3.0, 30:4.0'
+        cfg.max_hour_angle_by_dec.set_value(spec)
+        assert utils.get_ha_limit_spec(cfg) == spec
+        # The singleton is used when no configuration is passed.
+        assert utils.get_ha_limit_spec() == spec
+        # A version of the package predating the parameter must read as no
+        # limit rather than raise.
+        class NoSuchParameter:
+            pass
+        assert utils.get_ha_limit_spec(NoSuchParameter()) is None
+
+    def test_parse_ha_limit_spec(self):
+        dec, ha = utils.parse_ha_limit_spec('-30:0.5, 0:3.0, 30:4.0')
+        assert np.allclose(dec, [-30, 0, 30])
+        # Limits are converted from hours to degrees.
+        assert np.allclose(ha, [7.5, 45., 60.])
+        # Nodes need not be given in order.
+        dec2, ha2 = utils.parse_ha_limit_spec('30:4.0, -30:0.5, 0:3.0')
+        assert np.allclose(dec, dec2)
+        assert np.allclose(ha, ha2)
+        # Extra whitespace and a trailing separator are tolerated.
+        dec3, ha3 = utils.parse_ha_limit_spec('  -30 : 0.5 ,0:3.0,30:4.0,  ')
+        assert np.allclose(dec, dec3)
+        assert np.allclose(ha, ha3)
+        # A malformed specification must raise rather than silently disable
+        # the limit.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, junk')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 0:x')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 0:3.0:9')
+
+    def test_parse_ha_limit_spec_rejects_unusable(self):
+        # A specification that cannot be used must be rejected rather than
+        # silently reinterpreted.
+        # Declinations that cannot exist, e.g. a transposed node.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('0.5:-30, 3.0:0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 120:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, nan:3.0')
+        # A limit of zero deselects every tile at that declination.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0, 0:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:-0.5, 0:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 0:inf')
+        # Limits are in hours, so a value that looks like degrees is a
+        # mistake rather than a very loose limit.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:7.5, 0:45')
+        # 12 hr is the largest meaningful limit, and is allowed.
+        dec, ha = utils.parse_ha_limit_spec('-30:0.5, 0:12')
+        assert np.allclose(ha, [7.5, 180.])
+        # A repeated declination is resolved silently by the interpolation,
+        # with the winner depending on the sort, so refuse it.
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('0:1.0, 0:3.0')
+        with self.assertRaises(ValueError):
+            utils.parse_ha_limit_spec('-30:0.5, 0:3.0, -30:2.0')
+
+    def test_parse_ha_limit_spec_warns_below_floor(self):
+        # desisurvey.tiles applies this limit after its half hour window
+        # floor, so a smaller node overrides that floor.  Legitimate, but
+        # worth a warning since it is easy to do by accident.
+        with self.assertLogs(level='WARNING') as caught:
+            dec, ha = utils.parse_ha_limit_spec('-30:0.25, 0:3.0')
+        assert np.allclose(ha, [3.75, 45.])
+        assert any('window floor' in m for m in caught.output)
+
+    def test_max_ha_by_dec(self):
+        spec = '-30:0.5, -20:1.5, 0:3.0, 40:4.0, 60:5.0'
+        # Node values are reproduced exactly.
+        assert np.allclose(utils.max_ha_by_dec([-30, -20, 0, 40, 60], spec),
+                           [7.5, 22.5, 45., 60., 75.])
+        # Interpolation is linear in declination, on the limit in hours.
+        assert np.allclose(utils.max_ha_by_dec(-25, spec), 15.)
+        assert np.allclose(utils.max_ha_by_dec(-10, spec), 33.75)
+        # Outside the tabulated range the end values are held.
+        assert np.allclose(utils.max_ha_by_dec([-90, -40], spec), 7.5)
+        assert np.allclose(utils.max_ha_by_dec([70, 90], spec), 75.)
+        # A ceiling can only tighten the limit, never loosen it.
+        assert np.allclose(utils.max_ha_by_dec(60, spec, ceiling=75.), 75.)
+        assert np.allclose(utils.max_ha_by_dec(60, spec, ceiling=50.), 50.)
+        assert np.allclose(utils.max_ha_by_dec(-30, spec, ceiling=75.), 7.5)
+        # Shape is preserved.
+        dec = np.array([[-30., 0.], [40., 60.]])
+        assert utils.max_ha_by_dec(dec, spec).shape == dec.shape
