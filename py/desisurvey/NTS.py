@@ -39,6 +39,7 @@ Names are converted to FITS convention: TILEID, S2NREQ, EXTTIME, MAXTIME, FBRASS
 import os
 import json
 import shutil
+import math
 import desisurvey
 import desisurvey.rules
 import desisurvey.plan
@@ -184,7 +185,7 @@ def azinrange(az, low, high):
 # unvignetted field-point elevation), inferred from KPNO's Mosaic3 limit
 # (centre at airmass 2.1 minus the Mosaic3 half-diagonal ~0.42 deg); not a
 # measurement of the Mayall dome.
-SHUTTER_EDGE_EL = 90.0 - np.degrees(np.arccos(1.0 / 2.1)) - 0.42   # 28.02 deg
+SHUTTER_EDGE_EL = 90.0 - math.degrees(math.acos(1.0 / 2.1)) - 0.42   # 28.02 deg
 FIELD_RADIUS_DEG = 1.6
 POINTING_MARGIN_DEG = 0.5
 
@@ -208,7 +209,7 @@ def pointing_limits_ok(ha, dec, latitude, dha, shutter_up,
 
     Elevation limits (raised lower shutter, elrange[0]) apply to the lower
     field edge, i.e. the centre must be FIELD_RADIUS_DEG + POINTING_MARGIN_DEG
-    above them; elevation is monotonic in |HA| so the segment endpoints
+    above them; elevation is monotonic in abs(HA) so the segment endpoints
     suffice. Azimuth is not monotonic in HA, so azrange is checked on a grid of
     sample_dha deg (1 min) with the allowed range narrowed on both sides by the
     field's azimuth half-width, asin(sin r / cos el). azrange follows the
