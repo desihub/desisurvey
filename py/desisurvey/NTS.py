@@ -39,7 +39,6 @@ Names are converted to FITS convention: TILEID, S2NREQ, EXTTIME, MAXTIME, FBRASS
 import os
 import json
 import shutil
-import math
 import desisurvey
 import desisurvey.rules
 import desisurvey.plan
@@ -180,12 +179,15 @@ def azinrange(az, low, high):
     return (az >= low) & (az <= high)
 
 
-# Pointing limits applied to the field EDGE over the whole first segment.
-# PROVISIONAL: elevation of the raised lower dome shutter edge (lowest
-# unvignetted field-point elevation), inferred from KPNO's Mosaic3 limit
-# (centre at airmass 2.1 minus the Mosaic3 half-diagonal ~0.42 deg); not a
-# measurement of the Mayall dome.
-SHUTTER_EDGE_EL = 90.0 - math.degrees(math.acos(1.0 / 2.1)) - 0.42   # 28.02 deg
+# Pointing limits applied over the whole first segment.
+# Lower dome shutter, when raised: minimum POINTING (field-center) elevation.
+# The shutter top edge is at 20 deg; where the DESI beam crosses the dome slit it
+# reaches 8.5 deg below the pointing (seen from the dome center), so the beam
+# clears the shutter for pointings above 28.5 deg (dec > -30 at transit).
+# Joyce, DESI-doc-9354; geometry in DESI-doc-9055. The 8.5 deg already includes
+# the field, so no field radius is added. Observer elrange/azrange apply to the
+# field EDGE (FIELD_RADIUS_DEG).
+SHUTTER_CENTER_EL = 28.5
 FIELD_RADIUS_DEG = 1.6
 POINTING_MARGIN_DEG = 0.5
 
@@ -207,9 +209,9 @@ def pointing_limits_ok(ha, dec, latitude, dha, shutter_up,
     """Return whether each field stays inside the pointing limits while it
     tracks from hour angle ha to ha + dha.
 
-    Elevation limits (raised lower shutter, elrange[0]) apply to the lower
-    field edge, i.e. the centre must be FIELD_RADIUS_DEG + POINTING_MARGIN_DEG
-    above them; elevation is monotonic in abs(HA) so the segment endpoints
+    The raised lower shutter limits the pointing center to SHUTTER_CENTER_EL +
+    POINTING_MARGIN_DEG. elrange[0] applies to the lower field edge, i.e. the
+    center must be FIELD_RADIUS_DEG + POINTING_MARGIN_DEG above it; elevation is monotonic in abs(HA) so the segment endpoints
     suffice. Azimuth is not monotonic in HA, so azrange is checked on a grid of
     sample_dha deg (1 min) with the allowed range narrowed on both sides by the
     field's azimuth half-width, asin(sin r / cos el). azrange follows the
@@ -249,15 +251,14 @@ def pointing_limits_ok(ha, dec, latitude, dha, shutter_up,
     el_start, _ = altaz(ha)
     el_end, _ = altaz(ha + dha)
     el_worst = np.minimum(el_start, el_end)
-    edge_limits = []
+    center_limits = []
     if shutter_up:
-        edge_limits.append(SHUTTER_EDGE_EL)
+        center_limits.append(SHUTTER_CENTER_EL)
     if elrange is not None:
-        edge_limits.append(elrange[0])
+        center_limits.append(elrange[0] + FIELD_RADIUS_DEG)
         ok &= el_start <= elrange[1]
-    if edge_limits:
-        ok &= el_worst >= (max(edge_limits) + FIELD_RADIUS_DEG +
-                           POINTING_MARGIN_DEG)
+    if center_limits:
+        ok &= el_worst >= max(center_limits) + POINTING_MARGIN_DEG
 
     if azrange is not None:
         low, high = azrange
