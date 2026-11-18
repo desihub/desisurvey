@@ -179,6 +179,107 @@ def azinrange(az, low, high):
     return (az >= low) & (az <= high)
 
 
+# Pointing limits applied over the whole first segment.
+# Lower dome shutter, when raised: minimum POINTING (field-center) elevation.
+# The shutter top edge is at 20 deg; where the DESI beam crosses the dome slit it
+# reaches 8.5 deg below the pointing (seen from the dome center), so the beam
+# clears the shutter for pointings above 28.5 deg (dec > -30 at transit).
+# Joyce, DESI-doc-9354; geometry in DESI-doc-9055. The 8.5 deg already includes
+# the field, so no field radius is added. Observer elrange/azrange apply to the
+# field EDGE (FIELD_RADIUS_DEG).
+SHUTTER_CENTER_EL = 28.5
+FIELD_RADIUS_DEG = 1.6
+POINTING_MARGIN_DEG = 0.5
+
+
+def shutter_raised(shutter_lower):
+    """Return True if the lower dome shutter is raised (can vignette).
+
+    The dome telemetry value is 'open' when the lower shutter is DOWN (no
+    obstruction) and 'not open' when it is raised. Any other string counts as
+    raised; None (no dome update received yet) counts as lowered.
+    """
+    if isinstance(shutter_lower, str):
+        return shutter_lower.strip().lower() != 'open'
+    return False
+
+
+def pointing_limits_ok(ha, dec, latitude, dha, shutter_up,
+                       elrange=None, azrange=None, sample_dha=0.25):
+    """Return whether each field stays inside the pointing limits while it
+    tracks from hour angle ha to ha + dha.
+
+    The raised lower shutter limits the pointing center to SHUTTER_CENTER_EL +
+    POINTING_MARGIN_DEG. elrange[0] applies to the lower field edge, i.e. the
+    center must be FIELD_RADIUS_DEG + POINTING_MARGIN_DEG above it; elevation is monotonic in abs(HA) so the segment endpoints
+    suffice. Azimuth is not monotonic in HA, so azrange is checked on a grid of
+    sample_dha deg (1 min) with the allowed range narrowed on both sides by the
+    field's azimuth half-width, asin(sin r / cos el). azrange follows the
+    azinrange convention. elrange[1] is applied to the centre at the start, as
+    before.
+
+    Parameters
+    ----------
+    ha: hour angle at the start of the segment (deg), array
+    dec: declination (deg), array of same shape as ha
+    latitude: observatory latitude (deg)
+    dha: hour angle advance over the segment (deg)
+    shutter_up: True if the lower dome shutter is raised
+    elrange: [lowel, highel] or None
+    azrange: [lowaz, highaz] or None
+    sample_dha: hour angle step for the azimuth check (deg)
+
+    Returns
+    -------
+    Boolean array of same shape as ha.
+    """
+    ha = np.asarray(ha, dtype=float)
+    dec = np.radians(np.asarray(dec, dtype=float))
+    lat = np.radians(latitude)
+
+    def altaz(h):
+        h = np.radians(h)
+        sinel = (np.sin(lat) * np.sin(dec) +
+                 np.cos(lat) * np.cos(dec) * np.cos(h))
+        el = np.degrees(np.arcsin(np.clip(sinel, -1, 1)))
+        y = -np.cos(dec) * np.sin(h)
+        x = (np.sin(dec) * np.cos(lat) -
+             np.cos(dec) * np.sin(lat) * np.cos(h))
+        return el, np.degrees(np.arctan2(y, x)) % 360
+
+    ok = np.ones(ha.shape, dtype=bool)
+    el_start, _ = altaz(ha)
+    el_end, _ = altaz(ha + dha)
+    el_worst = np.minimum(el_start, el_end)
+    center_limits = []
+    if shutter_up:
+        center_limits.append(SHUTTER_CENTER_EL)
+    if elrange is not None:
+        center_limits.append(elrange[0] + FIELD_RADIUS_DEG)
+        ok &= el_start <= elrange[1]
+    if center_limits:
+        ok &= el_worst >= max(center_limits) + POINTING_MARGIN_DEG
+
+    if azrange is not None:
+        low, high = azrange
+        if low > high:
+            high = ((high - low) % 360) + low
+        span = high - low
+        if span < 360:
+            nstep = max(2, int(np.ceil(abs(dha) / sample_dha)) + 1)
+            sinr = np.sin(np.radians(FIELD_RADIUS_DEG))
+            for h in np.linspace(ha, ha + dha, nstep):
+                el, az = altaz(h)
+                cosel = np.cos(np.radians(el))
+                pad = np.where(
+                    cosel > sinr,
+                    np.degrees(np.arcsin(np.clip(sinr / np.maximum(cosel, sinr), 0, 1))),
+                    180.)
+                daz = (az - low) % 360
+                ok &= (daz >= pad) & (daz <= span - pad)
+    return ok
+
+
 def get_fiberassign_dir():
     fadir = os.environ.get('DOS_DESI_TILES', None)
     if fadir is None:
@@ -475,21 +576,32 @@ class NTS():
 
         azrange = constraints.get('azrange', None)
         elrange = constraints.get('elrange', None)
-        if (azrange is not None) or (elrange is not None):
-            tra = self.scheduler.tiles.tileRA
-            tdec = self.scheduler.tiles.tileDEC
-            altazframe = desisurvey.utils.get_observer(
-                time.Time(mjd, format='mjd'))
-            coordrd = coordinates.ICRS(ra=tra*u.deg, dec=tdec*u.deg)
-            coordaz = coordrd.transform_to(altazframe)
-            az = coordaz.az.to(u.deg).value
-            el = coordaz.alt.to(u.deg).value
-            if azrange is not None:
-                self.scheduler.in_night_pool &= azinrange(az, azrange[0],
-                                                          azrange[1])
-            if elrange is not None:
-                self.scheduler.in_night_pool &= (
-                    (el >= elrange[0]) & (el <= elrange[1]))
+        shutter_up = shutter_raised(conditions.get('shutter_lower', None))
+        if conditions.get('shutter_lower', None) is None:
+            self.log.warning('Lower dome shutter state unknown; '
+                             'assuming lowered.')
+        if (azrange is not None) or (elrange is not None) or shutter_up:
+            # Check the field edge over the whole first segment (at most one
+            # cosmic split), not just the centre at the start: the field keeps
+            # setting while it tracks. Later segments are checked by the ETC
+            # at each split.
+            pool = np.flatnonzero(self.scheduler.in_night_pool)
+            lstnow = (self.scheduler.LST0 +
+                      self.scheduler.dLST*(mjd - self.scheduler.MJD0))
+            ha = lstnow - self.scheduler.tiles.tileRA[pool]
+            ha = ((ha + 180) % 360) - 180
+            dha = (self.scheduler.dLST *
+                   self.config.cosmic_ray_split().to(u.day).value)
+            ok = pointing_limits_ok(
+                ha, self.scheduler.tiles.tileDEC[pool],
+                self.config.location.latitude().to(u.deg).value, dha,
+                shutter_up, elrange=elrange, azrange=azrange)
+            self.scheduler.in_night_pool[pool[~ok]] = False
+            self.log.info(
+                'Pointing limits (shutter_lower={}, elrange={}, azrange={}) '
+                'removed {} of {} tiles.'.format(
+                    conditions.get('shutter_lower', None), elrange, azrange,
+                    np.count_nonzero(~ok), len(pool)))
 
         program = exposure.get('program', None)
 
